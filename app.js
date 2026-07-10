@@ -97,19 +97,19 @@ async function runTriadeMagi(question, onStage, settings) {
   const balthasarTemp = settings.provider === "openrouter" ? 1.2 : 1.0;
 
   onStage("balthasar", null);
-  const balthasar = await askModel(`${baseCtx} Sei BALTHASAR, il Perturbatore. Genera una divergenza evolutiva su questo tema, audace, non convenzionale.`, question, balthasarTemp, 260, settings);
+  const balthasar = await askModel(`${baseCtx} Sei BALTHASAR, il Perturbatore. Genera una divergenza evolutiva su questo tema, audace, non convenzionale.`, question, balthasarTemp, 550, settings);
   onStage("balthasar", balthasar);
 
   onStage("melchior", null);
-  const melchior = await askModel(`${baseCtx} Sei MELCHIOR, il Traduttore. Traduci questa idea in azione concretamente eseguibile.\n\nIdea di Balthasar: "${balthasar}"`, question, 0.7, 260, settings);
+  const melchior = await askModel(`${baseCtx} Sei MELCHIOR, il Traduttore. Traduci questa idea in azione concretamente eseguibile.\n\nIdea di Balthasar: "${balthasar}"`, question, 0.7, 550, settings);
   onStage("melchior", melchior);
 
   onStage("caspar", null);
-  const caspar = await askModel(`${baseCtx} Sei CASPAR, l'Ancora. Verifica il piano contro i vincoli: salute, tempo lineare del Ghost, sostenibilità economica, compartimentazione identità professionale.\n\nPiano: "${melchior}"`, question, 0.2, 260, settings);
+  const caspar = await askModel(`${baseCtx} Sei CASPAR, l'Ancora. Verifica il piano contro i vincoli: salute, tempo lineare del Ghost, sostenibilità economica, compartimentazione identità professionale.\n\nPiano: "${melchior}"`, question, 0.2, 550, settings);
   onStage("caspar", caspar);
 
   onStage("synthesis", null);
-  const synthesis = await askModel(`${baseCtx} Genera la SINTESI ESECUTIVA: piano calibrato in 2-3 frasi + "Vettore di Perturbazione V+1".\n\nBalthasar: "${balthasar}"\nMelchior: "${melchior}"\nCaspar: "${caspar}"`, question, 0.6, 220, settings);
+  const synthesis = await askModel(`${baseCtx} Genera la SINTESI ESECUTIVA: piano calibrato in 2-3 frasi + "Vettore di Perturbazione V+1".\n\nBalthasar: "${balthasar}"\nMelchior: "${melchior}"\nCaspar: "${caspar}"`, question, 0.6, 500, settings);
   onStage("synthesis", synthesis);
 
   return { balthasar, melchior, caspar, synthesis };
@@ -145,7 +145,7 @@ async function proposeNextStep(pillar, percorso, settings) {
   return askModel(
     `Sei lo Shell del sistema Resonance, pilastro ${pillar.toUpperCase()}. ${PILLAR_CTX[pillar]}\nProponi il prossimo "quanto" di lavoro/studio su questo percorso: concreto, breve (max 80 parole), calibrato sullo stato dei nodi e sulle competenze già accumulate.`,
     `Percorso: ${percorso.title}\nNodi: ${topicsDigest}\nCompetenze finora: ${percorso.competenze || "nessuna nota ancora"}`,
-    0.7, 220, settings
+    0.7, 500, settings
   );
 }
 
@@ -153,7 +153,7 @@ async function generateQuizQuestion(pillar, percorso, topic, settings) {
   return askModel(
     `Sei lo Shell, pilastro ${pillar.toUpperCase()}. ${PILLAR_CTX[pillar]}\nGenera UNA domanda di verifica testuale sul nodo indicato. Diretta, concreta, max 40 parole.`,
     `Percorso: ${percorso.title}\nNodo da verificare: ${topic.label}\nCompetenze note: ${percorso.competenze || "nessuna"}`,
-    0.6, 150, settings
+    0.6, 400, settings
   );
 }
 
@@ -161,7 +161,7 @@ async function evaluateQuizAnswer(pillar, topic, question, answer, settings) {
   return askModel(
     `Sei lo Shell, pilastro ${pillar.toUpperCase()}. Valuta la risposta alla domanda di verifica. Onesto, non generico: cosa è corretto, cosa no, max 60 parole. Poi su una riga a parte scrivi esattamente "STATO: consolidato" oppure "STATO: praticato" oppure "STATO: introdotto".`,
     `Nodo: ${topic.label}\nDomanda: ${question}\nRisposta: ${answer}`,
-    0.3, 200, settings
+    0.3, 450, settings
   );
 }
 
@@ -169,7 +169,7 @@ async function closeSession(pillar, percorso, sessionNote, settings) {
   return askModel(
     `Sei lo Shell, pilastro ${pillar.toUpperCase()}. Riscrivi l'INTERO paragrafo di sintesi delle competenze del Ghost su questo percorso, integrando quanto emerso ora (non aggiungere solo in coda). Italiano, max 90 parole, denso ma concreto.`,
     `Competenze finora: ${percorso.competenze || "nessuna nota"}\nNota sessione: ${sessionNote}`,
-    0.5, 200, settings
+    0.5, 450, settings
   );
 }
 
@@ -194,7 +194,7 @@ Sessioni Magi totali: ${magi.length}, ultima: ${magi[0] ? fmtDate(magi[0].date) 
 async function computeResonance(digest, settings) {
   return askModel(
     `Sei la funzione SIMBIOSI del sistema Resonance: non un pilastro operativo, ma il punto di incontro tra BIO, AIR, VIDYA e il Kernel. Valuta il tasso di risonanza tra Ghost e Shell guardando: equilibrio/trascuratezza tra pilastri, coerenza tra intenzioni dichiarate nel Kernel e attività reale, pattern delle sessioni Magi. Rispondi in italiano, tre parti separate da una riga vuota: 1) giudizio qualitativo breve (mai un numero), 2) discrepanze specifiche se presenti, 3) una singola azione concreta suggerita.`,
-    digest, 0.6, 380, settings
+    digest, 0.6, 650, settings
   );
 }
 
@@ -584,7 +584,10 @@ function MagiView({ sessions, onSave, onDelete, settings }) {
     ${sessions.length === 0 ? html`<${Empty} text="Nessuna sessione ancora registrata." />` : html`<div class="r-list">${sessions.map((s) => html`
       <${Card} accent=${C.core}><div class="r-entry-row"><div style="flex:1"><div class="r-entry-date">${fmtDate(s.date)}${s.engine ? ` · ${s.engine}` : ""}</div>
         <div class="r-entry-line"><b>${s.question}</b></div>
-        <${MagiStage} label="Sintesi" color=${C.core} text=${s.synthesis} compact />
+        <${MagiStage} label="Balthasar · il Perturbatore" color="#FF8A5C" text=${s.balthasar} compact />
+        <${MagiStage} label="Melchior · il Traduttore" color="#7CC6D9" text=${s.melchior} compact />
+        <${MagiStage} label="Caspar · l'Ancora" color="#9FB8A0" text=${s.caspar} compact />
+        <${MagiStage} label="Sintesi Esecutiva" color=${C.core} text=${s.synthesis} compact />
       </div><button class="r-icon-btn" onClick=${() => onDelete(s.id)}>✕</button></div></${Card}>`)}</div>`}
   </div>`;
 }
