@@ -88,3 +88,14 @@ body {
 
 .r-install-banner { max-width: 480px; margin: 0 auto; padding: 10px 20px 0; }
 .r-install-banner button { width: 100%; }
+
+.r-shell-log { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+.r-shell-row { display: flex; flex-direction: column; }
+.r-shell-row.user { align-items: flex-end; }
+.r-shell-row.assistant { align-items: flex-start; }
+.r-shell-bubble { max-width: 85%; padding: 10px 14px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; }
+.r-shell-bubble.user { background: var(--core); color: #171204; border-bottom-right-radius: 4px; }
+.r-shell-bubble.assistant { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+.r-shell-actions { display: flex; gap: 6px; margin-top: 4px; }
+.r-shell-inputbar { display: flex; gap: 8px; align-items: flex-end; }
+.r-shell-inputbar .r-textarea { flex: 1; min-height: 44px; }
