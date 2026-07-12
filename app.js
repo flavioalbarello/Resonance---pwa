@@ -10,6 +10,23 @@ const C = { bio: "#E8664A", air: "#3FB6C9", vidya: "#B084F5", core: "#F2B84B", m
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const fmtDate = (d) => { try { return new Date(d).toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" }); } catch { return d; } };
 const uid = () => Math.random().toString(36).slice(2, 10);
+
+// ── Sintesi vocale del browser (gratuita, nessuna API esterna) ──
+function pickItalianVoice() {
+  const voices = window.speechSynthesis?.getVoices() || [];
+  return voices.find((v) => v.lang?.toLowerCase().startsWith("it")) || voices[0] || null;
+}
+function speakText(text) {
+  if (!window.speechSynthesis || !text) return;
+  window.speechSynthesis.cancel(); // interrompe una lettura precedente ancora in corso
+  const utter = new SpeechSynthesisUtterance(text);
+  const voice = pickItalianVoice();
+  if (voice) utter.voice = voice;
+  utter.lang = voice?.lang || "it-IT";
+  utter.rate = 1.0;
+  window.speechSynthesis.speak(utter);
+}
+function stopSpeaking() { window.speechSynthesis?.cancel(); }
 const daysSince = (iso) => iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : null;
 
 const DEFAULT_KERNEL = `STATO SISTEMA RESONANCE — V1
@@ -28,6 +45,7 @@ const DEFAULT_SETTINGS = {
   provider: "openrouter",
   apiKey: "",
   model: "google/gemini-3.1-pro-preview",
+  voiceEnabled: true,
 };
 
 const MODEL_OPTIONS = [
@@ -772,9 +790,12 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       }
       const { reply, actionsLog, anochin, proposal } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya });
       setMessages((prev) => [...prev, { role: "assistant", content: reply, time: new Date().toISOString(), actions: actionsLog, anochin, proposal }]);
+      if (settings.voiceEnabled) speakText(reply);
     } catch (e) { setError(e.message); }
     finally { setSending(false); }
   };
+
+  useEffect(() => () => stopSpeaking(), []); // interrompe la lettura se si lascia la scheda Shell
 
   const actionColor = { BIO: C.bio, AIR: C.air, VIDYA: C.vidya };
 
@@ -786,7 +807,10 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         ? html`<div key=${i} class="r-shell-system-note">${m.content}</div>`
         : html`<div key=${i} class="r-shell-row ${m.role}">
             <div class="r-shell-bubble ${m.role}">${m.content}</div>
-            ${m.actions && m.actions.length > 0 && html`<div class="r-shell-actions">${m.actions.map((a) => html`<span class="r-badge" style="border-color:${actionColor[a]};color:${actionColor[a]}">→ ${a}</span>`)}</div>`}
+            <div class="r-shell-msg-footer">
+              ${m.actions && m.actions.length > 0 && html`<div class="r-shell-actions">${m.actions.map((a) => html`<span class="r-badge" style="border-color:${actionColor[a]};color:${actionColor[a]}">→ ${a}</span>`)}</div>`}
+              ${m.role === "assistant" && html`<button class="r-shell-speak-btn" onClick=${() => speakText(m.content)} title="Riascolta">🔊</button>`}
+            </div>
             ${m.anochin && html`<${AnochinTrace} trace=${m.anochin} />`}
           </div>`)}
       <div ref=${bottomRef}></div>
@@ -851,6 +875,11 @@ function SettingsView({ settings, updateSettings, driveStatus }) {
         ${isCustom && html`<${Field} label="Slug personalizzato"><input class="r-input" value=${settings.model} onInput=${(e) => updateSettings({ model: e.target.value })} placeholder="es. z-ai/glm-5.2" /></${Field}>`}
       `}
       <div class="r-hub-detail">La chiave resta solo su questo dispositivo (localStorage).</div>
+    </${Card}>
+    <${Card} accent=${C.core}>
+      <div class="r-settings-row"><div><div class="r-hub-title" style="color:#EDEAE3">Lettura vocale dello Shell</div>
+        <div class="r-hub-detail">Legge automaticamente ogni risposta (voce del browser, gratuita)</div></div>
+        <input type="checkbox" checked=${settings.voiceEnabled} onInput=${(e) => updateSettings({ voiceEnabled: e.target.checked })} /></div>
     </${Card}>
     <${Card} accent=${C.core}>
       <div class="r-settings-row"><div><div class="r-hub-title" style="color:#EDEAE3">Sincronizzazione Drive</div>
