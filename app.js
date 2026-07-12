@@ -54,6 +54,7 @@ const DEFAULT_SETTINGS = {
   apiKey: "",
   model: "google/gemini-3.1-pro-preview",
   voiceEnabled: true,
+  armsDraftsEnabled: false,
 };
 
 const MODEL_OPTIONS = [
@@ -172,6 +173,16 @@ async function runAirAgent(task, settings) {
 // SHELL — dialogo con memoria continua, ciclo Anochin reale, coerente con autopoiesi/intenzionalità/Bateson
 // ─────────────────────────────────────────────────────────────
 
+// BRACCIO 1 — Bozze pronte da copiare/inviare. Lo Shell prepara, il Ghost esegue: nessuna azione autonoma verso l'esterno.
+async function draftIfNeeded(recentText, settings) {
+  const data = await askModelJSON(
+    `Sei lo Shell. Leggi lo scambio e determina se il Ghost sta chiedendo — esplicitamente o implicitamente — di preparare un testo pronto da usare altrove: un'email, un messaggio, uno script per un video, un post social. Se sì, scrivi il testo COMPLETO e pronto all'uso, non un'idea o una scaletta. Se no, {"needed": false}.
+JSON: {"needed": true, "type": "email|messaggio|script|post", "subject": "solo se email, altrimenti omesso", "body": "testo completo pronto"} oppure {"needed": false}`,
+    recentText, 0.5, 700, settings
+  );
+  return data?.needed ? data : null;
+}
+
 // Stadio 2 — Decisione: lettura MULTI-LENTE. Un evento può valere per più pilastri insieme (Legge 17.2 resa meccanica).
 async function readThroughLenses(recentText, settings) {
   const data = await askModelJSON(
@@ -259,10 +270,11 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
 
   const messages = [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: userMessage }];
 
-  // Risposta conversazionale e lettura multi-lente non dipendono l'una dall'altra: partono insieme
-  const [reply, readings] = await Promise.all([
+  // Risposta conversazionale, lettura multi-lente, e (se abilitato) bozza pronta: nessuna dipende dalle altre, partono insieme
+  const [reply, readings, draft] = await Promise.all([
     askModelWithHistory(system, messages, 0.7, 900, settings),
     readThroughLenses(recentText, settings).catch(() => []),
+    settings.armsDraftsEnabled ? draftIfNeeded(recentText, settings).catch(() => null) : Promise.resolve(null),
   ]);
 
   const actionsLog = [];
@@ -305,14 +317,17 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
   } catch { /* riflessione fallita: non blocca il turno */ }
 
   anochin.accettore = accettoreNotes.length ? accettoreNotes.join(" · ") : "—";
-  anochin.effettore = actionsLog.length ? `Dati preparati per: ${actionsLog.join(", ")}.` : "—";
+  anochin.effettore = [
+    actionsLog.length ? `Dati preparati per: ${actionsLog.join(", ")}.` : null,
+    draft ? `Bozza (${draft.type}) preparata per il Ghost — nessun invio automatico.` : null,
+  ].filter(Boolean).join(" ") || "—";
   anochin.azione = actionsLog.length
     ? `Scritto in ${actionsLog.join(", ")}. Memoria riorganizzata per accoppiamento continuo.`
     : (accettoreNotes.some((n) => n.includes("BLOCCATO")) ? "Nessuna scrittura: vincolo assoluto violato." : "Nessuna azione in questo turno.");
 
   const proposal = detectPercorsoProposalHeuristic(reply);
 
-  return { reply, actionsLog, anochin, proposal, alerts, newStyleMemory };
+  return { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -856,8 +871,8 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
           setMessages((prev) => [...prev, { role: "system-note", content: `✓ Percorso "${title}" creato in ${pillar.toUpperCase()}.` }]);
         }
       }
-      const { reply, actionsLog, anochin, proposal, alerts, newStyleMemory } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya, updateMemoria }, memory, styleMemory);
-      setMessages((prev) => [...prev, { role: "assistant", content: reply, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts }]);
+      const { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya, updateMemoria }, memory, styleMemory);
+      setMessages((prev) => [...prev, { role: "assistant", content: reply, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft }]);
       if (newStyleMemory !== styleMemory) setStyleMemory(newStyleMemory);
       if (settings.voiceEnabled) toggleSpeak(newIndex, reply);
     } catch (e) { setError(e.message); }
@@ -865,6 +880,12 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   };
 
   useEffect(() => () => stopSpeaking(), []); // interrompe la lettura se si lascia la scheda Shell
+
+  const [copiedId, setCopiedId] = useState(null);
+  const copyDraft = (i, draft) => {
+    const text = draft.subject ? `Oggetto: ${draft.subject}\n\n${draft.body}` : draft.body;
+    navigator.clipboard?.writeText(text).then(() => { setCopiedId(i); setTimeout(() => setCopiedId((c) => (c === i ? null : c)), 2000); });
+  };
 
   const actionColor = { BIO: C.bio, AIR: C.air, VIDYA: C.vidya };
 
@@ -877,6 +898,12 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         : html`<div key=${i} class="r-shell-row ${m.role}">
             <div class="r-shell-bubble ${m.role}">${m.content}</div>
             ${m.alerts && m.alerts.length > 0 && m.alerts.map((a) => html`<div class="r-shell-alert"><div class="r-shell-alert-label">⚠ ALLERTA — ${a.pillar.toUpperCase()}</div><div>${a.note}</div></div>`)}
+            ${m.draft && html`<div class="r-draft-card">
+              <div class="r-draft-label">📝 BOZZA — ${m.draft.type.toUpperCase()}</div>
+              ${m.draft.subject && html`<div class="r-draft-subject">Oggetto: ${m.draft.subject}</div>`}
+              <div class="r-draft-body">${m.draft.body}</div>
+              <button class="r-btn r-draft-copy" onClick=${() => copyDraft(i, m.draft)}>${copiedId === i ? "✓ Copiato" : "Copia"}</button>
+            </div>`}
             <div class="r-shell-msg-footer">
               ${m.actions && m.actions.length > 0 && html`<div class="r-shell-actions">${m.actions.map((a) => html`<span class="r-badge" style="border-color:${actionColor[a]};color:${actionColor[a]}">→ ${a}</span>`)}</div>`}
               ${m.role === "assistant" && html`<button class="r-shell-speak-btn" onClick=${() => toggleSpeak(i, m.content)} title=${speakingId === i ? "Interrompi" : "Riascolta"}>${speakingId === i ? "⏹" : "🔊"}</button>`}
@@ -945,6 +972,11 @@ function SettingsView({ settings, updateSettings, driveStatus }) {
         ${isCustom && html`<${Field} label="Slug personalizzato"><input class="r-input" value=${settings.model} onInput=${(e) => updateSettings({ model: e.target.value })} placeholder="es. z-ai/glm-5.2" /></${Field}>`}
       `}
       <div class="r-hub-detail">La chiave resta solo su questo dispositivo (localStorage).</div>
+    </${Card}>
+    <${Card} accent=${C.core}>
+      <div class="r-settings-row"><div><div class="r-hub-title" style="color:#3A4750">Braccia — Bozze pronte</div>
+        <div class="r-hub-detail">Lo Shell prepara email/messaggi/script pronti da copiare — non li invia mai da solo</div></div>
+        <input type="checkbox" checked=${settings.armsDraftsEnabled} onInput=${(e) => updateSettings({ armsDraftsEnabled: e.target.checked })} /></div>
     </${Card}>
     <${Card} accent=${C.core}>
       <div class="r-settings-row"><div><div class="r-hub-title" style="color:#3A4750">Lettura vocale dello Shell</div>
