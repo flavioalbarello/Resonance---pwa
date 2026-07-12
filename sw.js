@@ -1,4 +1,4 @@
-const CACHE = "resonance-v2"; // bump di versione: invalida la vecchia cache al prossimo avvio
+const CACHE = "resonance-v3"; // bump di versione: invalida qualunque cache residua al prossimo avvio
 const SHELL = [
   "./",
   "./index.html",
