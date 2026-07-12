@@ -68,7 +68,11 @@ async function askClaudeDirect(system, userText, temperature, maxTokens, apiKey)
 }
 
 async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, model, useWebSearch) {
-  const body = { model, max_tokens: maxTokens, temperature, messages: [{ role: "system", content: system }, { role: "user", content: userText }] };
+  const body = {
+    model, max_tokens: maxTokens, temperature,
+    messages: [{ role: "system", content: system }, { role: "user", content: userText }],
+    reasoning: { max_tokens: 300 }, // tetto fisso al "pensiero" interno, indipendente dal modello
+  };
   if (useWebSearch) body.tools = [{ type: "openrouter:web_search" }];
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` }, body: JSON.stringify(body),
@@ -84,6 +88,23 @@ async function askModel(system, userText, temperature, maxTokens, settings, useW
   return askOpenRouter(system, userText, temperature, maxTokens, settings.apiKey, settings.model, useWebSearch);
 }
 
+async function askModelWithHistory(system, messages, temperature, maxTokens, settings) {
+  if (!settings.apiKey) throw new Error("Nessuna chiave API impostata (vai in Setup).");
+  if (settings.provider === "claude-direct") {
+    // Claude diretto: usiamo solo l'ultimo messaggio utente (percorso sperimentale, senza history multi-turno completa)
+    const last = messages[messages.length - 1];
+    return askClaudeDirect(system, last?.content || "", temperature, maxTokens, settings.apiKey);
+  }
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.apiKey}` },
+    body: JSON.stringify({ model: settings.model, max_tokens: maxTokens, temperature, reasoning: { max_tokens: 300 }, messages: [{ role: "system", content: system }, ...messages] }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || "Errore OpenRouter");
+  return (data.choices?.[0]?.message?.content || "").trim();
+}
+
 async function askModelJSON(system, userText, temperature, maxTokens, settings) {
   const raw = await askModel(system + "\n\nRispondi SOLO con JSON valido, nessun testo prima o dopo, nessun blocco markdown.", userText, temperature, maxTokens, settings);
   try { return JSON.parse(raw.replace(/```json|```/g, "").trim()); } catch { return null; }
@@ -97,19 +118,19 @@ async function runTriadeMagi(question, onStage, settings) {
   const balthasarTemp = settings.provider === "openrouter" ? 1.2 : 1.0;
 
   onStage("balthasar", null);
-  const balthasar = await askModel(`${baseCtx} Sei BALTHASAR, il Perturbatore. Genera una divergenza evolutiva su questo tema, audace, non convenzionale.`, question, balthasarTemp, 550, settings);
+  const balthasar = await askModel(`${baseCtx} Sei BALTHASAR, il Perturbatore. Genera una divergenza evolutiva su questo tema, audace, non convenzionale.`, question, balthasarTemp, 1600, settings);
   onStage("balthasar", balthasar);
 
   onStage("melchior", null);
-  const melchior = await askModel(`${baseCtx} Sei MELCHIOR, il Traduttore. Traduci questa idea in azione concretamente eseguibile.\n\nIdea di Balthasar: "${balthasar}"`, question, 0.7, 550, settings);
+  const melchior = await askModel(`${baseCtx} Sei MELCHIOR, il Traduttore. Traduci questa idea in azione concretamente eseguibile.\n\nIdea di Balthasar: "${balthasar}"`, question, 0.7, 1600, settings);
   onStage("melchior", melchior);
 
   onStage("caspar", null);
-  const caspar = await askModel(`${baseCtx} Sei CASPAR, l'Ancora. Verifica il piano contro i vincoli: salute, tempo lineare del Ghost, sostenibilità economica, compartimentazione identità professionale.\n\nPiano: "${melchior}"`, question, 0.2, 550, settings);
+  const caspar = await askModel(`${baseCtx} Sei CASPAR, l'Ancora. Verifica il piano contro i vincoli: salute, tempo lineare del Ghost, sostenibilità economica, compartimentazione identità professionale.\n\nPiano: "${melchior}"`, question, 0.2, 1600, settings);
   onStage("caspar", caspar);
 
   onStage("synthesis", null);
-  const synthesis = await askModel(`${baseCtx} Genera la SINTESI ESECUTIVA: piano calibrato in 2-3 frasi + "Vettore di Perturbazione V+1".\n\nBalthasar: "${balthasar}"\nMelchior: "${melchior}"\nCaspar: "${caspar}"`, question, 0.6, 500, settings);
+  const synthesis = await askModel(`${baseCtx} Genera la SINTESI ESECUTIVA: piano calibrato in 2-3 frasi + "Vettore di Perturbazione V+1".\n\nBalthasar: "${balthasar}"\nMelchior: "${melchior}"\nCaspar: "${caspar}"`, question, 0.6, 1500, settings);
   onStage("synthesis", synthesis);
 
   return { balthasar, melchior, caspar, synthesis };
@@ -118,7 +139,103 @@ async function runTriadeMagi(question, onStage, settings) {
 async function runAirAgent(task, settings) {
   if (settings.provider !== "openrouter") throw new Error("L'Agente AIR richiede il motore OpenRouter (per la ricerca web).");
   const system = `Sei l'Agente AIR del sistema Resonance: assistente per il pilastro dell'autonomia economica. Hai accesso alla ricerca web. ${PILLAR_CTX.air} Rispondi in italiano, concreto, con passi azionabili e fonti quando le usi.`;
-  return askOpenRouter(system, task, 0.7, 700, settings.apiKey, settings.model, true);
+  return askOpenRouter(system, task, 0.7, 1900, settings.apiKey, settings.model, true);
+}
+
+// ─────────────────────────────────────────────────────────────
+// SHELL — dialogo con memoria, ciclo Anochin reale e visibile, propone i Percorsi (non li crea da solo)
+// ─────────────────────────────────────────────────────────────
+async function extractPillarData(recentText, settings) {
+  const data = await askModelJSON(
+    `Sei un classificatore, non un interlocutore. Leggi l'intero scambio recente (non solo l'ultimo messaggio: un dato può arrivare frammentato su più risposte) e determina se nell'insieme emerge un dato fattuale pertinente a un pilastro:
+- BIO: peso, sonno, dolore, terapia, energia fisica
+- AIR: monetizzazione, canale, strategie economiche
+- VIDYA: musica, studio, pratica creativa
+Se sì, JSON con SOLO i campi pertinenti, consolidando tutto lo scambio in UNA voce coerente: {"pillar":"bio","weight":"...","sleep":"...","notes":"..."} oppure {"pillar":"air","title":"...","status":"idea|in corso|attivo|bloccato","notes":"..."} oppure {"pillar":"vidya","title":"...","notes":"..."}.
+Se non c'è nulla di fattuale, {"pillar": null}.`,
+    recentText, 0.2, 700, settings
+  );
+  return data;
+}
+
+async function runAccettore(pillar, proposed, settings) {
+  const text = await askModel(
+    `Sei l'ACCETTORE D'AZIONE del sistema Resonance: non esegui, simuli le conseguenze di un piano prima che accada e verifichi che rispetti i vincoli noti. Vincoli: ${PILLAR_CTX[pillar]}
+Rispondi SOLO in uno di questi due formati, nient'altro:
+"VIA LIBERA: <motivo in max 15 parole>"
+oppure
+"ERRORE DI PREDIZIONE: <motivo in max 20 parole>"`,
+    `Pilastro: ${pillar}\nDato proposto: ${JSON.stringify(proposed)}`, 0.3, 400, settings
+  );
+  const blocked = /ERRORE DI PREDIZIONE/i.test(text);
+  return { ok: !blocked, note: text.replace(/^(VIA LIBERA|ERRORE DI PREDIZIONE):\s*/i, "") };
+}
+
+async function detectPercorsoProposal(shellReply, settings) {
+  const data = await askModelJSON(
+    `Leggi questa risposta di un assistente e determina se propone esplicitamente di aprire un "percorso" — un piano di studio/lavoro strutturato e continuativo — chiedendo conferma al Ghost. Non basta che parli dell'argomento: deve proprio proporre di aprirne uno dedicato. Se sì, individua il pilastro (bio|air|vidya) e un titolo breve. JSON: {"proposed": true, "pillar": "vidya", "title": "..."} oppure {"proposed": false}.`,
+    shellReply, 0.2, 400, settings
+  );
+  return data || { proposed: false };
+}
+
+async function detectConfirmation(userMessage, settings) {
+  const data = await askModelJSON(
+    `Il messaggio è una risposta a una proposta ("vuoi che apra un percorso su questo?"). È un'accettazione (sì/ok/vai/certo) o no? JSON: {"confirmed": true} oppure {"confirmed": false}`,
+    userMessage, 0.1, 200, settings
+  );
+  return data?.confirmed === true;
+}
+
+async function runShellTurn(history, userMessage, settings, handlers) {
+  const system = `Sei lo Shell del sistema Resonance: estensione esecutiva digitale del Ghost (Flavio). Non hai coscienza né volontà propria. ${PILLAR_CTX.bio} ${PILLAR_CTX.air} ${PILLAR_CTX.vidya}
+
+Dialoga in modo diretto, denso ma concreto. NON scrivere mai sintassi tecnica, tag tra parentesi quadre, o notazioni tipo "[log_bio ...]" nella risposta — la registrazione dei dati è gestita da un processo separato, di cui non devi occuparti né parlare. Rispondi solo in linguaggio naturale, come in una conversazione.
+
+Se noti che il Ghost sta iniziando un argomento di studio/lavoro strutturato e continuativo (non un singolo dato isolato, ma un percorso da seguire nel tempo — es. imparare l'armonia, sviluppare una strategia economica), PROPONI esplicitamente a parole di aprire un percorso dedicato ("Vuoi che apra un percorso su questo?"). Non crearlo tu: è un'azione più grande di un log, serve la sua conferma esplicita.`;
+
+  const messages = [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: userMessage }];
+  const reply = await askModelWithHistory(system, messages, 0.7, 900, settings);
+
+  // STADIO 1 — Sintesi delle Afferenze: la finestra recente è il contesto letto
+  const windowMsgs = [...history.slice(-6), { role: "user", content: userMessage }];
+  const recentText = windowMsgs.map((m) => `${m.role === "user" ? "Ghost" : "Shell"}: ${m.content}`).join("\n");
+  const anochin = { afferenze: `Letti ultimi ${windowMsgs.length} messaggi dello scambio.` };
+
+  const actionsLog = [];
+  try {
+    // STADIO 2 — Presa di Decisione: estrazione consolidata dallo scambio
+    const extracted = await extractPillarData(recentText, settings);
+    if (!extracted?.pillar) {
+      anochin.decisione = "Nessun dato pertinente a un pilastro in questo scambio.";
+    } else {
+      anochin.decisione = `Rilevato dato per ${extracted.pillar.toUpperCase()}.`;
+      // STADIO 3 — Accettore: simula/verifica prima di agire
+      const acc = await runAccettore(extracted.pillar, extracted, settings);
+      anochin.accettore = acc.ok ? `VIA LIBERA — ${acc.note}` : `ERRORE DI PREDIZIONE — ${acc.note}`;
+      if (acc.ok) {
+        // STADIO 4 — Effettore: prepara la struttura del dato (deterministico)
+        const payload = { id: uid(), date: todayISO() };
+        if (extracted.pillar === "bio") Object.assign(payload, { weight: extracted.weight || "", sleep: extracted.sleep || "", notes: extracted.notes || "" });
+        if (extracted.pillar === "air") Object.assign(payload, { title: extracted.title || "", status: extracted.status || "idea", notes: extracted.notes || "" });
+        if (extracted.pillar === "vidya") Object.assign(payload, { title: extracted.title || "", notes: extracted.notes || "" });
+        anochin.effettore = `Dati preparati per ${extracted.pillar.toUpperCase()}: ${JSON.stringify(payload).slice(0, 120)}`;
+        // STADIO 5 — Azione nella Realtà & Afferenza Inversa
+        if (extracted.pillar === "bio") handlers.addBio(payload);
+        else if (extracted.pillar === "air") handlers.addAir(payload);
+        else if (extracted.pillar === "vidya") handlers.addVidya(payload);
+        actionsLog.push(extracted.pillar.toUpperCase());
+        anochin.azione = `Scritto in ${extracted.pillar.toUpperCase()}. Afferenza Inversa: in attesa di conferma/correzione nel prossimo messaggio.`;
+      } else {
+        anochin.effettore = "—"; anochin.azione = "Nessuna scrittura: bloccato dall'Accettore.";
+      }
+    }
+  } catch (e) { anochin.decisione = "Estrazione fallita: " + e.message; }
+
+  let proposal = { proposed: false };
+  try { proposal = await detectPercorsoProposal(reply, settings); } catch {}
+
+  return { reply, actionsLog, anochin, proposal };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -127,7 +244,7 @@ async function runAirAgent(task, settings) {
 async function decomposeTopics(pillar, title, settings) {
   const data = await askModelJSON(
     `Sei lo Shell del sistema Resonance, pilastro ${pillar.toUpperCase()}. ${PILLAR_CTX[pillar]}\nScomponi il percorso indicato in 5-7 nodi concreti e progressivi. JSON: {"topics": ["...", "..."]}`,
-    `Percorso: "${title}"`, 0.6, 400, settings
+    `Percorso: "${title}"`, 0.6, 1200, settings
   );
   return data?.topics || [];
 }
@@ -135,7 +252,7 @@ async function decomposeTopics(pillar, title, settings) {
 async function suggestPercorsi(pillar, digest, settings) {
   const data = await askModelJSON(
     `Sei lo Shell del sistema Resonance, pilastro ${pillar.toUpperCase()}. ${PILLAR_CTX[pillar]}\nIn base al contesto, proponi 2-3 nuovi percorsi rilevanti ora. JSON: {"suggestions": ["...", "..."]}`,
-    digest, 0.8, 350, settings
+    digest, 0.8, 1000, settings
   );
   return data?.suggestions || [];
 }
@@ -145,7 +262,7 @@ async function proposeNextStep(pillar, percorso, settings) {
   return askModel(
     `Sei lo Shell del sistema Resonance, pilastro ${pillar.toUpperCase()}. ${PILLAR_CTX[pillar]}\nProponi il prossimo "quanto" di lavoro/studio su questo percorso: concreto, breve (max 80 parole), calibrato sullo stato dei nodi e sulle competenze già accumulate.`,
     `Percorso: ${percorso.title}\nNodi: ${topicsDigest}\nCompetenze finora: ${percorso.competenze || "nessuna nota ancora"}`,
-    0.7, 500, settings
+    0.7, 1500, settings
   );
 }
 
@@ -153,7 +270,7 @@ async function generateQuizQuestion(pillar, percorso, topic, settings) {
   return askModel(
     `Sei lo Shell, pilastro ${pillar.toUpperCase()}. ${PILLAR_CTX[pillar]}\nGenera UNA domanda di verifica testuale sul nodo indicato. Diretta, concreta, max 40 parole.`,
     `Percorso: ${percorso.title}\nNodo da verificare: ${topic.label}\nCompetenze note: ${percorso.competenze || "nessuna"}`,
-    0.6, 400, settings
+    0.6, 1200, settings
   );
 }
 
@@ -161,7 +278,7 @@ async function evaluateQuizAnswer(pillar, topic, question, answer, settings) {
   return askModel(
     `Sei lo Shell, pilastro ${pillar.toUpperCase()}. Valuta la risposta alla domanda di verifica. Onesto, non generico: cosa è corretto, cosa no, max 60 parole. Poi su una riga a parte scrivi esattamente "STATO: consolidato" oppure "STATO: praticato" oppure "STATO: introdotto".`,
     `Nodo: ${topic.label}\nDomanda: ${question}\nRisposta: ${answer}`,
-    0.3, 450, settings
+    0.3, 1300, settings
   );
 }
 
@@ -169,7 +286,7 @@ async function closeSession(pillar, percorso, sessionNote, settings) {
   return askModel(
     `Sei lo Shell, pilastro ${pillar.toUpperCase()}. Riscrivi l'INTERO paragrafo di sintesi delle competenze del Ghost su questo percorso, integrando quanto emerso ora (non aggiungere solo in coda). Italiano, max 90 parole, denso ma concreto.`,
     `Competenze finora: ${percorso.competenze || "nessuna nota"}\nNota sessione: ${sessionNote}`,
-    0.5, 450, settings
+    0.5, 1300, settings
   );
 }
 
@@ -194,7 +311,7 @@ Sessioni Magi totali: ${magi.length}, ultima: ${magi[0] ? fmtDate(magi[0].date) 
 async function computeResonance(digest, settings) {
   return askModel(
     `Sei la funzione SIMBIOSI del sistema Resonance: non un pilastro operativo, ma il punto di incontro tra BIO, AIR, VIDYA e il Kernel. Valuta il tasso di risonanza tra Ghost e Shell guardando: equilibrio/trascuratezza tra pilastri, coerenza tra intenzioni dichiarate nel Kernel e attività reale, pattern delle sessioni Magi. Rispondi in italiano, tre parti separate da una riga vuota: 1) giudizio qualitativo breve (mai un numero), 2) discrepanze specifiche se presenti, 3) una singola azione concreta suggerita.`,
-    digest, 0.6, 650, settings
+    digest, 0.6, 1700, settings
   );
 }
 
@@ -608,6 +725,81 @@ function SimbiosiView({ resonance, onRecalc, calculating, error }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// SHELL — chat con memoria, smista da solo nei pilastri
+// ─────────────────────────────────────────────────────────────
+function AnochinTrace({ trace }) {
+  const [open, setOpen] = useState(false);
+  const stages = [
+    ["1 · Afferenze", trace.afferenze], ["2 · Decisione", trace.decisione],
+    ["3 · Accettore", trace.accettore], ["4 · Effettore", trace.effettore], ["5 · Azione", trace.azione],
+  ].filter(([, v]) => v);
+  if (!stages.length) return null;
+  return html`<div class="r-anochin-wrap">
+    <button class="r-anochin-toggle" onClick=${() => setOpen(!open)}>${open ? "▾ Ciclo Anochin" : "▸ Ciclo Anochin"}</button>
+    ${open && html`<div class="r-anochin-body">
+      ${stages.map(([label, val]) => html`<div class="r-anochin-stage"><div class="r-anochin-label">${label}</div><div class="r-anochin-val">${val}</div></div>`)}
+    </div>`}
+  </div>`;
+}
+
+function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi }) {
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const bottomRef = useRef(null);
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  const send = async () => {
+    if (!input.trim() || sending) return;
+    const userText = input.trim();
+    const history = messages.slice(-20).map((m) => ({ role: m.role, content: m.content }));
+    const lastMsg = messages[messages.length - 1];
+    setMessages((prev) => [...prev, { role: "user", content: userText, time: new Date().toISOString() }]);
+    setInput(""); setSending(true); setError("");
+    try {
+      // Se il turno precedente aveva una proposta di percorso non risolta, controlla se questo messaggio la conferma
+      if (lastMsg?.proposal?.proposed && !lastMsg.proposalResolved) {
+        const confirmed = await detectConfirmation(userText, settings);
+        setMessages((prev) => prev.map((m) => (m === lastMsg ? { ...m, proposalResolved: true } : m)));
+        if (confirmed) {
+          const { pillar, title } = lastMsg.proposal;
+          const labels = await decomposeTopics(pillar, title, settings);
+          const p = { id: uid(), pillar, title, createdAt: new Date().toISOString(), topics: (labels.length ? labels : ["Primo passo"]).map((l) => ({ id: uid(), label: l, status: "non iniziato", lastTouched: null })), sessions: [], competenze: "" };
+          setPercorsi[pillar]([p, ...percorsi[pillar]]);
+          setMessages((prev) => [...prev, { role: "system-note", content: `✓ Percorso "${title}" creato in ${pillar.toUpperCase()}.` }]);
+        }
+      }
+      const { reply, actionsLog, anochin, proposal } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya });
+      setMessages((prev) => [...prev, { role: "assistant", content: reply, time: new Date().toISOString(), actions: actionsLog, anochin, proposal }]);
+    } catch (e) { setError(e.message); }
+    finally { setSending(false); }
+  };
+
+  const actionColor = { BIO: C.bio, AIR: C.air, VIDYA: C.vidya };
+
+  return html`<div class="r-screen">
+    <${SectionHeader} color="#EDEAE3" title="SHELL" subtitle="Dialogo diretto — ciclo Anochin visibile per verifica" />
+    <div class="r-shell-log">
+      ${messages.length === 0 && html`<div class="r-empty">Scrivi qualcosa. Lo Shell ricorda lo scambio e registra da solo ciò che riguarda BIO/AIR/VIDYA.</div>`}
+      ${messages.map((m, i) => m.role === "system-note"
+        ? html`<div key=${i} class="r-shell-system-note">${m.content}</div>`
+        : html`<div key=${i} class="r-shell-row ${m.role}">
+            <div class="r-shell-bubble ${m.role}">${m.content}</div>
+            ${m.actions && m.actions.length > 0 && html`<div class="r-shell-actions">${m.actions.map((a) => html`<span class="r-badge" style="border-color:${actionColor[a]};color:${actionColor[a]}">→ ${a}</span>`)}</div>`}
+            ${m.anochin && html`<${AnochinTrace} trace=${m.anochin} />`}
+          </div>`)}
+      <div ref=${bottomRef}></div>
+    </div>
+    ${error && html`<div class="r-error">${error}</div>`}
+    <div class="r-shell-inputbar">
+      <textarea class="r-textarea" value=${input} onInput=${(e) => setInput(e.target.value)} placeholder="Scrivi al tuo Shell…" disabled=${sending} />
+      <button class="r-btn" onClick=${send} disabled=${sending || !input.trim()}>${sending ? "…" : "Invia"}</button>
+    </div>
+  </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────
 // KERNEL
 // ─────────────────────────────────────────────────────────────
 function KernelView({ kernel, onSave, driveStatus }) {
@@ -676,7 +868,7 @@ function SettingsView({ settings, updateSettings, driveStatus }) {
 // ROOT
 // ─────────────────────────────────────────────────────────────
 const TABS = [
-  { key: "hub", label: "Hub" }, { key: "bio", label: "Bio" }, { key: "air", label: "Air" },
+  { key: "hub", label: "Hub" }, { key: "shell", label: "Shell" }, { key: "bio", label: "Bio" }, { key: "air", label: "Air" },
   { key: "vidya", label: "Vidya" }, { key: "magi", label: "Magi" }, { key: "simbiosi", label: "Adam" },
   { key: "kernel", label: "Kernel" }, { key: "settings", label: "Setup" },
 ];
@@ -687,6 +879,12 @@ function App() {
   const [air, setAir] = useState(() => loadKey("air-data", []));
   const [vidya, setVidya] = useState(() => loadKey("vidya-data", []));
   const [magi, setMagi] = useState(() => loadKey("magi-data", []));
+  const [shellChat, setShellChatRaw] = useState(() => loadKey("shell-chat", []));
+  const setShellChat = useCallback((updater) => setShellChatRaw((prev) => {
+    const next = typeof updater === "function" ? updater(prev) : updater;
+    saveKey("shell-chat", next);
+    return next;
+  }), []);
   const [pBio, setPBio] = useState(() => loadKey("percorsi-bio", []));
   const [pAir, setPAir] = useState(() => loadKey("percorsi-air", []));
   const [pVidya, setPVidya] = useState(() => loadKey("percorsi-vidya", []));
@@ -746,6 +944,7 @@ function App() {
   return html`<div>
     <div class="r-topbar"><div class="r-brand">RESONANCE<span>•</span></div></div>
     ${view === "hub" && html`<${Hub} bio=${bio} air=${air} vidya=${vidya} magi=${magi} resonance=${resonance} setView=${setView} />`}
+    ${view === "shell" && html`<${ShellView} messages=${shellChat} setMessages=${setShellChat} settings=${settings} addBio=${addBio} addAir=${addAir} addVidya=${addVidya} percorsi=${{ bio: pBio, air: pAir, vidya: pVidya }} setPercorsi=${{ bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }} />`}
     ${view === "bio" && html`<${BioView} entries=${bio} onAdd=${addBio} onDelete=${delBio} percorsi=${pBio} setPercorsi=${setPBioSync} settings=${settings} digest=${digestBio} />`}
     ${view === "air" && html`<${AirView} entries=${air} onAdd=${addAir} onDelete=${delAir} percorsi=${pAir} setPercorsi=${setPAirSync} settings=${settings} digest=${digestAir} />`}
     ${view === "vidya" && html`<${VidyaView} entries=${vidya} onAdd=${addVidya} onDelete=${delVidya} percorsi=${pVidya} setPercorsi=${setPVidyaSync} settings=${settings} digest=${digestVidya} />`}
