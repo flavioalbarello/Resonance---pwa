@@ -16,17 +16,25 @@ function pickItalianVoice() {
   const voices = window.speechSynthesis?.getVoices() || [];
   return voices.find((v) => v.lang?.toLowerCase().startsWith("it")) || voices[0] || null;
 }
-function speakText(text) {
+function speakText(text, onEnd) {
   if (!window.speechSynthesis || !text) return;
-  window.speechSynthesis.cancel(); // interrompe una lettura precedente ancora in corso
+  stopSpeaking();
   const utter = new SpeechSynthesisUtterance(text);
   const voice = pickItalianVoice();
   if (voice) utter.voice = voice;
   utter.lang = voice?.lang || "it-IT";
   utter.rate = 1.0;
-  window.speechSynthesis.speak(utter);
+  utter.onend = () => onEnd && onEnd();
+  utter.onerror = () => onEnd && onEnd();
+  // piccolo ritardo prima di avviare: su alcuni Android il cancel() precedente non è ancora effettivo
+  setTimeout(() => window.speechSynthesis.speak(utter), 40);
 }
-function stopSpeaking() { window.speechSynthesis?.cancel(); }
+function stopSpeaking() {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  // bug noto di Chrome su Android: a volte cancel() non interrompe subito, riproviamo
+  setTimeout(() => { try { window.speechSynthesis.cancel(); } catch {} }, 60);
+}
 const daysSince = (iso) => iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : null;
 
 const DEFAULT_KERNEL = `STATO SISTEMA RESONANCE — V1
@@ -764,16 +772,25 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [speakingId, setSpeakingId] = useState(null);
   const bottomRef = useRef(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  const toggleSpeak = (id, text) => {
+    if (speakingId === id) { stopSpeaking(); setSpeakingId(null); return; }
+    setSpeakingId(id);
+    speakText(text, () => setSpeakingId((cur) => (cur === id ? null : cur)));
+  };
 
   const send = async () => {
     if (!input.trim() || sending) return;
     const userText = input.trim();
     const history = messages.slice(-20).map((m) => ({ role: m.role, content: m.content }));
     const lastMsg = messages[messages.length - 1];
+    stopSpeaking(); setSpeakingId(null);
     setMessages((prev) => [...prev, { role: "user", content: userText, time: new Date().toISOString() }]);
+    const newIndex = messages.length + 1; // posizione futura del messaggio dello Shell
     setInput(""); setSending(true); setError("");
     try {
       // Se il turno precedente aveva una proposta di percorso non risolta, controlla se questo messaggio la conferma
@@ -790,7 +807,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       }
       const { reply, actionsLog, anochin, proposal } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya });
       setMessages((prev) => [...prev, { role: "assistant", content: reply, time: new Date().toISOString(), actions: actionsLog, anochin, proposal }]);
-      if (settings.voiceEnabled) speakText(reply);
+      if (settings.voiceEnabled) toggleSpeak(newIndex, reply);
     } catch (e) { setError(e.message); }
     finally { setSending(false); }
   };
@@ -809,7 +826,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
             <div class="r-shell-bubble ${m.role}">${m.content}</div>
             <div class="r-shell-msg-footer">
               ${m.actions && m.actions.length > 0 && html`<div class="r-shell-actions">${m.actions.map((a) => html`<span class="r-badge" style="border-color:${actionColor[a]};color:${actionColor[a]}">→ ${a}</span>`)}</div>`}
-              ${m.role === "assistant" && html`<button class="r-shell-speak-btn" onClick=${() => speakText(m.content)} title="Riascolta">🔊</button>`}
+              ${m.role === "assistant" && html`<button class="r-shell-speak-btn" onClick=${() => toggleSpeak(i, m.content)} title=${speakingId === i ? "Interrompi" : "Riascolta"}>${speakingId === i ? "⏹" : "🔊"}</button>`}
             </div>
             ${m.anochin && html`<${AnochinTrace} trace=${m.anochin} />`}
           </div>`)}
