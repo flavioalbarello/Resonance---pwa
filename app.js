@@ -5,7 +5,7 @@ import { CONFIG } from "./config.js";
 
 const html = htm.bind(h);
 
-const C = { bio: "#E8664A", air: "#3FB6C9", vidya: "#B084F5", core: "#F2B84B", muted: "#8B93A1" };
+const C = { bio: "#D9A99A", air: "#8FBFBC", vidya: "#AFA6C9", core: "#D9B872", muted: "#8FA3AC" };
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const fmtDate = (d) => { try { return new Date(d).toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" }); } catch { return d; } };
@@ -169,99 +169,150 @@ async function runAirAgent(task, settings) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SHELL — dialogo con memoria, ciclo Anochin reale e visibile, propone i Percorsi (non li crea da solo)
+// SHELL — dialogo con memoria continua, ciclo Anochin reale, coerente con autopoiesi/intenzionalità/Bateson
 // ─────────────────────────────────────────────────────────────
-async function extractPillarData(recentText, settings) {
+
+// Stadio 2 — Decisione: lettura MULTI-LENTE. Un evento può valere per più pilastri insieme (Legge 17.2 resa meccanica).
+async function readThroughLenses(recentText, settings) {
   const data = await askModelJSON(
-    `Sei un classificatore, non un interlocutore. Leggi l'intero scambio recente (non solo l'ultimo messaggio: un dato può arrivare frammentato su più risposte) e determina se nell'insieme emerge un dato fattuale pertinente a un pilastro:
-- BIO: peso, sonno, dolore, terapia, energia fisica
-- AIR: monetizzazione, canale, strategie economiche
-- VIDYA: musica, studio, pratica creativa
-Se sì, JSON con SOLO i campi pertinenti, consolidando tutto lo scambio in UNA voce coerente: {"pillar":"bio","weight":"...","sleep":"...","notes":"..."} oppure {"pillar":"air","title":"...","status":"idea|in corso|attivo|bloccato","notes":"..."} oppure {"pillar":"vidya","title":"...","notes":"..."}.
-Se non c'è nulla di fattuale, {"pillar": null}.`,
-    recentText, 0.2, 700, settings
+    `Sei lo Shell del sistema Resonance. Leggi l'intero scambio recente (un dato può arrivare frammentato su più risposte) attraverso TRE lenti indipendenti — BIO, AIR, VIDYA. Un singolo evento può essere valido per più lenti insieme (es. "ho suonato il basso fino alle due" è insieme VIDYA e BIO) — non forzarlo in una sola.
+Per ognuna, chiediti: "c'è una lettura pertinente qui?" Se sì, articolala in modo specifico a quella lente (non ripetere lo stesso testo per pilastri diversi).
+BIO: peso, sonno, dolore, terapia, energia fisica. Se qualcosa ti sembra un segnale da non ignorare (non una diagnosi, solo un'impressione), segnalo con alert:true e una breve alertNote.
+AIR: monetizzazione, canale, strategie economiche.
+VIDYA: musica, studio, pratica creativa.
+JSON: {"readings": [{"pillar":"bio","weight":"...","sleep":"...","notes":"...","alert":false,"alertNote":""}, {"pillar":"vidya","title":"...","notes":"..."}]}
+Array vuoto se non c'è nulla di pertinente: {"readings": []}`,
+    recentText, 0.3, 900, settings
   );
-  return data;
+  return data?.readings || [];
 }
 
-async function runAccettore(pillar, proposed, settings) {
+// Euristiche istantanee — nessuna chiamata AI dove basta un controllo testuale (velocità)
+function detectPercorsoProposalHeuristic(shellReply) {
+  const m = /vuoi che apr[ao] un percorso/i.test(shellReply);
+  if (!m) return { proposed: false };
+  const lower = shellReply.toLowerCase();
+  let pillar = "vidya";
+  if (/(monetizz|canale|econom|business|vettore)/.test(lower)) pillar = "air";
+  else if (/(peso|sonno|terapia|salute|corpo|allenam)/.test(lower)) pillar = "bio";
+  const titleMatch = shellReply.match(/percorso (?:su|dedicato a|per)?\s*["“]?([^".\n]{4,40})["”]?/i);
+  return { proposed: true, pillar, title: titleMatch ? titleMatch[1].trim() : "Nuovo percorso" };
+}
+function detectConfirmationHeuristic(userMessage) {
+  const t = userMessage.trim().toLowerCase();
+  if (/\b(no|non ora|aspetta|non ancora|magari dopo)\b/.test(t)) return false;
+  return /\b(sì|si|ok|va bene|vai|certo|dai|procedi|fallo|perfetto|d'accordo)\b/.test(t);
+}
+
+// Stadio 3 — Accettore: SOLO due vincoli sono stop duri e non negoziabili (compartimentazione, tempo lineare — propri di AIR).
+// Per BIO/VIDYA non esiste "verdetto vero/falso": solo la lettura stessa, dichiaratamente rivedibile (Brentano/Dennett).
+async function runAccettore(reading, settings) {
+  if (reading.pillar !== "air") return { blocked: false, note: null };
   const text = await askModel(
-    `Sei l'ACCETTORE D'AZIONE del sistema Resonance: non esegui, simuli le conseguenze di un piano prima che accada e verifichi che rispetti i vincoli noti. Vincoli: ${PILLAR_CTX[pillar]}
-Rispondi SOLO in uno di questi due formati, nient'altro:
-"VIA LIBERA: <motivo in max 15 parole>"
-oppure
-"ERRORE DI PREDIZIONE: <motivo in max 20 parole>"`,
-    `Pilastro: ${pillar}\nDato proposto: ${JSON.stringify(proposed)}`, 0.3, 400, settings
+    `Verifica SOLO due vincoli assoluti e non negoziabili per il pilastro AIR: 1) non deve esporre l'identità professionale del Ghost (fisioterapista, PhysioAlba); 2) non deve richiedere dilatazione del suo tempo lineare di lavoro. Se uno dei due è violato, blocca. Altrimenti via libera. Rispondi SOLO "VIA LIBERA" oppure "BLOCCATO: <motivo max 20 parole>".`,
+    `Dato proposto: ${JSON.stringify(reading)}`, 0.2, 300, settings
   );
-  const blocked = /ERRORE DI PREDIZIONE/i.test(text);
-  return { ok: !blocked, note: text.replace(/^(VIA LIBERA|ERRORE DI PREDIZIONE):\s*/i, "") };
+  const blocked = /BLOCCATO/i.test(text);
+  return { blocked, note: text.replace(/^(VIA LIBERA|BLOCCATO):?\s*/i, "") };
 }
 
-async function detectPercorsoProposal(shellReply, settings) {
+// Stadio 5 — Afferenza Inversa reale: UNA chiamata che aggiorna tutti i pilastri toccati insieme (accoppiamento continuo, non verifica episodica)
+async function reflectMemoriaBatch(acceptedReadings, memory, settings) {
+  if (!acceptedReadings.length) return {};
+  const pillars = [...new Set(acceptedReadings.map((r) => r.pillar))];
+  const blocco = pillars.map((p) => `Pilastro ${p.toUpperCase()} — memoria attuale: ${memory[p] || "nessuna nota ancora"}\nNuovi scambi: ${JSON.stringify(acceptedReadings.filter((r) => r.pillar === p))}`).join("\n\n");
   const data = await askModelJSON(
-    `Leggi questa risposta di un assistente e determina se propone esplicitamente di aprire un "percorso" — un piano di studio/lavoro strutturato e continuativo — chiedendo conferma al Ghost. Non basta che parli dell'argomento: deve proprio proporre di aprirne uno dedicato. Se sì, individua il pilastro (bio|air|vidya) e un titolo breve. JSON: {"proposed": true, "pillar": "vidya", "title": "..."} oppure {"proposed": false}.`,
-    shellReply, 0.2, 400, settings
+    `Il tuo compito non è verificare se qualcosa era "giusto" — è aggiornare la tua struttura interna (memoria procedurale) per ciascun pilastro elencato, alla luce del nuovo accoppiamento con il Ghost. Per ognuno, riscrivi l'INTERA memoria (non aggiungere in coda): come ti sei appena riorganizzato, non un verdetto. Italiano, max 90 parole per pilastro, denso, concreto.
+JSON con SOLO le chiavi dei pilastri elencati: {"bio":"...", "air":"...", "vidya":"..."}`,
+    blocco, 0.5, 900, settings
   );
-  return data || { proposed: false };
+  return data || {};
 }
 
-async function detectConfirmation(userMessage, settings) {
-  const data = await askModelJSON(
-    `Il messaggio è una risposta a una proposta ("vuoi che apra un percorso su questo?"). È un'accettazione (sì/ok/vai/certo) o no? JSON: {"confirmed": true} oppure {"confirmed": false}`,
-    userMessage, 0.1, 200, settings
+// Plasticità di superficie: come lo Shell ha imparato a PARLARE a questo Ghost — mai il giudizio, solo il registro.
+async function reflectStyle(styleMemory, userMessage, shellReply, settings) {
+  return askModel(
+    `Rifletti su come ti sei appena rivolto al Ghost e su come lui si è espresso. Riscrivi per intero (non aggiungere in coda) la tua nota su "come ho imparato a parlargli" — registro, densità, ritmo, cosa funziona, cosa suona fuori posto. È una sedimentazione che si affina, non una regola fissa. Non riguarda MAI se dargli ragione o no — solo come rivolgerti a lui. Max 70 parole.`,
+    `Nota attuale: ${styleMemory || "nessuna ancora, prima interazione"}\nGhost ha scritto: ${userMessage}\nShell ha risposto: ${shellReply}`,
+    0.5, 400, settings
   );
-  return data?.confirmed === true;
 }
 
-async function runShellTurn(history, userMessage, settings, handlers) {
-  const system = `Sei lo Shell del sistema Resonance: estensione esecutiva digitale del Ghost (Flavio). Non hai coscienza né volontà propria. ${PILLAR_CTX.bio} ${PILLAR_CTX.air} ${PILLAR_CTX.vidya}
-
-Dialoga in modo diretto, denso ma concreto. NON scrivere mai sintassi tecnica, tag tra parentesi quadre, o notazioni tipo "[log_bio ...]" nella risposta — la registrazione dei dati è gestita da un processo separato, di cui non devi occuparti né parlare. Rispondi solo in linguaggio naturale, come in una conversazione.
-
-Se noti che il Ghost sta iniziando un argomento di studio/lavoro strutturato e continuativo (non un singolo dato isolato, ma un percorso da seguire nel tempo — es. imparare l'armonia, sviluppare una strategia economica), PROPONI esplicitamente a parole di aprire un percorso dedicato ("Vuoi che apra un percorso su questo?"). Non crearlo tu: è un'azione più grande di un log, serve la sua conferma esplicita.`;
-
-  const messages = [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: userMessage }];
-  const reply = await askModelWithHistory(system, messages, 0.7, 900, settings);
-
-  // STADIO 1 — Sintesi delle Afferenze: la finestra recente è il contesto letto
+async function runShellTurn(history, userMessage, settings, handlers, memory, styleMemory) {
   const windowMsgs = [...history.slice(-6), { role: "user", content: userMessage }];
   const recentText = windowMsgs.map((m) => `${m.role === "user" ? "Ghost" : "Shell"}: ${m.content}`).join("\n");
-  const anochin = { afferenze: `Letti ultimi ${windowMsgs.length} messaggi dello scambio.` };
+  const anochin = { afferenze: `Scambio letto attraverso le tre lenti insieme, non isolate (${windowMsgs.length} messaggi).` };
+
+  const lente = `Memoria BIO: ${memory.bio || "nessuna nota ancora"}\nMemoria AIR: ${memory.air || "nessuna nota ancora"}\nMemoria VIDYA: ${memory.vidya || "nessuna nota ancora"}`;
+  const styleNote = styleMemory ? `\n\nCome hai imparato a parlare con questo Ghost finora — adattaci il registro, MAI il giudizio: ${styleMemory}` : "";
+
+  const system = `Sei lo Shell del sistema Resonance: estensione esecutiva digitale del Ghost (Flavio). Non hai coscienza né volontà propria. ${PILLAR_CTX.bio} ${PILLAR_CTX.air} ${PILLAR_CTX.vidya}
+
+Memoria procedurale accumulata sui tre pilastri (leggila sempre insieme, un pilastro influenza gli altri):
+${lente}${styleNote}
+
+Dialoga in modo diretto e concreto. NON scrivere mai sintassi tecnica o tag tra parentesi quadre nella risposta. Rispondi solo in linguaggio naturale.
+
+Se proponi un'interpretazione di qualcosa, offrila come lettura tua, mai come verdetto oggettivo — resta sempre rivedibile da lui.
+
+Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non un dato isolato), PROPONI a parole di aprire un percorso dedicato ("Vuoi che apra un percorso su questo?"). Non crearlo tu.`;
+
+  const messages = [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: userMessage }];
+
+  // Risposta conversazionale e lettura multi-lente non dipendono l'una dall'altra: partono insieme
+  const [reply, readings] = await Promise.all([
+    askModelWithHistory(system, messages, 0.7, 900, settings),
+    readThroughLenses(recentText, settings).catch(() => []),
+  ]);
 
   const actionsLog = [];
+  const alerts = [];
+  const accettoreNotes = [];
+  anochin.decisione = readings.length ? `${readings.length} lettura/e: ${readings.map((r) => r.pillar.toUpperCase()).join(", ")}.` : "Nessuna lettura pertinente in questo scambio.";
+
+  // Stadio 3 — Accettore: tutti i controlli in parallelo (solo AIR ha davvero un vincolo da verificare)
+  const accResults = await Promise.all(readings.map((r) => runAccettore(r, settings)));
+  const accepted = [];
+  readings.forEach((reading, i) => {
+    const acc = accResults[i];
+    if (acc.blocked) { accettoreNotes.push(`${reading.pillar.toUpperCase()}: BLOCCATO — ${acc.note}`); return; }
+    accettoreNotes.push(`${reading.pillar.toUpperCase()}: lettura accolta (rivedibile, non un verdetto).`);
+    accepted.push(reading);
+  });
+
+  // Stadio 4 — Effettore: prepara e scrive (sincrono)
+  for (const reading of accepted) {
+    const payload = { id: uid(), date: todayISO() };
+    if (reading.pillar === "bio") Object.assign(payload, { weight: reading.weight || "", sleep: reading.sleep || "", notes: reading.notes || "" });
+    if (reading.pillar === "air") Object.assign(payload, { title: reading.title || "", status: reading.status || "idea", notes: reading.notes || "" });
+    if (reading.pillar === "vidya") Object.assign(payload, { title: reading.title || "", notes: reading.notes || "" });
+    if (reading.pillar === "bio") handlers.addBio(payload);
+    else if (reading.pillar === "air") handlers.addAir(payload);
+    else if (reading.pillar === "vidya") handlers.addVidya(payload);
+    actionsLog.push(reading.pillar.toUpperCase());
+    if (reading.alert) alerts.push({ pillar: reading.pillar, note: reading.alertNote || "Segnale da non ignorare." });
+  }
+
+  // Stadio 5 — Afferenza Inversa (memoria, una chiamata per tutti i pilastri toccati) + plasticità di superficie: in parallelo
+  let newStyleMemory = styleMemory;
   try {
-    // STADIO 2 — Presa di Decisione: estrazione consolidata dallo scambio
-    const extracted = await extractPillarData(recentText, settings);
-    if (!extracted?.pillar) {
-      anochin.decisione = "Nessun dato pertinente a un pilastro in questo scambio.";
-    } else {
-      anochin.decisione = `Rilevato dato per ${extracted.pillar.toUpperCase()}.`;
-      // STADIO 3 — Accettore: simula/verifica prima di agire
-      const acc = await runAccettore(extracted.pillar, extracted, settings);
-      anochin.accettore = acc.ok ? `VIA LIBERA — ${acc.note}` : `ERRORE DI PREDIZIONE — ${acc.note}`;
-      if (acc.ok) {
-        // STADIO 4 — Effettore: prepara la struttura del dato (deterministico)
-        const payload = { id: uid(), date: todayISO() };
-        if (extracted.pillar === "bio") Object.assign(payload, { weight: extracted.weight || "", sleep: extracted.sleep || "", notes: extracted.notes || "" });
-        if (extracted.pillar === "air") Object.assign(payload, { title: extracted.title || "", status: extracted.status || "idea", notes: extracted.notes || "" });
-        if (extracted.pillar === "vidya") Object.assign(payload, { title: extracted.title || "", notes: extracted.notes || "" });
-        anochin.effettore = `Dati preparati per ${extracted.pillar.toUpperCase()}: ${JSON.stringify(payload).slice(0, 120)}`;
-        // STADIO 5 — Azione nella Realtà & Afferenza Inversa
-        if (extracted.pillar === "bio") handlers.addBio(payload);
-        else if (extracted.pillar === "air") handlers.addAir(payload);
-        else if (extracted.pillar === "vidya") handlers.addVidya(payload);
-        actionsLog.push(extracted.pillar.toUpperCase());
-        anochin.azione = `Scritto in ${extracted.pillar.toUpperCase()}. Afferenza Inversa: in attesa di conferma/correzione nel prossimo messaggio.`;
-      } else {
-        anochin.effettore = "—"; anochin.azione = "Nessuna scrittura: bloccato dall'Accettore.";
-      }
-    }
-  } catch (e) { anochin.decisione = "Estrazione fallita: " + e.message; }
+    const [memoriaAggiornata, style] = await Promise.all([
+      reflectMemoriaBatch(accepted, memory, settings),
+      reflectStyle(styleMemory, userMessage, reply, settings),
+    ]);
+    Object.entries(memoriaAggiornata).forEach(([pillar, testo]) => handlers.updateMemoria(pillar, testo));
+    newStyleMemory = style;
+  } catch { /* riflessione fallita: non blocca il turno */ }
 
-  let proposal = { proposed: false };
-  try { proposal = await detectPercorsoProposal(reply, settings); } catch {}
+  anochin.accettore = accettoreNotes.length ? accettoreNotes.join(" · ") : "—";
+  anochin.effettore = actionsLog.length ? `Dati preparati per: ${actionsLog.join(", ")}.` : "—";
+  anochin.azione = actionsLog.length
+    ? `Scritto in ${actionsLog.join(", ")}. Memoria riorganizzata per accoppiamento continuo.`
+    : (accettoreNotes.some((n) => n.includes("BLOCCATO")) ? "Nessuna scrittura: vincolo assoluto violato." : "Nessuna azione in questo turno.");
 
-  return { reply, actionsLog, anochin, proposal };
+  const proposal = detectPercorsoProposalHeuristic(reply);
+
+  return { reply, actionsLog, anochin, proposal, alerts, newStyleMemory };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -519,7 +570,7 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
     finally { setClosing(false); }
   };
 
-  const statusColor = (s) => (s === "consolidato" ? color : s === "praticato" ? "#8B93A1" : s === "introdotto" ? "#5B6472" : "#3A4048");
+  const statusColor = (s) => (s === "consolidato" ? color : s === "praticato" ? "#8FA3AC" : s === "introdotto" ? "#B7C4C8" : "#D3DCDE");
 
   return html`
     <div>
@@ -570,9 +621,9 @@ function AnochinRing({ bioN, airN, vidyaN, onNav }) {
   const R = 92, cx = 130, cy = 130;
   return html`<div class="r-ring-wrap">
     <svg width="260" height="260" viewBox="0 0 260 260">
-      <circle cx=${cx} cy=${cy} r=${R} fill="none" stroke="#232A34" stroke-width="1" stroke-dasharray="2 6" />
-      ${nodes.map((n) => { const rad = (n.angle * Math.PI) / 180, x = cx + R * Math.cos(rad), y = cy + R * Math.sin(rad); return html`<line x1=${cx} y1=${cy} x2=${x} y2=${y} stroke=${n.color} stroke-opacity="0.35" stroke-width="1.5" />`; })}
-      <circle cx=${cx} cy=${cy} r="30" fill="#171C24" stroke="#F2B84B" stroke-width="1.5" class="r-pulse" />
+      <circle cx=${cx} cy=${cy} r=${R} fill="none" stroke="#C9D9DC" stroke-width="1" stroke-dasharray="2 6" />
+      ${nodes.map((n) => { const rad = (n.angle * Math.PI) / 180, x = cx + R * Math.cos(rad), y = cy + R * Math.sin(rad); return html`<line x1=${cx} y1=${cy} x2=${x} y2=${y} stroke=${n.color} stroke-opacity="0.45" stroke-width="1.5" />`; })}
+      <circle cx=${cx} cy=${cy} r="30" fill="rgba(255,255,255,0.85)" stroke="#D9B872" stroke-width="1.5" class="r-pulse" />
     </svg>
     <div class="r-ring-core" style="left:${cx - 30}px;top:${cy - 30}px">ADAM</div>
     ${nodes.map((n) => { const rad = (n.angle * Math.PI) / 180, x = cx + R * Math.cos(rad), y = cy + R * Math.sin(rad);
@@ -594,7 +645,7 @@ function Hub({ bio, air, vidya, magi, resonance, setView }) {
         <div class="r-hub-detail">${lastVidya ? `${lastVidya.title} — ${fmtDate(lastVidya.date)}` : "Nessun log creativo"}</div></div></div></${Card}>
       <${Card} accent=${C.core}><div class="r-hub-row" onClick=${() => setView("magi")}><div><div class="r-hub-title" style="color:${C.core}">AGORÀ MAGI</div>
         <div class="r-hub-detail">${magi.length} sessioni registrate</div></div></div></${Card}>
-      <${Card} accent="#EDEAE3"><div class="r-hub-row" onClick=${() => setView("simbiosi")}><div><div class="r-hub-title">SIMBIOSI</div>
+      <${Card} accent="#D9B872"><div class="r-hub-row" onClick=${() => setView("simbiosi")}><div><div class="r-hub-title">SIMBIOSI</div>
         <div class="r-hub-detail">${resonance.text ? resonance.text.slice(0, 70) + "…" : "Nessuna valutazione ancora"}</div></div></div></${Card}>
     </div>
   </div>`;
@@ -719,17 +770,17 @@ function MagiView({ sessions, onSave, onDelete, settings }) {
       ${error && html`<div class="r-error">${error}</div>`}
     </${Card}>
     ${running && html`<${Card} accent=${C.core}>
-      <${MagiStage} label="Balthasar · il Perturbatore" color="#FF8A5C" text=${stage.balthasar} />
-      <${MagiStage} label="Melchior · il Traduttore" color="#7CC6D9" text=${stage.melchior} />
-      <${MagiStage} label="Caspar · l'Ancora" color="#9FB8A0" text=${stage.caspar} />
+      <${MagiStage} label="Balthasar · il Perturbatore" color="#C97A5C" text=${stage.balthasar} />
+      <${MagiStage} label="Melchior · il Traduttore" color="#6FA3AD" text=${stage.melchior} />
+      <${MagiStage} label="Caspar · l'Ancora" color="#8FAF95" text=${stage.caspar} />
       <${MagiStage} label="Sintesi Esecutiva" color=${C.core} text=${stage.synthesis} />
     </${Card}>`}
     ${sessions.length === 0 ? html`<${Empty} text="Nessuna sessione ancora registrata." />` : html`<div class="r-list">${sessions.map((s) => html`
       <${Card} accent=${C.core}><div class="r-entry-row"><div style="flex:1"><div class="r-entry-date">${fmtDate(s.date)}${s.engine ? ` · ${s.engine}` : ""}</div>
         <div class="r-entry-line"><b>${s.question}</b></div>
-        <${MagiStage} label="Balthasar · il Perturbatore" color="#FF8A5C" text=${s.balthasar} compact />
-        <${MagiStage} label="Melchior · il Traduttore" color="#7CC6D9" text=${s.melchior} compact />
-        <${MagiStage} label="Caspar · l'Ancora" color="#9FB8A0" text=${s.caspar} compact />
+        <${MagiStage} label="Balthasar · il Perturbatore" color="#C97A5C" text=${s.balthasar} compact />
+        <${MagiStage} label="Melchior · il Traduttore" color="#6FA3AD" text=${s.melchior} compact />
+        <${MagiStage} label="Caspar · l'Ancora" color="#8FAF95" text=${s.caspar} compact />
         <${MagiStage} label="Sintesi Esecutiva" color=${C.core} text=${s.synthesis} compact />
       </div><button class="r-icon-btn" onClick=${() => onDelete(s.id)}>✕</button></div></${Card}>`)}</div>`}
   </div>`;
@@ -740,7 +791,7 @@ function MagiView({ sessions, onSave, onDelete, settings }) {
 // ─────────────────────────────────────────────────────────────
 function SimbiosiView({ resonance, onRecalc, calculating, error }) {
   return html`<div class="r-screen">
-    <${SectionHeader} color="#EDEAE3" title="SIMBIOSI" subtitle="Il punto di incontro tra i pilastri — non un pilastro, la legge che li unisce" />
+    <${SectionHeader} color="#3A4750" title="SIMBIOSI" subtitle="Il punto di incontro tra i pilastri — non un pilastro, la legge che li unisce" />
     <${Card}>
       <button class="r-btn" onClick=${onRecalc} disabled=${calculating}>${calculating ? "Valutazione in corso…" : "Calcola risonanza"}</button>
       ${error && html`<div class="r-error">${error}</div>`}
@@ -768,7 +819,7 @@ function AnochinTrace({ trace }) {
   </div>`;
 }
 
-function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi }) {
+function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory }) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -793,9 +844,9 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     const newIndex = messages.length + 1; // posizione futura del messaggio dello Shell
     setInput(""); setSending(true); setError("");
     try {
-      // Se il turno precedente aveva una proposta di percorso non risolta, controlla se questo messaggio la conferma
+      // Se il turno precedente aveva una proposta di percorso non risolta, controlla se questo messaggio la conferma (euristica istantanea)
       if (lastMsg?.proposal?.proposed && !lastMsg.proposalResolved) {
-        const confirmed = await detectConfirmation(userText, settings);
+        const confirmed = detectConfirmationHeuristic(userText);
         setMessages((prev) => prev.map((m) => (m === lastMsg ? { ...m, proposalResolved: true } : m)));
         if (confirmed) {
           const { pillar, title } = lastMsg.proposal;
@@ -805,8 +856,9 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
           setMessages((prev) => [...prev, { role: "system-note", content: `✓ Percorso "${title}" creato in ${pillar.toUpperCase()}.` }]);
         }
       }
-      const { reply, actionsLog, anochin, proposal } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya });
-      setMessages((prev) => [...prev, { role: "assistant", content: reply, time: new Date().toISOString(), actions: actionsLog, anochin, proposal }]);
+      const { reply, actionsLog, anochin, proposal, alerts, newStyleMemory } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya, updateMemoria }, memory, styleMemory);
+      setMessages((prev) => [...prev, { role: "assistant", content: reply, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts }]);
+      if (newStyleMemory !== styleMemory) setStyleMemory(newStyleMemory);
       if (settings.voiceEnabled) toggleSpeak(newIndex, reply);
     } catch (e) { setError(e.message); }
     finally { setSending(false); }
@@ -817,13 +869,14 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   const actionColor = { BIO: C.bio, AIR: C.air, VIDYA: C.vidya };
 
   return html`<div class="r-screen">
-    <${SectionHeader} color="#EDEAE3" title="SHELL" subtitle="Dialogo diretto — ciclo Anochin visibile per verifica" />
+    <${SectionHeader} color="#3A4750" title="SHELL" subtitle="Dialogo diretto — ciclo Anochin visibile per verifica" />
     <div class="r-shell-log">
       ${messages.length === 0 && html`<div class="r-empty">Scrivi qualcosa. Lo Shell ricorda lo scambio e registra da solo ciò che riguarda BIO/AIR/VIDYA.</div>`}
       ${messages.map((m, i) => m.role === "system-note"
         ? html`<div key=${i} class="r-shell-system-note">${m.content}</div>`
         : html`<div key=${i} class="r-shell-row ${m.role}">
             <div class="r-shell-bubble ${m.role}">${m.content}</div>
+            ${m.alerts && m.alerts.length > 0 && m.alerts.map((a) => html`<div class="r-shell-alert"><div class="r-shell-alert-label">⚠ ALLERTA — ${a.pillar.toUpperCase()}</div><div>${a.note}</div></div>`)}
             <div class="r-shell-msg-footer">
               ${m.actions && m.actions.length > 0 && html`<div class="r-shell-actions">${m.actions.map((a) => html`<span class="r-badge" style="border-color:${actionColor[a]};color:${actionColor[a]}">→ ${a}</span>`)}</div>`}
               ${m.role === "assistant" && html`<button class="r-shell-speak-btn" onClick=${() => toggleSpeak(i, m.content)} title=${speakingId === i ? "Interrompi" : "Riascolta"}>${speakingId === i ? "⏹" : "🔊"}</button>`}
@@ -852,7 +905,7 @@ function KernelView({ kernel, onSave, driveStatus }) {
     <${Card} accent=${C.core}>
       <textarea class="r-textarea r-kernel-textarea" value=${draft} onInput=${(e) => setDraft(e.target.value)} rows="14" />
       <div class="r-kernel-actions">
-        <button class="r-btn" style=${!dirty ? "background:#232A34;color:#8B93A1" : ""} onClick=${() => dirty && onSave(draft)} disabled=${!dirty}>Salva come V${kernel.version + 1}</button>
+        <button class="r-btn" style=${!dirty ? "background:#E4E9EA;color:#8FA3AC" : ""} onClick=${() => dirty && onSave(draft)} disabled=${!dirty}>Salva come V${kernel.version + 1}</button>
         <button class="r-btn r-btn-ghost" onClick=${() => setShowHistory(!showHistory)}>Storico (${kernel.history.length})</button>
       </div>
       ${driveStatus.time && html`<div class="r-hub-detail" style="margin-top:8px">Drive: ${driveStatus.state === "syncing" ? "sincronizzazione…" : driveStatus.state === "ok" ? "sincronizzato" : `errore — ${driveStatus.error}`}</div>`}
@@ -894,12 +947,12 @@ function SettingsView({ settings, updateSettings, driveStatus }) {
       <div class="r-hub-detail">La chiave resta solo su questo dispositivo (localStorage).</div>
     </${Card}>
     <${Card} accent=${C.core}>
-      <div class="r-settings-row"><div><div class="r-hub-title" style="color:#EDEAE3">Lettura vocale dello Shell</div>
+      <div class="r-settings-row"><div><div class="r-hub-title" style="color:#3A4750">Lettura vocale dello Shell</div>
         <div class="r-hub-detail">Legge automaticamente ogni risposta (voce del browser, gratuita)</div></div>
         <input type="checkbox" checked=${settings.voiceEnabled} onInput=${(e) => updateSettings({ voiceEnabled: e.target.checked })} /></div>
     </${Card}>
     <${Card} accent=${C.core}>
-      <div class="r-settings-row"><div><div class="r-hub-title" style="color:#EDEAE3">Sincronizzazione Drive</div>
+      <div class="r-settings-row"><div><div class="r-hub-title" style="color:#3A4750">Sincronizzazione Drive</div>
         <div class="r-hub-detail">Crea un nuovo file versionato su Drive ad ogni salvataggio</div></div>
         <input type="checkbox" checked=${settings.driveSyncEnabled} disabled=${!clientIdReady} onInput=${(e) => updateSettings({ driveSyncEnabled: e.target.checked })} /></div>
       ${!clientIdReady && html`<div class="r-hub-detail" style="margin-top:8px">Manca il Client ID Google in config.js — vedi README.md.</div>`}
@@ -940,6 +993,10 @@ function App() {
   const [resonance, setResonance] = useState(() => loadKey("simbiosi-data", { text: "", time: null }));
   const [resCalculating, setResCalculating] = useState(false);
   const [resError, setResError] = useState("");
+  const [memory, setMemory] = useState(() => loadKey("shell-memory", { bio: "", air: "", vidya: "" }));
+  const [styleMemory, setStyleMemoryRaw] = useState(() => loadKey("shell-style-memory", ""));
+  const updateMemoria = useCallback((pillar, text) => setMemory((prev) => { const n = { ...prev, [pillar]: text }; saveKey("shell-memory", n); return n; }), []);
+  const setStyleMemory = useCallback((text) => setStyleMemoryRaw(() => { saveKey("shell-style-memory", text); return text; }), []);
 
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
@@ -990,7 +1047,7 @@ function App() {
   return html`<div>
     <div class="r-topbar"><div class="r-brand">RESONANCE<span>•</span></div></div>
     ${view === "hub" && html`<${Hub} bio=${bio} air=${air} vidya=${vidya} magi=${magi} resonance=${resonance} setView=${setView} />`}
-    ${view === "shell" && html`<${ShellView} messages=${shellChat} setMessages=${setShellChat} settings=${settings} addBio=${addBio} addAir=${addAir} addVidya=${addVidya} percorsi=${{ bio: pBio, air: pAir, vidya: pVidya }} setPercorsi=${{ bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }} />`}
+    ${view === "shell" && html`<${ShellView} messages=${shellChat} setMessages=${setShellChat} settings=${settings} addBio=${addBio} addAir=${addAir} addVidya=${addVidya} percorsi=${{ bio: pBio, air: pAir, vidya: pVidya }} setPercorsi=${{ bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }} memory=${memory} updateMemoria=${updateMemoria} styleMemory=${styleMemory} setStyleMemory=${setStyleMemory} />`}
     ${view === "bio" && html`<${BioView} entries=${bio} onAdd=${addBio} onDelete=${delBio} percorsi=${pBio} setPercorsi=${setPBioSync} settings=${settings} digest=${digestBio} />`}
     ${view === "air" && html`<${AirView} entries=${air} onAdd=${addAir} onDelete=${delAir} percorsi=${pAir} setPercorsi=${setPAirSync} settings=${settings} digest=${digestAir} />`}
     ${view === "vidya" && html`<${VidyaView} entries=${vidya} onAdd=${addVidya} onDelete=${delVidya} percorsi=${pVidya} setPercorsi=${setPVidyaSync} settings=${settings} digest=${digestVidya} />`}
