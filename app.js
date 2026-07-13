@@ -64,7 +64,7 @@ function pickItalianVoice() {
 }
 function speakText(text, onEnd) {
   if (!window.speechSynthesis || !text) return;
-  stopSpeaking();
+  window.speechSynthesis.cancel(); // interruzione immediata, senza ritardo: deve restare nello stesso istante del tocco
   const utter = new SpeechSynthesisUtterance(text);
   const voice = pickItalianVoice();
   if (voice) utter.voice = voice;
@@ -72,8 +72,7 @@ function speakText(text, onEnd) {
   utter.rate = 1.0;
   utter.onend = () => onEnd && onEnd();
   utter.onerror = () => onEnd && onEnd();
-  // piccolo ritardo prima di avviare: su alcuni Android il cancel() precedente non è ancora effettivo
-  setTimeout(() => window.speechSynthesis.speak(utter), 40);
+  window.speechSynthesis.speak(utter); // chiamata sincrona: un ritardo qui fa perdere ai browser moderni il collegamento col tocco dell'utente, e bloccano l'audio in silenzio
 }
 function stopSpeaking() {
   if (!window.speechSynthesis) return;
@@ -521,6 +520,73 @@ async function createDriveFile(name, content) {
   if (res.status === 401) { driveAccessToken = null; throw new Error("Sessione Drive scaduta, riprova."); }
   if (!res.ok) throw new Error(`Errore Drive (${res.status})`);
   return res.json();
+}
+
+// ── Sincronizzazione tra dispositivi: UN SOLO file, sempre sovrascritto — distinto dai file versionati sopra (Legge 14) ──
+const SYNC_FILENAME = "resonance-sync-state.json";
+
+async function findSyncFileId() {
+  if (!driveAccessToken) await connectDrive();
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=name%3D'${SYNC_FILENAME}'%20and%20trashed%3Dfalse&spaces=drive&fields=files(id)`, {
+    headers: { Authorization: `Bearer ${driveAccessToken}` },
+  });
+  if (res.status === 401) { driveAccessToken = null; throw new Error("Sessione Drive scaduta, riprova."); }
+  const data = await res.json();
+  return data.files?.[0]?.id || null;
+}
+
+async function downloadSyncState(fileId) {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${driveAccessToken}` },
+  });
+  if (!res.ok) throw new Error(`Errore lettura stato sincronizzato (${res.status})`);
+  return res.json();
+}
+
+async function uploadSyncState(state, existingFileId) {
+  if (!driveAccessToken) await connectDrive();
+  const boundary = "resonance_sync_boundary";
+  const metadata = { name: SYNC_FILENAME, mimeType: "application/json" };
+  const parts = existingFileId
+    ? [`--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(state)}\r\n--${boundary}--`]
+    : [`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(state)}\r\n--${boundary}--`];
+  const url = existingFileId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart`
+    : "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart";
+  const res = await fetch(url, {
+    method: existingFileId ? "PATCH" : "POST",
+    headers: { Authorization: `Bearer ${driveAccessToken}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+    body: parts[0],
+  });
+  if (res.status === 401) { driveAccessToken = null; throw new Error("Sessione Drive scaduta, riprova."); }
+  if (!res.ok) throw new Error(`Errore scrittura stato sincronizzato (${res.status})`);
+  const data = await res.json();
+  return data.id || existingFileId;
+}
+
+// Unione additiva per array con id univoco (bio/air/vidya/percorsi/magi): nessuna voce va mai persa.
+function mergeById(localArr, remoteArr) {
+  const map = new Map();
+  (remoteArr || []).forEach((item) => item?.id && map.set(item.id, item));
+  (localArr || []).forEach((item) => item?.id && map.set(item.id, item)); // a parità di id, vince la versione locale
+  return Array.from(map.values()).sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || ""));
+}
+
+// Per i dati non unibili (chat, memoria, kernel, simbiosi): vince chi ha il lastModified più recente, in blocco — mai un'unione parola per parola.
+function mergeSyncState(local, remote) {
+  if (!remote) return { ...local, lastModified: local.lastModified || Date.now() };
+  const remoteWins = (remote.lastModified || 0) > (local.lastModified || 0);
+  return {
+    bio: mergeById(local.bio, remote.bio), air: mergeById(local.air, remote.air), vidya: mergeById(local.vidya, remote.vidya),
+    pBio: mergeById(local.pBio, remote.pBio), pAir: mergeById(local.pAir, remote.pAir), pVidya: mergeById(local.pVidya, remote.pVidya),
+    magi: mergeById(local.magi, remote.magi),
+    shellChat: remoteWins ? remote.shellChat : local.shellChat,
+    memory: remoteWins ? remote.memory : local.memory,
+    styleMemory: remoteWins ? remote.styleMemory : local.styleMemory,
+    kernel: remoteWins ? remote.kernel : local.kernel,
+    resonance: remoteWins ? remote.resonance : local.resonance,
+    lastModified: Math.max(local.lastModified || 0, remote.lastModified || 0),
+  };
 }
 
 const fmtEntry = (lines) => lines.filter(Boolean).join("\n");
@@ -1074,7 +1140,7 @@ function KernelView({ kernel, onSave, driveStatus }) {
 // ─────────────────────────────────────────────────────────────
 // SETTINGS
 // ─────────────────────────────────────────────────────────────
-function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDebugLog }) {
+function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDebugLog, pullAndMergeOnce }) {
   const presetIds = MODEL_OPTIONS.filter((m) => m.id !== "custom").map((m) => m.id);
   const isCustom = !presetIds.includes(settings.model);
   const [driveMsg, setDriveMsg] = useState(""); const [connecting, setConnecting] = useState(false);
@@ -1127,11 +1193,14 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
         <input type="checkbox" checked=${settings.voiceEnabled} onInput=${(e) => updateSettings({ voiceEnabled: e.target.checked })} /></div>
     </${Card}>
     <${Card} accent=${C.core}>
-      <div class="r-settings-row"><div><div class="r-hub-title" style="color:#3A4750">Sincronizzazione Drive</div>
-        <div class="r-hub-detail">Crea un nuovo file versionato su Drive ad ogni salvataggio</div></div>
+      <div class="r-settings-row"><div><div class="r-hub-title" style="color:#3A4750">Sincronizzazione tra dispositivi</div>
+        <div class="r-hub-detail">Automatica: unisce i log tra i tuoi dispositivi (nessuna voce va persa), l'ultima modifica vince solo su chat/memoria/kernel/simbiosi</div></div>
         <input type="checkbox" checked=${settings.driveSyncEnabled} disabled=${!clientIdReady} onInput=${(e) => updateSettings({ driveSyncEnabled: e.target.checked })} /></div>
       ${!clientIdReady && html`<div class="r-hub-detail" style="margin-top:8px">Manca il Client ID Google in config.js — vedi README.md.</div>`}
-      ${clientIdReady && html`<div style="margin-top:10px"><button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${testConnect} disabled=${connecting}>${connecting ? "Connessione…" : "Testa connessione Drive"}</button></div>
+      ${clientIdReady && html`<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${testConnect} disabled=${connecting}>${connecting ? "Connessione…" : "Testa connessione Drive"}</button>
+        ${settings.driveSyncEnabled && html`<button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${pullAndMergeOnce} disabled=${driveStatus.state === "syncing"}>${driveStatus.state === "syncing" ? "Sincronizzo…" : "Sincronizza ora"}</button>`}
+      </div>
         ${driveMsg && html`<div class="r-hub-detail" style="margin-top:6px">${driveMsg}</div>`}`}
       ${driveStatus.time && html`<div class="r-hub-detail" style="margin-top:8px">Ultima sincronizzazione: ${new Date(driveStatus.time).toLocaleTimeString("it-IT")} — ${driveStatus.state === "ok" ? "riuscita" : `errore: ${driveStatus.error}`}</div>`}
     </${Card}>
@@ -1214,6 +1283,71 @@ function App() {
 
   const updateSettings = useCallback((patch) => setSettings((prev) => { const next = { ...prev, ...patch }; saveKey("app-settings", next); return next; }), []);
 
+  // ── Sincronizzazione tra dispositivi: additiva sui log, "ultima modifica vince" solo su chat/memoria/kernel/simbiosi ──
+  const syncFileIdRef = useRef(null);
+  const stateRef = useRef({});
+  useEffect(() => {
+    stateRef.current = { bio, air, vidya, pBio, pAir, pVidya, magi, shellChat, memory, styleMemory, kernel, resonance };
+  }, [bio, air, vidya, pBio, pAir, pVidya, magi, shellChat, memory, styleMemory, kernel, resonance]);
+
+  const applyMergedState = (merged) => {
+    setBio(merged.bio); saveKey("bio-data", merged.bio);
+    setAir(merged.air); saveKey("air-data", merged.air);
+    setVidya(merged.vidya); saveKey("vidya-data", merged.vidya);
+    setPBio(merged.pBio); saveKey("percorsi-bio", merged.pBio);
+    setPAir(merged.pAir); saveKey("percorsi-air", merged.pAir);
+    setPVidya(merged.pVidya); saveKey("percorsi-vidya", merged.pVidya);
+    setMagi(merged.magi); saveKey("magi-data", merged.magi);
+    setShellChatRaw(merged.shellChat); saveKey("shell-chat", merged.shellChat);
+    setMemory(merged.memory); saveKey("shell-memory", merged.memory);
+    setStyleMemoryRaw(merged.styleMemory); saveKey("shell-style-memory", merged.styleMemory);
+    setKernel(merged.kernel); saveKey("kernel-data", merged.kernel);
+    setResonance(merged.resonance); saveKey("simbiosi-data", merged.resonance);
+    saveKey("sync-last-modified", merged.lastModified);
+  };
+
+  // All'attivazione (o all'apertura con sync già attiva): scarica, unisce, e ricarica subito il file condiviso con l'unione — così anche l'altro dispositivo la vede al suo prossimo giro
+  const pullAndMergeOnce = useCallback(async () => {
+    if (!settingsRef.current.driveSyncEnabled) return;
+    setDriveStatus({ state: "syncing", time: null, error: null });
+    try {
+      const fileId = syncFileIdRef.current || await findSyncFileId();
+      syncFileIdRef.current = fileId;
+      const remote = fileId ? await downloadSyncState(fileId) : null;
+      const local = { ...stateRef.current, lastModified: loadKey("sync-last-modified", 0) };
+      const merged = mergeSyncState(local, remote);
+      applyMergedState(merged);
+      const newFileId = await uploadSyncState(merged, fileId);
+      syncFileIdRef.current = newFileId;
+      setDriveStatus({ state: "ok", time: Date.now(), error: null });
+    } catch (e) {
+      // La sincronizzazione non deve mai bloccare l'app: fallisce in silenzio, i dati locali restano validi e utilizzabili
+      setDriveStatus({ state: "error", time: Date.now(), error: e.message });
+    }
+  }, []);
+
+  useEffect(() => { if (settings.driveSyncEnabled) pullAndMergeOnce(); }, [settings.driveSyncEnabled]);
+
+  // Invio automatico ad ogni modifica, con un breve ritardo per non mandare una richiesta ad ogni singolo tasto
+  useEffect(() => {
+    if (!settings.driveSyncEnabled) return;
+    const t = setTimeout(async () => {
+      try {
+        const now = Date.now();
+        const state = { ...stateRef.current, lastModified: now };
+        const fileId = syncFileIdRef.current || await findSyncFileId();
+        syncFileIdRef.current = fileId;
+        const newFileId = await uploadSyncState(state, fileId);
+        syncFileIdRef.current = newFileId;
+        saveKey("sync-last-modified", now);
+        setDriveStatus({ state: "ok", time: now, error: null });
+      } catch (e) {
+        setDriveStatus({ state: "error", time: Date.now(), error: e.message });
+      }
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [bio, air, vidya, pBio, pAir, pVidya, magi, shellChat, memory, styleMemory, kernel, resonance, settings.driveSyncEnabled]);
+
   const addBio = useCallback((e) => setBio((prev) => { const n = [e, ...prev].sort((a, b) => b.date.localeCompare(a.date)); saveKey("bio-data", n); syncIfEnabled("04 BIO_STASIS", formatBioLog(n)); return n; }), [syncIfEnabled]);
   const delBio = useCallback((id) => setBio((prev) => { const n = prev.filter((e) => e.id !== id); saveKey("bio-data", n); syncIfEnabled("04 BIO_STASIS", formatBioLog(n)); return n; }), [syncIfEnabled]);
   const addAir = useCallback((e) => setAir((prev) => { const n = [e, ...prev].sort((a, b) => b.date.localeCompare(a.date)); saveKey("air-data", n); syncIfEnabled("03 AIR_OPERATIONS", formatAirLog(n)); return n; }), [syncIfEnabled]);
@@ -1258,7 +1392,7 @@ function App() {
     ${view === "magi" && html`<${MagiView} sessions=${magi} onSave=${addMagi} onDelete=${delMagi} settings=${settings} />`}
     ${view === "simbiosi" && html`<${SimbiosiView} resonance=${resonance} onRecalc=${recalcResonance} calculating=${resCalculating} error=${resError} />`}
     ${view === "kernel" && html`<${KernelView} kernel=${kernel} onSave=${saveKernel} driveStatus=${driveStatus} />`}
-    ${view === "settings" && html`<${SettingsView} settings=${settings} updateSettings=${updateSettings} driveStatus=${driveStatus} debugLog=${debugLog} clearDebugLog=${clearDebugLog} />`}
+    ${view === "settings" && html`<${SettingsView} settings=${settings} updateSettings=${updateSettings} driveStatus=${driveStatus} debugLog=${debugLog} clearDebugLog=${clearDebugLog} pullAndMergeOnce=${pullAndMergeOnce} />`}
     <div class="r-tab-bar"><div class="r-tab-bar-inner">${TABS.map((t) => html`<button class="r-tab ${view === t.key ? "active" : ""}" onClick=${() => setView(t.key)}>${t.label}</button>`)}</div></div>
   </div>`;
 }
