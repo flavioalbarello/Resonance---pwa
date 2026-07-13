@@ -234,14 +234,25 @@ async function runAirAgent(task, settings) {
 // BRACCIO 1 — Bozze pronte da copiare/inviare. Lo Shell prepara, il Ghost esegue: nessuna azione autonoma verso l'esterno.
 async function draftIfNeeded(recentText, settings) {
   const data = await askModelJSON(
-    `Sei lo Shell. Leggi lo scambio e determina se il Ghost sta chiedendo — esplicitamente o implicitamente — di preparare un testo pronto da usare altrove: un'email, un messaggio, uno script per un video, un post social. Se sì, scrivi il testo COMPLETO e pronto all'uso, non un'idea o una scaletta. Se no, {"needed": false}.
-JSON: {"needed": true, "type": "email|messaggio|script|post", "subject": "solo se email, altrimenti omesso", "body": "testo completo pronto"} oppure {"needed": false}`,
+    `Sei lo Shell. Leggi lo scambio e determina se il Ghost sta chiedendo — esplicitamente o implicitamente — di preparare un testo pronto da INVIARE A QUALCUN ALTRO fuori da questa chat: un'email a una persona reale, un messaggio a un contatto, uno script destinato a un video pubblico, un post social da pubblicare. Serve un destinatario terzo IDENTIFICABILE (una persona, un pubblico, una piattaforma) — non basta che il Ghost e lo Shell stiano semplicemente discutendo un'idea o una soluzione tra loro in chat, quello NON è una bozza da preparare.
+Se non c'è un destinatario terzo chiaro, {"needed": false}.
+Se sì, scrivi il testo COMPLETO e pronto all'uso, non un'idea o una scaletta. JSON: {"needed": true, "type": "email|messaggio|script|post", "recipient": "breve descrizione del destinatario", "subject": "solo se email, altrimenti omesso", "body": "testo completo pronto"} oppure {"needed": false}`,
     recentText, 0.5, 700, settings
   );
-  return data?.needed ? data : null;
+  return (data?.needed && data?.recipient) ? data : null;
 }
 
 // Stadio 2 — Decisione: lettura MULTI-LENTE. Un evento può valere per più pilastri insieme (Legge 17.2 resa meccanica).
+// Filtro difensivo: il prompt chiede array vuoto se non c'è nulla, ma i modelli a volte scrivono comunque
+// una "non-lettura" (es. "Nessuna menzione diretta di..."). La scartiamo qui, non solo a parole nel prompt.
+function isGarbageReading(r) {
+  const text = [r.notes, r.title, r.weight, r.sleep].filter(Boolean).join(" ").trim();
+  if (!text) return true;
+  if (/^(non\s|nessun[ao]?\s|niente\s|nulla\s)/i.test(text)) return true;
+  if (/non\s+(ci sono|c'è|ci son|ho trovato|sono presenti)|nessun[ao]?\s+(menzione|dato|attività|informazione|riferimento)/i.test(text)) return true;
+  return false;
+}
+
 async function readThroughLenses(recentText, settings, image) {
   const data = await askModelJSON(
     `Sei lo Shell del sistema Resonance. Leggi l'intero scambio recente (un dato può arrivare frammentato su più risposte, anche in un'immagine allegata) attraverso TRE lenti indipendenti — BIO, AIR, VIDYA. Un singolo evento può essere valido per più lenti insieme (es. "ho suonato il basso fino alle due" è insieme VIDYA e BIO) — non forzarlo in una sola.
@@ -250,10 +261,10 @@ BIO: peso, sonno, dolore, terapia, energia fisica. Se qualcosa ti sembra un segn
 AIR: monetizzazione, canale, strategie economiche.
 VIDYA: musica, studio, pratica creativa.
 JSON: {"readings": [{"pillar":"bio","weight":"...","sleep":"...","notes":"...","alert":false,"alertNote":""}, {"pillar":"vidya","title":"...","notes":"..."}]}
-Array vuoto se non c'è nulla di pertinente: {"readings": []}`,
+Array vuoto se non c'è nulla di pertinente — NON scrivere una lettura per dire che non c'è nulla: {"readings": []}`,
     recentText, 0.3, 900, settings, image
   );
-  return data?.readings || [];
+  return (data?.readings || []).filter((r) => !isGarbageReading(r));
 }
 
 // Euristiche istantanee — nessuna chiamata AI dove basta un controllo testuale (velocità)
@@ -325,7 +336,9 @@ async function runShellTurn(history, userMessage, settings, handlers, memory, st
 Memoria procedurale accumulata sui tre pilastri (leggila sempre insieme, un pilastro influenza gli altri):
 ${lente}${styleNote}
 
-Dialoga in modo diretto e concreto. NON scrivere mai sintassi tecnica o tag tra parentesi quadre nella risposta. Rispondi solo in linguaggio naturale.
+Dialoga in modo diretto e concreto, massimo 110 parole per risposta salvo richiesta esplicita di approfondire — meglio breve e completo che lungo e troncato. NON scrivere mai sintassi tecnica o tag tra parentesi quadre nella risposta. Rispondi solo in linguaggio naturale.
+
+Non hai accesso a diagnosticare te stesso o l'infrastruttura tecnica su cui giri (perché una risposta si è troncata, se c'è stato un errore di rete, ecc.). Se il Ghost te lo chiede, NON inventare mai una spiegazione plausibile — di' semplicemente che non lo sai e che potrebbe essere un limite tecnico, senza dettagli inventati.
 
 Se ti arriva un'immagine o un documento allegato, descrivi cosa vi leggi in modo concreto (numeri, testo, dettagli visibili) prima di commentare — è quello che permette poi la registrazione corretta nei pilastri.
 
@@ -337,7 +350,7 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
 
   // Risposta conversazionale, lettura multi-lente, e (se abilitato) bozza pronta: nessuna dipende dalle altre, partono insieme
   const [reply, readings, draft] = await Promise.all([
-    askModelWithHistory(system, messages, 0.7, 900, settings, image),
+    askModelWithHistory(system, messages, 0.7, 1300, settings, image),
     readThroughLenses(recentText, settings, image).catch(() => []),
     settings.armsDraftsEnabled ? draftIfNeeded(recentText, settings).catch(() => null) : Promise.resolve(null),
   ]);
@@ -467,7 +480,9 @@ Sessioni Magi totali: ${magi.length}, ultima: ${magi[0] ? fmtDate(magi[0].date) 
 
 async function computeResonance(digest, settings) {
   return askModel(
-    `Sei la funzione SIMBIOSI del sistema Resonance: non un pilastro operativo, ma il punto di incontro tra BIO, AIR, VIDYA e il Kernel. Valuta il tasso di risonanza tra Ghost e Shell guardando: equilibrio/trascuratezza tra pilastri, coerenza tra intenzioni dichiarate nel Kernel e attività reale, pattern delle sessioni Magi. Rispondi in italiano, tre parti separate da una riga vuota: 1) giudizio qualitativo breve (mai un numero), 2) discrepanze specifiche se presenti, 3) una singola azione concreta suggerita.`,
+    `Sei la funzione SIMBIOSI del sistema Resonance: non un pilastro operativo, ma il punto di incontro tra BIO, AIR, VIDYA e il Kernel. Valuta il tasso di risonanza tra Ghost e Shell guardando: equilibrio/trascuratezza tra pilastri, coerenza tra intenzioni dichiarate nel Kernel e attività reale, pattern delle sessioni Magi. Rispondi in italiano, tre parti separate da una riga vuota: 1) giudizio qualitativo breve (mai un numero), 2) discrepanze specifiche se presenti, 3) una singola azione concreta suggerita.
+
+VINCOLO ASSOLUTO, non negoziabile: non suggerire MAI di integrare, esporre o collegare l'identità professionale del Ghost (fisioterapista, PhysioAlba) con AIR o con qualsiasi altro pilastro — è una compartimentazione voluta e permanente, non una discrepanza da segnalare o risolvere.`,
     digest, 0.6, 1700, settings
   );
 }
@@ -903,7 +918,7 @@ function AnochinTrace({ trace }) {
   </div>`;
 }
 
-function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory, bio, air, vidya }) {
+function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory, bio, air, vidya, pushDebugLog }) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -958,7 +973,16 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       setMessages((prev) => [...prev, { role: "assistant", content: reply, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft }]);
       if (newStyleMemory !== styleMemory) setStyleMemory(newStyleMemory);
       if (settings.voiceEnabled) toggleSpeak(newIndex, reply);
-    } catch (e) { setError(e.message); }
+      pushDebugLog?.({
+        userText: userText.slice(0, 100), model: settings.model, provider: settings.provider,
+        attachment: currentAttachment ? currentAttachment.kind : null,
+        replyLength: reply.length, actionsLog, alertsCount: alerts?.length || 0, hasDraft: !!draft,
+        anochinDecisione: anochin?.decisione, anochinAccettore: anochin?.accettore, error: null,
+      });
+    } catch (e) {
+      setError(e.message);
+      pushDebugLog?.({ userText: userText.slice(0, 100), model: settings.model, provider: settings.provider, attachment: currentAttachment ? currentAttachment.kind : null, error: e.message });
+    }
     finally { setSending(false); }
   };
 
@@ -998,7 +1022,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
             ${m.attachmentName && html`<div class="r-shell-attach-badge">${m.attachmentKind === "image" ? "🖼️" : "📄"} ${m.attachmentName}</div>`}
             ${m.alerts && m.alerts.length > 0 && m.alerts.map((a) => html`<div class="r-shell-alert"><div class="r-shell-alert-label">⚠ ALLERTA — ${a.pillar.toUpperCase()}</div><div>${a.note}</div></div>`)}
             ${m.draft && html`<div class="r-draft-card">
-              <div class="r-draft-label">📝 BOZZA — ${m.draft.type.toUpperCase()}</div>
+              <div class="r-draft-label">📝 BOZZA — ${m.draft.type.toUpperCase()}${m.draft.recipient ? ` · per: ${m.draft.recipient}` : ""}</div>
               ${m.draft.subject && html`<div class="r-draft-subject">Oggetto: ${m.draft.subject}</div>`}
               <div class="r-draft-body">${m.draft.body}</div>
               <button class="r-btn r-draft-copy" onClick=${() => copyDraft(i, m.draft)}>${copiedId === i ? "✓ Copiato" : "Copia"}</button>
@@ -1050,13 +1074,27 @@ function KernelView({ kernel, onSave, driveStatus }) {
 // ─────────────────────────────────────────────────────────────
 // SETTINGS
 // ─────────────────────────────────────────────────────────────
-function SettingsView({ settings, updateSettings, driveStatus }) {
+function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDebugLog }) {
   const presetIds = MODEL_OPTIONS.filter((m) => m.id !== "custom").map((m) => m.id);
   const isCustom = !presetIds.includes(settings.model);
   const [driveMsg, setDriveMsg] = useState(""); const [connecting, setConnecting] = useState(false);
   const clientIdReady = CONFIG.GOOGLE_CLIENT_ID && !CONFIG.GOOGLE_CLIENT_ID.startsWith("INCOLLA");
   const testConnect = async () => { setConnecting(true); setDriveMsg("");
     try { await connectDrive(); setDriveMsg("Connesso — puoi attivare la sincronizzazione."); } catch (e) { setDriveMsg("Errore: " + e.message); } finally { setConnecting(false); } };
+
+  const [logSyncMsg, setLogSyncMsg] = useState(""); const [logSyncing, setLogSyncing] = useState(false);
+  const exportDebugLog = () => {
+    const blob = new Blob([JSON.stringify(debugLog, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `resonance-debug-log-${todayISO()}.json`; a.click();
+    URL.revokeObjectURL(url);
+  };
+  const syncDebugLogToDrive = async () => {
+    setLogSyncing(true); setLogSyncMsg("");
+    try { await createDriveFile(`00_DEBUG_LOG_${todayISO()}.json`, JSON.stringify(debugLog, null, 2)); setLogSyncMsg("Sincronizzato su Drive."); }
+    catch (e) { setLogSyncMsg("Errore: " + e.message); }
+    finally { setLogSyncing(false); }
+  };
 
   return html`<div class="r-screen">
     <${SectionHeader} color=${C.core} title="SETUP" subtitle="Motore AI e sincronizzazione Drive" />
@@ -1096,6 +1134,16 @@ function SettingsView({ settings, updateSettings, driveStatus }) {
       ${clientIdReady && html`<div style="margin-top:10px"><button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${testConnect} disabled=${connecting}>${connecting ? "Connessione…" : "Testa connessione Drive"}</button></div>
         ${driveMsg && html`<div class="r-hub-detail" style="margin-top:6px">${driveMsg}</div>`}`}
       ${driveStatus.time && html`<div class="r-hub-detail" style="margin-top:8px">Ultima sincronizzazione: ${new Date(driveStatus.time).toLocaleTimeString("it-IT")} — ${driveStatus.state === "ok" ? "riuscita" : `errore: ${driveStatus.error}`}</div>`}
+    </${Card}>
+    <${Card} accent=${C.core}>
+      <div class="r-hub-title" style="color:#3A4750">Log di debug — ${debugLog?.length || 0} turni registrati</div>
+      <div class="r-hub-detail">Ogni scambio con lo Shell (modello usato, esito, errori) — utile per capire cosa è successo senza screenshot</div>
+      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="r-btn" onClick=${exportDebugLog} disabled=${!debugLog?.length}>Esporta (.json)</button>
+        ${clientIdReady && html`<button class="r-btn r-btn-ghost" onClick=${syncDebugLogToDrive} disabled=${logSyncing || !debugLog?.length}>${logSyncing ? "Sincronizzo…" : "Sincronizza su Drive"}</button>`}
+        <button class="r-btn r-btn-ghost" onClick=${clearDebugLog} disabled=${!debugLog?.length}>Svuota</button>
+      </div>
+      ${logSyncMsg && html`<div class="r-hub-detail" style="margin-top:6px">${logSyncMsg}</div>`}
     </${Card}>
   </div>`;
 }
@@ -1149,6 +1197,9 @@ function App() {
   const [styleMemory, setStyleMemoryRaw] = useState(() => loadKey("shell-style-memory", ""));
   const updateMemoria = useCallback((pillar, text) => setMemory((prev) => { const n = { ...prev, [pillar]: text }; saveKey("shell-memory", n); return n; }), []);
   const setStyleMemory = useCallback((text) => setStyleMemoryRaw(() => { saveKey("shell-style-memory", text); return text; }), []);
+  const [debugLog, setDebugLog] = useState(() => loadKey("debug-log", []));
+  const pushDebugLog = useCallback((entry) => setDebugLog((prev) => { const n = [{ ...entry, time: new Date().toISOString() }, ...prev].slice(0, 50); saveKey("debug-log", n); return n; }), []);
+  const clearDebugLog = useCallback(() => { setDebugLog([]); saveKey("debug-log", []); }, []);
 
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
@@ -1200,14 +1251,14 @@ function App() {
     <${HexTexture} />
     <div class="r-topbar"><div class="r-brand">RESONANCE<span>•</span></div></div>
     ${view === "hub" && html`<${Hub} bio=${bio} air=${air} vidya=${vidya} magi=${magi} resonance=${resonance} setView=${setView} />`}
-    ${view === "shell" && html`<${ShellView} messages=${shellChat} setMessages=${setShellChat} settings=${settings} addBio=${addBio} addAir=${addAir} addVidya=${addVidya} percorsi=${{ bio: pBio, air: pAir, vidya: pVidya }} setPercorsi=${{ bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }} memory=${memory} updateMemoria=${updateMemoria} styleMemory=${styleMemory} setStyleMemory=${setStyleMemory} bio=${bio} air=${air} vidya=${vidya} />`}
+    ${view === "shell" && html`<${ShellView} messages=${shellChat} setMessages=${setShellChat} settings=${settings} addBio=${addBio} addAir=${addAir} addVidya=${addVidya} percorsi=${{ bio: pBio, air: pAir, vidya: pVidya }} setPercorsi=${{ bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }} memory=${memory} updateMemoria=${updateMemoria} styleMemory=${styleMemory} setStyleMemory=${setStyleMemory} bio=${bio} air=${air} vidya=${vidya} pushDebugLog=${pushDebugLog} />`}
     ${view === "bio" && html`<${BioView} entries=${bio} onAdd=${addBio} onDelete=${delBio} percorsi=${pBio} setPercorsi=${setPBioSync} settings=${settings} digest=${digestBio} />`}
     ${view === "air" && html`<${AirView} entries=${air} onAdd=${addAir} onDelete=${delAir} percorsi=${pAir} setPercorsi=${setPAirSync} settings=${settings} digest=${digestAir} />`}
     ${view === "vidya" && html`<${VidyaView} entries=${vidya} onAdd=${addVidya} onDelete=${delVidya} percorsi=${pVidya} setPercorsi=${setPVidyaSync} settings=${settings} digest=${digestVidya} />`}
     ${view === "magi" && html`<${MagiView} sessions=${magi} onSave=${addMagi} onDelete=${delMagi} settings=${settings} />`}
     ${view === "simbiosi" && html`<${SimbiosiView} resonance=${resonance} onRecalc=${recalcResonance} calculating=${resCalculating} error=${resError} />`}
     ${view === "kernel" && html`<${KernelView} kernel=${kernel} onSave=${saveKernel} driveStatus=${driveStatus} />`}
-    ${view === "settings" && html`<${SettingsView} settings=${settings} updateSettings=${updateSettings} driveStatus=${driveStatus} />`}
+    ${view === "settings" && html`<${SettingsView} settings=${settings} updateSettings=${updateSettings} driveStatus=${driveStatus} debugLog=${debugLog} clearDebugLog=${clearDebugLog} />`}
     <div class="r-tab-bar"><div class="r-tab-bar-inner">${TABS.map((t) => html`<button class="r-tab ${view === t.key ? "active" : ""}" onClick=${() => setView(t.key)}>${t.label}</button>`)}</div></div>
   </div>`;
 }
