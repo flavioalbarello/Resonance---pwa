@@ -1286,8 +1286,16 @@ function App() {
   // ── Sincronizzazione tra dispositivi: additiva sui log, "ultima modifica vince" solo su chat/memoria/kernel/simbiosi ──
   const syncFileIdRef = useRef(null);
   const stateRef = useRef({});
+  const hasMountedRef = useRef(false);
   useEffect(() => {
     stateRef.current = { bio, air, vidya, pBio, pAir, pVidya, magi, shellChat, memory, styleMemory, kernel, resonance };
+    if (hasMountedRef.current) {
+      // Scrittura reale dopo il caricamento iniziale: il timestamp si aggiorna SUBITO, non solo dopo un invio riuscito a Drive —
+      // così se ricarichi la pagina prima che l'invio automatico parta, l'app sa comunque che il dato locale è il più recente.
+      saveKey("sync-last-modified", Date.now());
+    } else {
+      hasMountedRef.current = true; // primo giro: è solo il caricamento dei dati esistenti, non una scrittura nuova
+    }
   }, [bio, air, vidya, pBio, pAir, pVidya, magi, shellChat, memory, styleMemory, kernel, resonance]);
 
   const applyMergedState = (merged) => {
@@ -1344,7 +1352,7 @@ function App() {
       } catch (e) {
         setDriveStatus({ state: "error", time: Date.now(), error: e.message });
       }
-    }, 4000);
+    }, 2000);
     return () => clearTimeout(t);
   }, [bio, air, vidya, pBio, pAir, pVidya, magi, shellChat, memory, styleMemory, kernel, resonance, settings.driveSyncEnabled]);
 
