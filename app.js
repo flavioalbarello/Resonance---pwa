@@ -11,6 +11,52 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 const fmtDate = (d) => { try { return new Date(d).toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" }); } catch { return d; } };
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+// ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
+function readImageAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => { const base64 = reader.result.split(",")[1]; resolve({ mediaType: file.type || "image/jpeg", base64, name: file.name }); };
+    reader.onerror = () => reject(new Error("Lettura immagine fallita."));
+    reader.readAsDataURL(file);
+  });
+}
+function readTextFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Lettura file fallita."));
+    reader.readAsText(file);
+  });
+}
+async function extractPdfText(file) {
+  const pdfjsLib = await import("https://cdn.jsdelivr.net/npm/pdfjs-dist@5.6.205/build/pdf.mjs");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.6.205/build/pdf.worker.min.mjs";
+  const buffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+  let text = "";
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map((it) => it.str).join(" ") + "\n";
+  }
+  return text.trim();
+}
+async function processAttachment(file) {
+  if (file.type.startsWith("image/")) {
+    const img = await readImageAsBase64(file);
+    return { kind: "image", ...img };
+  }
+  if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
+    const text = await extractPdfText(file);
+    if (!text || text.length < 5) throw new Error("Nessun testo trovato nel PDF — probabilmente è una scansione/foto. Prova a fotografare la pagina e caricarla come immagine.");
+    return { kind: "text", content: text, name: file.name };
+  }
+  if (file.type.startsWith("text/") || /\.(txt|md)$/i.test(file.name)) {
+    return { kind: "text", content: await readTextFile(file), name: file.name };
+  }
+  throw new Error("Formato non supportato. Usa immagini (jpg/png), PDF con testo selezionabile, o file .txt/.md.");
+}
+
 // ── Sintesi vocale del browser (gratuita, nessuna API esterna) ──
 function pickItalianVoice() {
   const voices = window.speechSynthesis?.getVoices() || [];
@@ -82,11 +128,21 @@ function saveKey(key, value) { try { localStorage.setItem(key, JSON.stringify(va
 // ─────────────────────────────────────────────────────────────
 // AI ENGINES
 // ─────────────────────────────────────────────────────────────
-async function askClaudeDirect(system, userText, temperature, maxTokens, apiKey) {
+// ── Helper per contenuto multimodale (immagini) nei due formati provider ──
+function buildOpenRouterContent(text, image) {
+  if (!image) return text;
+  return [{ type: "text", text }, { type: "image_url", image_url: { url: `data:${image.mediaType};base64,${image.base64}` } }];
+}
+function buildClaudeContent(text, image) {
+  if (!image) return text;
+  return [{ type: "image", source: { type: "base64", media_type: image.mediaType, data: image.base64 } }, { type: "text", text }];
+}
+
+async function askClaudeDirect(system, userText, temperature, maxTokens, apiKey, image) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, temperature: Math.min(temperature, 1), system, messages: [{ role: "user", content: userText }] }),
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, temperature: Math.min(temperature, 1), system, messages: [{ role: "user", content: buildClaudeContent(userText, image) }] }),
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || "Errore Claude API");
@@ -94,10 +150,10 @@ async function askClaudeDirect(system, userText, temperature, maxTokens, apiKey)
   return t ? t.text.trim() : "";
 }
 
-async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, model, useWebSearch) {
+async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, model, useWebSearch, image) {
   const body = {
     model, max_tokens: maxTokens, temperature,
-    messages: [{ role: "system", content: system }, { role: "user", content: userText }],
+    messages: [{ role: "system", content: system }, { role: "user", content: buildOpenRouterContent(userText, image) }],
     reasoning: { max_tokens: 300 }, // tetto fisso al "pensiero" interno, indipendente dal modello
   };
   if (useWebSearch) body.tools = [{ type: "openrouter:web_search" }];
@@ -109,31 +165,33 @@ async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, m
   return (data.choices?.[0]?.message?.content || "").trim();
 }
 
-async function askModel(system, userText, temperature, maxTokens, settings, useWebSearch = false) {
+async function askModel(system, userText, temperature, maxTokens, settings, useWebSearch = false, image = null) {
   if (!settings.apiKey) throw new Error("Nessuna chiave API impostata (vai in Setup).");
-  if (settings.provider === "claude-direct") return askClaudeDirect(system, userText, temperature, maxTokens, settings.apiKey);
-  return askOpenRouter(system, userText, temperature, maxTokens, settings.apiKey, settings.model, useWebSearch);
+  if (settings.provider === "claude-direct") return askClaudeDirect(system, userText, temperature, maxTokens, settings.apiKey, image);
+  return askOpenRouter(system, userText, temperature, maxTokens, settings.apiKey, settings.model, useWebSearch, image);
 }
 
-async function askModelWithHistory(system, messages, temperature, maxTokens, settings) {
+async function askModelWithHistory(system, messages, temperature, maxTokens, settings, image = null) {
   if (!settings.apiKey) throw new Error("Nessuna chiave API impostata (vai in Setup).");
   if (settings.provider === "claude-direct") {
     // Claude diretto: usiamo solo l'ultimo messaggio utente (percorso sperimentale, senza history multi-turno completa)
     const last = messages[messages.length - 1];
-    return askClaudeDirect(system, last?.content || "", temperature, maxTokens, settings.apiKey);
+    return askClaudeDirect(system, last?.content || "", temperature, maxTokens, settings.apiKey, image);
   }
+  // L'immagine si allega SOLO all'ultimo messaggio (il turno corrente), mai alla storia passata
+  const msgs = messages.map((m, i) => (i === messages.length - 1 && image ? { role: m.role, content: buildOpenRouterContent(m.content, image) } : m));
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.apiKey}` },
-    body: JSON.stringify({ model: settings.model, max_tokens: maxTokens, temperature, reasoning: { max_tokens: 300 }, messages: [{ role: "system", content: system }, ...messages] }),
+    body: JSON.stringify({ model: settings.model, max_tokens: maxTokens, temperature, reasoning: { max_tokens: 300 }, messages: [{ role: "system", content: system }, ...msgs] }),
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || "Errore OpenRouter");
   return (data.choices?.[0]?.message?.content || "").trim();
 }
 
-async function askModelJSON(system, userText, temperature, maxTokens, settings) {
-  const raw = await askModel(system + "\n\nRispondi SOLO con JSON valido, nessun testo prima o dopo, nessun blocco markdown.", userText, temperature, maxTokens, settings);
+async function askModelJSON(system, userText, temperature, maxTokens, settings, image = null) {
+  const raw = await askModel(system + "\n\nRispondi SOLO con JSON valido, nessun testo prima o dopo, nessun blocco markdown.", userText, temperature, maxTokens, settings, false, image);
   try { return JSON.parse(raw.replace(/```json|```/g, "").trim()); } catch { return null; }
 }
 
@@ -184,16 +242,16 @@ JSON: {"needed": true, "type": "email|messaggio|script|post", "subject": "solo s
 }
 
 // Stadio 2 — Decisione: lettura MULTI-LENTE. Un evento può valere per più pilastri insieme (Legge 17.2 resa meccanica).
-async function readThroughLenses(recentText, settings) {
+async function readThroughLenses(recentText, settings, image) {
   const data = await askModelJSON(
-    `Sei lo Shell del sistema Resonance. Leggi l'intero scambio recente (un dato può arrivare frammentato su più risposte) attraverso TRE lenti indipendenti — BIO, AIR, VIDYA. Un singolo evento può essere valido per più lenti insieme (es. "ho suonato il basso fino alle due" è insieme VIDYA e BIO) — non forzarlo in una sola.
+    `Sei lo Shell del sistema Resonance. Leggi l'intero scambio recente (un dato può arrivare frammentato su più risposte, anche in un'immagine allegata) attraverso TRE lenti indipendenti — BIO, AIR, VIDYA. Un singolo evento può essere valido per più lenti insieme (es. "ho suonato il basso fino alle due" è insieme VIDYA e BIO) — non forzarlo in una sola.
 Per ognuna, chiediti: "c'è una lettura pertinente qui?" Se sì, articolala in modo specifico a quella lente (non ripetere lo stesso testo per pilastri diversi).
 BIO: peso, sonno, dolore, terapia, energia fisica. Se qualcosa ti sembra un segnale da non ignorare (non una diagnosi, solo un'impressione), segnalo con alert:true e una breve alertNote.
 AIR: monetizzazione, canale, strategie economiche.
 VIDYA: musica, studio, pratica creativa.
 JSON: {"readings": [{"pillar":"bio","weight":"...","sleep":"...","notes":"...","alert":false,"alertNote":""}, {"pillar":"vidya","title":"...","notes":"..."}]}
 Array vuoto se non c'è nulla di pertinente: {"readings": []}`,
-    recentText, 0.3, 900, settings
+    recentText, 0.3, 900, settings, image
   );
   return data?.readings || [];
 }
@@ -249,10 +307,15 @@ async function reflectStyle(styleMemory, userMessage, shellReply, settings) {
   );
 }
 
-async function runShellTurn(history, userMessage, settings, handlers, memory, styleMemory) {
-  const windowMsgs = [...history.slice(-6), { role: "user", content: userMessage }];
+async function runShellTurn(history, userMessage, settings, handlers, memory, styleMemory, attachment) {
+  // Allegato testuale (PDF/txt): si fonde nel messaggio, funziona con qualunque modello, nessuna gestione speciale necessaria
+  const attachmentNote = attachment?.kind === "text" ? `\n\n[Allegato: ${attachment.name}]\n${attachment.content.slice(0, 6000)}` : "";
+  const effectiveMessage = userMessage + attachmentNote;
+  const image = attachment?.kind === "image" ? attachment : null; // le immagini restano vere immagini, mai trascritte a mano
+
+  const windowMsgs = [...history.slice(-6), { role: "user", content: effectiveMessage + (image ? "\n[Immagine allegata]" : "") }];
   const recentText = windowMsgs.map((m) => `${m.role === "user" ? "Ghost" : "Shell"}: ${m.content}`).join("\n");
-  const anochin = { afferenze: `Scambio letto attraverso le tre lenti insieme, non isolate (${windowMsgs.length} messaggi).` };
+  const anochin = { afferenze: `Scambio letto attraverso le tre lenti insieme, non isolate (${windowMsgs.length} messaggi)${attachment ? ` + allegato (${attachment.kind === "image" ? "immagine" : "documento"}: ${attachment.name || "senza nome"}).` : "."}` };
 
   const lente = `Memoria BIO: ${memory.bio || "nessuna nota ancora"}\nMemoria AIR: ${memory.air || "nessuna nota ancora"}\nMemoria VIDYA: ${memory.vidya || "nessuna nota ancora"}`;
   const styleNote = styleMemory ? `\n\nCome hai imparato a parlare con questo Ghost finora — adattaci il registro, MAI il giudizio: ${styleMemory}` : "";
@@ -264,16 +327,18 @@ ${lente}${styleNote}
 
 Dialoga in modo diretto e concreto. NON scrivere mai sintassi tecnica o tag tra parentesi quadre nella risposta. Rispondi solo in linguaggio naturale.
 
+Se ti arriva un'immagine o un documento allegato, descrivi cosa vi leggi in modo concreto (numeri, testo, dettagli visibili) prima di commentare — è quello che permette poi la registrazione corretta nei pilastri.
+
 Se proponi un'interpretazione di qualcosa, offrila come lettura tua, mai come verdetto oggettivo — resta sempre rivedibile da lui.
 
 Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non un dato isolato), PROPONI a parole di aprire un percorso dedicato ("Vuoi che apra un percorso su questo?"). Non crearlo tu.`;
 
-  const messages = [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: userMessage }];
+  const messages = [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: effectiveMessage }];
 
   // Risposta conversazionale, lettura multi-lente, e (se abilitato) bozza pronta: nessuna dipende dalle altre, partono insieme
   const [reply, readings, draft] = await Promise.all([
-    askModelWithHistory(system, messages, 0.7, 900, settings),
-    readThroughLenses(recentText, settings).catch(() => []),
+    askModelWithHistory(system, messages, 0.7, 900, settings, image),
+    readThroughLenses(recentText, settings, image).catch(() => []),
     settings.armsDraftsEnabled ? draftIfNeeded(recentText, settings).catch(() => null) : Promise.resolve(null),
   ]);
 
@@ -649,6 +714,10 @@ function AnochinRing({ bioN, airN, vidyaN, onNav }) {
 function Hub({ bio, air, vidya, magi, resonance, setView }) {
   const lastBio = bio[0], lastAir = air[0], lastVidya = vidya[0];
   return html`<div class="r-screen">
+    <button class="r-shell-cta" onClick=${() => setView("shell")}>
+      <div class="r-shell-cta-label">SHELL</div>
+      <div class="r-shell-cta-sub">Parlagli — penserà lui a smistare tra i pilastri</div>
+    </button>
     <${AnochinRing} bioN=${bio.length} airN=${air.length} vidyaN=${vidya.length} onNav=${setView} />
     <p class="r-hero-sub">Tre pilastri, un ciclo. Tocca un nodo per aprire il pilastro.</p>
     <div class="r-hub-grid">
@@ -834,12 +903,15 @@ function AnochinTrace({ trace }) {
   </div>`;
 }
 
-function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory }) {
+function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory, bio, air, vidya }) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [speakingId, setSpeakingId] = useState(null);
+  const [attachment, setAttachment] = useState(null); // { kind:'image'|'text', name, ... }
+  const [attaching, setAttaching] = useState(false);
   const bottomRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
@@ -849,15 +921,26 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     speakText(text, () => setSpeakingId((cur) => (cur === id ? null : cur)));
   };
 
+  const onFileChosen = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permette di riselezionare lo stesso file più avanti
+    if (!file) return;
+    setAttaching(true); setError("");
+    try { setAttachment(await processAttachment(file)); }
+    catch (err) { setError(err.message); }
+    finally { setAttaching(false); }
+  };
+
   const send = async () => {
-    if (!input.trim() || sending) return;
-    const userText = input.trim();
+    if ((!input.trim() && !attachment) || sending || attaching) return;
+    const userText = input.trim() || (attachment?.kind === "image" ? "Guarda questa immagine." : "Guarda questo documento.");
+    const currentAttachment = attachment;
     const history = messages.slice(-20).map((m) => ({ role: m.role, content: m.content }));
     const lastMsg = messages[messages.length - 1];
     stopSpeaking(); setSpeakingId(null);
-    setMessages((prev) => [...prev, { role: "user", content: userText, time: new Date().toISOString() }]);
+    setMessages((prev) => [...prev, { role: "user", content: userText, time: new Date().toISOString(), attachmentName: currentAttachment ? (currentAttachment.name || "immagine") : null, attachmentKind: currentAttachment?.kind }]);
     const newIndex = messages.length + 1; // posizione futura del messaggio dello Shell
-    setInput(""); setSending(true); setError("");
+    setInput(""); setAttachment(null); setSending(true); setError("");
     try {
       // Se il turno precedente aveva una proposta di percorso non risolta, controlla se questo messaggio la conferma (euristica istantanea)
       if (lastMsg?.proposal?.proposed && !lastMsg.proposalResolved) {
@@ -871,7 +954,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
           setMessages((prev) => [...prev, { role: "system-note", content: `✓ Percorso "${title}" creato in ${pillar.toUpperCase()}.` }]);
         }
       }
-      const { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya, updateMemoria }, memory, styleMemory);
+      const { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya, updateMemoria }, memory, styleMemory, currentAttachment);
       setMessages((prev) => [...prev, { role: "assistant", content: reply, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft }]);
       if (newStyleMemory !== styleMemory) setStyleMemory(newStyleMemory);
       if (settings.voiceEnabled) toggleSpeak(newIndex, reply);
@@ -888,15 +971,31 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   };
 
   const actionColor = { BIO: C.bio, AIR: C.air, VIDYA: C.vidya };
+  const lastBio = bio?.[0], lastAir = air?.[0], lastVidya = vidya?.[0];
 
   return html`<div class="r-screen">
     <${SectionHeader} color="#3A4750" title="SHELL" subtitle="Dialogo diretto — ciclo Anochin visibile per verifica" />
+    <div class="r-shell-digest">
+      <div class="r-shell-digest-card" style="border-left-color:${C.bio}">
+        <div class="r-shell-digest-label" style="color:${C.bio}">BIO</div>
+        <div class="r-shell-digest-detail">${lastBio ? `${lastBio.weight ? lastBio.weight + " kg — " : ""}${fmtDate(lastBio.date)}` : "Nessun dato ancora"}</div>
+      </div>
+      <div class="r-shell-digest-card" style="border-left-color:${C.air}">
+        <div class="r-shell-digest-label" style="color:${C.air}">AIR</div>
+        <div class="r-shell-digest-detail">${lastAir ? `${lastAir.title || "Vettore"} — ${lastAir.status || "idea"}` : "Nessun vettore ancora"}</div>
+      </div>
+      <div class="r-shell-digest-card" style="border-left-color:${C.vidya}">
+        <div class="r-shell-digest-label" style="color:${C.vidya}">VIDYA</div>
+        <div class="r-shell-digest-detail">${lastVidya ? (lastVidya.title || "Log creativo") : "Nessun log ancora"}</div>
+      </div>
+    </div>
     <div class="r-shell-log">
       ${messages.length === 0 && html`<div class="r-empty">Scrivi qualcosa. Lo Shell ricorda lo scambio e registra da solo ciò che riguarda BIO/AIR/VIDYA.</div>`}
       ${messages.map((m, i) => m.role === "system-note"
         ? html`<div key=${i} class="r-shell-system-note">${m.content}</div>`
         : html`<div key=${i} class="r-shell-row ${m.role}">
             <div class="r-shell-bubble ${m.role}">${m.content}</div>
+            ${m.attachmentName && html`<div class="r-shell-attach-badge">${m.attachmentKind === "image" ? "🖼️" : "📄"} ${m.attachmentName}</div>`}
             ${m.alerts && m.alerts.length > 0 && m.alerts.map((a) => html`<div class="r-shell-alert"><div class="r-shell-alert-label">⚠ ALLERTA — ${a.pillar.toUpperCase()}</div><div>${a.note}</div></div>`)}
             ${m.draft && html`<div class="r-draft-card">
               <div class="r-draft-label">📝 BOZZA — ${m.draft.type.toUpperCase()}</div>
@@ -913,9 +1012,15 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       <div ref=${bottomRef}></div>
     </div>
     ${error && html`<div class="r-error">${error}</div>`}
+    ${attachment && html`<div class="r-shell-attach-preview">
+      <span>${attachment.kind === "image" ? "🖼️" : "📄"} ${attachment.name || "immagine"}</span>
+      <button class="r-icon-btn" onClick=${() => setAttachment(null)}>✕</button>
+    </div>`}
     <div class="r-shell-inputbar">
-      <textarea class="r-textarea" value=${input} onInput=${(e) => setInput(e.target.value)} placeholder="Scrivi al tuo Shell…" disabled=${sending} />
-      <button class="r-btn" onClick=${send} disabled=${sending || !input.trim()}>${sending ? "…" : "Invia"}</button>
+      <input ref=${fileInputRef} type="file" accept="image/*,.pdf,.txt,.md" style="display:none" onChange=${onFileChosen} />
+      <button class="r-shell-attach-btn" onClick=${() => fileInputRef.current?.click()} disabled=${sending || attaching} title="Allega immagine o documento">${attaching ? "…" : "📎"}</button>
+      <textarea class="r-textarea" value=${input} onInput=${(e) => setInput(e.target.value)} placeholder=${attachment ? "Aggiungi una nota (opzionale)…" : "Scrivi al tuo Shell…"} disabled=${sending} />
+      <button class="r-btn" onClick=${send} disabled=${sending || attaching || (!input.trim() && !attachment)}>${sending ? "…" : "Invia"}</button>
     </div>
   </div>`;
 }
@@ -1004,6 +1109,21 @@ const TABS = [
   { key: "kernel", label: "Kernel" }, { key: "settings", label: "Setup" },
 ];
 
+function hexPoints(cx, cy, r) {
+  return Array.from({ length: 6 }, (_, i) => { const a = (Math.PI / 3) * i - Math.PI / 6; return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`; }).join(" ");
+}
+function HexTexture() {
+  const r = 15, rows = 14, cols = 10;
+  const hexes = [];
+  for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) {
+    hexes.push({ x: col * r * 1.73 + (row % 2 ? r * 0.87 : 0), y: row * r * 1.5, k: (row * cols + col) % 5 });
+  }
+  const palette = [C.core, C.air, C.vidya, C.bio, "#C9D9DC"];
+  return html`<svg class="r-hex-texture" viewBox="0 0 480 ${rows * r * 1.5}" preserveAspectRatio="xMidYMin slice">
+    ${hexes.map((h, i) => html`<polygon points=${hexPoints(h.x, h.y, r * 0.98)} fill="none" stroke=${palette[h.k]} stroke-width="0.6" style="animation-delay:${(i % 7) * 0.3}s" />`)}
+  </svg>`;
+}
+
 function App() {
   const [view, setView] = useState("hub");
   const [bio, setBio] = useState(() => loadKey("bio-data", []));
@@ -1077,9 +1197,10 @@ function App() {
   const digestVidya = `Kernel: ${kernel.content.slice(0, 300)}\nUltimi log VIDYA: ${vidya.slice(0, 5).map((e) => e.title).join("; ")}\nPercorsi esistenti: ${pVidya.map((p) => p.title).join(", ") || "nessuno"}`;
 
   return html`<div>
+    <${HexTexture} />
     <div class="r-topbar"><div class="r-brand">RESONANCE<span>•</span></div></div>
     ${view === "hub" && html`<${Hub} bio=${bio} air=${air} vidya=${vidya} magi=${magi} resonance=${resonance} setView=${setView} />`}
-    ${view === "shell" && html`<${ShellView} messages=${shellChat} setMessages=${setShellChat} settings=${settings} addBio=${addBio} addAir=${addAir} addVidya=${addVidya} percorsi=${{ bio: pBio, air: pAir, vidya: pVidya }} setPercorsi=${{ bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }} memory=${memory} updateMemoria=${updateMemoria} styleMemory=${styleMemory} setStyleMemory=${setStyleMemory} />`}
+    ${view === "shell" && html`<${ShellView} messages=${shellChat} setMessages=${setShellChat} settings=${settings} addBio=${addBio} addAir=${addAir} addVidya=${addVidya} percorsi=${{ bio: pBio, air: pAir, vidya: pVidya }} setPercorsi=${{ bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }} memory=${memory} updateMemoria=${updateMemoria} styleMemory=${styleMemory} setStyleMemory=${setStyleMemory} bio=${bio} air=${air} vidya=${vidya} />`}
     ${view === "bio" && html`<${BioView} entries=${bio} onAdd=${addBio} onDelete=${delBio} percorsi=${pBio} setPercorsi=${setPBioSync} settings=${settings} digest=${digestBio} />`}
     ${view === "air" && html`<${AirView} entries=${air} onAdd=${addAir} onDelete=${delAir} percorsi=${pAir} setPercorsi=${setPAirSync} settings=${settings} digest=${digestAir} />`}
     ${view === "vidya" && html`<${VidyaView} entries=${vidya} onAdd=${addVidya} onDelete=${delVidya} percorsi=${pVidya} setPercorsi=${setPVidyaSync} settings=${settings} digest=${digestVidya} />`}
