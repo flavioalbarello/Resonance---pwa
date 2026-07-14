@@ -1,4 +1,4 @@
-const CACHE = "resonance-v3"; // bump di versione: invalida qualunque cache residua al prossimo avvio
+const CACHE = "resonance-v4"; // bump di versione: invalida qualunque cache residua e serve il nuovo app.js
 const SHELL = [
   "./",
   "./index.html",
@@ -22,8 +22,10 @@ self.addEventListener("activate", (e) => {
   self.clients.claim();
 });
 
-// Network-first per la shell locale (così un nuovo deploy è sempre visibile subito),
-// con fallback alla cache solo se sei offline. Le chiamate API esterne non vengono toccate.
+// Network-first per la shell locale (un nuovo deploy è sempre visibile subito), con fallback alla
+// cache solo se offline. Le chiamate a origini esterne (Google Drive, OpenRouter, CDN) NON vengono
+// mai intercettate: passano dirette alla rete, senza cache. Questo è deliberato — cachare risposte
+// di API autenticate causerebbe "successi" fasulli letti dalla cache invece che dal server.
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   const isExternal = url.origin !== self.location.origin;
