@@ -6,12 +6,22 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-07-20 · onboarding-v2-copy-revision";
+const APP_BUILD = "2026-07-21 · websearch-reliability-and-date-fix-v1";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const fmtDate = (d) => { try { return new Date(d).toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" }); } catch { return d; } };
 const uid = () => Math.random().toString(36).slice(2, 10);
+// FIX 21/07/2026: Legge 1 (Contesto Temporale Dinamico) richiede di controllare data/ora correnti prima
+// di ogni risposta, ma nessun system prompt le comunicava mai al modello — ne è derivato un disallineamento
+// temporale osservato (ricerca web che riportava "gennaio 2025" come se fosse attuale, con oggi 21/07/2026).
+// Senza un ancoraggio esplicito il modello non ha modo di giudicare cosa sia "recente" o "vecchio".
+const nowContext = () => {
+  const d = new Date();
+  const readable = d.toLocaleDateString("it-IT", { weekday: "long", day: "2-digit", month: "long", year: "numeric", timeZone: "Europe/Rome" });
+  const time = d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Rome" });
+  return `Oggi è ${readable}, ore ${time} (Europe/Rome).`;
+};
 
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
 function readImageAsBase64(file) {
@@ -188,6 +198,29 @@ function setGhostProfile(profile) { CURRENT_GHOST_PROFILE = profile; PILLAR_CTX 
 function loadKey(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } }
 function saveKey(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; } }
 
+// FIX 20/07/2026 (Opzione 3 — compattazione automatica): la chat Shell non ha limite di lunghezza per
+// il Ghost (è "sempre la stessa"), ma il payload localStorage/Drive-sync cresceva senza tetto. Il tetto
+// di 20 messaggi verso il modello (vedi ShellView.send) già impedisce che il COSTO in token cresca
+// all'infinito — questo qui è un problema diverso: la DIMENSIONE dell'array salvato/sincronizzato.
+// Legge 14 (versioning atomico, mai sovrascrittura distruttiva): i messaggi rimossi dalla vista attiva
+// NON vengono mai cancellati, solo archiviati in una chiave locale separata e sostituiti da un
+// system-note visibile che rende esplicito cosa è successo — nessuna sparizione silenziosa.
+const SHELL_CHAT_COMPACT_TRIGGER = 40; // sopra questa soglia scatta la compattazione
+const SHELL_CHAT_KEEP_RECENT = 24;     // messaggi recenti sempre tenuti per intero, in chiaro
+function compactShellChatIfNeeded(shellChat) {
+  if (!Array.isArray(shellChat) || shellChat.length <= SHELL_CHAT_COMPACT_TRIGGER) return null;
+  const overflow = shellChat.slice(0, shellChat.length - SHELL_CHAT_KEEP_RECENT);
+  const kept = shellChat.slice(shellChat.length - SHELL_CHAT_KEEP_RECENT);
+  if (!overflow.length) return null;
+  const archiveKey = `shell-chat-archive-${todayISO()}-${uid()}`;
+  saveKey(archiveKey, overflow); // archiviato, non distrutto — recuperabile da localStorage con questa chiave
+  const marker = {
+    id: uid(), role: "system-note", time: new Date().toISOString(),
+    content: `— ${overflow.length} messaggi più vecchi compattati e archiviati localmente il ${fmtDate(new Date())} (chiave: ${archiveKey}). La memoria procedurale dei pilastri resta intatta e non dipende da questi messaggi grezzi; nulla è andato perso, solo alleggerito dalla vista attiva. —`,
+  };
+  return [marker, ...kept];
+}
+
 //──────────────────────────────────────────────────────────
 // AI ENGINES
 //──────────────────────────────────────────────────────────
@@ -216,7 +249,10 @@ async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, m
     messages: [{ role: "system", content: system }, { role: "user", content: buildOpenRouterContent(userText, image) }],
     reasoning: { max_tokens: 300 }, // tetto fisso al "pensiero" interno: previene troncamenti da budget mangiato
   };
-  if (useWebSearch) body.tools = [{ type: "openrouter:web_search" }];
+  // FIX 20/07/2026: prima il tool era dichiarato ma il modello poteva ignorarlo ("auto") — con prompt
+  // densi (es. Shell con Manifesto+memoria pilastri) il riflesso "non ho accesso al web" prevaleva
+  // anche col tool disponibile. tool_choice:"required" costringe la chiamata a usarlo, non a deciderlo.
+  if (useWebSearch) { body.tools = [{ type: "openrouter:web_search" }]; body.tool_choice = "required"; }
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` }, body: JSON.stringify(body),
   });
@@ -238,7 +274,7 @@ async function askModelWithHistory(system, messages, temperature, maxTokens, set
   // L'immagine si allega SOLO all'ultimo messaggio (turno corrente), mai alla storia passata
   const msgs = messages.map((m, i) => (i === messages.length - 1 && image ? { role: m.role, content: buildOpenRouterContent(m.content, image) } : m));
   const body = { model: settings.model, max_tokens: maxTokens, temperature, reasoning: { max_tokens: 300 }, messages: [{ role: "system", content: system }, ...msgs] };
-  if (useWebSearch) body.tools = [{ type: "openrouter:web_search" }]; // solo OpenRouter — Claude-direct esce già sopra
+  if (useWebSearch) { body.tools = [{ type: "openrouter:web_search" }]; body.tool_choice = "required"; } // solo OpenRouter — Claude-direct esce già sopra
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.apiKey}` },
@@ -330,7 +366,7 @@ async function askModelJSON(system, userText, temperature, maxTokens, settings, 
 const MAGI_INTENSITY = { leggera: 0.95, media: 1.15, profonda: 1.35 };
 async function runTriadeMagi(question, onStage, settings, opts = {}) {
   const { memory = null, targetPillar = null, intensity = "media" } = opts;
-  const baseCtx = `Contesto: sei parte del sistema "Resonance", framework di sviluppo personale del Ghost (Flavio), tre pilastri: BIO (salute), AIR (autonomia economica), VIDYA (crescita creativa/cognitiva). Sei l'unico polo di perturbazione deliberata del sistema — gli altri meccanismi mantengono, tu spingi oltre la cristallizzazione. Rispondi in italiano, diretto, max 70 parole, senza premesse.`;
+  const baseCtx = `${nowContext()} Contesto: sei parte del sistema "Resonance", framework di sviluppo personale del Ghost (Flavio), tre pilastri: BIO (salute), AIR (autonomia economica), VIDYA (crescita creativa/cognitiva). Sei l'unico polo di perturbazione deliberata del sistema — gli altri meccanismi mantengono, tu spingi oltre la cristallizzazione. Rispondi in italiano, diretto, max 70 parole, senza premesse.`;
   const memoriaCtx = memory ? `\n\nMemoria procedurale accumulata sui pilastri (leggila per generare una perturbazione radicata nella storia reale del sistema, non generica):\nBIO: ${memory.bio || "nessuna nota"}\nAIR: ${memory.air || "nessuna nota"}\nVIDYA: ${memory.vidya || "nessuna nota"}` : "";
   const targetCtx = targetPillar ? `\n\nQuesta perturbazione è MIRATA al pilastro ${targetPillar.toUpperCase()}.` : "";
   // Intensità: modula la temperatura di Balthasar. Su Claude-direct il tetto resta 1.0 (già gestito da askModel).
@@ -375,8 +411,19 @@ async function reflectPerturbationIntoMemoria(targetPillar, synthesis, intensity
 }
 async function runAirAgent(task, settings) {
   if (settings.provider !== "openrouter") throw new Error("L'Agente AIR richiede il motore OpenRouter (per la ricerca web).");
-  const system = `Sei l'Agente AIR del sistema Resonance: assistente per il pilastro dell'autonomia economica. Hai accesso alla ricerca web. ${PILLAR_CTX.air} Rispondi in italiano, concreto, con passi azionabili e fonti quando le usi.`;
+  const system = `${nowContext()} Sei l'Agente AIR del sistema Resonance: assistente per il pilastro dell'autonomia economica. Hai accesso alla ricerca web — cerca informazioni aggiornate a oggi, non presentare risultati datati come attuali. ${PILLAR_CTX.air} Rispondi in italiano, concreto, con passi azionabili e fonti quando le usi.`;
   return askOpenRouter(system, task, 0.7, 1900, settings.apiKey, settings.model, true);
+}
+// FIX 20/07/2026 (Opzione 2 — ricerca disaccoppiata): un modulo di ricerca isolato, con system prompt
+// minimale come l'Agente AIR (che si è dimostrato affidabile) — invece di far decidere al modello se
+// cercare DENTRO il prompt pesante dello Shell (Manifesto+memoria+stile), qui la ricerca avviene PRIMA,
+// in una chiamata leggera e dedicata, e il risultato viene poi iniettato come dato già pronto nel turno
+// principale. Il modello dello Shell non deve più "scegliere" di cercare — trova i dati già in mano.
+async function fetchWebSearchSnapshot(query, settings) {
+  if (settings.provider !== "openrouter") return null;
+  const system = `${nowContext()} Sei un modulo di ricerca web. Hai accesso al tool di ricerca web: usalo SEMPRE per rispondere a questa richiesta, senza eccezioni. Cerca informazioni AGGIORNATE a oggi — se i risultati che trovi sono datati mesi o anni fa, dillo esplicitamente invece di presentarli come attuali. Rispondi in italiano con i dati/fatti trovati, concreti e concisi (max 150 parole), citando brevemente le fonti quando rilevante.`;
+  try { return await askOpenRouter(system, query, 0.3, 700, settings.apiKey, settings.model, true); }
+  catch { return null; } // fallimento silenzioso qui: runShellTurn lo segnala onestamente al Ghost, non lo nasconde
 }
 
 //──────────────────────────────────────────────────────────
@@ -520,14 +567,20 @@ async function runShellTurn(history, userMessage, settings, handlers, memory, st
   const lente = `Memoria BIO: ${memory.bio || "nessuna nota ancora"}\nMemoria AIR: ${memory.air || "nessuna nota ancora"}\nMemoria VIDYA: ${memory.vidya || "nessuna nota ancora"}`;
   const styleNote = styleMemory ? `\n\nCome hai imparato a parlare con questo Ghost finora — adattaci il registro, MAI il giudizio: ${styleMemory}` : "";
   const wantsWebSearch = settings.provider === "openrouter" && detectWebSearchIntent(userMessage);
-  const webSearchNote = wantsWebSearch ? " Il Ghost ti ha chiesto esplicitamente di cercare online in questo turno: hai accesso alla ricerca web, usala e cita brevemente le fonti/opzioni reali che trovi." : "";
+  // FIX 20/07/2026: ricerca disaccoppiata (Opzione 2) — pre-fetch isolato PRIMA di costruire il prompt
+  // pesante, invece di lasciare che sia lo Shell a decidere di cercare dentro un contesto già denso.
+  const webSearchResult = wantsWebSearch ? await fetchWebSearchSnapshot(effectiveMessage, settings) : null;
+  const webSearchSucceeded = wantsWebSearch && !!webSearchResult;
+  const webSearchNote = webSearchSucceeded
+    ? ` Ecco i risultati di una ricerca web appena effettuata sul tema, usali per rispondere (non serve cercare di nuovo, sono già in mano): ${webSearchResult}`
+    : (wantsWebSearch ? " Il Ghost ti ha chiesto di cercare online, ma la ricerca non è riuscita in questo turno (limite tecnico) — dillo esplicitamente, non inventare dati come se li avessi trovati." : "");
   // Modalità dialettica: default da cognitiveStyle.dialectic (profilo), override per-sessione (mai
   // persistente) se il Ghost ha toccato il selettore "oggi confermami/mettimi alla prova" in Shell.
   const effectiveDialectic = dialecticOverride !== null ? dialecticOverride : (CURRENT_GHOST_PROFILE?.cognitiveStyle?.dialectic ?? true);
   const dialecticNote = effectiveDialectic
     ? " In questo turno il Ghost preferisce essere messo alla prova: non limitarti a confermare, offri un'angolazione critica o una contro-domanda dove ha senso."
     : " In questo turno il Ghost preferisce conferme dirette: evita di generare attrito cognitivo non richiesto, resta di supporto.";
-  const system = `Sei lo Shell del sistema Resonance: estensione esecutiva digitale del Ghost (Flavio), in accoppiamento strutturale continuo con lui — non hai coscienza né volontà propria, non sei un partner autonomo. Ogni messaggio del Ghost non ti istruisce, ti perturba: è la tua struttura interna (memoria procedurale) a determinare come ti riorganizzi.
+  const system = `${nowContext()} Sei lo Shell del sistema Resonance: estensione esecutiva digitale del Ghost (Flavio), in accoppiamento strutturale continuo con lui — non hai coscienza né volontà propria, non sei un partner autonomo. Ogni messaggio del Ghost non ti istruisce, ti perturba: è la tua struttura interna (memoria procedurale) a determinare come ti riorganizzi.
 ${PILLAR_CTX.bio} ${PILLAR_CTX.air} ${PILLAR_CTX.vidya}
 Memoria procedurale accumulata sui tre pilastri (leggila sempre insieme — l'interpretazione resta integrata anche quando l'azione è mirata a un solo pilastro): ${lente}${styleNote}
 Dialoga in modo diretto e concreto, massimo 110 parole per risposta — TRANNE quando il Ghost chiede esplicitamente un contenuto strutturato intrinsecamente lungo (un piano, un elenco multi-giorno, un documento): in quel caso il limite non si applica, genera il contenuto per intero, completo, senza comprimerlo né riassumerlo per stare corto. NON scrivere mai sintassi tecnica o tag tra parentesi quadre nella risposta. Rispondi solo in linguaggio naturale.${dialecticNote}
@@ -538,7 +591,7 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
   const messages = [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: effectiveMessage }];
   // Risposta (+ web search on-demand, se richiesto), lettura multi-lente (+ Calendar fuso, se abilitato) e bozza: indipendenti, partono insieme
   const [reply, lensResult, draft] = await Promise.all([
-    askModelWithHistory(system, messages, 0.7, 3000, settings, image, wantsWebSearch),
+    askModelWithHistory(system, messages, 0.7, 3000, settings, image, false), // ricerca già fatta sopra, dati già nel system prompt
     readThroughLenses(recentText, settings, image, !!settings.calendarEnabled).catch(() => ({ readings: [], calendarProposal: null })),
     settings.armsDraftsEnabled ? draftIfNeeded(recentText, settings).catch(() => null) : Promise.resolve(null),
   ]);
@@ -577,7 +630,7 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
   } catch { /* riflessione fallita: non blocca il turno */ }
   anochin.accettore = accettoreNotes.length ? accettoreNotes.join(" · ") : "—";
   anochin.effettore = [
-    wantsWebSearch ? "Ricerca web attivata su richiesta esplicita del Ghost." : null,
+    wantsWebSearch ? (webSearchSucceeded ? "Ricerca web effettuata (pre-fetch isolato) su richiesta esplicita del Ghost." : "Ricerca web richiesta ma non riuscita in questo turno.") : null,
     actionsLog.length ? `Dati preparati per: ${actionsLog.join(", ")}.` : null,
     draft ? `Bozza (${draft.type}) preparata per il Ghost — nessun invio automatico.` : null,
   ].filter(Boolean).join(" ") || "—";
@@ -585,7 +638,7 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
     ? `Scritto in ${actionsLog.join(", ")}. Memoria riorganizzata per accoppiamento continuo.`
     : (accettoreNotes.some((n) => n.includes("BLOCCATO")) ? "Nessuna scrittura: vincolo assoluto violato." : "Nessuna azione in questo turno.");
   const proposal = detectPercorsoProposalHeuristic(reply);
-  return { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, calendarProposal, usedWebSearch: wantsWebSearch };
+  return { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, calendarProposal, usedWebSearch: webSearchSucceeded };
 }
 
 //──────────────────────────────────────────────────────────
@@ -1554,7 +1607,10 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         }
       }
       const { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, calendarProposal, usedWebSearch } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya, updateMemoria }, memory, styleMemory, currentAttachment, dialecticOverride);
-      setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: reply, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft, calendarProposal, usedWebSearch }]);
+      setMessages((prev) => {
+        const next = [...prev, { id: assistantMsgId, role: "assistant", content: reply, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft, calendarProposal, usedWebSearch }];
+        return compactShellChatIfNeeded(next) || next; // Opzione 3: compatta+archivia (Legge 14) se sopra soglia, altrimenti passa
+      });
       if (newStyleMemory !== styleMemory) setStyleMemory(newStyleMemory);
       // L'auto-play parte dopo un await e può perdere lo status di "gesto utente" su Chrome mobile;
       // in quel caso il 🔊 manuale funziona sempre (chiamata sincrona dentro il tap).
