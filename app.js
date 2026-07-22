@@ -6,7 +6,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-07-21 · websearch-reliability-and-date-fix-v1";
+const APP_BUILD = "2026-07-21 · gmail-send-feedback-and-arms-v4";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -459,6 +459,27 @@ async function createCalendarEvent(proposal) {
   if (data.error) throw new Error(data.error.message || "Errore Google Calendar");
   return data;
 }
+// BRACCIO EMAIL — invio reale via Gmail, stesso token OAuth già in uso per Drive/Calendar (driveFetch).
+// Richiede lo scope gmail.send aggiunto a CONFIG.GOOGLE_DRIVE_SCOPE (vedi config.js) — senza quello
+// scope, Google risponde 403 e driveFetch lo tratta come le altre chiamate autenticate.
+// Mai automatico (Legge 8): sia il canale feedback (indirizzo fisso, nessuna bozza AI in mezzo) sia
+// l'invio da Arms (indirizzo scelto e confermato dal Ghost, mai dedotto) passano da qui SOLO dopo
+// un'azione umana esplicita — vedi FeedbackWidget e confirmEmailSend in ShellView.
+function base64UrlEncode(str) {
+  return btoa(unescape(encodeURIComponent(str))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function buildRawEmail(to, subject, body) {
+  const encodedSubject = `=?UTF-8?B?${btoa(unescape(encodeURIComponent(subject || "")))}?=`;
+  const message = [`To: ${to}`, `Subject: ${encodedSubject}`, `Content-Type: text/plain; charset=UTF-8`, ``, body].join("\r\n");
+  return base64UrlEncode(message);
+}
+async function sendGmail(to, subject, body) {
+  const res = await driveFetch("https://www.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ raw: buildRawEmail(to, subject, body) }),
+  });
+  if (!res.ok) { const errBody = await res.json().catch(() => null); throw new Error(errBody?.error?.message || `Errore invio Gmail (${res.status})`); }
+  return res.json();
+}
 // Filtro difensivo: i modelli a volte scrivono "non-letture" ("Nessuna menzione di...") nonostante il prompt.
 function isGarbageReading(r) {
   const text = [r.notes, r.title, r.weight, r.sleep].filter(Boolean).join(" ").trim();
@@ -886,6 +907,9 @@ function loadDocxLib() {
   }
   return _docxLibPromise;
 }
+// Stesso pattern di loadDocxLib: import dinamico, una sola volta, cache azzerata se fallisce.
+// Usato dal canale feedback — nessuna dipendenza Drive/OAuth, funziona anche per chi non ha mai
+// collegato Drive (vedi FeedbackWidget più sotto).
 // Genera un Blob .docx da testo strutturato leggero. Convenzioni riga: "# " = titolo1,
 // "## " = titolo2, "- " o "* " = voce elenco, riga vuota = spazio, resto = paragrafo.
 // Non interpreta grassetto inline (out of scope per ora): testo pulito, formattazione a blocchi.
@@ -1694,6 +1718,24 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     } catch (e) { setCalStatus((s) => ({ ...s, [mid]: "error: " + e.message })); }
   };
   const dismissCalendarEvent = (mid) => setCalStatus((s) => ({ ...s, [mid]: "dismissed" }));
+  // Email da bozza Arms: stesso principio del Calendar, mai scrittura/invio automatico (Legge 8).
+  // Il "recipient" nella bozza è una DESCRIZIONE dedotta dall'AI ("il tuo commercialista"), mai un
+  // indirizzo verificato — l'indirizzo vero lo digita e conferma sempre il Ghost, qui, prima dell'invio.
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const [emailSendStatus, setEmailSendStatus] = useState({}); // mid -> "editing"|"sending"|"done"|"error: <msg>"
+  const [emailAddrDraft, setEmailAddrDraft] = useState({});
+  const startEmailSend = (mid) => setEmailSendStatus((s) => ({ ...s, [mid]: "editing" }));
+  const cancelEmailSend = (mid) => setEmailSendStatus((s) => { const n = { ...s }; delete n[mid]; return n; });
+  const confirmEmailSend = async (mid, draft) => {
+    const addr = (emailAddrDraft[mid] || "").trim();
+    if (!EMAIL_RE.test(addr)) { setEmailSendStatus((s) => ({ ...s, [mid]: "error: indirizzo non valido" })); return; }
+    setEmailSendStatus((s) => ({ ...s, [mid]: "sending" }));
+    try {
+      await sendGmail(addr, draft.subject || "(nessun oggetto)", draft.body);
+      setEmailSendStatus((s) => ({ ...s, [mid]: "done" }));
+      setMessages((prev) => [...prev, { id: uid(), role: "system-note", content: `✓ Email inviata a ${addr}.` }]);
+    } catch (e) { setEmailSendStatus((s) => ({ ...s, [mid]: "error: " + e.message })); }
+  };
   const actionColor = { BIO: C.bio, AIR: C.air, VIDYA: C.vidya };
   const lastBio = bio?.[0], lastAir = air?.[0], lastVidya = vidya?.[0];
   return html`<div class="r-screen">
@@ -1734,6 +1776,19 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
               ${m.draft.subject && html`<div class="r-draft-subject">Oggetto: ${m.draft.subject}</div>`}
               <div class="r-draft-body">${m.draft.body}</div>
               <button class="r-btn r-draft-copy" onClick=${() => copyDraft(mid, m.draft)}>${copiedId === mid ? "✓ Copiato" : "Copia"}</button>
+              ${m.draft.type === "email" && emailSendStatus[mid] !== "done" && !emailSendStatus[mid] && html`
+                <button class="r-btn r-btn-ghost" onClick=${() => startEmailSend(mid)}>Invia email…</button>`}
+              ${m.draft.type === "email" && emailSendStatus[mid] === "editing" && html`<div style="margin-top:8px">
+                <input class="r-input" type="email" placeholder="indirizzo@destinatario.it" value=${emailAddrDraft[mid] || ""}
+                  onInput=${(e) => setEmailAddrDraft((s) => ({ ...s, [mid]: e.target.value }))} />
+                <div style="margin-top:6px;display:flex;gap:8px">
+                  <button class="r-btn" onClick=${() => confirmEmailSend(mid, m.draft)}>Conferma invio</button>
+                  <button class="r-btn-ghost" onClick=${() => cancelEmailSend(mid)}>Annulla</button>
+                </div>
+              </div>`}
+              ${emailSendStatus[mid] === "sending" && html`<div style="margin-top:6px"><span class="r-spin">⏳</span> Invio…</div>`}
+              ${emailSendStatus[mid] === "done" && html`<div class="r-ok" style="margin-top:6px">✓ Inviata.</div>`}
+              ${emailSendStatus[mid]?.startsWith?.("error") && html`<div class="r-error" style="margin-top:6px">${emailSendStatus[mid].replace("error: ", "")}</div>`}
             </div>`}
             ${m.calendarProposal && calStatus[mid] !== "dismissed" && html`<div class="r-draft-card">
               <div class="r-draft-label">📅 CALENDAR — proposta, non ancora salvata</div>
@@ -1836,6 +1891,7 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
   const isCustom = !presetIds.includes(settings.model);
   const [driveMsg, setDriveMsg] = useState(""); const [connecting, setConnecting] = useState(false);
   const clientIdReady = CONFIG.GOOGLE_CLIENT_ID && !CONFIG.GOOGLE_CLIENT_ID.startsWith("INCOLLA");
+  const feedbackReady = CONFIG.FEEDBACK_EMAIL && !CONFIG.FEEDBACK_EMAIL.startsWith("INCOLLA");
   const testConnect = async () => { setConnecting(true); setDriveMsg("");
     try { await connectDrive(); setDriveMsg("Connesso — puoi attivare la sincronizzazione."); } catch (e) { setDriveMsg("Errore: " + e.message); } finally { setConnecting(false); } };
   const [logSyncMsg, setLogSyncMsg] = useState(""); const [logSyncing, setLogSyncing] = useState(false);
@@ -1908,6 +1964,12 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
         Ultima sincronizzazione: ${new Date(driveStatus.time).toLocaleTimeString("it-IT")} — ${driveStatus.state === "ok" ? "riuscita" : driveStatus.state === "syncing" ? "in corso…" : `errore: ${driveStatus.error}`}
         ${driveStatus.state === "ok" && driveStatus.remoteTime && html`<br/>Conferma da Drive — file modificato: ${new Date(driveStatus.remoteTime).toLocaleString("it-IT")}`}
       </div>`}
+    </${Card}>
+    <${Card} accent=${C.core}>
+      <div class="r-hub-title" style="color:#3A4750">Feedback</div>
+      <div class="r-hub-detail">Il pulsante "Segnala" (in alto a destra, in ogni schermata) manda un'email diretta via Gmail — nessuna cartella o condivisione da configurare, nessun servizio terzo. Richiede lo stesso login Google già usato per la sincronizzazione.</div>
+      ${!feedbackReady && html`<div class="r-hub-detail" style="margin-top:8px">Manca FEEDBACK_EMAIL in config.js — vedi README.md.</div>`}
+      ${feedbackReady && html`<div class="r-hub-detail" style="margin-top:8px">Configurato — le segnalazioni arrivano a ${CONFIG.FEEDBACK_EMAIL} via Gmail (stesso account Google del login).</div>`}
     </${Card}>
     <${Card} accent=${C.core}>
       <div class="r-hub-title" style="color:#3A4750">Log di debug — ${debugLog?.length || 0} eventi registrati</div>
@@ -2178,6 +2240,57 @@ function OnboardingView({ onComplete, settings }) {
       <button class="r-btn" disabled=${!canSubmit} onClick=${runClassification}>Continua</button>
     </div>
     <p style="opacity:.6;text-align:center;font-size:13px">Puoi tornare qui e modificare ogni risposta quando vuoi — niente qui è scritto nella pietra.</p>
+  </div>`;
+}
+//──────────────────────────────────────────────────────────
+// FEEDBACK — canale UX/bug: invio diretto via Gmail, stesso account Google già usato per Drive/Calendar.
+// L'indirizzo di destinazione è FISSO in config.js (mai scelto dal client) — chiunque usi l'app,
+// una volta effettuato il login Google già richiesto per la sincronizzazione, può inviare senza
+// altro setup: nessuna condivisione, nessun servizio terzo, nessuna cartella da collegare.
+// Separato dal debug log (pushDebugLog): quello cattura eventi tecnici automatici ad ogni turno,
+// questo è un report esplicito scritto dalla persona, con più contesto e meno rumore.
+//──────────────────────────────────────────────────────────
+async function sendFeedbackEmail(text, screenLabel) {
+  const when = new Date().toLocaleString("it-IT");
+  const subject = `Resonance – Segnalazione (${screenLabel})`;
+  const body = `${when} · ${screenLabel}\n\n${text}`;
+  await sendGmail(CONFIG.FEEDBACK_EMAIL, subject, body);
+}
+function FeedbackWidget({ view, pushDebugLog }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [msg, setMsg] = useState("");
+  const feedbackReady = CONFIG.FEEDBACK_EMAIL && !CONFIG.FEEDBACK_EMAIL.startsWith("INCOLLA");
+  const screenLabel = TABS.find((t) => t.key === view)?.label || view;
+  const submit = async () => {
+    const body = text.trim();
+    if (!body) return;
+    setSending(true); setMsg("");
+    try {
+      await sendFeedbackEmail(body, screenLabel);
+      setMsg("Inviato.");
+      setText("");
+      pushDebugLog?.({ type: "user-feedback", screen: screenLabel, error: null });
+      setTimeout(() => { setOpen(false); setMsg(""); }, 1800);
+    } catch (e) {
+      setMsg("Errore: " + e.message);
+      pushDebugLog?.({ type: "user-feedback", screen: screenLabel, error: e.message });
+    } finally { setSending(false); }
+  };
+  return html`<div>
+    <button class="r-btn-ghost" style="position:fixed;top:10px;right:12px;z-index:60;background:rgba(20,24,30,.55);backdrop-filter:blur(4px)"
+      onClick=${() => setOpen(!open)}>${open ? "✕" : "Segnala"}</button>
+    ${open && html`<div class="r-card" style="position:fixed;top:46px;right:12px;z-index:60;width:min(320px,90vw);box-shadow:0 6px 24px rgba(0,0,0,.35)">
+      ${!feedbackReady && html`<div class="r-hub-detail" style="margin-bottom:8px">Canale feedback non ancora configurato (manca FEEDBACK_EMAIL in config.js) — chiedi a chi gestisce l'app.</div>`}
+      <div class="r-hub-detail" style="margin-bottom:8px">Cosa non va, o cosa vorresti diverso? Poche righe bastano.</div>
+      <textarea class="r-textarea" rows="4" value=${text} onInput=${(e) => setText(e.target.value)} placeholder="Scrivi qui…"></textarea>
+      <div style="margin-top:8px;display:flex;gap:8px;">
+        <button class="r-btn" style="border-color:${C.core}" onClick=${submit} disabled=${sending || !text.trim() || !feedbackReady}>${sending ? "Invio…" : "Invia"}</button>
+        <button class="r-btn-ghost" onClick=${() => { setOpen(false); setMsg(""); }}>Annulla</button>
+      </div>
+      ${msg && html`<div class="r-hub-detail" style="margin-top:8px">${msg}</div>`}
+    </div>`}
   </div>`;
 }
 function App() {
@@ -2454,6 +2567,7 @@ function App() {
     <div class="r-topbar"><div class="r-brand">RESONANCE<span>•</span></div></div>
     ${!ghostProfile && html`<${OnboardingView} onComplete=${saveGhostProfile} settings=${settings} />`}
     ${ghostProfile && html`<div>
+    <${FeedbackWidget} view=${view} pushDebugLog=${pushDebugLog} />
     ${view === "hub" && html`<${Hub} bio=${bio} air=${air} vidya=${vidya} magi=${magi} resonance=${resonance} setView=${setView} pBio=${pBio} pAir=${pAir} pVidya=${pVidya} proactiveHint=${resonance.worthSurfacing} />`}
     ${view === "shell" && html`<${ShellView} messages=${shellChat} setMessages=${setShellChat} settings=${settings} addBio=${addBio} addAir=${addAir} addVidya=${addVidya}
       percorsi=${{ bio: pBio, air: pAir, vidya: pVidya }} setPercorsi=${{ bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }}
