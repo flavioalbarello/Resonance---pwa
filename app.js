@@ -179,13 +179,22 @@ function buildPillarCtx(profile) {
     ? `Vincolo assoluto, hard-stop non negoziabile: nessuna strategia deve esporre l'identità professionale del Ghost (${profile.professionalIdentity}) né richiedere dilatazione del suo tempo lineare di lavoro. È l'unico punto del sistema dove la lettura non è negoziabile — tutto il resto resta revisionabile.`
     : `Nessun vincolo di compartimentazione professionale dichiarato per questo Ghost. Resta comunque valido il principio generale: non richiedere dilatazione insostenibile del suo tempo lineare di lavoro.`;
   // Punto di forza dichiarato in onboarding (freeform.strength): unica risorsa positiva esplicita nel
-  // profilo, a differenza di hardConstraints (vincoli/cautele). Non è specifico di un pilastro — una
-  // competenza dichiarata è sfruttabile ovunque (Percorsi/Magi) — quindi va in tutti e tre i contesti.
+  // profilo, a differenza di hardConstraints (vincoli/cautele).
   const strengthNote = profile.freeform?.strength ? ` Punto di forza dichiarato dal Ghost, da tenere presente come risorsa su cui costruire (non solo colmare lacune): ${profile.freeform.strength}.` : "";
+  // Resto del blocco freeform (motivation/context/request): testo libero raccolto in onboarding.
+  const motivationNote = profile.freeform?.motivation ? ` Motivazione dichiarata dal Ghost per l'uso di Resonance: ${profile.freeform.motivation}.` : "";
+  const contextNote = profile.freeform?.context ? ` Contesto aggiuntivo dichiarato dal Ghost su di sé: ${profile.freeform.context}.` : "";
+  const requestNote = profile.freeform?.request ? ` Richiesta prioritaria dichiarata dal Ghost (l'unica cosa che vorrebbe da Resonance): ${profile.freeform.request}.` : "";
+  // Nessuno dei quattro campi è filtrato: qualunque di essi può nominare l'identità professionale del
+  // Ghost (anche "punto di forza" o "richiesta" — es. "sono fisioterapista da 16 anni" ci starebbe
+  // benissimo in entrambi). Per questo l'intero blocco freeform va SOLO in bio/vidya: il contesto air
+  // resta il pattern preesistente, senza alcuna nota freeform, per non rischiare mai di violare il
+  // vincolo assoluto hasProfessionalConstraint.
+  const freeformNotes = strengthNote + motivationNote + contextNote + requestNote;
   return {
-    vidya: cogText + strengthNote,
-    bio: bioList.join("; ") + " Ogni lettura BIO è una stance interpretativa rivedibile dal Ghost, mai un verdetto medico oggettivo." + strengthNote,
-    air: air + strengthNote,
+    vidya: cogText + freeformNotes,
+    bio: bioList.join("; ") + " Ogni lettura BIO è una stance interpretativa rivedibile dal Ghost, mai un verdetto medico oggettivo." + freeformNotes,
+    air,
   };
 }
 let CURRENT_GHOST_PROFILE = DEFAULT_GHOST_PROFILE;
@@ -2037,13 +2046,13 @@ Rispondi SOLO con questo JSON, nessun altro testo:
   return askModelJSON(system, userText, 0.2, 1400, settings);
 }
 const SKIP_TEXT = "preferisco non rispondere";
-function SkippableField({ label, value, onChange, placeholder, textarea, hint }) {
+function SkippableField({ label, value, onChange, placeholder, textarea, hint, maxLength }) {
   const skipped = value === SKIP_TEXT;
   const Field = textarea ? "textarea" : "input";
   return html`<label class="r-field">
     <span>${label}</span>
     ${hint && html`<small style="opacity:.7">${hint}</small>`}
-    <${Field} class=${textarea ? "r-textarea" : "r-input"} value=${skipped ? "" : value} disabled=${skipped}
+    <${Field} class=${textarea ? "r-textarea" : "r-input"} value=${skipped ? "" : value} disabled=${skipped} maxLength=${maxLength}
       onInput=${(e) => onChange(e.target.value)} placeholder=${skipped ? SKIP_TEXT : placeholder} />
     <button type="button" class="r-btn-ghost" style="margin-top:4px;font-size:12px"
       onClick=${() => onChange(skipped ? "" : SKIP_TEXT)}>${skipped ? "Annulla" : "Preferisco non rispondere"}</button>
@@ -2140,11 +2149,13 @@ function OnboardingView({ onComplete, settings }) {
       name: name.trim(),
       hardConstraints: hc,
       cognitiveStyle: { channel: channelList.join(", "), density, dialectic, dialecticOverride: null, reasoningStyle },
+      // Tutto il blocco è agganciato a buildPillarCtx, ma SOLO per bio/vidya — mai per air, dove nessuna
+      // nota freeform viene iniettata (nessuno di questi campi è filtrato e potrebbe nominare l'identità
+      // professionale del Ghost). Vedi PILLAR_CTX più in alto nel file.
       freeform: {
         motivation: motivation === SKIP_TEXT ? "" : motivation.trim(),
         context: context === SKIP_TEXT ? "" : context.trim(),
         request: request === SKIP_TEXT ? "" : request.trim(),
-        // Agganciato a buildPillarCtx (tutti e tre i pilastri) — vedi PILLAR_CTX più in alto nel file.
         strength: strengthAbility === SKIP_TEXT ? "" : strengthAbility.trim(),
       },
       distressCheck: classification?.distressCheck || null,
@@ -2234,9 +2245,9 @@ function OnboardingView({ onComplete, settings }) {
     </div>
     <div class="r-card">
       <h3>Il resto</h3>
-      <${SkippableField} label="Cosa speri che Resonance possa aiutarti a fare o a capire? Non serve una risposta definitiva — anche un'idea vaga va benissimo." value=${motivation} onChange=${setMotivation} textarea=${true} />
-      <${SkippableField} label="C'è qualcosa di te, non chiesta finora nel questionario, che ritieni utile per comprenderti meglio?" value=${context} onChange=${setContext} textarea=${true} />
-      <${SkippableField} label="Se Resonance potesse fare perfettamente una cosa sola per te, quale sceglieresti?" value=${request} onChange=${setRequest} />
+      <${SkippableField} label="Cosa speri che Resonance possa aiutarti a fare o a capire? Non serve una risposta definitiva — anche un'idea vaga va benissimo." value=${motivation} onChange=${setMotivation} textarea=${true} maxLength=${500} />
+      <${SkippableField} label="C'è qualcosa di te, non chiesta finora nel questionario, che ritieni utile per comprenderti meglio?" value=${context} onChange=${setContext} textarea=${true} maxLength=${500} />
+      <${SkippableField} label="Se Resonance potesse fare perfettamente una cosa sola per te, quale sceglieresti?" value=${request} onChange=${setRequest} maxLength=${500} />
       <button class="r-btn" disabled=${!canSubmit} onClick=${runClassification}>Continua</button>
     </div>
     <p style="opacity:.6;text-align:center;font-size:13px">Puoi tornare qui e modificare ogni risposta quando vuoi — niente qui è scritto nella pietra.</p>
