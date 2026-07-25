@@ -188,11 +188,17 @@ function buildPillarCtx(profile) {
   const motivationNote = profile.freeform?.motivation ? ` Motivazione dichiarata dal Ghost per l'uso di Resonance: ${profile.freeform.motivation}.` : "";
   const contextNote = profile.freeform?.context ? ` Contesto aggiuntivo dichiarato dal Ghost su di sé: ${profile.freeform.context}.` : "";
   const requestNote = profile.freeform?.request ? ` Richiesta prioritaria dichiarata dal Ghost (l'unica cosa che vorrebbe da Resonance): ${profile.freeform.request}.` : "";
+  // motivation/context sono testo libero non filtrato e possono nominare l'identità professionale del
+  // Ghost (es. "vorrei che Resonance mi aiutasse a gestire il mio lavoro da fisioterapista") — restano
+  // FUORI dal contesto air per non rischiare di violare il vincolo assoluto hasProfessionalConstraint.
+  // strength/request sono orientati a competenze/esiti desiderati, non a descrizioni di sé, e restano
+  // nel pattern preesistente valido per tutti e tre i pilastri.
   const freeformNotes = strengthNote + motivationNote + contextNote + requestNote;
+  const airFreeformNotes = strengthNote + requestNote;
   return {
     vidya: cogText + freeformNotes,
     bio: bioList.join("; ") + " Ogni lettura BIO è una stance interpretativa rivedibile dal Ghost, mai un verdetto medico oggettivo." + freeformNotes,
-    air: air + freeformNotes,
+    air: air + airFreeformNotes,
   };
 }
 let CURRENT_GHOST_PROFILE = DEFAULT_GHOST_PROFILE;
@@ -2044,13 +2050,13 @@ Rispondi SOLO con questo JSON, nessun altro testo:
   return askModelJSON(system, userText, 0.2, 1400, settings);
 }
 const SKIP_TEXT = "preferisco non rispondere";
-function SkippableField({ label, value, onChange, placeholder, textarea, hint }) {
+function SkippableField({ label, value, onChange, placeholder, textarea, hint, maxLength }) {
   const skipped = value === SKIP_TEXT;
   const Field = textarea ? "textarea" : "input";
   return html`<label class="r-field">
     <span>${label}</span>
     ${hint && html`<small style="opacity:.7">${hint}</small>`}
-    <${Field} class=${textarea ? "r-textarea" : "r-input"} value=${skipped ? "" : value} disabled=${skipped}
+    <${Field} class=${textarea ? "r-textarea" : "r-input"} value=${skipped ? "" : value} disabled=${skipped} maxLength=${maxLength}
       onInput=${(e) => onChange(e.target.value)} placeholder=${skipped ? SKIP_TEXT : placeholder} />
     <button type="button" class="r-btn-ghost" style="margin-top:4px;font-size:12px"
       onClick=${() => onChange(skipped ? "" : SKIP_TEXT)}>${skipped ? "Annulla" : "Preferisco non rispondere"}</button>
@@ -2241,9 +2247,9 @@ function OnboardingView({ onComplete, settings }) {
     </div>
     <div class="r-card">
       <h3>Il resto</h3>
-      <${SkippableField} label="Cosa speri che Resonance possa aiutarti a fare o a capire? Non serve una risposta definitiva — anche un'idea vaga va benissimo." value=${motivation} onChange=${setMotivation} textarea=${true} />
-      <${SkippableField} label="C'è qualcosa di te, non chiesta finora nel questionario, che ritieni utile per comprenderti meglio?" value=${context} onChange=${setContext} textarea=${true} />
-      <${SkippableField} label="Se Resonance potesse fare perfettamente una cosa sola per te, quale sceglieresti?" value=${request} onChange=${setRequest} />
+      <${SkippableField} label="Cosa speri che Resonance possa aiutarti a fare o a capire? Non serve una risposta definitiva — anche un'idea vaga va benissimo." value=${motivation} onChange=${setMotivation} textarea=${true} maxLength=${500} />
+      <${SkippableField} label="C'è qualcosa di te, non chiesta finora nel questionario, che ritieni utile per comprenderti meglio?" value=${context} onChange=${setContext} textarea=${true} maxLength=${500} />
+      <${SkippableField} label="Se Resonance potesse fare perfettamente una cosa sola per te, quale sceglieresti?" value=${request} onChange=${setRequest} maxLength=${500} />
       <button class="r-btn" disabled=${!canSubmit} onClick=${runClassification}>Continua</button>
     </div>
     <p style="opacity:.6;text-align:center;font-size:13px">Puoi tornare qui e modificare ogni risposta quando vuoi — niente qui è scritto nella pietra.</p>
