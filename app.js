@@ -182,10 +182,17 @@ function buildPillarCtx(profile) {
   // profilo, a differenza di hardConstraints (vincoli/cautele). Non è specifico di un pilastro — una
   // competenza dichiarata è sfruttabile ovunque (Percorsi/Magi) — quindi va in tutti e tre i contesti.
   const strengthNote = profile.freeform?.strength ? ` Punto di forza dichiarato dal Ghost, da tenere presente come risorsa su cui costruire (non solo colmare lacune): ${profile.freeform.strength}.` : "";
+  // Resto del blocco freeform (motivation/context/request), stesso trattamento dello strength: testo
+  // libero raccolto in onboarding, non specifico di un pilastro, quindi iniettato in tutti e tre i
+  // contesti generati qui sotto.
+  const motivationNote = profile.freeform?.motivation ? ` Motivazione dichiarata dal Ghost per l'uso di Resonance: ${profile.freeform.motivation}.` : "";
+  const contextNote = profile.freeform?.context ? ` Contesto aggiuntivo dichiarato dal Ghost su di sé: ${profile.freeform.context}.` : "";
+  const requestNote = profile.freeform?.request ? ` Richiesta prioritaria dichiarata dal Ghost (l'unica cosa che vorrebbe da Resonance): ${profile.freeform.request}.` : "";
+  const freeformNotes = strengthNote + motivationNote + contextNote + requestNote;
   return {
-    vidya: cogText + strengthNote,
-    bio: bioList.join("; ") + " Ogni lettura BIO è una stance interpretativa rivedibile dal Ghost, mai un verdetto medico oggettivo." + strengthNote,
-    air: air + strengthNote,
+    vidya: cogText + freeformNotes,
+    bio: bioList.join("; ") + " Ogni lettura BIO è una stance interpretativa rivedibile dal Ghost, mai un verdetto medico oggettivo." + freeformNotes,
+    air: air + freeformNotes,
   };
 }
 let CURRENT_GHOST_PROFILE = DEFAULT_GHOST_PROFILE;
@@ -2140,11 +2147,11 @@ function OnboardingView({ onComplete, settings }) {
       name: name.trim(),
       hardConstraints: hc,
       cognitiveStyle: { channel: channelList.join(", "), density, dialectic, dialecticOverride: null, reasoningStyle },
+      // Tutto il blocco è agganciato a buildPillarCtx (tutti e tre i pilastri) — vedi PILLAR_CTX più in alto nel file.
       freeform: {
         motivation: motivation === SKIP_TEXT ? "" : motivation.trim(),
         context: context === SKIP_TEXT ? "" : context.trim(),
         request: request === SKIP_TEXT ? "" : request.trim(),
-        // Agganciato a buildPillarCtx (tutti e tre i pilastri) — vedi PILLAR_CTX più in alto nel file.
         strength: strengthAbility === SKIP_TEXT ? "" : strengthAbility.trim(),
       },
       distressCheck: classification?.distressCheck || null,
