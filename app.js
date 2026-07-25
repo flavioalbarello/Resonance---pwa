@@ -179,26 +179,22 @@ function buildPillarCtx(profile) {
     ? `Vincolo assoluto, hard-stop non negoziabile: nessuna strategia deve esporre l'identità professionale del Ghost (${profile.professionalIdentity}) né richiedere dilatazione del suo tempo lineare di lavoro. È l'unico punto del sistema dove la lettura non è negoziabile — tutto il resto resta revisionabile.`
     : `Nessun vincolo di compartimentazione professionale dichiarato per questo Ghost. Resta comunque valido il principio generale: non richiedere dilatazione insostenibile del suo tempo lineare di lavoro.`;
   // Punto di forza dichiarato in onboarding (freeform.strength): unica risorsa positiva esplicita nel
-  // profilo, a differenza di hardConstraints (vincoli/cautele). Non è specifico di un pilastro — una
-  // competenza dichiarata è sfruttabile ovunque (Percorsi/Magi) — quindi va in tutti e tre i contesti.
+  // profilo, a differenza di hardConstraints (vincoli/cautele).
   const strengthNote = profile.freeform?.strength ? ` Punto di forza dichiarato dal Ghost, da tenere presente come risorsa su cui costruire (non solo colmare lacune): ${profile.freeform.strength}.` : "";
-  // Resto del blocco freeform (motivation/context/request), stesso trattamento dello strength: testo
-  // libero raccolto in onboarding, non specifico di un pilastro, quindi iniettato in tutti e tre i
-  // contesti generati qui sotto.
+  // Resto del blocco freeform (motivation/context/request): testo libero raccolto in onboarding.
   const motivationNote = profile.freeform?.motivation ? ` Motivazione dichiarata dal Ghost per l'uso di Resonance: ${profile.freeform.motivation}.` : "";
   const contextNote = profile.freeform?.context ? ` Contesto aggiuntivo dichiarato dal Ghost su di sé: ${profile.freeform.context}.` : "";
   const requestNote = profile.freeform?.request ? ` Richiesta prioritaria dichiarata dal Ghost (l'unica cosa che vorrebbe da Resonance): ${profile.freeform.request}.` : "";
-  // motivation/context sono testo libero non filtrato e possono nominare l'identità professionale del
-  // Ghost (es. "vorrei che Resonance mi aiutasse a gestire il mio lavoro da fisioterapista") — restano
-  // FUORI dal contesto air per non rischiare di violare il vincolo assoluto hasProfessionalConstraint.
-  // strength/request sono orientati a competenze/esiti desiderati, non a descrizioni di sé, e restano
-  // nel pattern preesistente valido per tutti e tre i pilastri.
+  // Nessuno dei quattro campi è filtrato: qualunque di essi può nominare l'identità professionale del
+  // Ghost (anche "punto di forza" o "richiesta" — es. "sono fisioterapista da 16 anni" ci starebbe
+  // benissimo in entrambi). Per questo l'intero blocco freeform va SOLO in bio/vidya: il contesto air
+  // resta il pattern preesistente, senza alcuna nota freeform, per non rischiare mai di violare il
+  // vincolo assoluto hasProfessionalConstraint.
   const freeformNotes = strengthNote + motivationNote + contextNote + requestNote;
-  const airFreeformNotes = strengthNote + requestNote;
   return {
     vidya: cogText + freeformNotes,
     bio: bioList.join("; ") + " Ogni lettura BIO è una stance interpretativa rivedibile dal Ghost, mai un verdetto medico oggettivo." + freeformNotes,
-    air: air + airFreeformNotes,
+    air,
   };
 }
 let CURRENT_GHOST_PROFILE = DEFAULT_GHOST_PROFILE;
@@ -2153,7 +2149,9 @@ function OnboardingView({ onComplete, settings }) {
       name: name.trim(),
       hardConstraints: hc,
       cognitiveStyle: { channel: channelList.join(", "), density, dialectic, dialecticOverride: null, reasoningStyle },
-      // Tutto il blocco è agganciato a buildPillarCtx (tutti e tre i pilastri) — vedi PILLAR_CTX più in alto nel file.
+      // Tutto il blocco è agganciato a buildPillarCtx, ma SOLO per bio/vidya — mai per air, dove nessuna
+      // nota freeform viene iniettata (nessuno di questi campi è filtrato e potrebbe nominare l'identità
+      // professionale del Ghost). Vedi PILLAR_CTX più in alto nel file.
       freeform: {
         motivation: motivation === SKIP_TEXT ? "" : motivation.trim(),
         context: context === SKIP_TEXT ? "" : context.trim(),
