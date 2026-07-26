@@ -6,7 +6,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-07-26 · cost-tracking-v1";
+const APP_BUILD = "2026-07-26 · sprint-hardening-v1";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -289,7 +289,7 @@ async function askClaudeDirect(system, userText, temperature, maxTokens, apiKey,
 // comportamento): riceve la risposta JSON grezza PRIMA dell'estrazione del solo testo, per chi ha
 // bisogno di ispezionare metadati oltre al content (es. citazioni/annotazioni di una web search
 // forzata — vedi runSeedResearch/PUNTO 1 BRIEF_correzioni_post_test 26/07/2026).
-async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, model, useWebSearch, image, onRaw) {
+async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, model, useWebSearch, image, onRaw, penalties = null) {
   const body = {
     model, max_tokens: maxTokens, temperature,
     messages: [{ role: "system", content: system }, { role: "user", content: buildOpenRouterContent(userText, image) }],
@@ -299,6 +299,12 @@ async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, m
   // densi (es. Shell con Manifesto+memoria pilastri) il riflesso "non ho accesso al web" prevaleva
   // anche col tool disponibile. tool_choice:"required" costringe la chiamata a usarlo, non a deciderlo.
   if (useWebSearch) { body.tools = [{ type: "openrouter:web_search" }]; body.tool_choice = "required"; }
+  // TASK A (SPRINT_HARDENING 26/07/2026 sera): penalità anti-loop opzionali, applicate SOLO dai
+  // chiamanti plain-text ad alta temperatura (mai da askModelJSON — vedi ANTI_LOOP_PENALTIES sotto).
+  if (penalties) {
+    body.repetition_penalty = penalties.repetition_penalty ?? 1.15;
+    body.frequency_penalty = penalties.frequency_penalty ?? 0.4;
+  }
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` }, body: JSON.stringify(body),
   });
@@ -311,12 +317,12 @@ async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, m
 // per il ramo OpenRouter (TASK 1 BRIEF_costtracking 26/07/2026 è scoped esplicitamente a "ogni
 // chiamata OpenRouter", non a Claude-direct). Nessun chiamante esistente lo passa: zero cambio di
 // comportamento per chi non ne ha bisogno.
-async function askModel(system, userText, temperature, maxTokens, settings, useWebSearch = false, image = null, onRaw = null) {
+async function askModel(system, userText, temperature, maxTokens, settings, useWebSearch = false, image = null, onRaw = null, penalties = null) {
   if (!settings.apiKey) throw new Error("Nessuna chiave API impostata (vai in Setup).");
   if (settings.provider === "claude-direct") return askClaudeDirect(system, userText, temperature, maxTokens, settings.apiKey, image);
-  return askOpenRouter(system, userText, temperature, maxTokens, settings.apiKey, settings.model, useWebSearch, image, onRaw);
+  return askOpenRouter(system, userText, temperature, maxTokens, settings.apiKey, settings.model, useWebSearch, image, onRaw, penalties);
 }
-async function askModelWithHistory(system, messages, temperature, maxTokens, settings, image = null, useWebSearch = false, onRaw = null) {
+async function askModelWithHistory(system, messages, temperature, maxTokens, settings, image = null, useWebSearch = false, onRaw = null, penalties = null) {
   if (!settings.apiKey) throw new Error("Nessuna chiave API impostata (vai in Setup).");
   if (settings.provider === "claude-direct") {
     const last = messages[messages.length - 1];
@@ -326,6 +332,11 @@ async function askModelWithHistory(system, messages, temperature, maxTokens, set
   const msgs = messages.map((m, i) => (i === messages.length - 1 && image ? { role: m.role, content: buildOpenRouterContent(m.content, image) } : m));
   const body = { model: settings.model, max_tokens: maxTokens, temperature, reasoning: { max_tokens: 300 }, messages: [{ role: "system", content: system }, ...msgs] };
   if (useWebSearch) { body.tools = [{ type: "openrouter:web_search" }]; body.tool_choice = "required"; } // solo OpenRouter — Claude-direct esce già sopra
+  // TASK A (SPRINT_HARDENING 26/07/2026 sera): stesse penalità anti-loop opzionali di askOpenRouter.
+  if (penalties) {
+    body.repetition_penalty = penalties.repetition_penalty ?? 1.15;
+    body.frequency_penalty = penalties.frequency_penalty ?? 0.4;
+  }
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.apiKey}` },
@@ -438,6 +449,64 @@ function logAiCost(pushDebugLog, functionTag, model, raw) {
 }
 
 //──────────────────────────────────────────────────────────
+// TASK A (SPRINT_HARDENING 26/07/2026 sera) — freno anti-loop degenerativo lato richiesta
+//──────────────────────────────────────────────────────────
+// Bug reale osservato: Balthasar-del-Seme ha generato output degenerato ("of 10 of 20 of 12..." per
+// centinaia di token). Causa probabile: temperatura medio-alta (Balthasar lavora apposta a 0.95-1.35
+// in Magi, voluto per il suo ruolo di perturbatore — NON abbassata) senza alcun freno anti-ripetizione,
+// combinazione nota per produrre loop su modelli economici (Llama 3.3 70B, produzione attuale).
+// Valori verificati sulla documentazione OpenRouter attuale (26/07/2026, non a memoria):
+// repetition_penalty range (0,2] default 1.0; frequency_penalty range [-2,2] default 0. La stessa
+// documentazione avverte che un valore TROPPO alto rende l'output incoerente — 1.15/0.4 sono
+// deliberatamente moderati: sopra il default ma lontani dal limite superiore.
+// SCOPE — solo chiamate a temperatura >= 0.6 con output in LINGUAGGIO NATURALE puro: MAI su chiamate
+// che generano JSON (askModelJSON — Melchior/Caspar-del-Seme, letture multi-lente, quiz, ecc.), perché
+// repetition_penalty/frequency_penalty penalizzano anche la ripetizione STRUTTURALE necessaria di
+// virgolette/parentesi/chiavi in un array JSON multi-elemento e possono corromperlo. Magi Caspar (0.2)
+// e le altre chiamate a bassa temperatura restano fuori: rischio di loop trascurabile, verificato ma
+// non applicato (richiesta esplicita del brief di verificare comunque).
+const ANTI_LOOP_PENALTIES = { repetition_penalty: 1.15, frequency_penalty: 0.4 };
+
+//──────────────────────────────────────────────────────────
+// TASK B (SPRINT_HARDENING 26/07/2026 sera) — freno di sicurezza automatico anti-degenerazione
+//──────────────────────────────────────────────────────────
+// Indipendente dalla causa esatta (Task A potrebbe non coprire ogni caso futuro, es. con un altro
+// modello): rileva un output chiaramente degenerato SENZA alcuna chiamata AI aggiuntiva, e se accade
+// riprova UNA sola volta la stessa richiesta (mai un ciclo infinito) prima di arrendersi onestamente.
+// Soglia scelta e motivata: 8 ripetizioni dello STESSO token in una finestra di 40 parole consecutive.
+// Una lista puntata o una prosa densa in italiano/inglese ripete al più connettivi comuni ("di", "e",
+// "il") poche volte per 40 parole (verificato a mano su testi legittimi del progetto: mai oltre 3-4
+// occorrenze) — 8 è un margine ampio sopra quel rumore naturale e ben sotto le centinaia di ripetizioni
+// del bug reale osservato ("of 10 of 20 of 12..."). Non configurabile ora (richiesta esplicita del brief).
+const DEGENERATE_OUTPUT_WINDOW = 40;
+const DEGENERATE_OUTPUT_THRESHOLD = 8;
+function isDegenerateOutput(text) {
+  if (!text) return false;
+  const words = text.trim().toLowerCase().split(/\s+/).map((w) => w.replace(/[.,!?;:"'()«»]/g, "")).filter(Boolean);
+  if (words.length < DEGENERATE_OUTPUT_WINDOW) return false; // troppo corto per giudicare: evita falsi positivi su risposte brevi legittime
+  for (let i = 0; i + DEGENERATE_OUTPUT_WINDOW <= words.length; i += 10) {
+    const counts = {};
+    for (const w of words.slice(i, i + DEGENERATE_OUTPUT_WINDOW)) {
+      counts[w] = (counts[w] || 0) + 1;
+      if (counts[w] >= DEGENERATE_OUTPUT_THRESHOLD) return true;
+    }
+  }
+  return false;
+}
+// `call` è una funzione zero-argomenti che rifà la richiesta originale (closure sul chiamante) — nessuna
+// duplicazione della costruzione del prompt qui. Se degenerato anche al secondo tentativo, lancia un
+// errore onesto (i chiamanti esistenti lo mostrano già via i loro cicli try/catch — nessuna UI nuova).
+async function askWithDegenerateGuard(call, functionTag, pushDebugLog = null) {
+  const first = await call();
+  if (!isDegenerateOutput(first)) return first;
+  pushDebugLog?.({ type: "degenerate-output", functionTag, attempt: 1, degenerateOutputDetected: true, error: null });
+  const second = await call();
+  if (!isDegenerateOutput(second)) return second;
+  pushDebugLog?.({ type: "degenerate-output", functionTag, attempt: 2, degenerateOutputDetected: true, error: "risposta degenerata anche al secondo tentativo" });
+  throw new Error("Risposta non valida, riprova più tardi.");
+}
+
+//──────────────────────────────────────────────────────────
 // TRIADE MAGI — pipeline sequenziale fissa (Legge 15 abrogata: non è un dibattito iterativo)
 //──────────────────────────────────────────────────────────
 // opts: { memory, targetPillar, intensity } — Magi non è più cieco (Manifesto V3 §4.1/§4.4).
@@ -458,10 +527,16 @@ async function runTriadeMagi(question, onStage, settings, opts = {}, pushDebugLo
   // questo tool nel client attuale) — degrada silenziosamente a perturbazione da sola immaginazione.
   const balthasarWebSearch = settings.provider === "openrouter";
   const balthasarPrompt = `${baseCtx}${memoriaCtx}${targetCtx} Sei BALTHASAR, il Perturbatore.${balthasarWebSearch ? " Hai accesso alla ricerca web: usala per ancorare la perturbazione a un dato, caso o approccio reale non ancora noto al Ghost — non limitarti a rimescolare concetti che già possiede." : ""} Genera una divergenza evolutiva su questo tema, audace, non convenzionale — a intensità "${intensity}" (leggera = uno spostamento laterale; profonda = una rottura vera con l'assetto attuale).`;
-  const balthasar = await askModel(balthasarPrompt, question, balthasarTemp, 1600, settings, balthasarWebSearch, null, (raw) => logAiCost(pushDebugLog, "balthasar", settings.model, raw));
+  const balthasar = await askWithDegenerateGuard(
+    () => askModel(balthasarPrompt, question, balthasarTemp, 1600, settings, balthasarWebSearch, null, (raw) => logAiCost(pushDebugLog, "balthasar", settings.model, raw), ANTI_LOOP_PENALTIES),
+    "balthasar", pushDebugLog
+  );
   onStage("balthasar", balthasar);
   onStage("melchior", null);
-  const melchior = await askModel(`${baseCtx} Sei MELCHIOR, il Traduttore. Traduci questa idea in azione concretamente eseguibile.\n\nIdea di Balthasar: "${balthasar}"`, question, 0.7, 1600, settings, false, null, (raw) => logAiCost(pushDebugLog, "melchior", settings.model, raw));
+  const melchior = await askWithDegenerateGuard(
+    () => askModel(`${baseCtx} Sei MELCHIOR, il Traduttore. Traduci questa idea in azione concretamente eseguibile.\n\nIdea di Balthasar: "${balthasar}"`, question, 0.7, 1600, settings, false, null, (raw) => logAiCost(pushDebugLog, "melchior", settings.model, raw), ANTI_LOOP_PENALTIES),
+    "melchior", pushDebugLog
+  );
   onStage("melchior", melchior);
   onStage("caspar", null);
   const containmentCtx = targetPillar
@@ -473,7 +548,10 @@ async function runTriadeMagi(question, onStage, settings, opts = {}, pushDebugLo
   const caspar = await askModel(`${baseCtx} Sei CASPAR, l'Ancora. Verifica il piano contro i vincoli assoluti: salute, tempo lineare del Ghost, sostenibilità economica, ${casparIdentityLine}. ${containmentCtx}\n\nPiano: "${melchior}"`, question, 0.2, 1600, settings, false, null, (raw) => logAiCost(pushDebugLog, "caspar", settings.model, raw));
   onStage("caspar", caspar);
   onStage("synthesis", null);
-  const synthesis = await askModel(`${baseCtx} Genera la SINTESI ESECUTIVA: piano calibrato in 2-3 frasi + "Vettore di Perturbazione V+1".\n\nBalthasar: "${balthasar}"\nMelchior: "${melchior}"\nCaspar: "${caspar}"`, question, 0.6, 1500, settings);
+  const synthesis = await askWithDegenerateGuard(
+    () => askModel(`${baseCtx} Genera la SINTESI ESECUTIVA: piano calibrato in 2-3 frasi + "Vettore di Perturbazione V+1".\n\nBalthasar: "${balthasar}"\nMelchior: "${melchior}"\nCaspar: "${caspar}"`, question, 0.6, 1500, settings, false, null, null, ANTI_LOOP_PENALTIES),
+    "magi_synthesis", pushDebugLog
+  );
   onStage("synthesis", synthesis);
   return { balthasar, melchior, caspar, synthesis };
 }
@@ -493,7 +571,10 @@ async function reflectPerturbationIntoMemoria(targetPillar, synthesis, intensity
 async function runAirAgent(task, settings, pushDebugLog = null) {
   if (settings.provider !== "openrouter") throw new Error("L'Agente AIR richiede il motore OpenRouter (per la ricerca web).");
   const system = `${nowContext()} Sei l'Agente AIR del sistema Resonance: assistente per il pilastro dell'autonomia economica. Hai accesso alla ricerca web — cerca informazioni aggiornate a oggi, non presentare risultati datati come attuali. ${PILLAR_CTX.air} Rispondi in italiano, concreto, con passi azionabili e fonti quando le usi.`;
-  return askOpenRouter(system, task, 0.7, 1900, settings.apiKey, settings.model, true, null, (raw) => logAiCost(pushDebugLog, "airAgent", settings.model, raw));
+  return askWithDegenerateGuard(
+    () => askOpenRouter(system, task, 0.7, 1900, settings.apiKey, settings.model, true, null, (raw) => logAiCost(pushDebugLog, "airAgent", settings.model, raw), ANTI_LOOP_PENALTIES),
+    "airAgent", pushDebugLog
+  );
 }
 // FIX 20/07/2026 (Opzione 2 — ricerca disaccoppiata): un modulo di ricerca isolato, con system prompt
 // minimale come l'Agente AIR (che si è dimostrato affidabile) — invece di far decidere al modello se
@@ -586,16 +667,19 @@ async function runSeedResearch(seme, pillarMemory, settings, pushDebugLog = null
   const balthasarSystem = `${nowContext()} Sei BALTHASAR nel sistema Resonance, pilastro AIR — funzione di ricerca per un Seme (un'idea grezza non ancora sviluppata). Hai accesso alla ricerca web: usala per trovare dati, casi reali o approcci concreti pertinenti, aggiornati a oggi — non presentare risultati datati come attuali. ${PILLAR_CTX.air}
 Memoria procedurale AIR accumulata finora (non ripetere strategie già scartate): ${pillarMemory || "nessuna nota ancora"}
 Rispondi in italiano, concreto, max 200 parole. Cita SOLO fonti/domini effettivamente presenti nei risultati di ricerca che hai ricevuto — se non puoi attribuire con certezza un dato a una fonte reale, ometti l'attribuzione o dichiara esplicitamente che è una stima non verificata. Non inventare mai nomi di siti o servizi.`;
-  const balthasar = await askOpenRouter(balthasarSystem, `Idea da sviluppare: ${redactedContent}`, 0.7, 1200, settings.apiKey, settings.model, true, null, (raw) => {
-    const msg = raw.choices?.[0]?.message || {};
-    const annotations = msg.annotations || raw.citations || msg.tool_calls || [];
-    webSearchDiag.toolInvoked = Array.isArray(annotations) ? annotations.length > 0 : !!annotations;
-    const urls = (Array.isArray(msg.annotations) ? msg.annotations : [])
-      .map((a) => a?.url_citation?.url || a?.url).filter(Boolean);
-    webSearchDiag.citationCount = urls.length;
-    webSearchDiag.citationDomains = [...new Set(urls.map((u) => { try { return new URL(u).hostname; } catch { return u; } }))].slice(0, 8);
-    logAiCost(pushDebugLog, "seme_ricerca", settings.model, raw);
-  });
+  const balthasar = await askWithDegenerateGuard(
+    () => askOpenRouter(balthasarSystem, `Idea da sviluppare: ${redactedContent}`, 0.7, 1200, settings.apiKey, settings.model, true, null, (raw) => {
+      const msg = raw.choices?.[0]?.message || {};
+      const annotations = msg.annotations || raw.citations || msg.tool_calls || [];
+      webSearchDiag.toolInvoked = Array.isArray(annotations) ? annotations.length > 0 : !!annotations;
+      const urls = (Array.isArray(msg.annotations) ? msg.annotations : [])
+        .map((a) => a?.url_citation?.url || a?.url).filter(Boolean);
+      webSearchDiag.citationCount = urls.length;
+      webSearchDiag.citationDomains = [...new Set(urls.map((u) => { try { return new URL(u).hostname; } catch { return u; } }))].slice(0, 8);
+      logAiCost(pushDebugLog, "seme_ricerca", settings.model, raw);
+    }, ANTI_LOOP_PENALTIES),
+    "seme_ricerca", pushDebugLog
+  );
   const melchiorSystem = `${nowContext()} Sei MELCHIOR nel sistema Resonance, pilastro AIR — traduci la ricerca in strategie concrete ed eseguibili per sviluppare questa idea. ${PILLAR_CTX.air}
 Genera 2-3 strategie, ciascuna specifica e azionabile (non generica). Non citare fonti/dati che Balthasar non ha già fornito — se un dettaglio non è supportato dalla ricerca ricevuta, presentalo come ipotesi da verificare, non come fatto. JSON: {"strategie":[{"titolo":"...","descrizione":"...(max 80 parole)"}]}`;
   const melchiorData = await askModelJSON(melchiorSystem, `Idea: ${redactedContent}\nRicerca di Balthasar: ${balthasar}`, 0.6, 1400, settings, null, (raw) => logAiCost(pushDebugLog, "seme_ricerca", settings.model, raw));
@@ -630,12 +714,15 @@ Genera 2-3 strategie, ciascuna specifica e azionabile (non generica). Non citare
 // mondo esterno: il gate-check (runSeedGateCheck) verifica il passo PRIMA che venga considerato eseguito.
 async function proposeSeedExecutionStep(seme, pillarMemory, settings, pushDebugLog = null) {
   const logDigest = (seme.executionLog || []).map((e) => `- ${e.note}`).join("\n") || "nessun passo ancora eseguito";
-  return askModel(
-    `Sei lo Shell del sistema Resonance, pilastro AIR — sviluppo autonomo di un Seme già approvato dal Ghost. ${PILLAR_CTX.air}
+  return askWithDegenerateGuard(
+    () => askModel(
+      `Sei lo Shell del sistema Resonance, pilastro AIR — sviluppo autonomo di un Seme già approvato dal Ghost. ${PILLAR_CTX.air}
 Memoria procedurale AIR: ${pillarMemory || "nessuna nota ancora"}
 Proponi il PROSSIMO passo concreto di sviluppo (bozza di prodotto, ricerca dettagliata, o piano operativo — mai un'azione che tocchi il mondo esterno: nessun acquisto, pubblicazione, iscrizione o account reale). Un solo passo, specifico, max 120 parole.`,
-    `Idea: ${seme.content}\nStrategia approvata: ${seme.approvedStrategy?.titolo || ""} — ${seme.approvedStrategy?.descrizione || ""}\nPassi già fatti:\n${logDigest}`,
-    0.6, 900, settings, false, null, (raw) => logAiCost(pushDebugLog, "seme_esecuzione", settings.model, raw)
+      `Idea: ${seme.content}\nStrategia approvata: ${seme.approvedStrategy?.titolo || ""} — ${seme.approvedStrategy?.descrizione || ""}\nPassi già fatti:\n${logDigest}`,
+      0.6, 900, settings, false, null, (raw) => logAiCost(pushDebugLog, "seme_esecuzione", settings.model, raw), ANTI_LOOP_PENALTIES
+    ),
+    "seme_esecuzione", pushDebugLog
   );
 }
 // Gate-check obbligatorio (Parte 6 del brief) — lista CHIUSA di 4 condizioni, non un giudizio
@@ -859,7 +946,10 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
   const messages = [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: effectiveMessage }];
   // Risposta (+ web search on-demand, se richiesto), lettura multi-lente (+ Calendar fuso, se abilitato) e bozza: indipendenti, partono insieme
   const [reply, lensResult, draft] = await Promise.all([
-    askModelWithHistory(system, messages, 0.7, 3000, settings, image, false, (raw) => logAiCost(pushDebugLog, "shell", settings.model, raw)), // ricerca già fatta sopra, dati già nel system prompt
+    askWithDegenerateGuard(
+      () => askModelWithHistory(system, messages, 0.7, 3000, settings, image, false, (raw) => logAiCost(pushDebugLog, "shell", settings.model, raw), ANTI_LOOP_PENALTIES),
+      "shell", pushDebugLog
+    ), // ricerca già fatta sopra, dati già nel system prompt
     readThroughLenses(recentText, settings, image, !!settings.calendarEnabled).catch(() => ({ readings: [], calendarProposal: null })),
     settings.armsDraftsEnabled ? draftIfNeeded(recentText, settings).catch(() => null) : Promise.resolve(null),
   ]);
