@@ -95,17 +95,22 @@ crescita silenziosa più concreto a lungo termine (nessun tetto).
   (`catch { return null; }`), il turno principale procede comunque MA il costo della chiamata
   fallita è già speso senza alcun beneficio — accettabile come design (fallimento onesto), ma
   vale la pena notare che non c'è retry né log dedicato per capire quanto spesso questo accade.
-- **Cost-tracking incompleto**: `caspar` (Magi) e `synthesis` (Magi) NON passano `onRaw` a
-  `askModel` — quindi quelle due chiamate (2 delle 4 per round Magi) non vengono loggate dal
-  sistema di costo/token esistente. Non è un bug funzionale, ma rende il pannello "Costi/token
-  IA" in Setup incompleto per Agorà Magi: sottostima il costo reale di ogni Agorà di circa metà
-  delle chiamate coinvolte.
+- **Cost-tracking incompleto**: SOLO `synthesis` (Magi) non passava `onRaw` a `askModel` —
+  quindi quella chiamata (1 delle 4 per round Magi) non veniva loggata dal sistema di costo/token
+  esistente. **Correzione rispetto alla prima stesura di questo audit**: qui era scritto per
+  errore che anche `caspar` ne fosse privo — falso, verificato ora: `caspar` era già strumentato
+  con `logAiCost` prima di questo sprint. Errore mio, corretto in questa revisione invece di
+  lasciarlo scorretto. `synthesis` è stato sistemato (vedi Proposta 1, ora implementata).
 
-## 4. Proposte di ottimizzazione, ordinate per rapporto guadagno/rischio (nessuna implementata)
+## 4. Proposte di ottimizzazione, ordinate per rapporto guadagno/rischio
 
-1. **Completare il cost-tracking mancante su Magi (caspar/synthesis)** — guadagno: visibilità
+1. **Completare il cost-tracking mancante su Magi (synthesis)** — guadagno: visibilità
    accurata del costo reale (non un risparmio diretto, ma la precondizione per giudicare le altre
-   proposte). Rischio: minimo, stesso pattern già esistente (`onRaw`), 2 righe da aggiungere.
+   proposte). Rischio: minimo, stesso pattern già esistente (`onRaw`). **IMPLEMENTATA** (round
+   successivo, su richiesta esplicita di Flavio): aggiunto `onRaw` con `logAiCost(pushDebugLog,
+   "magi_synthesis", ...)` alla chiamata `synthesis` in `runTriadeMagi`. `caspar` non necessitava
+   modifiche (era già strumentato, vedi correzione in sezione 3). Le altre 4 proposte restano
+   non implementate, in attesa di decisione di Flavio.
 2. **Uscita anticipata sui round Seed a 0 risultati** — es. se 2 round consecutivi producono 0
    strategie approvate, passa a `"proposing"` invece di continuare fino al tetto di 5. Guadagno:
    fino a 9 chiamate AI risparmiate per Seed "senza speranza" (da 15 a 6). Rischio: basso — una

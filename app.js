@@ -549,7 +549,7 @@ async function runTriadeMagi(question, onStage, settings, opts = {}, pushDebugLo
   onStage("caspar", caspar);
   onStage("synthesis", null);
   const synthesis = await askWithDegenerateGuard(
-    () => askModel(`${baseCtx} Genera la SINTESI ESECUTIVA: piano calibrato in 2-3 frasi + "Vettore di Perturbazione V+1".\n\nBalthasar: "${balthasar}"\nMelchior: "${melchior}"\nCaspar: "${caspar}"`, question, 0.6, 1500, settings, false, null, null, ANTI_LOOP_PENALTIES),
+    () => askModel(`${baseCtx} Genera la SINTESI ESECUTIVA: piano calibrato in 2-3 frasi + "Vettore di Perturbazione V+1".\n\nBalthasar: "${balthasar}"\nMelchior: "${melchior}"\nCaspar: "${caspar}"`, question, 0.6, 1500, settings, false, null, (raw) => logAiCost(pushDebugLog, "magi_synthesis", settings.model, raw), ANTI_LOOP_PENALTIES),
     "magi_synthesis", pushDebugLog
   );
   onStage("synthesis", synthesis);
