@@ -503,6 +503,7 @@ Genera 2-3 strategie, ciascuna specifica e azionabile (non generica). JSON: {"st
   const melchiorData = await askModelJSON(melchiorSystem, `Idea: ${redactedContent}\nRicerca di Balthasar: ${balthasar}`, 0.6, 1400, settings);
   const candidate = (melchiorData?.strategie || []).slice(0, 3).map((s, i) => ({ id: String(i), titolo: s.titolo || `Strategia ${i + 1}`, descrizione: s.descrizione || "" }));
   let approved = [];
+  let rejected = [];
   if (candidate.length) {
     // CORREZIONE 26/07/2026: il vincolo (§6.1) riguarda l'identità RICONOSCIBILE (il nome del Ghost,
     // il brand/studio professionale), non la materia fisioterapica in astratto — va detto esplicitamente
@@ -518,8 +519,13 @@ Genera 2-3 strategie, ciascuna specifica e azionabile (non generica). JSON: {"st
     // Fail-safe, non fail-open: senza un verdetto ESPLICITO di approvazione la strategia resta fuori,
     // per sempre (mai riproposta) — coerente con runAccettore, l'unico hard-stop vero del sistema.
     approved = candidate.filter((c) => verdetti.get(c.id)?.approvata === true).map(({ id, ...rest }) => rest);
+    // Esito di Caspar per il debug log (App.advanceSeedIfDue): SOLO id scartato + motivo breve di
+    // Caspar (≤20 parole, sua sintesi) — MAI il testo/prompt completo inviato al modello, che conteneva
+    // il contenuto originale non redatto dell'idea (vedi CHIARIMENTO 26/07/2026, punto 2).
+    rejected = candidate.filter((c) => verdetti.get(c.id)?.approvata !== true)
+      .map((c) => ({ id: c.id, reason: (verdetti.get(c.id)?.motivo || "nessun verdetto esplicito di approvazione").slice(0, 200) }));
   }
-  return { balthasar, approvedStrategies: approved, candidateCount: candidate.length };
+  return { balthasar, approvedStrategies: approved, rejectedStrategies: rejected, candidateCount: candidate.length };
 }
 // Fase 2 — un passo per volta (stile proposeNextStep dei Percorsi), MAI un'azione che tocchi il
 // mondo esterno: il gate-check (runSeedGateCheck) verifica il passo PRIMA che venga considerato eseguito.
@@ -1595,8 +1601,12 @@ function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGate
           </div>`)}
         </div>`}
         ${s.status === "gated" && html`<div style="margin-top:10px">
-          <div class="r-error">${s.gateReason}</div>
-          <button class="r-btn r-btn-ghost" style="margin-left:0;margin-top:6px" onClick=${() => onUnlockGatedSeed(s.id)}>Sblocca/Conferma</button>
+          <div class="r-error">Bloccato: ${s.gateReason}</div>
+          ${s.gatedActionPreview && html`<div style="margin-top:6px">
+            <div class="r-hub-detail">Azione candidata bloccata (esattamente questa, se confermi):</div>
+            <div class="r-magi-text" style="margin-top:4px;white-space:pre-wrap">${s.gatedActionPreview}</div>
+          </div>`}
+          <button class="r-btn r-btn-ghost" style="margin-left:0;margin-top:8px" onClick=${() => onUnlockGatedSeed(s.id)}>Sblocca/Conferma questa azione</button>
         </div>`}
       </${Card}>`)}
     </div>`}
@@ -2690,6 +2700,7 @@ function App() {
       pillar: "air", content, originSource, status: "seed",
       researchIterationCount: 0, executionIterationCount: 0, researchLog: [], executionLog: [],
       proposedStrategies: [], approvedStrategy: null, gateReason: null,
+      gatedActionPreview: null, // testo esatto dell'azione candidata bloccata da runSeedGateCheck — vedi unlockGatedSeed
     };
     setSemiSync([s, ...stateRef.current.semi]);
     pushDebugLog({ type: "seme-created", id: s.id, originSource, error: null });
@@ -2699,13 +2710,26 @@ function App() {
     setSemiSync(stateRef.current.semi.map((s) => (s.id === id ? { ...s, approvedStrategy: strategy, status: "executing", gateReason: null } : s)));
     pushDebugLog({ type: "seme-approved", id, strategyTitolo: strategy?.titolo || null, error: null });
   }, [setSemiSync, pushDebugLog]);
-  // "Sblocca/Conferma" (brief 1.C, stato "gated"): il Ghost sceglie di riprovare nonostante il blocco.
-  // Non resetta executionIterationCount (il tentativo bloccato ha già consumato la sua iterazione) —
-  // solo la prossima apertura Shell farà un nuovo tentativo, mai qui in automatico (Parte 3 del brief).
+  // CORREZIONE 26/07/2026: "Sblocca/Conferma" non è più un bypass generico del gate — segue lo stesso
+  // pattern propose→confirm→execute già validato per Calendar/email (il Ghost vede il contenuto
+  // ESATTO dell'azione PRIMA di confermarla). gatedActionPreview è l'azione candidata mostrata in UI
+  // (SemiPanel): confermare la scrive in executionLog esattamente com'era mostrata, non una nuova
+  // azione rigenerata al prossimo avanzamento. Non incrementa executionIterationCount (il tentativo
+  // bloccato l'ha già consumata) — un solo gate pendente per Seme, quindi nessun rischio di scavalcare
+  // più azioni bloccate in sequenza alla cieca.
   const unlockGatedSeed = useCallback((id) => {
-    const previousReason = stateRef.current.semi.find((s) => s.id === id)?.gateReason || null;
-    setSemiSync(stateRef.current.semi.map((s) => (s.id === id ? { ...s, status: "executing", gateReason: null } : s)));
-    pushDebugLog({ type: "seme-unlocked", id, previousGateReason: previousReason, error: null });
+    const seed = stateRef.current.semi.find((s) => s.id === id);
+    const confirmedAction = seed?.gatedActionPreview || null;
+    setSemiSync(stateRef.current.semi.map((s) => {
+      if (s.id !== id) return s;
+      const log = confirmedAction
+        ? [...s.executionLog, { date: new Date().toISOString(), note: `Confermato manualmente dal Ghost nonostante il gate: ${confirmedAction}` }]
+        : s.executionLog;
+      return { ...s, status: "executing", gateReason: null, gatedActionPreview: null, executionLog: log };
+    }));
+    // Nessun testo grezzo nel log di debug (CHIARIMENTO 26/07/2026, punto 2) — il contenuto confermato
+    // resta solo nell'executionLog del Seme stesso (dato del Ghost, non un prompt inviato a un modello).
+    pushDebugLog({ type: "seme-unlocked", id, hadPendingAction: !!confirmedAction, error: null });
   }, [setSemiSync, pushDebugLog]);
   // Un solo avanzamento per apertura della tab Shell (Parte 3 del brief) — chiamata dall'effect di
   // mount di ShellView, MAI da un timer o da ogni messaggio. Legge stato FRESCO via stateRef (stesso
@@ -2718,7 +2742,7 @@ function App() {
     if (target.status === "seed" || target.status === "researching") {
       if (target.researchIterationCount >= SEME_RESEARCH_ITERATION_CAP) return;
       try {
-        const { balthasar, approvedStrategies } = await runSeedResearch(target, s.memory.air, settingsRef.current);
+        const { balthasar, approvedStrategies, rejectedStrategies } = await runSeedResearch(target, s.memory.air, settingsRef.current);
         const nextCount = target.researchIterationCount + 1;
         const newlyApproved = approvedStrategies.filter((a) => !target.proposedStrategies.some((p) => p.titolo === a.titolo));
         const mergedStrategies = [...target.proposedStrategies, ...newlyApproved];
@@ -2726,7 +2750,9 @@ function App() {
         const logEntry = { date: new Date().toISOString(), note: `Round ${nextCount}/${SEME_RESEARCH_ITERATION_CAP} — ${approvedStrategies.length} strategia/e approvata/e. Ricerca: ${balthasar.slice(0, 160)}` };
         const updated = { ...target, status: nextStatus, researchIterationCount: nextCount, researchLog: [...target.researchLog, logEntry], proposedStrategies: mergedStrategies };
         setSemiSync(stateRef.current.semi.map((x) => (x.id === target.id ? updated : x)));
-        pushDebugLog({ type: "seme-research", id: target.id, originSource: target.originSource, round: nextCount, approvedCount: approvedStrategies.length, status: nextStatus, error: null });
+        // Esito di Caspar-del-Seme nel log di debug: SOLO id scartato + motivo breve (≤200 caratteri,
+        // sintesi di Caspar) — MAI il testo/prompt completo inviato al modello (CHIARIMENTO 26/07/2026, p.2).
+        pushDebugLog({ type: "seme-research", id: target.id, originSource: target.originSource, round: nextCount, approvedCount: approvedStrategies.length, casparRejections: rejectedStrategies, status: nextStatus, error: null });
       } catch (e) {
         pushDebugLog({ type: "seme-research", id: target.id, originSource: target.originSource, error: e.message });
       }
@@ -2737,11 +2763,14 @@ function App() {
       const stepText = await proposeSeedExecutionStep(target, s.memory.air, settingsRef.current);
       const gate = await runSeedGateCheck(stepText, CURRENT_GHOST_PROFILE, settingsRef.current);
       const nextCount = target.executionIterationCount + 1;
+      // Se bloccato, il passo candidato resta visibile in gatedActionPreview finché il Ghost non lo
+      // conferma o lo scarta (vedi unlockGatedSeed) — mai un unlock alla cieca senza vedere COSA si sblocca.
       const updated = gate.gated
-        ? { ...target, status: "gated", executionIterationCount: nextCount, gateReason: gate.reason, executionLog: [...target.executionLog, { date: new Date().toISOString(), note: `Bloccato: ${gate.reason}` }] }
-        : { ...target, executionIterationCount: nextCount, executionLog: [...target.executionLog, { date: new Date().toISOString(), note: stepText }] };
+        ? { ...target, status: "gated", executionIterationCount: nextCount, gateReason: gate.reason, gatedActionPreview: stepText, executionLog: [...target.executionLog, { date: new Date().toISOString(), note: `Bloccato: ${gate.reason}` }] }
+        : { ...target, executionIterationCount: nextCount, gatedActionPreview: null, executionLog: [...target.executionLog, { date: new Date().toISOString(), note: stepText }] };
       setSemiSync(stateRef.current.semi.map((x) => (x.id === target.id ? updated : x)));
-      pushDebugLog({ type: "seme-execution", id: target.id, originSource: target.originSource, round: nextCount, gated: gate.gated, error: null });
+      // reason incluso (breve, ≤20 parole, verdetto di Caspar) — MAI stepText/il prompt completo nel log di debug.
+      pushDebugLog({ type: "seme-execution", id: target.id, originSource: target.originSource, round: nextCount, gated: gate.gated, reason: gate.gated ? gate.reason : null, error: null });
     } catch (e) {
       pushDebugLog({ type: "seme-execution", id: target.id, originSource: target.originSource, error: e.message });
     }
