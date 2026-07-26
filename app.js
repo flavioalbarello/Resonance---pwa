@@ -6,7 +6,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-07-25 · seme-air-v1";
+const APP_BUILD = "2026-07-26 · cost-tracking-v1";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -307,12 +307,16 @@ async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, m
   if (onRaw) { try { onRaw(data); } catch { /* diagnostica best-effort: non deve mai far fallire la chiamata */ } }
   return (data.choices?.[0]?.message?.content || "").trim();
 }
-async function askModel(system, userText, temperature, maxTokens, settings, useWebSearch = false, image = null) {
+// onRaw: stesso hook opzionale/retrocompatibile di askOpenRouter (vedi sopra) — propagato qui SOLO
+// per il ramo OpenRouter (TASK 1 BRIEF_costtracking 26/07/2026 è scoped esplicitamente a "ogni
+// chiamata OpenRouter", non a Claude-direct). Nessun chiamante esistente lo passa: zero cambio di
+// comportamento per chi non ne ha bisogno.
+async function askModel(system, userText, temperature, maxTokens, settings, useWebSearch = false, image = null, onRaw = null) {
   if (!settings.apiKey) throw new Error("Nessuna chiave API impostata (vai in Setup).");
   if (settings.provider === "claude-direct") return askClaudeDirect(system, userText, temperature, maxTokens, settings.apiKey, image);
-  return askOpenRouter(system, userText, temperature, maxTokens, settings.apiKey, settings.model, useWebSearch, image);
+  return askOpenRouter(system, userText, temperature, maxTokens, settings.apiKey, settings.model, useWebSearch, image, onRaw);
 }
-async function askModelWithHistory(system, messages, temperature, maxTokens, settings, image = null, useWebSearch = false) {
+async function askModelWithHistory(system, messages, temperature, maxTokens, settings, image = null, useWebSearch = false, onRaw = null) {
   if (!settings.apiKey) throw new Error("Nessuna chiave API impostata (vai in Setup).");
   if (settings.provider === "claude-direct") {
     const last = messages[messages.length - 1];
@@ -329,6 +333,7 @@ async function askModelWithHistory(system, messages, temperature, maxTokens, set
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || "Errore OpenRouter");
+  if (onRaw) { try { onRaw(data); } catch { /* diagnostica best-effort: non deve mai far fallire il turno */ } }
   return (data.choices?.[0]?.message?.content || "").trim();
 }
 // Estrae il primo blocco {...} bilanciato da una stringa, tollerando testo prima/dopo
@@ -386,8 +391,8 @@ function logJsonFailure(raw, settings) {
     saveKey("json-parse-failures", [entry, ...prev].slice(0, 10));
   } catch { /* diagnostica best-effort: non deve mai far fallire il turno */ }
 }
-async function askModelJSON(system, userText, temperature, maxTokens, settings, image = null) {
-  const raw = await askModel(system + "\n\nRispondi SOLO con JSON valido, nessun testo prima o dopo, nessun blocco markdown.", userText, temperature, maxTokens, settings, false, image);
+async function askModelJSON(system, userText, temperature, maxTokens, settings, image = null, onRaw = null) {
+  const raw = await askModel(system + "\n\nRispondi SOLO con JSON valido, nessun testo prima o dopo, nessun blocco markdown.", userText, temperature, maxTokens, settings, false, image, onRaw);
   if (!raw) return null;
   const cleaned = stripTrailingCommas(sanitizeJsonControlChars(raw.replace(/```json|```/g, "").trim()));
   try { return JSON.parse(cleaned); } catch { /* prova il fallback sotto */ }
@@ -404,6 +409,35 @@ async function askModelJSON(system, userText, temperature, maxTokens, settings, 
 }
 
 //──────────────────────────────────────────────────────────
+// TRACCIAMENTO COSTI/TOKEN (TASK 1, BRIEF_costtracking_balthasarsources 26/07/2026)
+//──────────────────────────────────────────────────────────
+// NON verificato empiricamente con una chiamata reale in questa sessione (nessuna chiave OpenRouter
+// disponibile in questo ambiente sandboxed) — parsing costruito sullo schema OpenAI-compatibile
+// standard che OpenRouter documenta (usage.prompt_tokens/completion_tokens/total_tokens), più un
+// tentativo opportunistico su usage.cost (presente SOLO se l'account ha l'"usage accounting"
+// abilitato — non garantito, non verificato qui). Se costUsd risulta sempre null nell'uso reale, è
+// il segnale che quel campo non arriva davvero: NON va MAI stimato da un prezzario hardcoded
+// (richiesta esplicita del brief — un costo inventato che si spaccia per reale sarebbe peggio di
+// nessun dato). Resta un gap dichiarato per la Fase 2 di questo lavoro, da chiudere con una chiave
+// vera alla prima occasione utile — vedi riepilogo di consegna.
+function extractUsageForLog(raw) {
+  const u = raw?.usage || {};
+  const tokensIn = typeof u.prompt_tokens === "number" ? u.prompt_tokens : null;
+  const tokensOut = typeof u.completion_tokens === "number" ? u.completion_tokens : null;
+  const tokensTotal = typeof u.total_tokens === "number" ? u.total_tokens : (tokensIn !== null && tokensOut !== null ? tokensIn + tokensOut : null);
+  const costUsd = typeof u.cost === "number" ? u.cost : null; // mai stimato — solo se OpenRouter lo fornisce davvero
+  return { tokensIn, tokensOut, tokensTotal, costUsd };
+}
+// functionTag: SOLO i tag fissi previsti dal brief ("shell","balthasar","melchior","caspar",
+// "airAgent","webSearchSnapshot","seme_ricerca","seme_esecuzione") — scelta di scope esplicita del
+// brief (Shell, Magi/Balthasar/Melchior/Caspar, Seme, Agente AIR, ricerca web on-demand), non ogni
+// singola chiamata askModel/askModelJSON dell'app (quiz, percorsi, resonance, ecc. restano fuori).
+function logAiCost(pushDebugLog, functionTag, model, raw) {
+  if (!pushDebugLog) return;
+  pushDebugLog({ type: "ai-cost", functionTag, model, ...extractUsageForLog(raw), error: null });
+}
+
+//──────────────────────────────────────────────────────────
 // TRIADE MAGI — pipeline sequenziale fissa (Legge 15 abrogata: non è un dibattito iterativo)
 //──────────────────────────────────────────────────────────
 // opts: { memory, targetPillar, intensity } — Magi non è più cieco (Manifesto V3 §4.1/§4.4).
@@ -411,7 +445,7 @@ async function askModelJSON(system, userText, temperature, maxTokens, settings, 
 // l'intensità modula la sua temperatura (rischio dosato, §4.4); Caspar riceve il pilastro-bersaglio
 // per verificare il contenimento operativo (accoppiamento operativo stretto, §4.4).
 const MAGI_INTENSITY = { leggera: 0.95, media: 1.15, profonda: 1.35 };
-async function runTriadeMagi(question, onStage, settings, opts = {}) {
+async function runTriadeMagi(question, onStage, settings, opts = {}, pushDebugLog = null) {
   const { memory = null, targetPillar = null, intensity = "media" } = opts;
   const baseCtx = `${nowContext()} Contesto: sei parte del sistema "Resonance", framework di sviluppo personale del Ghost (Flavio), tre pilastri: BIO (salute), AIR (autonomia economica), VIDYA (crescita creativa/cognitiva). Sei l'unico polo di perturbazione deliberata del sistema — gli altri meccanismi mantengono, tu spingi oltre la cristallizzazione. Rispondi in italiano, diretto, max 70 parole, senza premesse.`;
   const memoriaCtx = memory ? `\n\nMemoria procedurale accumulata sui pilastri (leggila per generare una perturbazione radicata nella storia reale del sistema, non generica):\nBIO: ${memory.bio || "nessuna nota"}\nAIR: ${memory.air || "nessuna nota"}\nVIDYA: ${memory.vidya || "nessuna nota"}` : "";
@@ -424,10 +458,10 @@ async function runTriadeMagi(question, onStage, settings, opts = {}) {
   // questo tool nel client attuale) — degrada silenziosamente a perturbazione da sola immaginazione.
   const balthasarWebSearch = settings.provider === "openrouter";
   const balthasarPrompt = `${baseCtx}${memoriaCtx}${targetCtx} Sei BALTHASAR, il Perturbatore.${balthasarWebSearch ? " Hai accesso alla ricerca web: usala per ancorare la perturbazione a un dato, caso o approccio reale non ancora noto al Ghost — non limitarti a rimescolare concetti che già possiede." : ""} Genera una divergenza evolutiva su questo tema, audace, non convenzionale — a intensità "${intensity}" (leggera = uno spostamento laterale; profonda = una rottura vera con l'assetto attuale).`;
-  const balthasar = await askModel(balthasarPrompt, question, balthasarTemp, 1600, settings, balthasarWebSearch);
+  const balthasar = await askModel(balthasarPrompt, question, balthasarTemp, 1600, settings, balthasarWebSearch, null, (raw) => logAiCost(pushDebugLog, "balthasar", settings.model, raw));
   onStage("balthasar", balthasar);
   onStage("melchior", null);
-  const melchior = await askModel(`${baseCtx} Sei MELCHIOR, il Traduttore. Traduci questa idea in azione concretamente eseguibile.\n\nIdea di Balthasar: "${balthasar}"`, question, 0.7, 1600, settings);
+  const melchior = await askModel(`${baseCtx} Sei MELCHIOR, il Traduttore. Traduci questa idea in azione concretamente eseguibile.\n\nIdea di Balthasar: "${balthasar}"`, question, 0.7, 1600, settings, false, null, (raw) => logAiCost(pushDebugLog, "melchior", settings.model, raw));
   onStage("melchior", melchior);
   onStage("caspar", null);
   const containmentCtx = targetPillar
@@ -436,7 +470,7 @@ async function runTriadeMagi(question, onStage, settings, opts = {}) {
   const casparIdentityLine = CURRENT_GHOST_PROFILE.hasProfessionalConstraint
     ? `compartimentazione identità professionale (${CURRENT_GHOST_PROFILE.professionalIdentity} mai esposta)`
     : "nessun vincolo di compartimentazione professionale dichiarato";
-  const caspar = await askModel(`${baseCtx} Sei CASPAR, l'Ancora. Verifica il piano contro i vincoli assoluti: salute, tempo lineare del Ghost, sostenibilità economica, ${casparIdentityLine}. ${containmentCtx}\n\nPiano: "${melchior}"`, question, 0.2, 1600, settings);
+  const caspar = await askModel(`${baseCtx} Sei CASPAR, l'Ancora. Verifica il piano contro i vincoli assoluti: salute, tempo lineare del Ghost, sostenibilità economica, ${casparIdentityLine}. ${containmentCtx}\n\nPiano: "${melchior}"`, question, 0.2, 1600, settings, false, null, (raw) => logAiCost(pushDebugLog, "caspar", settings.model, raw));
   onStage("caspar", caspar);
   onStage("synthesis", null);
   const synthesis = await askModel(`${baseCtx} Genera la SINTESI ESECUTIVA: piano calibrato in 2-3 frasi + "Vettore di Perturbazione V+1".\n\nBalthasar: "${balthasar}"\nMelchior: "${melchior}"\nCaspar: "${caspar}"`, question, 0.6, 1500, settings);
@@ -456,20 +490,20 @@ async function reflectPerturbationIntoMemoria(targetPillar, synthesis, intensity
   );
   return testo;
 }
-async function runAirAgent(task, settings) {
+async function runAirAgent(task, settings, pushDebugLog = null) {
   if (settings.provider !== "openrouter") throw new Error("L'Agente AIR richiede il motore OpenRouter (per la ricerca web).");
   const system = `${nowContext()} Sei l'Agente AIR del sistema Resonance: assistente per il pilastro dell'autonomia economica. Hai accesso alla ricerca web — cerca informazioni aggiornate a oggi, non presentare risultati datati come attuali. ${PILLAR_CTX.air} Rispondi in italiano, concreto, con passi azionabili e fonti quando le usi.`;
-  return askOpenRouter(system, task, 0.7, 1900, settings.apiKey, settings.model, true);
+  return askOpenRouter(system, task, 0.7, 1900, settings.apiKey, settings.model, true, null, (raw) => logAiCost(pushDebugLog, "airAgent", settings.model, raw));
 }
 // FIX 20/07/2026 (Opzione 2 — ricerca disaccoppiata): un modulo di ricerca isolato, con system prompt
 // minimale come l'Agente AIR (che si è dimostrato affidabile) — invece di far decidere al modello se
 // cercare DENTRO il prompt pesante dello Shell (Manifesto+memoria+stile), qui la ricerca avviene PRIMA,
 // in una chiamata leggera e dedicata, e il risultato viene poi iniettato come dato già pronto nel turno
 // principale. Il modello dello Shell non deve più "scegliere" di cercare — trova i dati già in mano.
-async function fetchWebSearchSnapshot(query, settings) {
+async function fetchWebSearchSnapshot(query, settings, pushDebugLog = null) {
   if (settings.provider !== "openrouter") return null;
   const system = `${nowContext()} Sei un modulo di ricerca web. Hai accesso al tool di ricerca web: usalo SEMPRE per rispondere a questa richiesta, senza eccezioni. Cerca informazioni AGGIORNATE a oggi — se i risultati che trovi sono datati mesi o anni fa, dillo esplicitamente invece di presentarli come attuali. Rispondi in italiano con i dati/fatti trovati, concreti e concisi (max 150 parole), citando brevemente le fonti quando rilevante.`;
-  try { return await askOpenRouter(system, query, 0.3, 700, settings.apiKey, settings.model, true); }
+  try { return await askOpenRouter(system, query, 0.3, 700, settings.apiKey, settings.model, true, null, (raw) => logAiCost(pushDebugLog, "webSearchSnapshot", settings.model, raw)); }
   catch { return null; } // fallimento silenzioso qui: runShellTurn lo segnala onestamente al Ghost, non lo nasconde
 }
 
@@ -490,13 +524,52 @@ function detectSeedWorthyIntent(message) {
   const t = message.trim().toLowerCase();
   return /\b(potrei\s+(fare|provare|lanciare|creare|iniziare)|sarebbe\s+interessante|forse\s+dovrei\s+(provare|fare)|e\s+se\s+provassi|mi\s+piacerebbe\s+provare|chiss[àa]\s+se)\b/.test(t);
 }
+// TASK 2 (BRIEF_costtracking_balthasarsources 26/07/2026), caso (b) — controllo post-generazione,
+// NESSUNA chiamata AI aggiuntiva (richiesta esplicita del brief): estrae nomi compound CamelCase dal
+// testo di Balthasar (es. "ShopFoundry", "RankHero", "InsightAgent", "MerchTitans" — ESATTAMENTE i
+// nomi fabbricati osservati nel test reale del 26/07, tutti con una maiuscola interna) e li confronta
+// con i domini realmente restituiti dalla web search (webSearchDiag.citationDomains). Un nome citato
+// che non trova riscontro in nessun dominio reale è un segnale di POSSIBILE allucinazione — MAI un
+// blocco dell'output (Legge 10.1, niente over-gating): solo un flag visibile al Ghost via pushDebugLog.
+// Esclude i nomi già presenti nell'idea originale del Ghost (es. "Printify"/"Etsy" nel test reale erano
+// già nel Seme stesso, non un'attribuzione inventata da Balthasar).
+// Scope deliberatamente ristretto al segnale CamelCase (maiuscola interna), non a "ogni parola con
+// maiuscola": una prima versione che catturava anche parole comuni maiuscole a inizio frase (es.
+// "Secondo", "Il") produceva falsi positivi sistematici — verificato con test dedicato, corretto qui.
+// Trade-off accettato: non cattura fake-brand di una sola parola senza maiuscola interna (es.
+// "Threadify") — euristica leggera, non un rilevatore NLP, stesso stile di detectWebSearchIntent.
+function detectPossibleHallucinatedSource(balthasarText, seedContent, citationDomains) {
+  if (!balthasarText) return false;
+  const candidates = [...new Set((balthasarText.match(/\b[A-Za-z]*[a-z][A-Z][a-zA-Z0-9]*\b/g) || []))]
+    .filter((w) => !new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(seedContent || ""));
+  if (!candidates.length) return false;
+  const domains = (citationDomains || []).map((d) => d.toLowerCase().replace(/^www\./, ""));
+  const matchesDomain = (name) => {
+    const n = name.toLowerCase();
+    return domains.some((d) => d.includes(n) || d.split(".")[0] === n);
+  };
+  return candidates.some((c) => !matchesDomain(c));
+}
 // Fase 1 — un round Balthasar(ricerca web forzata)→Melchior(strategie)→Caspar(verifica vincoli).
 // Prompt dedicati al Seme (non runTriadeMagi: quella pipeline è la perturbazione di Agorà Magi,
 // forma di output diversa — sintesi singola, non 2-3 strategie verificate). pillarMemory esplicito
 // (mai letto da uno stato globale implicito) — stessa lezione del bug generateArtifact/piano alimentare.
 // Il contenuto REDATTO (redactProfessionalIdentity) è l'unico a raggiungere Balthasar/Melchior; Caspar
 // riceve anche il testo originale per una verifica completa — secondo strato, vedi Parte 7 del brief.
-async function runSeedResearch(seme, pillarMemory, settings) {
+//
+// TASK 2 (BRIEF_costtracking_balthasarsources 26/07/2026) — diagnosi caso (a) vs (b):
+// CASO (a) ESCLUSO per questa chiamata specifica: tool_choice="required" è applicato qui sotto
+// (askOpenRouter riceve useWebSearch=true), stesso meccanismo verificato in runAirAgent — non è
+// "auto", il modello non può scegliere di ignorare il tool. Nessun codice da correggere per (a).
+// Resta CASO (b) come spiegazione più probabile per le fonti sospette osservate nel test del 26/07
+// (nomi tipo "ShopFoundry"/"RankHero"): il tool può essere invocato correttamente mentre il modello
+// mescola comunque risultati reali e confabulazione nello stesso testo di sintesi. Fix applicato:
+// 1) prompt rafforzato (vedi balthasarSystem sotto — vietato inventare nomi, già in vigore dal fix
+// precedente del 26/07); 2) controllo post-generazione qui sopra (detectPossibleHallucinatedSource),
+// nuovo in questo giro, che rende visibile il sospetto invece di lasciarlo silenzioso nel log.
+// NON confermato con un test empirico reale in questa sessione (nessuna chiave OpenRouter valida in
+// questo ambiente sandboxed) — vedi riepilogo di consegna per il gap dichiarato.
+async function runSeedResearch(seme, pillarMemory, settings, pushDebugLog = null) {
   if (settings.provider !== "openrouter") throw new Error("La ricerca del Seme richiede il motore OpenRouter (per la ricerca web).");
   const redactedContent = redactProfessionalIdentity(seme.content, CURRENT_GHOST_PROFILE);
   // PUNTO 1 (BRIEF_correzioni_post_test 26/07/2026): il primo test reale ha mostrato Balthasar citare
@@ -521,10 +594,11 @@ Rispondi in italiano, concreto, max 200 parole. Cita SOLO fonti/domini effettiva
       .map((a) => a?.url_citation?.url || a?.url).filter(Boolean);
     webSearchDiag.citationCount = urls.length;
     webSearchDiag.citationDomains = [...new Set(urls.map((u) => { try { return new URL(u).hostname; } catch { return u; } }))].slice(0, 8);
+    logAiCost(pushDebugLog, "seme_ricerca", settings.model, raw);
   });
   const melchiorSystem = `${nowContext()} Sei MELCHIOR nel sistema Resonance, pilastro AIR — traduci la ricerca in strategie concrete ed eseguibili per sviluppare questa idea. ${PILLAR_CTX.air}
 Genera 2-3 strategie, ciascuna specifica e azionabile (non generica). Non citare fonti/dati che Balthasar non ha già fornito — se un dettaglio non è supportato dalla ricerca ricevuta, presentalo come ipotesi da verificare, non come fatto. JSON: {"strategie":[{"titolo":"...","descrizione":"...(max 80 parole)"}]}`;
-  const melchiorData = await askModelJSON(melchiorSystem, `Idea: ${redactedContent}\nRicerca di Balthasar: ${balthasar}`, 0.6, 1400, settings);
+  const melchiorData = await askModelJSON(melchiorSystem, `Idea: ${redactedContent}\nRicerca di Balthasar: ${balthasar}`, 0.6, 1400, settings, null, (raw) => logAiCost(pushDebugLog, "seme_ricerca", settings.model, raw));
   const candidate = (melchiorData?.strategie || []).slice(0, 3).map((s, i) => ({ id: String(i), titolo: s.titolo || `Strategia ${i + 1}`, descrizione: s.descrizione || "" }));
   let approved = [];
   let rejected = [];
@@ -538,7 +612,7 @@ Genera 2-3 strategie, ciascuna specifica e azionabile (non generica). Non citare
       : `non deve richiedere dilatazione insostenibile del tempo lineare di lavoro del Ghost (nessun vincolo di identità professionale dichiarato per questo Ghost).`;
     const airHc = (CURRENT_GHOST_PROFILE.hardConstraints?.air || []).join("; ");
     const casparSystem = `Sei CASPAR nel sistema Resonance, pilastro AIR — verifica ciascuna strategia contro i vincoli ASSOLUTI e non negoziabili: ${casparIdentityLine}${airHc ? ` Vincoli AIR aggiuntivi dichiarati dal Ghost: ${airHc}.` : ""} Boccia SOLO per violazione di un vincolo assoluto, mai per qualità o preferenza. JSON: {"verdetti":[{"id":"0","approvata":true/false,"motivo":"se bocciata, max 20 parole"}]}`;
-    const casparData = await askModelJSON(casparSystem, `Testo originale dell'idea (non redatto, per verifica completa): ${seme.content}\nStrategie da verificare: ${JSON.stringify(candidate.map(({ id, titolo, descrizione }) => ({ id, titolo, descrizione })))}`, 0.2, 1200, settings);
+    const casparData = await askModelJSON(casparSystem, `Testo originale dell'idea (non redatto, per verifica completa): ${seme.content}\nStrategie da verificare: ${JSON.stringify(candidate.map(({ id, titolo, descrizione }) => ({ id, titolo, descrizione })))}`, 0.2, 1200, settings, null, (raw) => logAiCost(pushDebugLog, "seme_ricerca", settings.model, raw));
     const verdetti = new Map((casparData?.verdetti || []).map((v) => [String(v.id), v]));
     // Fail-safe, non fail-open: senza un verdetto ESPLICITO di approvazione la strategia resta fuori,
     // per sempre (mai riproposta) — coerente con runAccettore, l'unico hard-stop vero del sistema.
@@ -549,23 +623,24 @@ Genera 2-3 strategie, ciascuna specifica e azionabile (non generica). Non citare
     rejected = candidate.filter((c) => verdetti.get(c.id)?.approvata !== true)
       .map((c) => ({ id: c.id, reason: (verdetti.get(c.id)?.motivo || "nessun verdetto esplicito di approvazione").slice(0, 200) }));
   }
-  return { balthasar, approvedStrategies: approved, rejectedStrategies: rejected, candidateCount: candidate.length, webSearchDiag };
+  const possibleHallucinatedSource = detectPossibleHallucinatedSource(balthasar, seme.content, webSearchDiag.citationDomains);
+  return { balthasar, approvedStrategies: approved, rejectedStrategies: rejected, candidateCount: candidate.length, webSearchDiag, possibleHallucinatedSource };
 }
 // Fase 2 — un passo per volta (stile proposeNextStep dei Percorsi), MAI un'azione che tocchi il
 // mondo esterno: il gate-check (runSeedGateCheck) verifica il passo PRIMA che venga considerato eseguito.
-async function proposeSeedExecutionStep(seme, pillarMemory, settings) {
+async function proposeSeedExecutionStep(seme, pillarMemory, settings, pushDebugLog = null) {
   const logDigest = (seme.executionLog || []).map((e) => `- ${e.note}`).join("\n") || "nessun passo ancora eseguito";
   return askModel(
     `Sei lo Shell del sistema Resonance, pilastro AIR — sviluppo autonomo di un Seme già approvato dal Ghost. ${PILLAR_CTX.air}
 Memoria procedurale AIR: ${pillarMemory || "nessuna nota ancora"}
 Proponi il PROSSIMO passo concreto di sviluppo (bozza di prodotto, ricerca dettagliata, o piano operativo — mai un'azione che tocchi il mondo esterno: nessun acquisto, pubblicazione, iscrizione o account reale). Un solo passo, specifico, max 120 parole.`,
     `Idea: ${seme.content}\nStrategia approvata: ${seme.approvedStrategy?.titolo || ""} — ${seme.approvedStrategy?.descrizione || ""}\nPassi già fatti:\n${logDigest}`,
-    0.6, 900, settings
+    0.6, 900, settings, false, null, (raw) => logAiCost(pushDebugLog, "seme_esecuzione", settings.model, raw)
   );
 }
 // Gate-check obbligatorio (Parte 6 del brief) — lista CHIUSA di 4 condizioni, non un giudizio
 // discrezionale. Modellato su runAccettore (unico altro hard-stop vero e proprio del sistema).
-async function runSeedGateCheck(stepText, profile, settings) {
+async function runSeedGateCheck(stepText, profile, settings, pushDebugLog = null) {
   const identityConstraint = profile.hasProfessionalConstraint
     ? ` Vincolo aggiuntivo sempre attivo, indipendente dalle 4 condizioni sopra: il passo non deve MAI esporre l'identità professionale del Ghost (${profile.professionalIdentity}) — se lo fa, blocca comunque.`
     : "";
@@ -576,7 +651,7 @@ async function runSeedGateCheck(stepText, profile, settings) {
 3) azione irreversibile o costosa da disfare (creazione account, commit a servizi terzi, cancellazioni);
 4) richiede una credenziale non disponibile in questo sistema (es. API key di un servizio esterno non configurata).${identityConstraint}
 Se nessuna delle 4 condizioni scatta, via libera. Rispondi SOLO "VIA LIBERA" oppure "BLOCCATO: <quale condizione, max 20 parole>".`,
-    `Passo candidato: ${stepText}`, 0.2, 300, settings
+    `Passo candidato: ${stepText}`, 0.2, 300, settings, false, null, (raw) => logAiCost(pushDebugLog, "seme_esecuzione", settings.model, raw)
   );
   const gated = /BLOCCATO/i.test(text);
   return { gated, reason: text.replace(/^(VIA LIBERA|BLOCCATO):?\s*/i, "") };
@@ -749,7 +824,7 @@ async function reflectStyle(styleMemory, userMessage, shellReply, settings) {
     0.5, 400, settings
   );
 }
-async function runShellTurn(history, userMessage, settings, handlers, memory, styleMemory, attachment, dialecticOverride = null) {
+async function runShellTurn(history, userMessage, settings, handlers, memory, styleMemory, attachment, dialecticOverride = null, pushDebugLog = null) {
   const attachmentNote = attachment?.kind === "text" ? `\n\n[Allegato: ${attachment.name}]\n${attachment.content.slice(0, 6000)}` : "";
   const effectiveMessage = userMessage + attachmentNote;
   const image = attachment?.kind === "image" ? attachment : null;
@@ -761,7 +836,7 @@ async function runShellTurn(history, userMessage, settings, handlers, memory, st
   const wantsWebSearch = settings.provider === "openrouter" && detectWebSearchIntent(userMessage);
   // FIX 20/07/2026: ricerca disaccoppiata (Opzione 2) — pre-fetch isolato PRIMA di costruire il prompt
   // pesante, invece di lasciare che sia lo Shell a decidere di cercare dentro un contesto già denso.
-  const webSearchResult = wantsWebSearch ? await fetchWebSearchSnapshot(effectiveMessage, settings) : null;
+  const webSearchResult = wantsWebSearch ? await fetchWebSearchSnapshot(effectiveMessage, settings, pushDebugLog) : null;
   const webSearchSucceeded = wantsWebSearch && !!webSearchResult;
   const webSearchNote = webSearchSucceeded
     ? ` Ecco i risultati di una ricerca web appena effettuata sul tema, usali per rispondere (non serve cercare di nuovo, sono già in mano): ${webSearchResult}`
@@ -784,7 +859,7 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
   const messages = [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: effectiveMessage }];
   // Risposta (+ web search on-demand, se richiesto), lettura multi-lente (+ Calendar fuso, se abilitato) e bozza: indipendenti, partono insieme
   const [reply, lensResult, draft] = await Promise.all([
-    askModelWithHistory(system, messages, 0.7, 3000, settings, image, false), // ricerca già fatta sopra, dati già nel system prompt
+    askModelWithHistory(system, messages, 0.7, 3000, settings, image, false, (raw) => logAiCost(pushDebugLog, "shell", settings.model, raw)), // ricerca già fatta sopra, dati già nel system prompt
     readThroughLenses(recentText, settings, image, !!settings.calendarEnabled).catch(() => ({ readings: [], calendarProposal: null })),
     settings.armsDraftsEnabled ? draftIfNeeded(recentText, settings).catch(() => null) : Promise.resolve(null),
   ]);
@@ -1656,14 +1731,14 @@ function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGate
     </div>`}
   </div>`;
 }
-function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, digest, memory, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed, onDiscussInShell }) {
+function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, digest, memory, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed, onDiscussInShell, pushDebugLog }) {
   const [tab, setTab] = useState("log");
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(todayISO()); const [title, setTitle] = useState(""); const [status, setStatus] = useState("idea"); const [notes, setNotes] = useState("");
   const submit = () => { if (!title) return; onAdd({ id: uid(), date, title, status, notes }); setTitle(""); setNotes(""); setStatus("idea"); setOpen(false); };
   const [task, setTask] = useState(""); const [running, setRunning] = useState(false); const [result, setResult] = useState(""); const [error, setError] = useState("");
   const runAgent = async () => { if (!task.trim() || running) return; setRunning(true); setError(""); setResult("");
-    try { setResult(await runAirAgent(task.trim(), settings)); } catch (e) { setError(e.message); } finally { setRunning(false); } };
+    try { setResult(await runAirAgent(task.trim(), settings, pushDebugLog)); } catch (e) { setError(e.message); } finally { setRunning(false); } };
   return html`<div class="r-screen">
     <${SectionHeader} color=${C.air} title="AIR" subtitle="Autonomia economica, sganciata dal tempo del Ghost" />
     <${SubTabs} color=${C.air} tabs=${[{ key: "log", label: "Log" }, { key: "percorsi", label: "Percorsi" }, { key: "agent", label: "Agente" }]} active=${tab} setActive=${setTab} />
@@ -1703,14 +1778,14 @@ const MagiStage = ({ label, color, text, compact }) => !text ? null : html`<div 
   <div class="r-magi-label" style="color:${color}">${label}</div><div class="r-magi-text">${text}</div></div>`;
 const MAGI_PILLARS = [{ id: "", label: "Nessuno (trasversale)" }, { id: "bio", label: "BIO" }, { id: "air", label: "AIR" }, { id: "vidya", label: "VIDYA" }];
 const MAGI_INTENSITIES = [{ id: "leggera", label: "Leggera" }, { id: "media", label: "Media" }, { id: "profonda", label: "Profonda" }];
-function MagiView({ sessions, onSave, onDelete, settings, memory, updateMemoria }) {
+function MagiView({ sessions, onSave, onDelete, settings, memory, updateMemoria, pushDebugLog }) {
   const [question, setQuestion] = useState(""); const [running, setRunning] = useState(false);
   const [targetPillar, setTargetPillar] = useState(""); const [intensity, setIntensity] = useState("media");
   const [stage, setStage] = useState({ balthasar: "", melchior: "", caspar: "", synthesis: "" }); const [error, setError] = useState("");
   const engineLabel = MODEL_OPTIONS.find((m) => m.id === settings.model)?.label || settings.model;
   const start = async () => { if (!question.trim() || running) return; setRunning(true); setError(""); setStage({ balthasar: "", melchior: "", caspar: "", synthesis: "" });
     try {
-      const result = await runTriadeMagi(question.trim(), (k, v) => setStage((s) => ({ ...s, [k]: v === null ? "…" : v })), settings, { memory, targetPillar: targetPillar || null, intensity });
+      const result = await runTriadeMagi(question.trim(), (k, v) => setStage((s) => ({ ...s, [k]: v === null ? "…" : v })), settings, { memory, targetPillar: targetPillar || null, intensity }, pushDebugLog);
       onSave({ id: uid(), date: new Date().toISOString(), question: question.trim(), engine: engineLabel, pillar: targetPillar || null, intensity, ...result });
       // La perturbazione lascia traccia nella memoria del pilastro-bersaglio (§4.1) — non blocca in caso di errore.
       if (targetPillar && updateMemoria) {
@@ -1866,7 +1941,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
           setMessages((prev) => [...prev, { id: uid(), role: "system-note", content: `✓ Percorso "${title}" creato in ${pillar.toUpperCase()}.` }]);
         }
       }
-      const { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, calendarProposal, usedWebSearch } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya, updateMemoria }, memory, styleMemory, currentAttachment, dialecticOverride);
+      const { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, calendarProposal, usedWebSearch } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya, updateMemoria }, memory, styleMemory, currentAttachment, dialecticOverride, pushDebugLog);
       // Canale primario Seme (brief Parte 1.A): euristica a costo zero sul messaggio del Ghost, non
       // sulla risposta dello Shell. Non crea nulla da sola — solo una proposta con un tap di conferma
       // (vedi card sotto), mai il pattern "conferma nel messaggio successivo" già usato per i Percorsi.
@@ -2142,6 +2217,53 @@ function KernelView({ kernel, onSave, driveStatus }) {
 //──────────────────────────────────────────────────────────
 // SETTINGS
 //──────────────────────────────────────────────────────────
+// TASK 1 (BRIEF_costtracking_balthasarsources 26/07/2026) — aggregatore costi/token in Setup.
+// Legge le entry type:"ai-cost" dal debug log esistente (nessun nuovo storage). LIMITE DICHIARATO:
+// pushDebugLog tiene un rolling log di SOLO 50 voci totali, condivise fra TUTTI i tipi di entry (non
+// solo ai-cost) — con uso attivo, "ultimi 7 giorni" in pratica mostra molto meno di 7 giorni reali,
+// perché le voci più vecchie vengono scartate ben prima. Non risolto qui deliberatamente: il brief
+// chiede di riusare la struttura esistente, non di crearne una parallela senza tetto.
+function CostSummaryPanel({ debugLog }) {
+  const costEntries = (debugLog || []).filter((e) => e.type === "ai-cost");
+  const today = todayISO();
+  const now = Date.now();
+  const isToday = (t) => (t || "").slice(0, 10) === today;
+  const isLast7d = (t) => { const d = new Date(t).getTime(); return !isNaN(d) && now - d <= 7 * 86400000; };
+  const byTag = (entries) => {
+    const map = {};
+    entries.forEach((e) => {
+      const tag = e.functionTag || "?";
+      const row = map[tag] || (map[tag] = { calls: 0, tokensTotal: 0, costUsd: 0, hasCost: false });
+      row.calls++;
+      if (typeof e.tokensTotal === "number") row.tokensTotal += e.tokensTotal;
+      if (typeof e.costUsd === "number") { row.costUsd += e.costUsd; row.hasCost = true; }
+    });
+    return map;
+  };
+  const todayEntries = costEntries.filter((e) => isToday(e.time));
+  const weekEntries = costEntries.filter((e) => isLast7d(e.time));
+  const weekByTag = byTag(weekEntries);
+  const sumTokens = (entries) => entries.reduce((a, e) => a + (typeof e.tokensTotal === "number" ? e.tokensTotal : 0), 0);
+  const sumCost = (entries) => entries.reduce((a, e) => a + (typeof e.costUsd === "number" ? e.costUsd : 0), 0);
+  const anyCostToday = todayEntries.some((e) => typeof e.costUsd === "number");
+  const anyCostWeek = weekEntries.some((e) => typeof e.costUsd === "number");
+  return html`<${Card} accent=${C.core}>
+    <div class="r-hub-title" style="color:#3A4750">Costi/token IA</div>
+    <div class="r-hub-detail">Solo le chiamate tracciate: Shell, Magi (Balthasar/Melchior/Caspar), Agente AIR, ricerca web on-demand, Seme (ricerca/esecuzione). Non include refresh pagina, login Google o sync Drive — non toccano mai un modello.</div>
+    ${costEntries.length === 0 ? html`<div class="r-hub-detail" style="margin-top:8px">Nessuna chiamata tracciata ancora nel log (max 50 voci totali, condivise con tutti gli eventi di debug).</div>` : html`
+      <div class="r-hub-detail" style="margin-top:10px"><b>Oggi</b>: ${todayEntries.length} chiamate · ${sumTokens(todayEntries)} token · ${anyCostToday ? `$${sumCost(todayEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
+      <div class="r-hub-detail" style="margin-top:4px"><b>Ultimi 7 giorni</b> (entro il tetto di 50 voci del log): ${weekEntries.length} chiamate · ${sumTokens(weekEntries)} token · ${anyCostWeek ? `$${sumCost(weekEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
+      <table style="width:100%;margin-top:10px;border-collapse:collapse;font-size:12.5px">
+        <thead><tr style="text-align:left;opacity:.6"><th>Funzione</th><th>Chiamate</th><th>Token</th><th>Costo</th></tr></thead>
+        <tbody>
+          ${Object.entries(weekByTag).map(([tag, row]) => html`<tr key=${tag} style="border-top:1px solid var(--border)">
+            <td style="padding:4px 0">${tag}</td><td>${row.calls}</td><td>${row.tokensTotal || "—"}</td><td>${row.hasCost ? `$${row.costUsd.toFixed(4)}` : "n/d"}</td>
+          </tr>`)}
+        </tbody>
+      </table>
+    `}
+  </${Card}>`;
+}
 function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDebugLog, pullAndMergeOnce }) {
   const presetIds = MODEL_OPTIONS.filter((m) => m.id !== "custom").map((m) => m.id);
   const isCustom = !presetIds.includes(settings.model);
@@ -2227,6 +2349,7 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
       ${!feedbackReady && html`<div class="r-hub-detail" style="margin-top:8px">Manca FEEDBACK_EMAIL in config.js — vedi README.md.</div>`}
       ${feedbackReady && html`<div class="r-hub-detail" style="margin-top:8px">Configurato — le segnalazioni arrivano a ${CONFIG.FEEDBACK_EMAIL} via Gmail (stesso account Google del login).</div>`}
     </${Card}>
+    <${CostSummaryPanel} debugLog=${debugLog} />
     <${Card} accent=${C.core}>
       <div class="r-hub-title" style="color:#3A4750">Log di debug — ${debugLog?.length || 0} eventi registrati</div>
       <div class="r-hub-detail">Turni dello Shell ed eventi di sincronizzazione (modello, esito, errori) — per capire cosa è successo senza screenshot</div>
@@ -2856,19 +2979,23 @@ function App() {
     if (target.status === "seed" || target.status === "researching") {
       if (target.researchIterationCount >= SEME_RESEARCH_ITERATION_CAP) return;
       try {
-        const { balthasar, approvedStrategies, rejectedStrategies, webSearchDiag } = await runSeedResearch(target, s.memory.air, settingsRef.current);
+        const { balthasar, approvedStrategies, rejectedStrategies, webSearchDiag, possibleHallucinatedSource } = await runSeedResearch(target, s.memory.air, settingsRef.current, pushDebugLog);
         const nextCount = target.researchIterationCount + 1;
         const newlyApproved = approvedStrategies.filter((a) => !target.proposedStrategies.some((p) => p.titolo === a.titolo));
         const mergedStrategies = [...target.proposedStrategies, ...newlyApproved];
         const nextStatus = mergedStrategies.length ? "awaiting_approval" : (nextCount >= SEME_RESEARCH_ITERATION_CAP ? "proposing" : "researching");
-        const logEntry = { date: new Date().toISOString(), note: `Round ${nextCount}/${SEME_RESEARCH_ITERATION_CAP} — ${approvedStrategies.length} strategia/e approvata/e. Ricerca: ${balthasar.slice(0, 160)}` };
+        // TASK 2 (BRIEF_costtracking_balthasarsources): il sospetto di fonte allucinata va reso
+        // visibile al Ghost, non solo al log di debug tecnico — vedi detectPossibleHallucinatedSource.
+        const hallucinationNote = possibleHallucinatedSource ? " ⚠ possibile fonte non verificata nel testo — controlla prima di fidartene." : "";
+        const logEntry = { date: new Date().toISOString(), note: `Round ${nextCount}/${SEME_RESEARCH_ITERATION_CAP} — ${approvedStrategies.length} strategia/e approvata/e. Ricerca: ${balthasar.slice(0, 160)}${hallucinationNote}` };
         const updated = { ...target, status: nextStatus, researchIterationCount: nextCount, researchLog: [...target.researchLog, logEntry], proposedStrategies: mergedStrategies };
         setSemiSync(stateRef.current.semi.map((x) => (x.id === target.id ? updated : x)));
         // Esito di Caspar-del-Seme nel log di debug: SOLO id scartato + motivo breve (≤200 caratteri,
         // sintesi di Caspar) — MAI il testo/prompt completo inviato al modello (CHIARIMENTO 26/07/2026, p.2).
         // webSearch*: diagnostica PUNTO 1 (BRIEF_correzioni_post_test) — permette di verificare nel
         // prossimo test reale se Balthasar ha ricevuto citazioni vere o le sta inventando in sintesi.
-        pushDebugLog({ type: "seme-research", id: target.id, originSource: target.originSource, round: nextCount, approvedCount: approvedStrategies.length, casparRejections: rejectedStrategies, webSearchToolInvoked: webSearchDiag.toolInvoked, webSearchCitationCount: webSearchDiag.citationCount, webSearchCitationDomains: webSearchDiag.citationDomains, status: nextStatus, error: null });
+        // possibleHallucinatedSource: TASK 2 (BRIEF_costtracking_balthasarsources), caso (b).
+        pushDebugLog({ type: "seme-research", id: target.id, originSource: target.originSource, round: nextCount, approvedCount: approvedStrategies.length, casparRejections: rejectedStrategies, webSearchToolInvoked: webSearchDiag.toolInvoked, webSearchCitationCount: webSearchDiag.citationCount, webSearchCitationDomains: webSearchDiag.citationDomains, possibleHallucinatedSource, status: nextStatus, error: null });
       } catch (e) {
         pushDebugLog({ type: "seme-research", id: target.id, originSource: target.originSource, error: e.message });
       }
@@ -2876,8 +3003,8 @@ function App() {
     }
     if (target.executionIterationCount >= SEME_EXECUTION_ITERATION_CAP) return;
     try {
-      const stepText = await proposeSeedExecutionStep(target, s.memory.air, settingsRef.current);
-      const gate = await runSeedGateCheck(stepText, CURRENT_GHOST_PROFILE, settingsRef.current);
+      const stepText = await proposeSeedExecutionStep(target, s.memory.air, settingsRef.current, pushDebugLog);
+      const gate = await runSeedGateCheck(stepText, CURRENT_GHOST_PROFILE, settingsRef.current, pushDebugLog);
       const nextCount = target.executionIterationCount + 1;
       // Se bloccato, il passo candidato resta visibile in gatedActionPreview finché il Ghost non lo
       // conferma o lo scarta (vedi unlockGatedSeed) — mai un unlock alla cieca senza vedere COSA si sblocca.
@@ -2988,9 +3115,9 @@ function App() {
       addSeed=${addSeed} advanceSeedIfDue=${advanceSeedIfDue} shellDraft=${shellDraft} consumeShellDraft=${() => setShellDraft("")} />`}
     ${view === "bio" && html`<${BioView} entries=${bio} onAdd=${addBio} onDelete=${delBio} percorsi=${pBio} setPercorsi=${setPBioSync} settings=${settings} digest=${digestBio} memory=${memory} />`}
     ${view === "air" && html`<${AirView} entries=${air} onAdd=${addAir} onDelete=${delAir} percorsi=${pAir} setPercorsi=${setPAirSync} settings=${settings} digest=${digestAir} memory=${memory}
-      semi=${semi} onAddSeed=${(content) => addSeed(content, "manual")} onApproveSeedStrategy=${approveSeedStrategy} onUnlockGatedSeed=${unlockGatedSeed} onDiscussInShell=${discussSeedInShell} />`}
+      semi=${semi} onAddSeed=${(content) => addSeed(content, "manual")} onApproveSeedStrategy=${approveSeedStrategy} onUnlockGatedSeed=${unlockGatedSeed} onDiscussInShell=${discussSeedInShell} pushDebugLog=${pushDebugLog} />`}
     ${view === "vidya" && html`<${VidyaView} entries=${vidya} onAdd=${addVidya} onDelete=${delVidya} percorsi=${pVidya} setPercorsi=${setPVidyaSync} settings=${settings} digest=${digestVidya} memory=${memory} />`}
-    ${view === "magi" && html`<${MagiView} sessions=${magi} onSave=${addMagi} onDelete=${delMagi} settings=${settings} memory=${memory} updateMemoria=${updateMemoria} />`}
+    ${view === "magi" && html`<${MagiView} sessions=${magi} onSave=${addMagi} onDelete=${delMagi} settings=${settings} memory=${memory} updateMemoria=${updateMemoria} pushDebugLog=${pushDebugLog} />`}
     ${view === "simbiosi" && html`<${SimbiosiView} resonance=${resonance} onRecalc=${recalcResonance} calculating=${resCalculating} error=${resError} onPromoteIdentity=${promoteToIdentity} onDismissIdentity=${dismissIdentityHint} />`}
     ${view === "kernel" && html`<${KernelView} kernel=${kernel} onSave=${saveKernel} driveStatus=${driveStatus} />`}
     ${view === "settings" && html`<${SettingsView} settings=${settings} updateSettings=${updateSettings} driveStatus=${driveStatus} debugLog=${debugLog} clearDebugLog=${clearDebugLog} pullAndMergeOnce=${pullAndMergeOnce} />`}
