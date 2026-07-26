@@ -525,10 +525,20 @@ async function runTriadeMagi(question, onStage, settings, opts = {}, pushDebugLo
   // Ancoraggio reale (Manifesto V3 §4.5, mem #23): senza ricerca, Balthasar rimescola solo concetti
   // già noti al Ghost e suona come "eco". Web search solo su OpenRouter (Claude-direct non supporta
   // questo tool nel client attuale) — degrada silenziosamente a perturbazione da sola immaginazione.
-  const balthasarWebSearch = settings.provider === "openrouter";
-  const balthasarPrompt = `${baseCtx}${memoriaCtx}${targetCtx} Sei BALTHASAR, il Perturbatore.${balthasarWebSearch ? " Hai accesso alla ricerca web: usala per ancorare la perturbazione a un dato, caso o approccio reale non ancora noto al Ghost — non limitarti a rimescolare concetti che già possiede." : ""} Genera una divergenza evolutiva su questo tema, audace, non convenzionale — a intensità "${intensity}" (leggera = uno spostamento laterale; profonda = una rottura vera con l'assetto attuale).`;
+  // FIX SPRINT HARDENING (26/07/2026, seconda revisione — verificato dal vivo con chiave reale):
+  // tool_choice:"required" DENTRO questa chiamata (temperatura alta + Manifesto/memoria pesante) ha
+  // scatenato ricerche web a cascata (6-30 invocazioni osservate, fino a 918k token di prompt in una
+  // singola chiamata) producendo garbage ("[{}]") o testo coerente ma completamente fuori tema. Stesso
+  // pattern già collaudato per lo Shell (FIX 20/07, fetchWebSearchSnapshot): ricerca disaccoppiata in
+  // una chiamata leggera e dedicata PRIMA — Balthasar non tocca più il tool in diretta, riceve solo il
+  // risultato già pronto.
+  const balthasarWebSearchResult = settings.provider === "openrouter" ? await fetchWebSearchSnapshot(question, settings, pushDebugLog) : null;
+  const balthasarWebSearchNote = balthasarWebSearchResult
+    ? ` Ecco i risultati di una ricerca web appena effettuata sul tema (pre-fetch isolato, usali per ancorare la perturbazione a un dato, caso o approccio reale non ancora noto al Ghost — non limitarti a rimescolare concetti che già possiede): ${balthasarWebSearchResult}`
+    : (settings.provider === "openrouter" ? " La ricerca web non è riuscita in questo turno (limite tecnico) — dillo esplicitamente se rilevante, non inventare dati come se li avessi trovati." : "");
+  const balthasarPrompt = `${baseCtx}${memoriaCtx}${targetCtx} Sei BALTHASAR, il Perturbatore.${balthasarWebSearchNote} Genera una divergenza evolutiva su questo tema, audace, non convenzionale — a intensità "${intensity}" (leggera = uno spostamento laterale; profonda = una rottura vera con l'assetto attuale).`;
   const balthasar = await askWithDegenerateGuard(
-    () => askModel(balthasarPrompt, question, balthasarTemp, 1600, settings, balthasarWebSearch, null, (raw) => logAiCost(pushDebugLog, "balthasar", settings.model, raw), ANTI_LOOP_PENALTIES),
+    () => askModel(balthasarPrompt, question, balthasarTemp, 1600, settings, false, null, (raw) => logAiCost(pushDebugLog, "balthasar", settings.model, raw), ANTI_LOOP_PENALTIES),
     "balthasar", pushDebugLog
   );
   onStage("balthasar", balthasar);
@@ -581,11 +591,18 @@ async function runAirAgent(task, settings, pushDebugLog = null) {
 // cercare DENTRO il prompt pesante dello Shell (Manifesto+memoria+stile), qui la ricerca avviene PRIMA,
 // in una chiamata leggera e dedicata, e il risultato viene poi iniettato come dato già pronto nel turno
 // principale. Il modello dello Shell non deve più "scegliere" di cercare — trova i dati già in mano.
-async function fetchWebSearchSnapshot(query, settings, pushDebugLog = null) {
+// onRaw (opzionale, retrocompatibile, stesso hook di askOpenRouter): usato da runTriadeMagi/
+// runSeedResearch (FIX SPRINT HARDENING 26/07/2026, seconda revisione — vedi sotto) per estrarre
+// diagnostica citazioni dalla ricerca pre-fetch, senza cambiare nulla per lo Shell che non lo passa.
+async function fetchWebSearchSnapshot(query, settings, pushDebugLog = null, onRaw = null) {
   if (settings.provider !== "openrouter") return null;
   const system = `${nowContext()} Sei un modulo di ricerca web. Hai accesso al tool di ricerca web: usalo SEMPRE per rispondere a questa richiesta, senza eccezioni. Cerca informazioni AGGIORNATE a oggi — se i risultati che trovi sono datati mesi o anni fa, dillo esplicitamente invece di presentarli come attuali. Rispondi in italiano con i dati/fatti trovati, concreti e concisi (max 150 parole), citando brevemente le fonti quando rilevante.`;
-  try { return await askOpenRouter(system, query, 0.3, 700, settings.apiKey, settings.model, true, null, (raw) => logAiCost(pushDebugLog, "webSearchSnapshot", settings.model, raw)); }
-  catch { return null; } // fallimento silenzioso qui: runShellTurn lo segnala onestamente al Ghost, non lo nasconde
+  try {
+    return await askOpenRouter(system, query, 0.3, 700, settings.apiKey, settings.model, true, null, (raw) => {
+      logAiCost(pushDebugLog, "webSearchSnapshot", settings.model, raw);
+      if (onRaw) { try { onRaw(raw); } catch { /* diagnostica best-effort */ } }
+    });
+  } catch { return null; } // fallimento silenzioso qui: il chiamante lo segnala onestamente, non lo nasconde
 }
 
 //──────────────────────────────────────────────────────────
@@ -638,46 +655,43 @@ function detectPossibleHallucinatedSource(balthasarText, seedContent, citationDo
 // Il contenuto REDATTO (redactProfessionalIdentity) è l'unico a raggiungere Balthasar/Melchior; Caspar
 // riceve anche il testo originale per una verifica completa — secondo strato, vedi Parte 7 del brief.
 //
-// TASK 2 (BRIEF_costtracking_balthasarsources 26/07/2026) — diagnosi caso (a) vs (b):
-// CASO (a) ESCLUSO per questa chiamata specifica: tool_choice="required" è applicato qui sotto
-// (askOpenRouter riceve useWebSearch=true), stesso meccanismo verificato in runAirAgent — non è
-// "auto", il modello non può scegliere di ignorare il tool. Nessun codice da correggere per (a).
-// Resta CASO (b) come spiegazione più probabile per le fonti sospette osservate nel test del 26/07
-// (nomi tipo "ShopFoundry"/"RankHero"): il tool può essere invocato correttamente mentre il modello
-// mescola comunque risultati reali e confabulazione nello stesso testo di sintesi. Fix applicato:
-// 1) prompt rafforzato (vedi balthasarSystem sotto — vietato inventare nomi, già in vigore dal fix
-// precedente del 26/07); 2) controllo post-generazione qui sopra (detectPossibleHallucinatedSource),
-// nuovo in questo giro, che rende visibile il sospetto invece di lasciarlo silenzioso nel log.
-// NON confermato con un test empirico reale in questa sessione (nessuna chiave OpenRouter valida in
-// questo ambiente sandboxed) — vedi riepilogo di consegna per il gap dichiarato.
+// TASK 2 (BRIEF_costtracking_balthasarsources 26/07/2026) — diagnosi caso (a) vs (b): CASO (a)
+// escluso per il testo di Balthasar (prompt rafforzato — vietato inventare nomi). Resta CASO (b)
+// come spiegazione più probabile per le fonti sospette osservate nel test del 26/07 (nomi tipo
+// "ShopFoundry"/"RankHero"): mitigato con detectPossibleHallucinatedSource sotto.
+//
+// FIX SPRINT HARDENING (26/07/2026, seconda revisione — verificato dal vivo con chiave reale):
+// QUESTA chiamata usava tool_choice:"required" in diretta (FIX 20/07) — verificato dal vivo che,
+// su Balthasar (contesto pesante), questo può scatenare ricerche web a cascata (6-30 invocazioni
+// osservate su Magi Balthasar, stesso meccanismo tool_choice:"required") e produrre garbage o testo
+// fuori tema. Stesso pattern già collaudato per lo Shell (FIX 20/07, fetchWebSearchSnapshot):
+// ricerca disaccoppiata in una chiamata leggera e dedicata PRIMA, il risultato iniettato come dato
+// già pronto — Balthasar non tocca più il tool in diretta. La diagnostica citazioni (usata da
+// detectPossibleHallucinatedSource) ora viene dalla chiamata di ricerca isolata, non più dalla
+// risposta di sintesi di Balthasar — più affidabile, perché riflette la ricerca reale e non ciò che
+// Balthasar sceglie di riportarne.
 async function runSeedResearch(seme, pillarMemory, settings, pushDebugLog = null) {
   if (settings.provider !== "openrouter") throw new Error("La ricerca del Seme richiede il motore OpenRouter (per la ricerca web).");
   const redactedContent = redactProfessionalIdentity(seme.content, CURRENT_GHOST_PROFILE);
-  // PUNTO 1 (BRIEF_correzioni_post_test 26/07/2026): il primo test reale ha mostrato Balthasar citare
-  // nomi di fonte ("ShopFoundry", "RankHero"...) non riconducibili a servizi reali — sospetto di
-  // allucinazione in fase di sintesi, non necessariamente un fallimento della web search in sé.
-  // tool_choice:"required" (askOpenRouter, FIX 20/07) è già applicato a QUESTA chiamata specifica
-  // (useWebSearch=true qui sotto, stesso meccanismo di runAirAgent) — verificato leggendo il codice.
-  // Non potendo eseguire qui una chiamata reale (nessuna API key valida in questo ambiente), estraggo
-  // e logghiamo (vedi App.advanceSeedIfDue) ogni segnale diagnostico plausibile che OpenRouter possa
-  // restituire per una ricerca realmente eseguita (annotazioni/citazioni con URL, in più forme note
-  // perché la forma esatta non è verificabile senza una chiamata live) — così il PROSSIMO test reale
-  // del Ghost (con la sua chiave vera) può confermare empiricamente invece di fidarsi a parole.
   const webSearchDiag = { toolInvoked: false, citationCount: 0, citationDomains: [] };
-  const balthasarSystem = `${nowContext()} Sei BALTHASAR nel sistema Resonance, pilastro AIR — funzione di ricerca per un Seme (un'idea grezza non ancora sviluppata). Hai accesso alla ricerca web: usala per trovare dati, casi reali o approcci concreti pertinenti, aggiornati a oggi — non presentare risultati datati come attuali. ${PILLAR_CTX.air}
+  const seedQuery = `Idea da sviluppare: ${redactedContent}`;
+  const balthasarWebSearchResult = await fetchWebSearchSnapshot(seedQuery, settings, pushDebugLog, (raw) => {
+    const msg = raw.choices?.[0]?.message || {};
+    const annotations = msg.annotations || raw.citations || msg.tool_calls || [];
+    webSearchDiag.toolInvoked = Array.isArray(annotations) ? annotations.length > 0 : !!annotations;
+    const urls = (Array.isArray(msg.annotations) ? msg.annotations : [])
+      .map((a) => a?.url_citation?.url || a?.url).filter(Boolean);
+    webSearchDiag.citationCount = urls.length;
+    webSearchDiag.citationDomains = [...new Set(urls.map((u) => { try { return new URL(u).hostname; } catch { return u; } }))].slice(0, 8);
+  });
+  const balthasarWebSearchNote = balthasarWebSearchResult
+    ? ` Ecco i risultati di una ricerca web appena effettuata sul tema (pre-fetch isolato) — usali per rispondere, cita SOLO questi dati/domini: ${balthasarWebSearchResult}`
+    : " La ricerca web non è riuscita in questo turno (limite tecnico) — dillo esplicitamente, non inventare dati come se li avessi trovati.";
+  const balthasarSystem = `${nowContext()} Sei BALTHASAR nel sistema Resonance, pilastro AIR — funzione di ricerca per un Seme (un'idea grezza non ancora sviluppata). ${PILLAR_CTX.air}
 Memoria procedurale AIR accumulata finora (non ripetere strategie già scartate): ${pillarMemory || "nessuna nota ancora"}
-Rispondi in italiano, concreto, max 200 parole. Cita SOLO fonti/domini effettivamente presenti nei risultati di ricerca che hai ricevuto — se non puoi attribuire con certezza un dato a una fonte reale, ometti l'attribuzione o dichiara esplicitamente che è una stima non verificata. Non inventare mai nomi di siti o servizi.`;
+Rispondi in italiano, concreto, max 200 parole. Cita SOLO fonti/domini effettivamente presenti nei risultati di ricerca che hai ricevuto — se non puoi attribuire con certezza un dato a una fonte reale, ometti l'attribuzione o dichiara esplicitamente che è una stima non verificata. Non inventare mai nomi di siti o servizi.${balthasarWebSearchNote}`;
   const balthasar = await askWithDegenerateGuard(
-    () => askOpenRouter(balthasarSystem, `Idea da sviluppare: ${redactedContent}`, 0.7, 1200, settings.apiKey, settings.model, true, null, (raw) => {
-      const msg = raw.choices?.[0]?.message || {};
-      const annotations = msg.annotations || raw.citations || msg.tool_calls || [];
-      webSearchDiag.toolInvoked = Array.isArray(annotations) ? annotations.length > 0 : !!annotations;
-      const urls = (Array.isArray(msg.annotations) ? msg.annotations : [])
-        .map((a) => a?.url_citation?.url || a?.url).filter(Boolean);
-      webSearchDiag.citationCount = urls.length;
-      webSearchDiag.citationDomains = [...new Set(urls.map((u) => { try { return new URL(u).hostname; } catch { return u; } }))].slice(0, 8);
-      logAiCost(pushDebugLog, "seme_ricerca", settings.model, raw);
-    }, ANTI_LOOP_PENALTIES),
+    () => askOpenRouter(balthasarSystem, seedQuery, 0.7, 1200, settings.apiKey, settings.model, false, null, (raw) => logAiCost(pushDebugLog, "seme_ricerca", settings.model, raw), ANTI_LOOP_PENALTIES),
     "seme_ricerca", pushDebugLog
   );
   const melchiorSystem = `${nowContext()} Sei MELCHIOR nel sistema Resonance, pilastro AIR — traduci la ricerca in strategie concrete ed eseguibili per sviluppare questa idea. ${PILLAR_CTX.air}
