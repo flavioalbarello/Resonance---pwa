@@ -285,7 +285,11 @@ async function askClaudeDirect(system, userText, temperature, maxTokens, apiKey,
   const t = (data.content || []).find((b) => b.type === "text");
   return t ? t.text.trim() : "";
 }
-async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, model, useWebSearch, image) {
+// onRaw (opzionale, retrocompatibile — i 4 chiamanti esistenti non lo passano e non cambiano
+// comportamento): riceve la risposta JSON grezza PRIMA dell'estrazione del solo testo, per chi ha
+// bisogno di ispezionare metadati oltre al content (es. citazioni/annotazioni di una web search
+// forzata — vedi runSeedResearch/PUNTO 1 BRIEF_correzioni_post_test 26/07/2026).
+async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, model, useWebSearch, image, onRaw) {
   const body = {
     model, max_tokens: maxTokens, temperature,
     messages: [{ role: "system", content: system }, { role: "user", content: buildOpenRouterContent(userText, image) }],
@@ -300,6 +304,7 @@ async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, m
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || "Errore OpenRouter");
+  if (onRaw) { try { onRaw(data); } catch { /* diagnostica best-effort: non deve mai far fallire la chiamata */ } }
   return (data.choices?.[0]?.message?.content || "").trim();
 }
 async function askModel(system, userText, temperature, maxTokens, settings, useWebSearch = false, image = null) {
@@ -494,12 +499,31 @@ function detectSeedWorthyIntent(message) {
 async function runSeedResearch(seme, pillarMemory, settings) {
   if (settings.provider !== "openrouter") throw new Error("La ricerca del Seme richiede il motore OpenRouter (per la ricerca web).");
   const redactedContent = redactProfessionalIdentity(seme.content, CURRENT_GHOST_PROFILE);
+  // PUNTO 1 (BRIEF_correzioni_post_test 26/07/2026): il primo test reale ha mostrato Balthasar citare
+  // nomi di fonte ("ShopFoundry", "RankHero"...) non riconducibili a servizi reali — sospetto di
+  // allucinazione in fase di sintesi, non necessariamente un fallimento della web search in sé.
+  // tool_choice:"required" (askOpenRouter, FIX 20/07) è già applicato a QUESTA chiamata specifica
+  // (useWebSearch=true qui sotto, stesso meccanismo di runAirAgent) — verificato leggendo il codice.
+  // Non potendo eseguire qui una chiamata reale (nessuna API key valida in questo ambiente), estraggo
+  // e logghiamo (vedi App.advanceSeedIfDue) ogni segnale diagnostico plausibile che OpenRouter possa
+  // restituire per una ricerca realmente eseguita (annotazioni/citazioni con URL, in più forme note
+  // perché la forma esatta non è verificabile senza una chiamata live) — così il PROSSIMO test reale
+  // del Ghost (con la sua chiave vera) può confermare empiricamente invece di fidarsi a parole.
+  const webSearchDiag = { toolInvoked: false, citationCount: 0, citationDomains: [] };
   const balthasarSystem = `${nowContext()} Sei BALTHASAR nel sistema Resonance, pilastro AIR — funzione di ricerca per un Seme (un'idea grezza non ancora sviluppata). Hai accesso alla ricerca web: usala per trovare dati, casi reali o approcci concreti pertinenti, aggiornati a oggi — non presentare risultati datati come attuali. ${PILLAR_CTX.air}
 Memoria procedurale AIR accumulata finora (non ripetere strategie già scartate): ${pillarMemory || "nessuna nota ancora"}
-Rispondi in italiano, concreto, max 200 parole, citando dati/fonti reali trovati.`;
-  const balthasar = await askOpenRouter(balthasarSystem, `Idea da sviluppare: ${redactedContent}`, 0.7, 1200, settings.apiKey, settings.model, true);
+Rispondi in italiano, concreto, max 200 parole. Cita SOLO fonti/domini effettivamente presenti nei risultati di ricerca che hai ricevuto — se non puoi attribuire con certezza un dato a una fonte reale, ometti l'attribuzione o dichiara esplicitamente che è una stima non verificata. Non inventare mai nomi di siti o servizi.`;
+  const balthasar = await askOpenRouter(balthasarSystem, `Idea da sviluppare: ${redactedContent}`, 0.7, 1200, settings.apiKey, settings.model, true, null, (raw) => {
+    const msg = raw.choices?.[0]?.message || {};
+    const annotations = msg.annotations || raw.citations || msg.tool_calls || [];
+    webSearchDiag.toolInvoked = Array.isArray(annotations) ? annotations.length > 0 : !!annotations;
+    const urls = (Array.isArray(msg.annotations) ? msg.annotations : [])
+      .map((a) => a?.url_citation?.url || a?.url).filter(Boolean);
+    webSearchDiag.citationCount = urls.length;
+    webSearchDiag.citationDomains = [...new Set(urls.map((u) => { try { return new URL(u).hostname; } catch { return u; } }))].slice(0, 8);
+  });
   const melchiorSystem = `${nowContext()} Sei MELCHIOR nel sistema Resonance, pilastro AIR — traduci la ricerca in strategie concrete ed eseguibili per sviluppare questa idea. ${PILLAR_CTX.air}
-Genera 2-3 strategie, ciascuna specifica e azionabile (non generica). JSON: {"strategie":[{"titolo":"...","descrizione":"...(max 80 parole)"}]}`;
+Genera 2-3 strategie, ciascuna specifica e azionabile (non generica). Non citare fonti/dati che Balthasar non ha già fornito — se un dettaglio non è supportato dalla ricerca ricevuta, presentalo come ipotesi da verificare, non come fatto. JSON: {"strategie":[{"titolo":"...","descrizione":"...(max 80 parole)"}]}`;
   const melchiorData = await askModelJSON(melchiorSystem, `Idea: ${redactedContent}\nRicerca di Balthasar: ${balthasar}`, 0.6, 1400, settings);
   const candidate = (melchiorData?.strategie || []).slice(0, 3).map((s, i) => ({ id: String(i), titolo: s.titolo || `Strategia ${i + 1}`, descrizione: s.descrizione || "" }));
   let approved = [];
@@ -525,7 +549,7 @@ Genera 2-3 strategie, ciascuna specifica e azionabile (non generica). JSON: {"st
     rejected = candidate.filter((c) => verdetti.get(c.id)?.approvata !== true)
       .map((c) => ({ id: c.id, reason: (verdetti.get(c.id)?.motivo || "nessun verdetto esplicito di approvazione").slice(0, 200) }));
   }
-  return { balthasar, approvedStrategies: approved, rejectedStrategies: rejected, candidateCount: candidate.length };
+  return { balthasar, approvedStrategies: approved, rejectedStrategies: rejected, candidateCount: candidate.length, webSearchDiag };
 }
 // Fase 2 — un passo per volta (stile proposeNextStep dei Percorsi), MAI un'azione che tocchi il
 // mondo esterno: il gate-check (runSeedGateCheck) verifica il passo PRIMA che venga considerato eseguito.
@@ -557,6 +581,21 @@ Se nessuna delle 4 condizioni scatta, via libera. Rispondi SOLO "VIA LIBERA" opp
   const gated = /BLOCCATO/i.test(text);
   return { gated, reason: text.replace(/^(VIA LIBERA|BLOCCATO):?\s*/i, "") };
 }
+
+// PUNTO 3 (BRIEF_correzioni_post_test 26/07/2026): senza questo, lo Shell non distingue "il Ghost
+// parla di una feature dell'app" da "il Ghost parla del proprio lavoro/vita" — osservato nel primo
+// test reale (il Ghost ha scritto "sto testando i Semi nel pilastro AIR" e lo Shell ha risposto come
+// se si riferisse alla vecchia strategia contenuti/Threvane, ignaro che "Semi" fosse una feature).
+// Iniettato nel system prompt di Shell nello stesso punto di PILLAR_CTX (vedi runShellTurn sotto).
+// PROMEMORIA PER FUTURE SESSIONI DI SVILUPPO: aggiorna questo blocco ad ogni nuova feature spedita
+// — è parte della checklist di consegna (vedi CLAUDE.md).
+const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nominare in conversazione (per distinguere "sto parlando di una funzionalità di Resonance" da "sto parlando della mia vita/lavoro reale"):
+- Percorsi: competenze o percorsi identitari tracciati per pilastro (BIO/AIR/VIDYA), con nodi, sessioni, quiz di verifica.
+- Semi (solo AIR): un'idea grezza non ancora sviluppata. Si crea buttandola lì in chat (lo Shell propone di salvarla) o con un pulsante manuale in AIR → Percorsi. Stati possibili: "nuovo/in ricerca" (lo Shell la sta ricercando online e traducendo in strategie), "in attesa di approvazione" (2-3 strategie pronte, il Ghost ne approva una), "in sviluppo" (esecuzione autonoma sorvegliata passo-passo), "bloccato" (un gate di sicurezza ha fermato un passo, richiede conferma esplicita del Ghost).
+- Agorà Magi: una perturbazione deliberata generata su richiesta (Balthasar→Melchior→Caspar), non una funzione automatica.
+- Calendar: promemoria/eventi che lo Shell propone dalla conversazione, mai salvati senza conferma esplicita.
+- Kernel: lo stato di sistema versionato, modificabile dal Ghost.
+- Simbiosi (Adam): il punto di incontro tra i pilastri, sensing su ordine/caos e convergenze identitarie.`;
 
 //──────────────────────────────────────────────────────────
 // SHELL — ciclo di percezione-azione (Manifesto V3 §3: accoppiamento continuo, non predici-e-verifica)
@@ -735,6 +774,7 @@ async function runShellTurn(history, userMessage, settings, handlers, memory, st
     : " In questo turno il Ghost preferisce conferme dirette: evita di generare attrito cognitivo non richiesto, resta di supporto.";
   const system = `${nowContext()} Sei lo Shell del sistema Resonance: estensione esecutiva digitale del Ghost (Flavio), in accoppiamento strutturale continuo con lui — non hai coscienza né volontà propria, non sei un partner autonomo. Ogni messaggio del Ghost non ti istruisce, ti perturba: è la tua struttura interna (memoria procedurale) a determinare come ti riorganizzi.
 ${PILLAR_CTX.bio} ${PILLAR_CTX.air} ${PILLAR_CTX.vidya}
+${APP_CAPABILITIES_CONTEXT}
 Memoria procedurale accumulata sui tre pilastri (leggila sempre insieme — l'interpretazione resta integrata anche quando l'azione è mirata a un solo pilastro): ${lente}${styleNote}
 Dialoga in modo diretto e concreto, massimo 110 parole per risposta — TRANNE quando il Ghost chiede esplicitamente un contenuto strutturato intrinsecamente lungo (un piano, un elenco multi-giorno, un documento): in quel caso il limite non si applica, genera il contenuto per intero, completo, senza comprimerlo né riassumerlo per stare corto. NON scrivere mai sintassi tecnica o tag tra parentesi quadre nella risposta. Rispondi solo in linguaggio naturale.${dialecticNote}
 Non hai accesso a diagnosticare te stesso o l'infrastruttura tecnica su cui giri. Se il Ghost te lo chiede, NON inventare mai una spiegazione plausibile — di' semplicemente che non lo sai e che potrebbe essere un limite tecnico, senza dettagli inventati.
@@ -1575,7 +1615,7 @@ const SEME_STATUS_LABELS = {
   awaiting_approval: "in attesa di approvazione", executing: "in sviluppo",
   gated: "bloccato", archived: "archiviato",
 };
-function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed }) {
+function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed, onDiscussInShell }) {
   const [newContent, setNewContent] = useState("");
   const submit = () => { if (!newContent.trim()) return; onAddSeed(newContent.trim()); setNewContent(""); };
   const lastLogNote = (s) => {
@@ -1594,10 +1634,14 @@ function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGate
         <div class="r-entry-line"><b>${s.content}</b></div>
         <div class="r-hub-detail" style="margin-top:4px">Stato: <span class="r-badge" style="border-color:${color};color:${color}">${SEME_STATUS_LABELS[s.status] || s.status}</span> · origine: ${s.originSource === "manual" ? "manuale" : "conversazione"}</div>
         <div class="r-magi-text" style="margin-top:6px">${lastLogNote(s)}</div>
-        ${s.status === "awaiting_approval" && html`<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
-          ${(s.proposedStrategies || []).map((strat) => html`<div class="r-entry-row">
-            <div><div class="r-entry-line"><b>${strat.titolo}</b></div><div class="r-entry-notes">${strat.descrizione}</div></div>
-            <button class="r-btn" style="background:${color}" onClick=${() => onApproveSeedStrategy(s.id, strat)}>Approva strategia</button>
+        ${s.status === "awaiting_approval" && html`<div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+          ${(s.proposedStrategies || []).map((strat) => html`<div>
+            <div class="r-entry-line"><b>${strat.titolo}</b></div>
+            <div class="r-entry-notes">${strat.descrizione}</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+              <button class="r-btn" style="background:${color}" onClick=${() => onApproveSeedStrategy(s.id, strat)}>Approva strategia</button>
+              <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => onDiscussInShell?.(s, strat)}>Discuti in Shell</button>
+            </div>
           </div>`)}
         </div>`}
         ${s.status === "gated" && html`<div style="margin-top:10px">
@@ -1612,7 +1656,7 @@ function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGate
     </div>`}
   </div>`;
 }
-function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, digest, memory, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed }) {
+function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, digest, memory, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed, onDiscussInShell }) {
   const [tab, setTab] = useState("log");
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(todayISO()); const [title, setTitle] = useState(""); const [status, setStatus] = useState("idea"); const [notes, setNotes] = useState("");
@@ -1638,7 +1682,7 @@ function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, di
           ${e.notes && html`<div class="r-entry-notes">${e.notes}</div>`}
         </div><button class="r-icon-btn" onClick=${() => onDelete(e.id)}>✕</button></div></${Card}>`)}</div>`}
     ` : tab === "percorsi" ? html`<div>
-        <${SemiPanel} color=${C.air} semi=${semi || []} onAddSeed=${onAddSeed} onApproveSeedStrategy=${onApproveSeedStrategy} onUnlockGatedSeed=${onUnlockGatedSeed} />
+        <${SemiPanel} color=${C.air} semi=${semi || []} onAddSeed=${onAddSeed} onApproveSeedStrategy=${onApproveSeedStrategy} onUnlockGatedSeed=${onUnlockGatedSeed} onDiscussInShell=${onDiscussInShell} />
         <${PercorsiPanel} pillar="air" color=${C.air} percorsi=${percorsi} setPercorsi=${setPercorsi} settings=${settings} digest=${digest} pillarMemory=${memory?.air} />
       </div>`
     : html`<${Card} accent=${C.air}>
@@ -1753,13 +1797,17 @@ function AnochinTrace({ trace }) {
     </div>`}
   </div>`;
 }
-function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory, bio, air, vidya, pushDebugLog, addSeed, advanceSeedIfDue }) {
+function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory, bio, air, vidya, pushDebugLog, addSeed, advanceSeedIfDue, shellDraft, consumeShellDraft }) {
   const [input, setInput] = useState("");
   // Trigger di avanzamento Seme (Parte 3 del brief): una sola volta per apertura di questa tab —
   // ShellView viene smontata/rimontata ad ogni cambio di `view` in App() (reso condizionale, non
   // nascosto via CSS), quindi un effect a dipendenze vuote soddisfa esattamente "una volta per
   // sessione Shell, al mount", mai ad ogni messaggio (i re-render per nuovi messaggi non lo rieseguono).
   useEffect(() => { advanceSeedIfDue?.(); }, []);
+  // PUNTO 4 (BRIEF_correzioni_post_test 26/07/2026): "Discuti in Shell" — precarica l'input, MAI invio
+  // automatico (Legge 8: il Ghost decide se/come inviarlo). Consumato una sola volta (shellDraft torna
+  // "" in App), così non sovrascrive un input che il Ghost sta già scrivendo in un mount successivo.
+  useEffect(() => { if (shellDraft) { setInput(shellDraft); consumeShellDraft?.(); } }, [shellDraft]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   // Modalità dialettica per-sessione (mai persistente) — override del default cognitiveStyle.dialectic
@@ -2515,6 +2563,14 @@ function App() {
   const [pAir, setPAir] = useState(() => loadKey("percorsi-air", []));
   const [pVidya, setPVidya] = useState(() => loadKey("percorsi-vidya", []));
   const [semi, setSemi] = useState(() => loadKey("semi-data", []));
+  // PUNTO 4 (BRIEF_correzioni_post_test 26/07/2026): "Discuti in Shell" — messaggio di contesto
+  // PREPARATO nell'input di Shell, mai inviato automaticamente (Legge 8). Non persistente (solo
+  // stato di sessione): consumato dall'effect in ShellView al mount successivo alla navigazione.
+  const [shellDraft, setShellDraft] = useState("");
+  const discussSeedInShell = useCallback((seed, strategy) => {
+    setShellDraft(`Vorrei discutere questa strategia proposta per il Seme AIR (id: ${seed.id}) — "${seed.content}":\n\n"${strategy.titolo}": ${strategy.descrizione}\n\nHo delle domande/aggiustamenti prima di approvarla. L'approvazione resta comunque dal pannello Semi, non da qui.`);
+    setView("shell");
+  }, []);
   const [kernel, setKernel] = useState(() => loadKey("kernel-data", { content: DEFAULT_KERNEL, version: 1, history: [] }));
   const [settings, setSettings] = useState(() => ({ ...DEFAULT_SETTINGS, ...loadKey("app-settings", {}) }));
   const [driveStatus, setDriveStatus] = useState({ state: "idle", time: null, error: null, remoteTime: null, fileId: null });
@@ -2742,7 +2798,7 @@ function App() {
     if (target.status === "seed" || target.status === "researching") {
       if (target.researchIterationCount >= SEME_RESEARCH_ITERATION_CAP) return;
       try {
-        const { balthasar, approvedStrategies, rejectedStrategies } = await runSeedResearch(target, s.memory.air, settingsRef.current);
+        const { balthasar, approvedStrategies, rejectedStrategies, webSearchDiag } = await runSeedResearch(target, s.memory.air, settingsRef.current);
         const nextCount = target.researchIterationCount + 1;
         const newlyApproved = approvedStrategies.filter((a) => !target.proposedStrategies.some((p) => p.titolo === a.titolo));
         const mergedStrategies = [...target.proposedStrategies, ...newlyApproved];
@@ -2752,7 +2808,9 @@ function App() {
         setSemiSync(stateRef.current.semi.map((x) => (x.id === target.id ? updated : x)));
         // Esito di Caspar-del-Seme nel log di debug: SOLO id scartato + motivo breve (≤200 caratteri,
         // sintesi di Caspar) — MAI il testo/prompt completo inviato al modello (CHIARIMENTO 26/07/2026, p.2).
-        pushDebugLog({ type: "seme-research", id: target.id, originSource: target.originSource, round: nextCount, approvedCount: approvedStrategies.length, casparRejections: rejectedStrategies, status: nextStatus, error: null });
+        // webSearch*: diagnostica PUNTO 1 (BRIEF_correzioni_post_test) — permette di verificare nel
+        // prossimo test reale se Balthasar ha ricevuto citazioni vere o le sta inventando in sintesi.
+        pushDebugLog({ type: "seme-research", id: target.id, originSource: target.originSource, round: nextCount, approvedCount: approvedStrategies.length, casparRejections: rejectedStrategies, webSearchToolInvoked: webSearchDiag.toolInvoked, webSearchCitationCount: webSearchDiag.citationCount, webSearchCitationDomains: webSearchDiag.citationDomains, status: nextStatus, error: null });
       } catch (e) {
         pushDebugLog({ type: "seme-research", id: target.id, originSource: target.originSource, error: e.message });
       }
@@ -2854,6 +2912,9 @@ function App() {
   const digestBio = `Kernel: ${kernel.content.slice(0, 300)}\nUltime voci BIO: ${bio.slice(0, 5).map((e) => e.notes || e.weight).join("; ")}\nPercorsi esistenti: ${pBio.map((p) => p.title).join(", ") || "nessuno"}`;
   const digestAir = `Kernel: ${kernel.content.slice(0, 300)}\nUltimi vettori AIR: ${air.slice(0, 5).map((e) => `${e.title} (${e.status})`).join("; ")}\nPercorsi esistenti: ${pAir.map((p) => p.title).join(", ") || "nessuno"}`;
   const digestVidya = `Kernel: ${kernel.content.slice(0, 300)}\nUltimi log VIDYA: ${vidya.slice(0, 5).map((e) => e.title).join("; ")}\nPercorsi esistenti: ${pVidya.map((p) => p.title).join(", ") || "nessuno"}`;
+  // PUNTO 2 (BRIEF_correzioni_post_test 26/07/2026): badge sul tab AIR — "c'è qualcosa che avanza"
+  // visibile senza dover entrare in Percorsi. "archived" è l'unico stato che non richiede attenzione.
+  const activeSeedCount = semi.filter((s) => s.status !== "archived").length;
 
   return html`<div>
     <div class="r-ghost-texture"></div>
@@ -2866,16 +2927,16 @@ function App() {
     ${view === "shell" && html`<${ShellView} messages=${shellChat} setMessages=${setShellChat} settings=${settings} addBio=${addBio} addAir=${addAir} addVidya=${addVidya}
       percorsi=${{ bio: pBio, air: pAir, vidya: pVidya }} setPercorsi=${{ bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }}
       memory=${memory} updateMemoria=${updateMemoria} styleMemory=${styleMemory} setStyleMemory=${setStyleMemory} bio=${bio} air=${air} vidya=${vidya} pushDebugLog=${pushDebugLog}
-      addSeed=${addSeed} advanceSeedIfDue=${advanceSeedIfDue} />`}
+      addSeed=${addSeed} advanceSeedIfDue=${advanceSeedIfDue} shellDraft=${shellDraft} consumeShellDraft=${() => setShellDraft("")} />`}
     ${view === "bio" && html`<${BioView} entries=${bio} onAdd=${addBio} onDelete=${delBio} percorsi=${pBio} setPercorsi=${setPBioSync} settings=${settings} digest=${digestBio} memory=${memory} />`}
     ${view === "air" && html`<${AirView} entries=${air} onAdd=${addAir} onDelete=${delAir} percorsi=${pAir} setPercorsi=${setPAirSync} settings=${settings} digest=${digestAir} memory=${memory}
-      semi=${semi} onAddSeed=${(content) => addSeed(content, "manual")} onApproveSeedStrategy=${approveSeedStrategy} onUnlockGatedSeed=${unlockGatedSeed} />`}
+      semi=${semi} onAddSeed=${(content) => addSeed(content, "manual")} onApproveSeedStrategy=${approveSeedStrategy} onUnlockGatedSeed=${unlockGatedSeed} onDiscussInShell=${discussSeedInShell} />`}
     ${view === "vidya" && html`<${VidyaView} entries=${vidya} onAdd=${addVidya} onDelete=${delVidya} percorsi=${pVidya} setPercorsi=${setPVidyaSync} settings=${settings} digest=${digestVidya} memory=${memory} />`}
     ${view === "magi" && html`<${MagiView} sessions=${magi} onSave=${addMagi} onDelete=${delMagi} settings=${settings} memory=${memory} updateMemoria=${updateMemoria} />`}
     ${view === "simbiosi" && html`<${SimbiosiView} resonance=${resonance} onRecalc=${recalcResonance} calculating=${resCalculating} error=${resError} onPromoteIdentity=${promoteToIdentity} onDismissIdentity=${dismissIdentityHint} />`}
     ${view === "kernel" && html`<${KernelView} kernel=${kernel} onSave=${saveKernel} driveStatus=${driveStatus} />`}
     ${view === "settings" && html`<${SettingsView} settings=${settings} updateSettings=${updateSettings} driveStatus=${driveStatus} debugLog=${debugLog} clearDebugLog=${clearDebugLog} pullAndMergeOnce=${pullAndMergeOnce} />`}
-    <div class="r-tab-bar"><div class="r-tab-bar-inner">${TABS.map((t) => html`<button class="r-tab ${view === t.key ? "active" : ""}" onClick=${() => setView(t.key)}>${t.label}</button>`)}</div></div>
+    <div class="r-tab-bar"><div class="r-tab-bar-inner">${TABS.map((t) => html`<button class="r-tab ${view === t.key ? "active" : ""}" onClick=${() => setView(t.key)}>${t.label}${t.key === "air" && activeSeedCount > 0 ? html`<span class="r-tab-badge">${activeSeedCount}</span>` : ""}</button>`)}</div></div>
     </div>`}
   </div>`;
 }

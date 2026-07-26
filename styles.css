@@ -109,10 +109,17 @@ body {
 .r-spin { animation: rspin 1s linear infinite; display: inline-block; }
 @keyframes rspin { to { transform: rotate(360deg); } }
 
+/* FIX 26/07/2026 (PUNTO 5, BRIEF_correzioni_post_test): una regola più sotto in questo file
+   ("(.r-topbar, .r-screen, .r-tab-bar { position: relative; ... }") sovrascriveva questo
+   position:fixed con position:relative (stessa specificità, regola successiva vince) — la barra
+   scorreva via col contenuto invece di restare sempre visibile in fondo. Quella regola ora non
+   include più .r-tab-bar: questa resta l'unica dichiarazione di posizionamento della tab bar. */
 .r-tab-bar { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(255,255,255,0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid rgba(255,255,255,0.9); display: flex; justify-content: center; z-index: 10; }
 .r-tab-bar-inner { display: flex; width: 100%; max-width: 480px; }
 .r-tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 0 10px; background: none; border: none; cursor: pointer; color: var(--muted); font-size: 9.5px; font-family: 'IBM Plex Sans', sans-serif; }
 .r-tab.active { color: var(--core); }
+/* PUNTO 2 (BRIEF_correzioni_post_test 26/07/2026): badge numerico sul tab AIR — Semi attivi (non archiviati). */
+.r-tab-badge { display: inline-block; min-width: 14px; height: 14px; line-height: 14px; padding: 0 3px; margin-left: 3px; border-radius: 7px; background: var(--core); color: #fff; font-size: 9px; font-weight: 700; vertical-align: top; }
 
 .r-drive-badge { display: flex; align-items: center; }
 
@@ -155,7 +162,7 @@ body {
 .r-hex-texture { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; opacity: 0.55; }
 .r-hex-texture polygon { animation: hexpulse 5s ease-in-out infinite; opacity: 0.12; }
 @keyframes hexpulse { 0%, 100% { opacity: 0.12; } 50% { opacity: 0.28; } }
-.r-topbar, .r-screen, .r-tab-bar { position: relative; z-index: 1; }
+.r-topbar, .r-screen { position: relative; z-index: 1; }
 .r-shell-inputbar { display: flex; gap: 8px; align-items: flex-end; }
 .r-shell-inputbar .r-textarea { flex: 1; min-height: 44px; }
 .r-shell-attach-btn { background: var(--surface2); border: 1px solid rgba(255,255,255,0.9); border-radius: 10px; padding: 0 12px; height: 44px; font-size: 17px; cursor: pointer; flex-shrink: 0; }
