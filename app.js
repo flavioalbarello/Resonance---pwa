@@ -2305,7 +2305,7 @@ function SkippableField({ label, value, onChange, placeholder, textarea, hint, m
       onClick=${() => onChange(skipped ? "" : SKIP_TEXT)}>${skipped ? "Annulla" : "Preferisco non rispondere"}</button>
   </label>`;
 }
-function OnboardingView({ onComplete, settings }) {
+function OnboardingView({ onComplete, settings, driveRecovery, onRecoverFromDrive }) {
   const [step, setStep] = useState("form"); // form → processing → confirm
   const [error, setError] = useState("");
   // Blocco 1 — Come ti muovi (cognitiveStyle)
@@ -2451,6 +2451,23 @@ function OnboardingView({ onComplete, settings }) {
       <p>Resonance è un sistema che si adatta al tuo modo di pensare, invece di chiederti di adattarti a lui. Lo "Shell" è la parte dell'app che ti parla e ti accompagna — pensalo come un assistente che, da queste risposte, impara come parlarti, cosa non toccare mai, e come aiutarti a fare quello che vuoi fare.</p>
       <p>Le domande che seguono servono solo a questo. Restano solo tue: si salvano sul tuo Google Drive personale, nessun altro le vede, e puoi modificarle o cancellarle quando vuoi. Nessuna è obbligatoria — se una non ti va di compilarla ora, salta pure.</p>
       <p>Una nota prima di iniziare: alcune domande toccano salute e vita privata. Resonance non è un medico né uno psicologo, e non li sostituisce.</p></div>
+    <div class="r-card" style="border-left:3px solid ${C.core}">
+      ${driveRecovery.phase === "idle" && html`<div>
+        <h3>Hai già un account?</h3>
+        <p style="opacity:.7">Se hai già usato Resonance su un altro dispositivo, o hai perso i dati locali, recupera il tuo profilo da Google Drive invece di ripartire da qui.</p>
+        <button class="r-btn r-btn-ghost" onClick=${onRecoverFromDrive}>Ho già un account — Accedi con Google</button>
+      </div>`}
+      ${driveRecovery.phase === "connecting" && html`<p><span class="r-spin">⏳</span> Connessione con Google in corso…</p>`}
+      ${driveRecovery.phase === "checking" && html`<p><span class="r-spin">⏳</span> Recupero i tuoi dati da Drive…</p>`}
+      ${driveRecovery.phase === "notfound" && html`<div>
+        <p>Nessun dato precedente trovato per questo account.</p>
+        <p style="opacity:.7">Nessun problema — prosegui pure con il questionario qui sotto.</p>
+      </div>`}
+      ${driveRecovery.phase === "error" && html`<div>
+        <p class="r-error">Recupero non riuscito: ${driveRecovery.error} I tuoi dati non sono stati toccati — puoi riprovare quando vuoi.</p>
+        <button class="r-btn" onClick=${onRecoverFromDrive}>Riprova</button>
+      </div>`}
+    </div>
     ${error && html`<div class="r-card" style="border-left:3px solid var(--air)"><p>${error}</p></div>`}
     <div class="r-card">
       <h3>Come ti muovi</h3>
@@ -2664,6 +2681,47 @@ function App() {
     stateRef.current = { bio: merged.bio, air: merged.air, vidya: merged.vidya, pBio: merged.pBio, pAir: merged.pAir, pVidya: merged.pVidya, magi: merged.magi, semi: merged.semi, shellChat: merged.shellChat, memory: merged.memory, styleMemory: merged.styleMemory, kernel: merged.kernel, resonance: merged.resonance, ghostProfile: merged.ghostProfile };
     saveKey("sync-last-modified", merged.lastModified);
   };
+
+  // ═══ BRIEF2_login_precoce (26/07/2026) — "Ho già un account" in onboarding ═══
+  // Incidente reale che ha motivato questa feature: localStorage cancellato per errore → utente
+  // bloccato dentro l'onboarding completo, dati veri irraggiungibili su Drive, rischio di sovrascrivere
+  // il profilo vero con uno vuoto al termine del questionario (merge "ultima scrittura vince").
+  // idle → connecting (OAuth, STESSO connectDrive già usato per Drive/Calendar/Gmail, nessun secondo
+  // meccanismo di auth) → checking (ricerca+download del file di sync) → notfound | error, oppure
+  // successo silenzioso (ghostProfile smette di essere null, OnboardingView si smonta da sola).
+  const [driveRecovery, setDriveRecovery] = useState({ phase: "idle", error: "" });
+  const recoverFromDrive = useCallback(async () => {
+    setDriveRecovery({ phase: "connecting", error: "" });
+    try {
+      await connectDrive();
+      setDriveRecovery({ phase: "checking", error: "" });
+      const found = await findSyncFile();
+      if (!found) { setDriveRecovery({ phase: "notfound", error: "" }); return; }
+      const remote = await downloadSyncState(found.id);
+      if (!remote) { setDriveRecovery({ phase: "notfound", error: "" }); return; }
+      // CASO LIMITE 2 (BRIEF2): "local" è SYNC_DEFAULTS() puro, MAI stateRef.current — che a questo punto
+      // non contiene comunque risposte di onboarding (quelle vivono solo nello state locale, mai letto
+      // qui, di OnboardingView), ma usare i default esplicitamente rende il punto inequivocabile: il
+      // recupero non eredita MAI nulla dalla sessione di onboarding in corso, a prescindere da cosa il
+      // Ghost abbia già digitato in quello schermo.
+      const merged = mergeSyncState(SYNC_DEFAULTS(), remote);
+      syncFileIdRef.current = found.id;
+      // CASO LIMITE 5 (BRIEF2): applyMergedState è lo STESSO, UNICO percorso di scrittura già usato dal
+      // pull Drive manuale/automatico — mai saveGhostProfile/onComplete (quella scrive un profilo nuovo
+      // assemblato dalle risposte di onboarding, esattamente la funzione che ha causato l'incidente).
+      applyMergedState(merged);
+      // CASO LIMITE 3 (BRIEF2): già garantito da applyMergedState, che scrive bio-data/kernel-data/
+      // shell-chat/ecc. in localStorage anche se gli array sono vuoti — isExistingInstall() li troverà
+      // al prossimo avvio, quindi l'onboarding non ricomparirà.
+      updateSettings({ driveSyncEnabled: true }); // Drive è appena stato collegato: la sync va accesa
+      setDriveRecovery({ phase: "idle", error: "" }); // consumato — ghostProfile non è più null, OnboardingView si smonta
+    } catch (e) {
+      // CASO LIMITE 1 (BRIEF2), il più pericoloso: nessun applyMergedState è stato chiamato sopra se si
+      // arriva qui — zero stato parziale scritto. L'utente resta sulla stessa schermata con un errore
+      // esplicito e un modo di riprovare, mai forzato verso il questionario come unica via d'uscita.
+      setDriveRecovery({ phase: "error", error: e.message || "Errore sconosciuto durante il recupero." });
+    }
+  }, [updateSettings]);
 
   const syncCore = useCallback(async (applyLocally) => {
     const found = syncFileIdRef.current ? { id: syncFileIdRef.current } : await findSyncFile();
@@ -2920,7 +2978,7 @@ function App() {
     <div class="r-ghost-texture"></div>
     <${HexTexture} />
     <div class="r-topbar"><div class="r-brand">RESONANCE<span>•</span></div></div>
-    ${!ghostProfile && html`<${OnboardingView} onComplete=${saveGhostProfile} settings=${settings} />`}
+    ${!ghostProfile && html`<${OnboardingView} onComplete=${saveGhostProfile} settings=${settings} driveRecovery=${driveRecovery} onRecoverFromDrive=${recoverFromDrive} />`}
     ${ghostProfile && html`<div>
     <${FeedbackWidget} view=${view} pushDebugLog=${pushDebugLog} />
     ${view === "hub" && html`<${Hub} bio=${bio} air=${air} vidya=${vidya} magi=${magi} resonance=${resonance} setView=${setView} pBio=${pBio} pAir=${pAir} pVidya=${pVidya} proactiveHint=${resonance.worthSurfacing} />`}
