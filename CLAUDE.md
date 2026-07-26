@@ -33,6 +33,15 @@ non forzare mai push distruttivi su `main` o `stable` senza che sia esplicitamen
 - Qualsiasi funzione di generazione contenuti deve ricevere esplicitamente la memoria procedurale
   rilevante nel prompt (bug già capitato: piano alimentare generato senza accesso a memory.bio).
 
+## Checklist di consegna per ogni nuova feature
+- **Aggiorna `APP_CAPABILITIES_CONTEXT` in app.js** (blocco iniettato nel system prompt dello
+  Shell, stesso punto di `PILLAR_CTX`) con poche righe sulla nuova feature: cos'è, come si crea/
+  attiva, cosa significano i suoi stati. Senza questo lo Shell non distingue "il Ghost parla di
+  una funzionalità dell'app" da "il Ghost parla della sua vita/lavoro reale" — bug già osservato
+  (26/07/2026) col rilascio della feature Semi: il Ghost ha scritto "sto testando i Semi nel
+  pilastro AIR" e lo Shell ha risposto come se si riferisse alla vecchia strategia contenuti,
+  ignaro che "Semi" fosse una feature appena costruita.
+
 ## Prima di ogni task
 1. Leggi il codice esistente prima di proporre modifiche — non assumere, verificare.
 2. Se il task è ambiguo o tocca il vincolo AIR/PhysioAlba, segnala invece di procedere.
