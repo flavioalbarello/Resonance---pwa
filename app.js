@@ -204,17 +204,33 @@ function setGhostProfile(profile) { CURRENT_GHOST_PROFILE = profile; PILLAR_CTX 
 // Funzione pura (nessuna dipendenza da stato globale/DOM — testabile in isolamento). Primo strato di
 // difesa del vincolo AIR/PhysioAlba per la feature Seme (Manifesto §6.1): il contenuto di un Seme è
 // testo libero non filtrato (canale conversazionale o pulsante manuale), quindi può nominare l'identità
-// professionale del Ghost prima ancora che un qualunque prompt lo legga. Sostituisce ogni occorrenza dei
-// termini dichiarati in professionalIdentity (case-insensitive, confini di parola) con un placeholder
-// neutro. Secondo strato: Caspar-del-Seme verifica comunque il testo ORIGINALE (vedi runSeedResearch).
+// professionale del Ghost prima ancora che un qualunque prompt lo legga. Secondo strato: Caspar-del-Seme
+// verifica comunque il testo ORIGINALE (vedi runSeedResearch).
+// CORREZIONE 26/07/2026: il vincolo reale (§6.1) è l'esposizione dell'IDENTITÀ RICONOSCIBILE (il Ghost
+// stesso, il brand/studio "PhysioAlba"), non un divieto sulla fisioterapia come dominio/materia — un
+// Seme su "biomeccanica per runner" o "prevenzione infortuni" è AIR legittimo e non va MAI toccato. La
+// prima versione trattava ogni token di professionalIdentity (incluso "fisioterapista", un termine di
+// dominio puro) come parola-chiave da redigere sempre: troppo aggressivo. Ora:
+//  1) marcatori di BRAND/NOME (es. "PhysioAlba", il nome del Ghost) — sempre redatti ovunque appaiano,
+//     a prescindere dal contesto: distinti dai termini di dominio con un segnale minimo (maiuscola
+//     interna, es. "PhysioAlba" — le parole comuni di dominio come "fisioterapista" sono tutte minuscole
+//     e restano fuori da questo elenco). Non modifica/cura profile.professionalIdentity, che resta
+//     invariato per gli altri usi già esistenti (PILLAR_CTX, runAccettore, computeResonance, Magi).
+//  2) espressioni possessive/identificative dirette ("il mio studio", "i miei pazienti", "la mia
+//     clinica", "il mio lavoro da/come/di <dominio>", "dove lavoro") — è la COMBINAZIONE possessivo+
+//     pratica professionale reale a esporre l'identità, non la singola parola di dominio isolata.
 function redactProfessionalIdentity(text, profile) {
-  if (!text || !profile?.hasProfessionalConstraint || !profile?.professionalIdentity) return text;
-  const terms = profile.professionalIdentity.split(/[,;]/).map((t) => t.trim()).filter(Boolean);
+  if (!text || !profile?.hasProfessionalConstraint) return text;
   let out = text;
-  for (const term of terms) {
+  const nameTokens = (profile.name || "").replace(/\([^)]*\)/g, "").split(/\s+/).map((t) => t.trim()).filter(Boolean);
+  const brandTokens = (profile.professionalIdentity || "").split(/[,;]/).map((t) => t.trim()).filter(Boolean)
+    .filter((t) => /[a-z][A-Z]/.test(t)); // solo token con maiuscola interna (marcatore di brand/nome proprio) — mai un termine di dominio tutto minuscolo
+  for (const term of [...new Set([...brandTokens, ...nameTokens])]) {
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     out = out.replace(new RegExp(`\\b${escaped}\\b`, "gi"), "[identità professionale omessa]");
   }
+  out = out.replace(/\bmi(?:o|a|ei|e)\b\s+(studio|ambulatorio|clinica|centro|professione|pazient[ei]|lavoro\s+(?:da|di|come)\s+\S+)\b/gi, "[identità professionale omessa]");
+  out = out.replace(/\bdove\s+lavoro\b/gi, "[identità professionale omessa]");
   return out;
 }
 
@@ -488,8 +504,12 @@ Genera 2-3 strategie, ciascuna specifica e azionabile (non generica). JSON: {"st
   const candidate = (melchiorData?.strategie || []).slice(0, 3).map((s, i) => ({ id: String(i), titolo: s.titolo || `Strategia ${i + 1}`, descrizione: s.descrizione || "" }));
   let approved = [];
   if (candidate.length) {
+    // CORREZIONE 26/07/2026: il vincolo (§6.1) riguarda l'identità RICONOSCIBILE (il nome del Ghost,
+    // il brand/studio professionale), non la materia fisioterapica in astratto — va detto esplicitamente
+    // a Caspar, altrimenti il modello rischia di bocciare per riflesso qualunque strategia che tocchi il
+    // dominio (es. biomeccanica, prevenzione infortuni), che invece è contenuto AIR del tutto legittimo.
     const casparIdentityLine = CURRENT_GHOST_PROFILE.hasProfessionalConstraint
-      ? `1) non deve esporre in nessuna forma l'identità professionale del Ghost (${CURRENT_GHOST_PROFILE.professionalIdentity}); 2) non deve richiedere dilatazione del suo tempo lineare di lavoro.`
+      ? `1) non deve esporre l'identità professionale RICONOSCIBILE del Ghost — il suo nome, il brand/studio (${CURRENT_GHOST_PROFILE.professionalIdentity}), o affermazioni che leghino esplicitamente il contenuto alla sua pratica reale (es. "il mio studio", "i miei pazienti"). Il dominio della fisioterapia in sé (biomeccanica, riabilitazione, prevenzione infortuni, ecc.) NON è vietato — bocciare per il solo dominio, senza un marcatore di identità riconoscibile, è un ERRORE da evitare; 2) non deve richiedere dilatazione del suo tempo lineare di lavoro.`
       : `non deve richiedere dilatazione insostenibile del tempo lineare di lavoro del Ghost (nessun vincolo di identità professionale dichiarato per questo Ghost).`;
     const airHc = (CURRENT_GHOST_PROFILE.hardConstraints?.air || []).join("; ");
     const casparSystem = `Sei CASPAR nel sistema Resonance, pilastro AIR — verifica ciascuna strategia contro i vincoli ASSOLUTI e non negoziabili: ${casparIdentityLine}${airHc ? ` Vincoli AIR aggiuntivi dichiarati dal Ghost: ${airHc}.` : ""} Boccia SOLO per violazione di un vincolo assoluto, mai per qualità o preferenza. JSON: {"verdetti":[{"id":"0","approvata":true/false,"motivo":"se bocciata, max 20 parole"}]}`;
@@ -2672,16 +2692,20 @@ function App() {
       proposedStrategies: [], approvedStrategy: null, gateReason: null,
     };
     setSemiSync([s, ...stateRef.current.semi]);
-    pushDebugLog({ type: "seme-created", originSource, error: null });
+    pushDebugLog({ type: "seme-created", id: s.id, originSource, error: null });
     return s;
   }, [setSemiSync, pushDebugLog]);
   const approveSeedStrategy = useCallback((id, strategy) => {
     setSemiSync(stateRef.current.semi.map((s) => (s.id === id ? { ...s, approvedStrategy: strategy, status: "executing", gateReason: null } : s)));
-    pushDebugLog({ type: "seme-approved", error: null });
+    pushDebugLog({ type: "seme-approved", id, strategyTitolo: strategy?.titolo || null, error: null });
   }, [setSemiSync, pushDebugLog]);
+  // "Sblocca/Conferma" (brief 1.C, stato "gated"): il Ghost sceglie di riprovare nonostante il blocco.
+  // Non resetta executionIterationCount (il tentativo bloccato ha già consumato la sua iterazione) —
+  // solo la prossima apertura Shell farà un nuovo tentativo, mai qui in automatico (Parte 3 del brief).
   const unlockGatedSeed = useCallback((id) => {
+    const previousReason = stateRef.current.semi.find((s) => s.id === id)?.gateReason || null;
     setSemiSync(stateRef.current.semi.map((s) => (s.id === id ? { ...s, status: "executing", gateReason: null } : s)));
-    pushDebugLog({ type: "seme-unlocked", error: null });
+    pushDebugLog({ type: "seme-unlocked", id, previousGateReason: previousReason, error: null });
   }, [setSemiSync, pushDebugLog]);
   // Un solo avanzamento per apertura della tab Shell (Parte 3 del brief) — chiamata dall'effect di
   // mount di ShellView, MAI da un timer o da ogni messaggio. Legge stato FRESCO via stateRef (stesso
@@ -2702,9 +2726,9 @@ function App() {
         const logEntry = { date: new Date().toISOString(), note: `Round ${nextCount}/${SEME_RESEARCH_ITERATION_CAP} — ${approvedStrategies.length} strategia/e approvata/e. Ricerca: ${balthasar.slice(0, 160)}` };
         const updated = { ...target, status: nextStatus, researchIterationCount: nextCount, researchLog: [...target.researchLog, logEntry], proposedStrategies: mergedStrategies };
         setSemiSync(stateRef.current.semi.map((x) => (x.id === target.id ? updated : x)));
-        pushDebugLog({ type: "seme-research", originSource: target.originSource, round: nextCount, approvedCount: approvedStrategies.length, status: nextStatus, error: null });
+        pushDebugLog({ type: "seme-research", id: target.id, originSource: target.originSource, round: nextCount, approvedCount: approvedStrategies.length, status: nextStatus, error: null });
       } catch (e) {
-        pushDebugLog({ type: "seme-research", originSource: target.originSource, error: e.message });
+        pushDebugLog({ type: "seme-research", id: target.id, originSource: target.originSource, error: e.message });
       }
       return;
     }
@@ -2717,9 +2741,9 @@ function App() {
         ? { ...target, status: "gated", executionIterationCount: nextCount, gateReason: gate.reason, executionLog: [...target.executionLog, { date: new Date().toISOString(), note: `Bloccato: ${gate.reason}` }] }
         : { ...target, executionIterationCount: nextCount, executionLog: [...target.executionLog, { date: new Date().toISOString(), note: stepText }] };
       setSemiSync(stateRef.current.semi.map((x) => (x.id === target.id ? updated : x)));
-      pushDebugLog({ type: "seme-execution", originSource: target.originSource, round: nextCount, gated: gate.gated, error: null });
+      pushDebugLog({ type: "seme-execution", id: target.id, originSource: target.originSource, round: nextCount, gated: gate.gated, error: null });
     } catch (e) {
-      pushDebugLog({ type: "seme-execution", originSource: target.originSource, error: e.message });
+      pushDebugLog({ type: "seme-execution", id: target.id, originSource: target.originSource, error: e.message });
     }
   }, [setSemiSync, pushDebugLog]);
   const saveKernel = useCallback((content) => setKernel((prev) => {
