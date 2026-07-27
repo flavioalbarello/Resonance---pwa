@@ -6,7 +6,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-07-21 · gmail-send-feedback-and-arms-v4";
+const APP_BUILD = "2026-07-27 · websearch-params-fix-v1";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -179,18 +179,60 @@ function buildPillarCtx(profile) {
     ? `Vincolo assoluto, hard-stop non negoziabile: nessuna strategia deve esporre l'identità professionale del Ghost (${profile.professionalIdentity}) né richiedere dilatazione del suo tempo lineare di lavoro. È l'unico punto del sistema dove la lettura non è negoziabile — tutto il resto resta revisionabile.`
     : `Nessun vincolo di compartimentazione professionale dichiarato per questo Ghost. Resta comunque valido il principio generale: non richiedere dilatazione insostenibile del suo tempo lineare di lavoro.`;
   // Punto di forza dichiarato in onboarding (freeform.strength): unica risorsa positiva esplicita nel
-  // profilo, a differenza di hardConstraints (vincoli/cautele). Non è specifico di un pilastro — una
-  // competenza dichiarata è sfruttabile ovunque (Percorsi/Magi) — quindi va in tutti e tre i contesti.
+  // profilo, a differenza di hardConstraints (vincoli/cautele).
   const strengthNote = profile.freeform?.strength ? ` Punto di forza dichiarato dal Ghost, da tenere presente come risorsa su cui costruire (non solo colmare lacune): ${profile.freeform.strength}.` : "";
+  // Resto del blocco freeform (motivation/context/request): testo libero raccolto in onboarding.
+  const motivationNote = profile.freeform?.motivation ? ` Motivazione dichiarata dal Ghost per l'uso di Resonance: ${profile.freeform.motivation}.` : "";
+  const contextNote = profile.freeform?.context ? ` Contesto aggiuntivo dichiarato dal Ghost su di sé: ${profile.freeform.context}.` : "";
+  const requestNote = profile.freeform?.request ? ` Richiesta prioritaria dichiarata dal Ghost (l'unica cosa che vorrebbe da Resonance): ${profile.freeform.request}.` : "";
+  // Nessuno dei quattro campi è filtrato: qualunque di essi può nominare l'identità professionale del
+  // Ghost (anche "punto di forza" o "richiesta" — es. "sono fisioterapista da 16 anni" ci starebbe
+  // benissimo in entrambi). Per questo l'intero blocco freeform va SOLO in bio/vidya: il contesto air
+  // resta il pattern preesistente, senza alcuna nota freeform, per non rischiare mai di violare il
+  // vincolo assoluto hasProfessionalConstraint.
+  const freeformNotes = strengthNote + motivationNote + contextNote + requestNote;
   return {
-    vidya: cogText + strengthNote,
-    bio: bioList.join("; ") + " Ogni lettura BIO è una stance interpretativa rivedibile dal Ghost, mai un verdetto medico oggettivo." + strengthNote,
-    air: air + strengthNote,
+    vidya: cogText + freeformNotes,
+    bio: bioList.join("; ") + " Ogni lettura BIO è una stance interpretativa rivedibile dal Ghost, mai un verdetto medico oggettivo." + freeformNotes,
+    air,
   };
 }
 let CURRENT_GHOST_PROFILE = DEFAULT_GHOST_PROFILE;
 let PILLAR_CTX = buildPillarCtx(DEFAULT_GHOST_PROFILE);
 function setGhostProfile(profile) { CURRENT_GHOST_PROFILE = profile; PILLAR_CTX = buildPillarCtx(profile); }
+
+// Funzione pura (nessuna dipendenza da stato globale/DOM — testabile in isolamento). Primo strato di
+// difesa del vincolo AIR/PhysioAlba per la feature Seme (Manifesto §6.1): il contenuto di un Seme è
+// testo libero non filtrato (canale conversazionale o pulsante manuale), quindi può nominare l'identità
+// professionale del Ghost prima ancora che un qualunque prompt lo legga. Secondo strato: Caspar-del-Seme
+// verifica comunque il testo ORIGINALE (vedi runSeedResearch).
+// CORREZIONE 26/07/2026: il vincolo reale (§6.1) è l'esposizione dell'IDENTITÀ RICONOSCIBILE (il Ghost
+// stesso, il brand/studio "PhysioAlba"), non un divieto sulla fisioterapia come dominio/materia — un
+// Seme su "biomeccanica per runner" o "prevenzione infortuni" è AIR legittimo e non va MAI toccato. La
+// prima versione trattava ogni token di professionalIdentity (incluso "fisioterapista", un termine di
+// dominio puro) come parola-chiave da redigere sempre: troppo aggressivo. Ora:
+//  1) marcatori di BRAND/NOME (es. "PhysioAlba", il nome del Ghost) — sempre redatti ovunque appaiano,
+//     a prescindere dal contesto: distinti dai termini di dominio con un segnale minimo (maiuscola
+//     interna, es. "PhysioAlba" — le parole comuni di dominio come "fisioterapista" sono tutte minuscole
+//     e restano fuori da questo elenco). Non modifica/cura profile.professionalIdentity, che resta
+//     invariato per gli altri usi già esistenti (PILLAR_CTX, runAccettore, computeResonance, Magi).
+//  2) espressioni possessive/identificative dirette ("il mio studio", "i miei pazienti", "la mia
+//     clinica", "il mio lavoro da/come/di <dominio>", "dove lavoro") — è la COMBINAZIONE possessivo+
+//     pratica professionale reale a esporre l'identità, non la singola parola di dominio isolata.
+function redactProfessionalIdentity(text, profile) {
+  if (!text || !profile?.hasProfessionalConstraint) return text;
+  let out = text;
+  const nameTokens = (profile.name || "").replace(/\([^)]*\)/g, "").split(/\s+/).map((t) => t.trim()).filter(Boolean);
+  const brandTokens = (profile.professionalIdentity || "").split(/[,;]/).map((t) => t.trim()).filter(Boolean)
+    .filter((t) => /[a-z][A-Z]/.test(t)); // solo token con maiuscola interna (marcatore di brand/nome proprio) — mai un termine di dominio tutto minuscolo
+  for (const term of [...new Set([...brandTokens, ...nameTokens])]) {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(`\\b${escaped}\\b`, "gi"), "[identità professionale omessa]");
+  }
+  out = out.replace(/\bmi(?:o|a|ei|e)\b\s+(studio|ambulatorio|clinica|centro|professione|pazient[ei]|lavoro\s+(?:da|di|come)\s+\S+)\b/gi, "[identità professionale omessa]");
+  out = out.replace(/\bdove\s+lavoro\b/gi, "[identità professionale omessa]");
+  return out;
+}
 
 //──────────────────────────────────────────────────────────
 // STORAGE (locale, sul dispositivo)
@@ -243,7 +285,11 @@ async function askClaudeDirect(system, userText, temperature, maxTokens, apiKey,
   const t = (data.content || []).find((b) => b.type === "text");
   return t ? t.text.trim() : "";
 }
-async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, model, useWebSearch, image) {
+// onRaw (opzionale, retrocompatibile — i 4 chiamanti esistenti non lo passano e non cambiano
+// comportamento): riceve la risposta JSON grezza PRIMA dell'estrazione del solo testo, per chi ha
+// bisogno di ispezionare metadati oltre al content (es. citazioni/annotazioni di una web search
+// forzata — vedi runSeedResearch/PUNTO 1 BRIEF_correzioni_post_test 26/07/2026).
+async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, model, useWebSearch, image, onRaw, penalties = null) {
   const body = {
     model, max_tokens: maxTokens, temperature,
     messages: [{ role: "system", content: system }, { role: "user", content: buildOpenRouterContent(userText, image) }],
@@ -252,20 +298,60 @@ async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, m
   // FIX 20/07/2026: prima il tool era dichiarato ma il modello poteva ignorarlo ("auto") — con prompt
   // densi (es. Shell con Manifesto+memoria pilastri) il riflesso "non ho accesso al web" prevaleva
   // anche col tool disponibile. tool_choice:"required" costringe la chiamata a usarlo, non a deciderlo.
-  if (useWebSearch) { body.tools = [{ type: "openrouter:web_search" }]; body.tool_choice = "required"; }
+  // FIX 27/07/2026 (BRIEF_fix_parametri_websearch): il tool era dichiarato NUDO — nessun parametro —
+  // quindi ereditava il tetto di default del provider (max_tool_calls=30 a livello di richiesta),
+  // causa radice confermata della cascata "30 ricerche invece di 1" osservata in produzione (~$0,09-
+  // 0,24/turno, ~960k-999k prompt_tokens). Verificato sulla documentazione ufficiale OpenRouter
+  // (docs/guides/features/server-tools/web-search, 27/07/2026): max_tool_calls è un parametro di
+  // RICHIESTA (livello body, accanto a model/messages/tools), NON un parametro annidato nel tool —
+  // per questo il fix precedente (tool dichiarato senza alcun parametro) non lo toccava mai. Esiste
+  // anche un `max_uses` annidato in parameters, ma la stessa documentazione dichiara che viene
+  // "forwarded only to Anthropic (as max_uses); other native search providers ignore it" — inutile
+  // per Llama 3.3 70B (produzione attuale), quindi scartato: userebbe il nome giusto sulla carta ma
+  // non avrebbe alcun effetto reale sul modello che usiamo.
+  // Valori scelti (nessuna configurabilità utente richiesta dal brief):
+  // - max_tool_calls: 3 — tetto di richiesta condiviso da tutto il budget server-tool. L'uso reale è
+  //   una domanda puntuale (Shell on-demand, Agente AIR, ricerca Seme), non esplorazione multi-query:
+  //   3 lascia margine per una ricerca iniziale + 1-2 raffinamenti senza riaprire la cascata (10x
+  //   sotto il vecchio comportamento anche nel caso peggiore, tipicamente 1 sola ricerca eseguita).
+  //   La doc conferma che al raggiungimento del tetto il modello viene comunque invitato a produrre
+  //   la risposta finale con quanto raccolto finora (non un errore secco) — mitiga il rischio "non
+  //   riesce mai a concludere" con tool_choice:"required" citato nel brief, ma NON verificato dal vivo
+  //   in questa sessione (nessuna chiave OpenRouter disponibile — vedi riepilogo di consegna).
+  // - max_results: 5 (default documentato, reso esplicito) e max_total_results: 10 — contengono il
+  //   volume cumulativo di risultati per richiesta, indipendentemente da quante ricerche vengono fatte.
+  // - search_context_size: "low" — riduce il contenuto testuale recuperato per ciascun risultato:
+  //   è la leva più diretta sui prompt_tokens (960k-999k osservati con 30 ricerche non ha senso
+  //   spiegarlo solo col numero di ricerche, il contenuto per risultato pesa quanto il conteggio).
+  if (useWebSearch) {
+    body.tools = [{ type: "openrouter:web_search", parameters: { max_results: 5, max_total_results: 10, search_context_size: "low" } }];
+    body.tool_choice = "required";
+    body.max_tool_calls = 3;
+  }
+  // TASK A (SPRINT_HARDENING 26/07/2026 sera): penalità anti-loop opzionali, applicate SOLO dai
+  // chiamanti plain-text ad alta temperatura (mai da askModelJSON — vedi ANTI_LOOP_PENALTIES sotto).
+  if (penalties) {
+    body.repetition_penalty = penalties.repetition_penalty ?? 1.15;
+    body.frequency_penalty = penalties.frequency_penalty ?? 0.4;
+  }
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` }, body: JSON.stringify(body),
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || "Errore OpenRouter");
+  if (onRaw) { try { onRaw(data); } catch { /* diagnostica best-effort: non deve mai far fallire la chiamata */ } }
   return (data.choices?.[0]?.message?.content || "").trim();
 }
-async function askModel(system, userText, temperature, maxTokens, settings, useWebSearch = false, image = null) {
+// onRaw: stesso hook opzionale/retrocompatibile di askOpenRouter (vedi sopra) — propagato qui SOLO
+// per il ramo OpenRouter (TASK 1 BRIEF_costtracking 26/07/2026 è scoped esplicitamente a "ogni
+// chiamata OpenRouter", non a Claude-direct). Nessun chiamante esistente lo passa: zero cambio di
+// comportamento per chi non ne ha bisogno.
+async function askModel(system, userText, temperature, maxTokens, settings, useWebSearch = false, image = null, onRaw = null, penalties = null) {
   if (!settings.apiKey) throw new Error("Nessuna chiave API impostata (vai in Setup).");
   if (settings.provider === "claude-direct") return askClaudeDirect(system, userText, temperature, maxTokens, settings.apiKey, image);
-  return askOpenRouter(system, userText, temperature, maxTokens, settings.apiKey, settings.model, useWebSearch, image);
+  return askOpenRouter(system, userText, temperature, maxTokens, settings.apiKey, settings.model, useWebSearch, image, onRaw, penalties);
 }
-async function askModelWithHistory(system, messages, temperature, maxTokens, settings, image = null, useWebSearch = false) {
+async function askModelWithHistory(system, messages, temperature, maxTokens, settings, image = null, useWebSearch = false, onRaw = null, penalties = null) {
   if (!settings.apiKey) throw new Error("Nessuna chiave API impostata (vai in Setup).");
   if (settings.provider === "claude-direct") {
     const last = messages[messages.length - 1];
@@ -274,7 +360,18 @@ async function askModelWithHistory(system, messages, temperature, maxTokens, set
   // L'immagine si allega SOLO all'ultimo messaggio (turno corrente), mai alla storia passata
   const msgs = messages.map((m, i) => (i === messages.length - 1 && image ? { role: m.role, content: buildOpenRouterContent(m.content, image) } : m));
   const body = { model: settings.model, max_tokens: maxTokens, temperature, reasoning: { max_tokens: 300 }, messages: [{ role: "system", content: system }, ...msgs] };
-  if (useWebSearch) { body.tools = [{ type: "openrouter:web_search" }]; body.tool_choice = "required"; } // solo OpenRouter — Claude-direct esce già sopra
+  // FIX 27/07/2026 (BRIEF_fix_parametri_websearch): stessi parametri e stessa motivazione di askOpenRouter
+  // sopra (choke-point gemello) — vedi commento esteso lì per il ragionamento su max_tool_calls/max_uses.
+  if (useWebSearch) {
+    body.tools = [{ type: "openrouter:web_search", parameters: { max_results: 5, max_total_results: 10, search_context_size: "low" } }];
+    body.tool_choice = "required";
+    body.max_tool_calls = 3;
+  } // solo OpenRouter — Claude-direct esce già sopra
+  // TASK A (SPRINT_HARDENING 26/07/2026 sera): stesse penalità anti-loop opzionali di askOpenRouter.
+  if (penalties) {
+    body.repetition_penalty = penalties.repetition_penalty ?? 1.15;
+    body.frequency_penalty = penalties.frequency_penalty ?? 0.4;
+  }
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.apiKey}` },
@@ -282,6 +379,7 @@ async function askModelWithHistory(system, messages, temperature, maxTokens, set
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || "Errore OpenRouter");
+  if (onRaw) { try { onRaw(data); } catch { /* diagnostica best-effort: non deve mai far fallire il turno */ } }
   return (data.choices?.[0]?.message?.content || "").trim();
 }
 // Estrae il primo blocco {...} bilanciato da una stringa, tollerando testo prima/dopo
@@ -339,8 +437,8 @@ function logJsonFailure(raw, settings) {
     saveKey("json-parse-failures", [entry, ...prev].slice(0, 10));
   } catch { /* diagnostica best-effort: non deve mai far fallire il turno */ }
 }
-async function askModelJSON(system, userText, temperature, maxTokens, settings, image = null) {
-  const raw = await askModel(system + "\n\nRispondi SOLO con JSON valido, nessun testo prima o dopo, nessun blocco markdown.", userText, temperature, maxTokens, settings, false, image);
+async function askModelJSON(system, userText, temperature, maxTokens, settings, image = null, onRaw = null) {
+  const raw = await askModel(system + "\n\nRispondi SOLO con JSON valido, nessun testo prima o dopo, nessun blocco markdown.", userText, temperature, maxTokens, settings, false, image, onRaw);
   if (!raw) return null;
   const cleaned = stripTrailingCommas(sanitizeJsonControlChars(raw.replace(/```json|```/g, "").trim()));
   try { return JSON.parse(cleaned); } catch { /* prova il fallback sotto */ }
@@ -357,6 +455,115 @@ async function askModelJSON(system, userText, temperature, maxTokens, settings, 
 }
 
 //──────────────────────────────────────────────────────────
+// TRACCIAMENTO COSTI/TOKEN (TASK 1, BRIEF_costtracking_balthasarsources 26/07/2026)
+//──────────────────────────────────────────────────────────
+// NON verificato empiricamente con una chiamata reale in questa sessione (nessuna chiave OpenRouter
+// disponibile in questo ambiente sandboxed) — parsing costruito sullo schema OpenAI-compatibile
+// standard che OpenRouter documenta (usage.prompt_tokens/completion_tokens/total_tokens), più un
+// tentativo opportunistico su usage.cost (presente SOLO se l'account ha l'"usage accounting"
+// abilitato — non garantito, non verificato qui). Se costUsd risulta sempre null nell'uso reale, è
+// il segnale che quel campo non arriva davvero: NON va MAI stimato da un prezzario hardcoded
+// (richiesta esplicita del brief — un costo inventato che si spaccia per reale sarebbe peggio di
+// nessun dato). Resta un gap dichiarato per la Fase 2 di questo lavoro, da chiudere con una chiave
+// vera alla prima occasione utile — vedi riepilogo di consegna.
+function extractUsageForLog(raw) {
+  const u = raw?.usage || {};
+  const tokensIn = typeof u.prompt_tokens === "number" ? u.prompt_tokens : null;
+  const tokensOut = typeof u.completion_tokens === "number" ? u.completion_tokens : null;
+  const tokensTotal = typeof u.total_tokens === "number" ? u.total_tokens : (tokensIn !== null && tokensOut !== null ? tokensIn + tokensOut : null);
+  const costUsd = typeof u.cost === "number" ? u.cost : null; // mai stimato — solo se OpenRouter lo fornisce davvero
+  return { tokensIn, tokensOut, tokensTotal, costUsd };
+}
+// PUNTO 2 (BRIEF_fix_parametri_websearch 27/07/2026) — rete di sicurezza indipendente dalla causa
+// specifica risolta al PUNTO 1: rilevatori A POSTERIORI (la chiamata è già stata pagata quando questi
+// flag vengono letti), non blocchi preventivi. Servono a rendere visibile SUBITO un'eventuale
+// regressione futura (es. un altro tool server-side dichiarato senza tetti) invece di scoprirla dopo
+// una settimana come accaduto con la cascata delle 30 ricerche.
+// Soglie proposte (nessun dato reale disponibile per calibrarle empiricamente in questa sessione):
+// - 50.000 prompt_tokens: una singola ricerca web puntuale (fetchWebSearchSnapshot, max 5 risultati,
+//   contesto "low") dovrebbe restare a poche migliaia di token; 50k è abbastanza alto da non scattare
+//   su un uso legittimo anche con più raffinamenti (max_tool_calls:3), ma resta due ordini di grandezza
+//   sotto i 960k-999k osservati nella cascata — un margine ampio ma non permissivo.
+// - $0,05 di costo per singola chiamata: la cascata da 30 ricerche costava $0,09-0,24; una chiamata
+//   legittima con 1-3 ricerche a $0,005 l'una resta ben sotto i 2 centesimi. $0,05 lascia margine
+//   senza avvicinarsi al costo osservato del bug.
+const PROMPT_TOKEN_CEILING = 50000;
+const COST_CEILING_USD = 0.05;
+// functionTag: SOLO i tag fissi previsti dal brief ("shell","balthasar","melchior","caspar",
+// "airAgent","webSearchSnapshot","seme_ricerca","seme_esecuzione") — scelta di scope esplicita del
+// brief (Shell, Magi/Balthasar/Melchior/Caspar, Seme, Agente AIR, ricerca web on-demand), non ogni
+// singola chiamata askModel/askModelJSON dell'app (quiz, percorsi, resonance, ecc. restano fuori).
+function logAiCost(pushDebugLog, functionTag, model, raw) {
+  if (!pushDebugLog) return;
+  const usage = extractUsageForLog(raw);
+  const promptTokenCeilingExceeded = usage.tokensIn !== null && usage.tokensIn > PROMPT_TOKEN_CEILING;
+  const costCeilingExceeded = usage.costUsd !== null && usage.costUsd > COST_CEILING_USD;
+  if (promptTokenCeilingExceeded || costCeilingExceeded) {
+    // Visibile anche fuori dal pannello Setup (console), non solo nel rolling debug log.
+    console.warn(`[Resonance] Allarme costo/token AI su "${functionTag}"`, { promptTokenCeilingExceeded, costCeilingExceeded, ...usage });
+  }
+  pushDebugLog({ type: "ai-cost", functionTag, model, ...usage, promptTokenCeilingExceeded, costCeilingExceeded, error: null });
+}
+
+//──────────────────────────────────────────────────────────
+// TASK A (SPRINT_HARDENING 26/07/2026 sera) — freno anti-loop degenerativo lato richiesta
+//──────────────────────────────────────────────────────────
+// Bug reale osservato: Balthasar-del-Seme ha generato output degenerato ("of 10 of 20 of 12..." per
+// centinaia di token). Causa probabile: temperatura medio-alta (Balthasar lavora apposta a 0.95-1.35
+// in Magi, voluto per il suo ruolo di perturbatore — NON abbassata) senza alcun freno anti-ripetizione,
+// combinazione nota per produrre loop su modelli economici (Llama 3.3 70B, produzione attuale).
+// Valori verificati sulla documentazione OpenRouter attuale (26/07/2026, non a memoria):
+// repetition_penalty range (0,2] default 1.0; frequency_penalty range [-2,2] default 0. La stessa
+// documentazione avverte che un valore TROPPO alto rende l'output incoerente — 1.15/0.4 sono
+// deliberatamente moderati: sopra il default ma lontani dal limite superiore.
+// SCOPE — solo chiamate a temperatura >= 0.6 con output in LINGUAGGIO NATURALE puro: MAI su chiamate
+// che generano JSON (askModelJSON — Melchior/Caspar-del-Seme, letture multi-lente, quiz, ecc.), perché
+// repetition_penalty/frequency_penalty penalizzano anche la ripetizione STRUTTURALE necessaria di
+// virgolette/parentesi/chiavi in un array JSON multi-elemento e possono corromperlo. Magi Caspar (0.2)
+// e le altre chiamate a bassa temperatura restano fuori: rischio di loop trascurabile, verificato ma
+// non applicato (richiesta esplicita del brief di verificare comunque).
+const ANTI_LOOP_PENALTIES = { repetition_penalty: 1.15, frequency_penalty: 0.4 };
+
+//──────────────────────────────────────────────────────────
+// TASK B (SPRINT_HARDENING 26/07/2026 sera) — freno di sicurezza automatico anti-degenerazione
+//──────────────────────────────────────────────────────────
+// Indipendente dalla causa esatta (Task A potrebbe non coprire ogni caso futuro, es. con un altro
+// modello): rileva un output chiaramente degenerato SENZA alcuna chiamata AI aggiuntiva, e se accade
+// riprova UNA sola volta la stessa richiesta (mai un ciclo infinito) prima di arrendersi onestamente.
+// Soglia scelta e motivata: 8 ripetizioni dello STESSO token in una finestra di 40 parole consecutive.
+// Una lista puntata o una prosa densa in italiano/inglese ripete al più connettivi comuni ("di", "e",
+// "il") poche volte per 40 parole (verificato a mano su testi legittimi del progetto: mai oltre 3-4
+// occorrenze) — 8 è un margine ampio sopra quel rumore naturale e ben sotto le centinaia di ripetizioni
+// del bug reale osservato ("of 10 of 20 of 12..."). Non configurabile ora (richiesta esplicita del brief).
+const DEGENERATE_OUTPUT_WINDOW = 40;
+const DEGENERATE_OUTPUT_THRESHOLD = 8;
+function isDegenerateOutput(text) {
+  if (!text) return false;
+  const words = text.trim().toLowerCase().split(/\s+/).map((w) => w.replace(/[.,!?;:"'()«»]/g, "")).filter(Boolean);
+  if (words.length < DEGENERATE_OUTPUT_WINDOW) return false; // troppo corto per giudicare: evita falsi positivi su risposte brevi legittime
+  for (let i = 0; i + DEGENERATE_OUTPUT_WINDOW <= words.length; i += 10) {
+    const counts = {};
+    for (const w of words.slice(i, i + DEGENERATE_OUTPUT_WINDOW)) {
+      counts[w] = (counts[w] || 0) + 1;
+      if (counts[w] >= DEGENERATE_OUTPUT_THRESHOLD) return true;
+    }
+  }
+  return false;
+}
+// `call` è una funzione zero-argomenti che rifà la richiesta originale (closure sul chiamante) — nessuna
+// duplicazione della costruzione del prompt qui. Se degenerato anche al secondo tentativo, lancia un
+// errore onesto (i chiamanti esistenti lo mostrano già via i loro cicli try/catch — nessuna UI nuova).
+async function askWithDegenerateGuard(call, functionTag, pushDebugLog = null) {
+  const first = await call();
+  if (!isDegenerateOutput(first)) return first;
+  pushDebugLog?.({ type: "degenerate-output", functionTag, attempt: 1, degenerateOutputDetected: true, error: null });
+  const second = await call();
+  if (!isDegenerateOutput(second)) return second;
+  pushDebugLog?.({ type: "degenerate-output", functionTag, attempt: 2, degenerateOutputDetected: true, error: "risposta degenerata anche al secondo tentativo" });
+  throw new Error("Risposta non valida, riprova più tardi.");
+}
+
+//──────────────────────────────────────────────────────────
 // TRIADE MAGI — pipeline sequenziale fissa (Legge 15 abrogata: non è un dibattito iterativo)
 //──────────────────────────────────────────────────────────
 // opts: { memory, targetPillar, intensity } — Magi non è più cieco (Manifesto V3 §4.1/§4.4).
@@ -364,7 +571,7 @@ async function askModelJSON(system, userText, temperature, maxTokens, settings, 
 // l'intensità modula la sua temperatura (rischio dosato, §4.4); Caspar riceve il pilastro-bersaglio
 // per verificare il contenimento operativo (accoppiamento operativo stretto, §4.4).
 const MAGI_INTENSITY = { leggera: 0.95, media: 1.15, profonda: 1.35 };
-async function runTriadeMagi(question, onStage, settings, opts = {}) {
+async function runTriadeMagi(question, onStage, settings, opts = {}, pushDebugLog = null) {
   const { memory = null, targetPillar = null, intensity = "media" } = opts;
   const baseCtx = `${nowContext()} Contesto: sei parte del sistema "Resonance", framework di sviluppo personale del Ghost (Flavio), tre pilastri: BIO (salute), AIR (autonomia economica), VIDYA (crescita creativa/cognitiva). Sei l'unico polo di perturbazione deliberata del sistema — gli altri meccanismi mantengono, tu spingi oltre la cristallizzazione. Rispondi in italiano, diretto, max 70 parole, senza premesse.`;
   const memoriaCtx = memory ? `\n\nMemoria procedurale accumulata sui pilastri (leggila per generare una perturbazione radicata nella storia reale del sistema, non generica):\nBIO: ${memory.bio || "nessuna nota"}\nAIR: ${memory.air || "nessuna nota"}\nVIDYA: ${memory.vidya || "nessuna nota"}` : "";
@@ -377,10 +584,16 @@ async function runTriadeMagi(question, onStage, settings, opts = {}) {
   // questo tool nel client attuale) — degrada silenziosamente a perturbazione da sola immaginazione.
   const balthasarWebSearch = settings.provider === "openrouter";
   const balthasarPrompt = `${baseCtx}${memoriaCtx}${targetCtx} Sei BALTHASAR, il Perturbatore.${balthasarWebSearch ? " Hai accesso alla ricerca web: usala per ancorare la perturbazione a un dato, caso o approccio reale non ancora noto al Ghost — non limitarti a rimescolare concetti che già possiede." : ""} Genera una divergenza evolutiva su questo tema, audace, non convenzionale — a intensità "${intensity}" (leggera = uno spostamento laterale; profonda = una rottura vera con l'assetto attuale).`;
-  const balthasar = await askModel(balthasarPrompt, question, balthasarTemp, 1600, settings, balthasarWebSearch);
+  const balthasar = await askWithDegenerateGuard(
+    () => askModel(balthasarPrompt, question, balthasarTemp, 1600, settings, balthasarWebSearch, null, (raw) => logAiCost(pushDebugLog, "balthasar", settings.model, raw), ANTI_LOOP_PENALTIES),
+    "balthasar", pushDebugLog
+  );
   onStage("balthasar", balthasar);
   onStage("melchior", null);
-  const melchior = await askModel(`${baseCtx} Sei MELCHIOR, il Traduttore. Traduci questa idea in azione concretamente eseguibile.\n\nIdea di Balthasar: "${balthasar}"`, question, 0.7, 1600, settings);
+  const melchior = await askWithDegenerateGuard(
+    () => askModel(`${baseCtx} Sei MELCHIOR, il Traduttore. Traduci questa idea in azione concretamente eseguibile.\n\nIdea di Balthasar: "${balthasar}"`, question, 0.7, 1600, settings, false, null, (raw) => logAiCost(pushDebugLog, "melchior", settings.model, raw), ANTI_LOOP_PENALTIES),
+    "melchior", pushDebugLog
+  );
   onStage("melchior", melchior);
   onStage("caspar", null);
   const containmentCtx = targetPillar
@@ -389,10 +602,13 @@ async function runTriadeMagi(question, onStage, settings, opts = {}) {
   const casparIdentityLine = CURRENT_GHOST_PROFILE.hasProfessionalConstraint
     ? `compartimentazione identità professionale (${CURRENT_GHOST_PROFILE.professionalIdentity} mai esposta)`
     : "nessun vincolo di compartimentazione professionale dichiarato";
-  const caspar = await askModel(`${baseCtx} Sei CASPAR, l'Ancora. Verifica il piano contro i vincoli assoluti: salute, tempo lineare del Ghost, sostenibilità economica, ${casparIdentityLine}. ${containmentCtx}\n\nPiano: "${melchior}"`, question, 0.2, 1600, settings);
+  const caspar = await askModel(`${baseCtx} Sei CASPAR, l'Ancora. Verifica il piano contro i vincoli assoluti: salute, tempo lineare del Ghost, sostenibilità economica, ${casparIdentityLine}. ${containmentCtx}\n\nPiano: "${melchior}"`, question, 0.2, 1600, settings, false, null, (raw) => logAiCost(pushDebugLog, "caspar", settings.model, raw));
   onStage("caspar", caspar);
   onStage("synthesis", null);
-  const synthesis = await askModel(`${baseCtx} Genera la SINTESI ESECUTIVA: piano calibrato in 2-3 frasi + "Vettore di Perturbazione V+1".\n\nBalthasar: "${balthasar}"\nMelchior: "${melchior}"\nCaspar: "${caspar}"`, question, 0.6, 1500, settings);
+  const synthesis = await askWithDegenerateGuard(
+    () => askModel(`${baseCtx} Genera la SINTESI ESECUTIVA: piano calibrato in 2-3 frasi + "Vettore di Perturbazione V+1".\n\nBalthasar: "${balthasar}"\nMelchior: "${melchior}"\nCaspar: "${caspar}"`, question, 0.6, 1500, settings, false, null, null, ANTI_LOOP_PENALTIES),
+    "magi_synthesis", pushDebugLog
+  );
   onStage("synthesis", synthesis);
   return { balthasar, melchior, caspar, synthesis };
 }
@@ -409,22 +625,196 @@ async function reflectPerturbationIntoMemoria(targetPillar, synthesis, intensity
   );
   return testo;
 }
-async function runAirAgent(task, settings) {
+async function runAirAgent(task, settings, pushDebugLog = null) {
   if (settings.provider !== "openrouter") throw new Error("L'Agente AIR richiede il motore OpenRouter (per la ricerca web).");
   const system = `${nowContext()} Sei l'Agente AIR del sistema Resonance: assistente per il pilastro dell'autonomia economica. Hai accesso alla ricerca web — cerca informazioni aggiornate a oggi, non presentare risultati datati come attuali. ${PILLAR_CTX.air} Rispondi in italiano, concreto, con passi azionabili e fonti quando le usi.`;
-  return askOpenRouter(system, task, 0.7, 1900, settings.apiKey, settings.model, true);
+  return askWithDegenerateGuard(
+    () => askOpenRouter(system, task, 0.7, 1900, settings.apiKey, settings.model, true, null, (raw) => logAiCost(pushDebugLog, "airAgent", settings.model, raw), ANTI_LOOP_PENALTIES),
+    "airAgent", pushDebugLog
+  );
 }
 // FIX 20/07/2026 (Opzione 2 — ricerca disaccoppiata): un modulo di ricerca isolato, con system prompt
 // minimale come l'Agente AIR (che si è dimostrato affidabile) — invece di far decidere al modello se
 // cercare DENTRO il prompt pesante dello Shell (Manifesto+memoria+stile), qui la ricerca avviene PRIMA,
 // in una chiamata leggera e dedicata, e il risultato viene poi iniettato come dato già pronto nel turno
 // principale. Il modello dello Shell non deve più "scegliere" di cercare — trova i dati già in mano.
-async function fetchWebSearchSnapshot(query, settings) {
+async function fetchWebSearchSnapshot(query, settings, pushDebugLog = null) {
   if (settings.provider !== "openrouter") return null;
   const system = `${nowContext()} Sei un modulo di ricerca web. Hai accesso al tool di ricerca web: usalo SEMPRE per rispondere a questa richiesta, senza eccezioni. Cerca informazioni AGGIORNATE a oggi — se i risultati che trovi sono datati mesi o anni fa, dillo esplicitamente invece di presentarli come attuali. Rispondi in italiano con i dati/fatti trovati, concreti e concisi (max 150 parole), citando brevemente le fonti quando rilevante.`;
-  try { return await askOpenRouter(system, query, 0.3, 700, settings.apiKey, settings.model, true); }
+  try { return await askOpenRouter(system, query, 0.3, 700, settings.apiKey, settings.model, true, null, (raw) => logAiCost(pushDebugLog, "webSearchSnapshot", settings.model, raw)); }
   catch { return null; } // fallimento silenzioso qui: runShellTurn lo segnala onestamente al Ghost, non lo nasconde
 }
+
+//──────────────────────────────────────────────────────────
+// SEME — pre-Percorso AIR: intercettazione, ricerca autonoma, esecuzione autonoma sorvegliata
+//──────────────────────────────────────────────────────────
+// Un Seme nasce grezzo (frase buttata lì in chat, o testo libero dal pulsante manuale), viene
+// ricercato/tradotto in strategie (Fase 1 — automatica, nessuna azione esterna, sicura di suo),
+// e SOLO dopo approvazione esplicita del Ghost entra in sviluppo autonomo sorvegliato (Fase 2 —
+// mai un'azione che tocchi il mondo esterno, vedi runSeedGateCheck). Avanza una sola volta per
+// apertura della tab Shell (vedi l'effect di mount in ShellView), mai ad ogni messaggio.
+const SEME_RESEARCH_ITERATION_CAP = 5;  // Fase 1 — round di ricerca senza convergenza
+const SEME_EXECUTION_ITERATION_CAP = 5; // Fase 2 — passi di sviluppo, contatore indipendente dal precedente
+// Euristica leggera, zero costo — stesso stile di detectWebSearchIntent: riconosce un'idea grezza
+// buttata lì in conversazione ("potrei fare X", "sarebbe interessante Y"), non una richiesta diretta
+// né una domanda. Non crea nulla da sola: propone solo il tap di conferma (vedi ShellView).
+function detectSeedWorthyIntent(message) {
+  const t = message.trim().toLowerCase();
+  return /\b(potrei\s+(fare|provare|lanciare|creare|iniziare)|sarebbe\s+interessante|forse\s+dovrei\s+(provare|fare)|e\s+se\s+provassi|mi\s+piacerebbe\s+provare|chiss[àa]\s+se)\b/.test(t);
+}
+// TASK 2 (BRIEF_costtracking_balthasarsources 26/07/2026), caso (b) — controllo post-generazione,
+// NESSUNA chiamata AI aggiuntiva (richiesta esplicita del brief): estrae nomi compound CamelCase dal
+// testo di Balthasar (es. "ShopFoundry", "RankHero", "InsightAgent", "MerchTitans" — ESATTAMENTE i
+// nomi fabbricati osservati nel test reale del 26/07, tutti con una maiuscola interna) e li confronta
+// con i domini realmente restituiti dalla web search (webSearchDiag.citationDomains). Un nome citato
+// che non trova riscontro in nessun dominio reale è un segnale di POSSIBILE allucinazione — MAI un
+// blocco dell'output (Legge 10.1, niente over-gating): solo un flag visibile al Ghost via pushDebugLog.
+// Esclude i nomi già presenti nell'idea originale del Ghost (es. "Printify"/"Etsy" nel test reale erano
+// già nel Seme stesso, non un'attribuzione inventata da Balthasar).
+// Scope deliberatamente ristretto al segnale CamelCase (maiuscola interna), non a "ogni parola con
+// maiuscola": una prima versione che catturava anche parole comuni maiuscole a inizio frase (es.
+// "Secondo", "Il") produceva falsi positivi sistematici — verificato con test dedicato, corretto qui.
+// Trade-off accettato: non cattura fake-brand di una sola parola senza maiuscola interna (es.
+// "Threadify") — euristica leggera, non un rilevatore NLP, stesso stile di detectWebSearchIntent.
+function detectPossibleHallucinatedSource(balthasarText, seedContent, citationDomains) {
+  if (!balthasarText) return false;
+  const candidates = [...new Set((balthasarText.match(/\b[A-Za-z]*[a-z][A-Z][a-zA-Z0-9]*\b/g) || []))]
+    .filter((w) => !new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(seedContent || ""));
+  if (!candidates.length) return false;
+  const domains = (citationDomains || []).map((d) => d.toLowerCase().replace(/^www\./, ""));
+  const matchesDomain = (name) => {
+    const n = name.toLowerCase();
+    return domains.some((d) => d.includes(n) || d.split(".")[0] === n);
+  };
+  return candidates.some((c) => !matchesDomain(c));
+}
+// Fase 1 — un round Balthasar(ricerca web forzata)→Melchior(strategie)→Caspar(verifica vincoli).
+// Prompt dedicati al Seme (non runTriadeMagi: quella pipeline è la perturbazione di Agorà Magi,
+// forma di output diversa — sintesi singola, non 2-3 strategie verificate). pillarMemory esplicito
+// (mai letto da uno stato globale implicito) — stessa lezione del bug generateArtifact/piano alimentare.
+// Il contenuto REDATTO (redactProfessionalIdentity) è l'unico a raggiungere Balthasar/Melchior; Caspar
+// riceve anche il testo originale per una verifica completa — secondo strato, vedi Parte 7 del brief.
+//
+// TASK 2 (BRIEF_costtracking_balthasarsources 26/07/2026) — diagnosi caso (a) vs (b):
+// CASO (a) ESCLUSO per questa chiamata specifica: tool_choice="required" è applicato qui sotto
+// (askOpenRouter riceve useWebSearch=true), stesso meccanismo verificato in runAirAgent — non è
+// "auto", il modello non può scegliere di ignorare il tool. Nessun codice da correggere per (a).
+// Resta CASO (b) come spiegazione più probabile per le fonti sospette osservate nel test del 26/07
+// (nomi tipo "ShopFoundry"/"RankHero"): il tool può essere invocato correttamente mentre il modello
+// mescola comunque risultati reali e confabulazione nello stesso testo di sintesi. Fix applicato:
+// 1) prompt rafforzato (vedi balthasarSystem sotto — vietato inventare nomi, già in vigore dal fix
+// precedente del 26/07); 2) controllo post-generazione qui sopra (detectPossibleHallucinatedSource),
+// nuovo in questo giro, che rende visibile il sospetto invece di lasciarlo silenzioso nel log.
+// NON confermato con un test empirico reale in questa sessione (nessuna chiave OpenRouter valida in
+// questo ambiente sandboxed) — vedi riepilogo di consegna per il gap dichiarato.
+async function runSeedResearch(seme, pillarMemory, settings, pushDebugLog = null) {
+  if (settings.provider !== "openrouter") throw new Error("La ricerca del Seme richiede il motore OpenRouter (per la ricerca web).");
+  const redactedContent = redactProfessionalIdentity(seme.content, CURRENT_GHOST_PROFILE);
+  // PUNTO 1 (BRIEF_correzioni_post_test 26/07/2026): il primo test reale ha mostrato Balthasar citare
+  // nomi di fonte ("ShopFoundry", "RankHero"...) non riconducibili a servizi reali — sospetto di
+  // allucinazione in fase di sintesi, non necessariamente un fallimento della web search in sé.
+  // tool_choice:"required" (askOpenRouter, FIX 20/07) è già applicato a QUESTA chiamata specifica
+  // (useWebSearch=true qui sotto, stesso meccanismo di runAirAgent) — verificato leggendo il codice.
+  // Non potendo eseguire qui una chiamata reale (nessuna API key valida in questo ambiente), estraggo
+  // e logghiamo (vedi App.advanceSeedIfDue) ogni segnale diagnostico plausibile che OpenRouter possa
+  // restituire per una ricerca realmente eseguita (annotazioni/citazioni con URL, in più forme note
+  // perché la forma esatta non è verificabile senza una chiamata live) — così il PROSSIMO test reale
+  // del Ghost (con la sua chiave vera) può confermare empiricamente invece di fidarsi a parole.
+  const webSearchDiag = { toolInvoked: false, citationCount: 0, citationDomains: [] };
+  const balthasarSystem = `${nowContext()} Sei BALTHASAR nel sistema Resonance, pilastro AIR — funzione di ricerca per un Seme (un'idea grezza non ancora sviluppata). Hai accesso alla ricerca web: usala per trovare dati, casi reali o approcci concreti pertinenti, aggiornati a oggi — non presentare risultati datati come attuali. ${PILLAR_CTX.air}
+Memoria procedurale AIR accumulata finora (non ripetere strategie già scartate): ${pillarMemory || "nessuna nota ancora"}
+Rispondi in italiano, concreto, max 200 parole. Cita SOLO fonti/domini effettivamente presenti nei risultati di ricerca che hai ricevuto — se non puoi attribuire con certezza un dato a una fonte reale, ometti l'attribuzione o dichiara esplicitamente che è una stima non verificata. Non inventare mai nomi di siti o servizi.`;
+  const balthasar = await askWithDegenerateGuard(
+    () => askOpenRouter(balthasarSystem, `Idea da sviluppare: ${redactedContent}`, 0.7, 1200, settings.apiKey, settings.model, true, null, (raw) => {
+      const msg = raw.choices?.[0]?.message || {};
+      const annotations = msg.annotations || raw.citations || msg.tool_calls || [];
+      webSearchDiag.toolInvoked = Array.isArray(annotations) ? annotations.length > 0 : !!annotations;
+      const urls = (Array.isArray(msg.annotations) ? msg.annotations : [])
+        .map((a) => a?.url_citation?.url || a?.url).filter(Boolean);
+      webSearchDiag.citationCount = urls.length;
+      webSearchDiag.citationDomains = [...new Set(urls.map((u) => { try { return new URL(u).hostname; } catch { return u; } }))].slice(0, 8);
+      logAiCost(pushDebugLog, "seme_ricerca", settings.model, raw);
+    }, ANTI_LOOP_PENALTIES),
+    "seme_ricerca", pushDebugLog
+  );
+  const melchiorSystem = `${nowContext()} Sei MELCHIOR nel sistema Resonance, pilastro AIR — traduci la ricerca in strategie concrete ed eseguibili per sviluppare questa idea. ${PILLAR_CTX.air}
+Genera 2-3 strategie, ciascuna specifica e azionabile (non generica). Non citare fonti/dati che Balthasar non ha già fornito — se un dettaglio non è supportato dalla ricerca ricevuta, presentalo come ipotesi da verificare, non come fatto. JSON: {"strategie":[{"titolo":"...","descrizione":"...(max 80 parole)"}]}`;
+  const melchiorData = await askModelJSON(melchiorSystem, `Idea: ${redactedContent}\nRicerca di Balthasar: ${balthasar}`, 0.6, 1400, settings, null, (raw) => logAiCost(pushDebugLog, "seme_ricerca", settings.model, raw));
+  const candidate = (melchiorData?.strategie || []).slice(0, 3).map((s, i) => ({ id: String(i), titolo: s.titolo || `Strategia ${i + 1}`, descrizione: s.descrizione || "" }));
+  let approved = [];
+  let rejected = [];
+  if (candidate.length) {
+    // CORREZIONE 26/07/2026: il vincolo (§6.1) riguarda l'identità RICONOSCIBILE (il nome del Ghost,
+    // il brand/studio professionale), non la materia fisioterapica in astratto — va detto esplicitamente
+    // a Caspar, altrimenti il modello rischia di bocciare per riflesso qualunque strategia che tocchi il
+    // dominio (es. biomeccanica, prevenzione infortuni), che invece è contenuto AIR del tutto legittimo.
+    const casparIdentityLine = CURRENT_GHOST_PROFILE.hasProfessionalConstraint
+      ? `1) non deve esporre l'identità professionale RICONOSCIBILE del Ghost — il suo nome, il brand/studio (${CURRENT_GHOST_PROFILE.professionalIdentity}), o affermazioni che leghino esplicitamente il contenuto alla sua pratica reale (es. "il mio studio", "i miei pazienti"). Il dominio della fisioterapia in sé (biomeccanica, riabilitazione, prevenzione infortuni, ecc.) NON è vietato — bocciare per il solo dominio, senza un marcatore di identità riconoscibile, è un ERRORE da evitare; 2) non deve richiedere dilatazione del suo tempo lineare di lavoro.`
+      : `non deve richiedere dilatazione insostenibile del tempo lineare di lavoro del Ghost (nessun vincolo di identità professionale dichiarato per questo Ghost).`;
+    const airHc = (CURRENT_GHOST_PROFILE.hardConstraints?.air || []).join("; ");
+    const casparSystem = `Sei CASPAR nel sistema Resonance, pilastro AIR — verifica ciascuna strategia contro i vincoli ASSOLUTI e non negoziabili: ${casparIdentityLine}${airHc ? ` Vincoli AIR aggiuntivi dichiarati dal Ghost: ${airHc}.` : ""} Boccia SOLO per violazione di un vincolo assoluto, mai per qualità o preferenza. JSON: {"verdetti":[{"id":"0","approvata":true/false,"motivo":"se bocciata, max 20 parole"}]}`;
+    const casparData = await askModelJSON(casparSystem, `Testo originale dell'idea (non redatto, per verifica completa): ${seme.content}\nStrategie da verificare: ${JSON.stringify(candidate.map(({ id, titolo, descrizione }) => ({ id, titolo, descrizione })))}`, 0.2, 1200, settings, null, (raw) => logAiCost(pushDebugLog, "seme_ricerca", settings.model, raw));
+    const verdetti = new Map((casparData?.verdetti || []).map((v) => [String(v.id), v]));
+    // Fail-safe, non fail-open: senza un verdetto ESPLICITO di approvazione la strategia resta fuori,
+    // per sempre (mai riproposta) — coerente con runAccettore, l'unico hard-stop vero del sistema.
+    approved = candidate.filter((c) => verdetti.get(c.id)?.approvata === true).map(({ id, ...rest }) => rest);
+    // Esito di Caspar per il debug log (App.advanceSeedIfDue): SOLO id scartato + motivo breve di
+    // Caspar (≤20 parole, sua sintesi) — MAI il testo/prompt completo inviato al modello, che conteneva
+    // il contenuto originale non redatto dell'idea (vedi CHIARIMENTO 26/07/2026, punto 2).
+    rejected = candidate.filter((c) => verdetti.get(c.id)?.approvata !== true)
+      .map((c) => ({ id: c.id, reason: (verdetti.get(c.id)?.motivo || "nessun verdetto esplicito di approvazione").slice(0, 200) }));
+  }
+  const possibleHallucinatedSource = detectPossibleHallucinatedSource(balthasar, seme.content, webSearchDiag.citationDomains);
+  return { balthasar, approvedStrategies: approved, rejectedStrategies: rejected, candidateCount: candidate.length, webSearchDiag, possibleHallucinatedSource };
+}
+// Fase 2 — un passo per volta (stile proposeNextStep dei Percorsi), MAI un'azione che tocchi il
+// mondo esterno: il gate-check (runSeedGateCheck) verifica il passo PRIMA che venga considerato eseguito.
+async function proposeSeedExecutionStep(seme, pillarMemory, settings, pushDebugLog = null) {
+  const logDigest = (seme.executionLog || []).map((e) => `- ${e.note}`).join("\n") || "nessun passo ancora eseguito";
+  return askWithDegenerateGuard(
+    () => askModel(
+      `Sei lo Shell del sistema Resonance, pilastro AIR — sviluppo autonomo di un Seme già approvato dal Ghost. ${PILLAR_CTX.air}
+Memoria procedurale AIR: ${pillarMemory || "nessuna nota ancora"}
+Proponi il PROSSIMO passo concreto di sviluppo (bozza di prodotto, ricerca dettagliata, o piano operativo — mai un'azione che tocchi il mondo esterno: nessun acquisto, pubblicazione, iscrizione o account reale). Un solo passo, specifico, max 120 parole.`,
+      `Idea: ${seme.content}\nStrategia approvata: ${seme.approvedStrategy?.titolo || ""} — ${seme.approvedStrategy?.descrizione || ""}\nPassi già fatti:\n${logDigest}`,
+      0.6, 900, settings, false, null, (raw) => logAiCost(pushDebugLog, "seme_esecuzione", settings.model, raw), ANTI_LOOP_PENALTIES
+    ),
+    "seme_esecuzione", pushDebugLog
+  );
+}
+// Gate-check obbligatorio (Parte 6 del brief) — lista CHIUSA di 4 condizioni, non un giudizio
+// discrezionale. Modellato su runAccettore (unico altro hard-stop vero e proprio del sistema).
+async function runSeedGateCheck(stepText, profile, settings, pushDebugLog = null) {
+  const identityConstraint = profile.hasProfessionalConstraint
+    ? ` Vincolo aggiuntivo sempre attivo, indipendente dalle 4 condizioni sopra: il passo non deve MAI esporre l'identità professionale del Ghost (${profile.professionalIdentity}) — se lo fa, blocca comunque.`
+    : "";
+  const text = await askModel(
+    `Sei CASPAR nel sistema Resonance, pilastro AIR — gate di sicurezza prima di eseguire un passo autonomo. Blocca SOLO se il passo descritto rientra in una di queste 4 condizioni chiuse (nessun'altra motivazione è valida):
+1) transazione reale (acquisto, iscrizione, spesa anche minima);
+2) pubblicazione esterna (post, listing, email a terzi, contenuto reso pubblico in qualunque forma);
+3) azione irreversibile o costosa da disfare (creazione account, commit a servizi terzi, cancellazioni);
+4) richiede una credenziale non disponibile in questo sistema (es. API key di un servizio esterno non configurata).${identityConstraint}
+Se nessuna delle 4 condizioni scatta, via libera. Rispondi SOLO "VIA LIBERA" oppure "BLOCCATO: <quale condizione, max 20 parole>".`,
+    `Passo candidato: ${stepText}`, 0.2, 300, settings, false, null, (raw) => logAiCost(pushDebugLog, "seme_esecuzione", settings.model, raw)
+  );
+  const gated = /BLOCCATO/i.test(text);
+  return { gated, reason: text.replace(/^(VIA LIBERA|BLOCCATO):?\s*/i, "") };
+}
+
+// PUNTO 3 (BRIEF_correzioni_post_test 26/07/2026): senza questo, lo Shell non distingue "il Ghost
+// parla di una feature dell'app" da "il Ghost parla del proprio lavoro/vita" — osservato nel primo
+// test reale (il Ghost ha scritto "sto testando i Semi nel pilastro AIR" e lo Shell ha risposto come
+// se si riferisse alla vecchia strategia contenuti/Threvane, ignaro che "Semi" fosse una feature).
+// Iniettato nel system prompt di Shell nello stesso punto di PILLAR_CTX (vedi runShellTurn sotto).
+// PROMEMORIA PER FUTURE SESSIONI DI SVILUPPO: aggiorna questo blocco ad ogni nuova feature spedita
+// — è parte della checklist di consegna (vedi CLAUDE.md).
+const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nominare in conversazione (per distinguere "sto parlando di una funzionalità di Resonance" da "sto parlando della mia vita/lavoro reale"):
+- Percorsi: competenze o percorsi identitari tracciati per pilastro (BIO/AIR/VIDYA), con nodi, sessioni, quiz di verifica.
+- Semi (solo AIR): un'idea grezza non ancora sviluppata. Si crea buttandola lì in chat (lo Shell propone di salvarla) o con un pulsante manuale in AIR → Percorsi. Stati possibili: "nuovo/in ricerca" (lo Shell la sta ricercando online e traducendo in strategie), "in attesa di approvazione" (2-3 strategie pronte, il Ghost ne approva una), "in sviluppo" (esecuzione autonoma sorvegliata passo-passo), "bloccato" (un gate di sicurezza ha fermato un passo, richiede conferma esplicita del Ghost).
+- Agorà Magi: una perturbazione deliberata generata su richiesta (Balthasar→Melchior→Caspar), non una funzione automatica.
+- Calendar: promemoria/eventi che lo Shell propone dalla conversazione, mai salvati senza conferma esplicita.
+- Kernel: lo stato di sistema versionato, modificabile dal Ghost.
+- Simbiosi (Adam): il punto di incontro tra i pilastri, sensing su ordine/caos e convergenze identitarie.`;
 
 //──────────────────────────────────────────────────────────
 // SHELL — ciclo di percezione-azione (Manifesto V3 §3: accoppiamento continuo, non predici-e-verifica)
@@ -578,7 +968,7 @@ async function reflectStyle(styleMemory, userMessage, shellReply, settings) {
     0.5, 400, settings
   );
 }
-async function runShellTurn(history, userMessage, settings, handlers, memory, styleMemory, attachment, dialecticOverride = null) {
+async function runShellTurn(history, userMessage, settings, handlers, memory, styleMemory, attachment, dialecticOverride = null, pushDebugLog = null) {
   const attachmentNote = attachment?.kind === "text" ? `\n\n[Allegato: ${attachment.name}]\n${attachment.content.slice(0, 6000)}` : "";
   const effectiveMessage = userMessage + attachmentNote;
   const image = attachment?.kind === "image" ? attachment : null;
@@ -590,7 +980,7 @@ async function runShellTurn(history, userMessage, settings, handlers, memory, st
   const wantsWebSearch = settings.provider === "openrouter" && detectWebSearchIntent(userMessage);
   // FIX 20/07/2026: ricerca disaccoppiata (Opzione 2) — pre-fetch isolato PRIMA di costruire il prompt
   // pesante, invece di lasciare che sia lo Shell a decidere di cercare dentro un contesto già denso.
-  const webSearchResult = wantsWebSearch ? await fetchWebSearchSnapshot(effectiveMessage, settings) : null;
+  const webSearchResult = wantsWebSearch ? await fetchWebSearchSnapshot(effectiveMessage, settings, pushDebugLog) : null;
   const webSearchSucceeded = wantsWebSearch && !!webSearchResult;
   const webSearchNote = webSearchSucceeded
     ? ` Ecco i risultati di una ricerca web appena effettuata sul tema, usali per rispondere (non serve cercare di nuovo, sono già in mano): ${webSearchResult}`
@@ -603,6 +993,7 @@ async function runShellTurn(history, userMessage, settings, handlers, memory, st
     : " In questo turno il Ghost preferisce conferme dirette: evita di generare attrito cognitivo non richiesto, resta di supporto.";
   const system = `${nowContext()} Sei lo Shell del sistema Resonance: estensione esecutiva digitale del Ghost (Flavio), in accoppiamento strutturale continuo con lui — non hai coscienza né volontà propria, non sei un partner autonomo. Ogni messaggio del Ghost non ti istruisce, ti perturba: è la tua struttura interna (memoria procedurale) a determinare come ti riorganizzi.
 ${PILLAR_CTX.bio} ${PILLAR_CTX.air} ${PILLAR_CTX.vidya}
+${APP_CAPABILITIES_CONTEXT}
 Memoria procedurale accumulata sui tre pilastri (leggila sempre insieme — l'interpretazione resta integrata anche quando l'azione è mirata a un solo pilastro): ${lente}${styleNote}
 Dialoga in modo diretto e concreto, massimo 110 parole per risposta — TRANNE quando il Ghost chiede esplicitamente un contenuto strutturato intrinsecamente lungo (un piano, un elenco multi-giorno, un documento): in quel caso il limite non si applica, genera il contenuto per intero, completo, senza comprimerlo né riassumerlo per stare corto. NON scrivere mai sintassi tecnica o tag tra parentesi quadre nella risposta. Rispondi solo in linguaggio naturale.${dialecticNote}
 Non hai accesso a diagnosticare te stesso o l'infrastruttura tecnica su cui giri. Se il Ghost te lo chiede, NON inventare mai una spiegazione plausibile — di' semplicemente che non lo sai e che potrebbe essere un limite tecnico, senza dettagli inventati.
@@ -612,7 +1003,10 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
   const messages = [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: effectiveMessage }];
   // Risposta (+ web search on-demand, se richiesto), lettura multi-lente (+ Calendar fuso, se abilitato) e bozza: indipendenti, partono insieme
   const [reply, lensResult, draft] = await Promise.all([
-    askModelWithHistory(system, messages, 0.7, 3000, settings, image, false), // ricerca già fatta sopra, dati già nel system prompt
+    askWithDegenerateGuard(
+      () => askModelWithHistory(system, messages, 0.7, 3000, settings, image, false, (raw) => logAiCost(pushDebugLog, "shell", settings.model, raw), ANTI_LOOP_PENALTIES),
+      "shell", pushDebugLog
+    ), // ricerca già fatta sopra, dati già nel system prompt
     readThroughLenses(recentText, settings, image, !!settings.calendarEnabled).catch(() => ({ readings: [], calendarProposal: null })),
     settings.armsDraftsEnabled ? draftIfNeeded(recentText, settings).catch(() => null) : Promise.resolve(null),
   ]);
@@ -987,7 +1381,7 @@ function mergeById(localArr, remoteArr) {
   return Array.from(map.values()).sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || ""));
 }
 const SYNC_DEFAULTS = () => ({
-  bio: [], air: [], vidya: [], pBio: [], pAir: [], pVidya: [], magi: [],
+  bio: [], air: [], vidya: [], pBio: [], pAir: [], pVidya: [], magi: [], semi: [],
   shellChat: [], memory: { bio: "", air: "", vidya: "" }, styleMemory: "",
   kernel: { content: DEFAULT_KERNEL, version: 1, history: [] }, resonance: { text: "", time: null },
   ghostProfile: DEFAULT_GHOST_PROFILE,
@@ -1004,7 +1398,7 @@ function mergeSyncState(local, remote) {
   return {
     bio: mergeById(l.bio, r.bio), air: mergeById(l.air, r.air), vidya: mergeById(l.vidya, r.vidya),
     pBio: mergeById(l.pBio, r.pBio), pAir: mergeById(l.pAir, r.pAir), pVidya: mergeById(l.pVidya, r.pVidya),
-    magi: mergeById(l.magi, r.magi),
+    magi: mergeById(l.magi, r.magi), semi: mergeById(l.semi, r.semi),
     shellChat: remoteWins ? r.shellChat : l.shellChat,
     memory: remoteWins ? r.memory : l.memory,
     styleMemory: remoteWins ? r.styleMemory : l.styleMemory,
@@ -1021,6 +1415,9 @@ function formatVidyaLog(e) { return `RESONANCE — 05 VIDYA_TUNING\n\n` + e.map(
 function formatMagiLog(s) { return `RESONANCE — 01 AGORÀ_MAGI\n\n` + s.map((x) => fmtEntry([`${fmtDate(x.date)} — ${x.question}`, x.synthesis && `Sintesi: ${x.synthesis}`])).join("\n\n---\n\n"); }
 function formatPercorsiLog(pillarLabel, percorsi) {
   return `RESONANCE — ${pillarLabel} — PERCORSI\n\n` + percorsi.map((p) => fmtEntry([`## ${p.title}`, ...p.topics.map((t) => `  - ${t.label}: ${t.status}`), p.competenze && `Competenze: ${p.competenze}`])).join("\n\n");
+}
+function formatSemiLog(semi) {
+  return `RESONANCE — 03 AIR_OPERATIONS — Semi\n\n` + semi.map((s) => fmtEntry([`## ${s.content}`, `Stato: ${s.status} (origine: ${s.originSource})`, s.gateReason && `Gate: ${s.gateReason}`, s.approvedStrategy?.titolo && `Strategia approvata: ${s.approvedStrategy.titolo}`])).join("\n\n");
 }
 
 //──────────────────────────────────────────────────────────
@@ -1432,14 +1829,63 @@ function VidyaView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, 
   </div>`;
 }
 const AIR_STATUSES = ["idea", "in corso", "attivo", "bloccato"];
-function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, digest, memory }) {
+// Sezione "Semi" — vive nello stesso sotto-tab Percorsi di AIR (brief 1.B/1.C: "non creare una
+// sezione nuova separata"). Un Seme non è un Percorso: niente PercorsiPanel/PercorsoDetail qui,
+// stati e contatori diversi (vedi runSeedResearch/proposeSeedExecutionStep/runSeedGateCheck).
+const SEME_STATUS_LABELS = {
+  seed: "nuovo", researching: "in ricerca", proposing: "proposte in stallo",
+  awaiting_approval: "in attesa di approvazione", executing: "in sviluppo",
+  gated: "bloccato", archived: "archiviato",
+};
+function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed, onDiscussInShell }) {
+  const [newContent, setNewContent] = useState("");
+  const submit = () => { if (!newContent.trim()) return; onAddSeed(newContent.trim()); setNewContent(""); };
+  const lastLogNote = (s) => {
+    const log = (s.status === "executing" || s.status === "gated") ? s.executionLog : s.researchLog;
+    return (log && log.length) ? log[log.length - 1].note : "Nessun avanzamento ancora — attende l'apertura della prossima sessione Shell.";
+  };
+  return html`<div>
+    <${Card} accent=${color}>
+      <${Field} label="Nuovo Seme — un'idea grezza, anche non sviluppata">
+        <textarea class="r-textarea" value=${newContent} onInput=${(e) => setNewContent(e.target.value)} placeholder="es. potrei provare a…" />
+      </${Field}>
+      <button class="r-btn" style="background:${color}" onClick=${submit} disabled=${!newContent.trim()}>+ Nuovo Seme</button>
+    </${Card}>
+    ${semi.length === 0 ? html`<${Empty} text="Nessun Seme ancora." />` : html`<div class="r-list">
+      ${semi.map((s) => html`<${Card} accent=${color}>
+        <div class="r-entry-line"><b>${s.content}</b></div>
+        <div class="r-hub-detail" style="margin-top:4px">Stato: <span class="r-badge" style="border-color:${color};color:${color}">${SEME_STATUS_LABELS[s.status] || s.status}</span> · origine: ${s.originSource === "manual" ? "manuale" : "conversazione"}</div>
+        <div class="r-magi-text" style="margin-top:6px">${lastLogNote(s)}</div>
+        ${s.status === "awaiting_approval" && html`<div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+          ${(s.proposedStrategies || []).map((strat) => html`<div>
+            <div class="r-entry-line"><b>${strat.titolo}</b></div>
+            <div class="r-entry-notes">${strat.descrizione}</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+              <button class="r-btn" style="background:${color}" onClick=${() => onApproveSeedStrategy(s.id, strat)}>Approva strategia</button>
+              <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => onDiscussInShell?.(s, strat)}>Discuti in Shell</button>
+            </div>
+          </div>`)}
+        </div>`}
+        ${s.status === "gated" && html`<div style="margin-top:10px">
+          <div class="r-error">Bloccato: ${s.gateReason}</div>
+          ${s.gatedActionPreview && html`<div style="margin-top:6px">
+            <div class="r-hub-detail">Azione candidata bloccata (esattamente questa, se confermi):</div>
+            <div class="r-magi-text" style="margin-top:4px;white-space:pre-wrap">${s.gatedActionPreview}</div>
+          </div>`}
+          <button class="r-btn r-btn-ghost" style="margin-left:0;margin-top:8px" onClick=${() => onUnlockGatedSeed(s.id)}>Sblocca/Conferma questa azione</button>
+        </div>`}
+      </${Card}>`)}
+    </div>`}
+  </div>`;
+}
+function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, digest, memory, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed, onDiscussInShell, pushDebugLog }) {
   const [tab, setTab] = useState("log");
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(todayISO()); const [title, setTitle] = useState(""); const [status, setStatus] = useState("idea"); const [notes, setNotes] = useState("");
   const submit = () => { if (!title) return; onAdd({ id: uid(), date, title, status, notes }); setTitle(""); setNotes(""); setStatus("idea"); setOpen(false); };
   const [task, setTask] = useState(""); const [running, setRunning] = useState(false); const [result, setResult] = useState(""); const [error, setError] = useState("");
   const runAgent = async () => { if (!task.trim() || running) return; setRunning(true); setError(""); setResult("");
-    try { setResult(await runAirAgent(task.trim(), settings)); } catch (e) { setError(e.message); } finally { setRunning(false); } };
+    try { setResult(await runAirAgent(task.trim(), settings, pushDebugLog)); } catch (e) { setError(e.message); } finally { setRunning(false); } };
   return html`<div class="r-screen">
     <${SectionHeader} color=${C.air} title="AIR" subtitle="Autonomia economica, sganciata dal tempo del Ghost" />
     <${SubTabs} color=${C.air} tabs=${[{ key: "log", label: "Log" }, { key: "percorsi", label: "Percorsi" }, { key: "agent", label: "Agente" }]} active=${tab} setActive=${setTab} />
@@ -1457,7 +1903,10 @@ function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, di
           <div class="r-entry-line"><b>${e.title}</b></div>
           ${e.notes && html`<div class="r-entry-notes">${e.notes}</div>`}
         </div><button class="r-icon-btn" onClick=${() => onDelete(e.id)}>✕</button></div></${Card}>`)}</div>`}
-    ` : tab === "percorsi" ? html`<${PercorsiPanel} pillar="air" color=${C.air} percorsi=${percorsi} setPercorsi=${setPercorsi} settings=${settings} digest=${digest} pillarMemory=${memory?.air} />`
+    ` : tab === "percorsi" ? html`<div>
+        <${SemiPanel} color=${C.air} semi=${semi || []} onAddSeed=${onAddSeed} onApproveSeedStrategy=${onApproveSeedStrategy} onUnlockGatedSeed=${onUnlockGatedSeed} onDiscussInShell=${onDiscussInShell} />
+        <${PercorsiPanel} pillar="air" color=${C.air} percorsi=${percorsi} setPercorsi=${setPercorsi} settings=${settings} digest=${digest} pillarMemory=${memory?.air} />
+      </div>`
     : html`<${Card} accent=${C.air}>
         <${Field} label="Cosa deve fare l'agente? (ricerca web reale)">
           <textarea class="r-textarea" value=${task} onInput=${(e) => setTask(e.target.value)} placeholder="es. Cerca 5 canali simili e riassumi cosa funziona" disabled=${running} />
@@ -1476,14 +1925,14 @@ const MagiStage = ({ label, color, text, compact }) => !text ? null : html`<div 
   <div class="r-magi-label" style="color:${color}">${label}</div><div class="r-magi-text">${text}</div></div>`;
 const MAGI_PILLARS = [{ id: "", label: "Nessuno (trasversale)" }, { id: "bio", label: "BIO" }, { id: "air", label: "AIR" }, { id: "vidya", label: "VIDYA" }];
 const MAGI_INTENSITIES = [{ id: "leggera", label: "Leggera" }, { id: "media", label: "Media" }, { id: "profonda", label: "Profonda" }];
-function MagiView({ sessions, onSave, onDelete, settings, memory, updateMemoria }) {
+function MagiView({ sessions, onSave, onDelete, settings, memory, updateMemoria, pushDebugLog }) {
   const [question, setQuestion] = useState(""); const [running, setRunning] = useState(false);
   const [targetPillar, setTargetPillar] = useState(""); const [intensity, setIntensity] = useState("media");
   const [stage, setStage] = useState({ balthasar: "", melchior: "", caspar: "", synthesis: "" }); const [error, setError] = useState("");
   const engineLabel = MODEL_OPTIONS.find((m) => m.id === settings.model)?.label || settings.model;
   const start = async () => { if (!question.trim() || running) return; setRunning(true); setError(""); setStage({ balthasar: "", melchior: "", caspar: "", synthesis: "" });
     try {
-      const result = await runTriadeMagi(question.trim(), (k, v) => setStage((s) => ({ ...s, [k]: v === null ? "…" : v })), settings, { memory, targetPillar: targetPillar || null, intensity });
+      const result = await runTriadeMagi(question.trim(), (k, v) => setStage((s) => ({ ...s, [k]: v === null ? "…" : v })), settings, { memory, targetPillar: targetPillar || null, intensity }, pushDebugLog);
       onSave({ id: uid(), date: new Date().toISOString(), question: question.trim(), engine: engineLabel, pillar: targetPillar || null, intensity, ...result });
       // La perturbazione lascia traccia nella memoria del pilastro-bersaglio (§4.1) — non blocca in caso di errore.
       if (targetPillar && updateMemoria) {
@@ -1570,8 +2019,17 @@ function AnochinTrace({ trace }) {
     </div>`}
   </div>`;
 }
-function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory, bio, air, vidya, pushDebugLog }) {
+function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory, bio, air, vidya, pushDebugLog, addSeed, advanceSeedIfDue, shellDraft, consumeShellDraft }) {
   const [input, setInput] = useState("");
+  // Trigger di avanzamento Seme (Parte 3 del brief): una sola volta per apertura di questa tab —
+  // ShellView viene smontata/rimontata ad ogni cambio di `view` in App() (reso condizionale, non
+  // nascosto via CSS), quindi un effect a dipendenze vuote soddisfa esattamente "una volta per
+  // sessione Shell, al mount", mai ad ogni messaggio (i re-render per nuovi messaggi non lo rieseguono).
+  useEffect(() => { advanceSeedIfDue?.(); }, []);
+  // PUNTO 4 (BRIEF_correzioni_post_test 26/07/2026): "Discuti in Shell" — precarica l'input, MAI invio
+  // automatico (Legge 8: il Ghost decide se/come inviarlo). Consumato una sola volta (shellDraft torna
+  // "" in App), così non sovrascrive un input che il Ghost sta già scrivendo in un mount successivo.
+  useEffect(() => { if (shellDraft) { setInput(shellDraft); consumeShellDraft?.(); } }, [shellDraft]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   // Modalità dialettica per-sessione (mai persistente) — override del default cognitiveStyle.dialectic
@@ -1630,9 +2088,13 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
           setMessages((prev) => [...prev, { id: uid(), role: "system-note", content: `✓ Percorso "${title}" creato in ${pillar.toUpperCase()}.` }]);
         }
       }
-      const { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, calendarProposal, usedWebSearch } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya, updateMemoria }, memory, styleMemory, currentAttachment, dialecticOverride);
+      const { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, calendarProposal, usedWebSearch } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya, updateMemoria }, memory, styleMemory, currentAttachment, dialecticOverride, pushDebugLog);
+      // Canale primario Seme (brief Parte 1.A): euristica a costo zero sul messaggio del Ghost, non
+      // sulla risposta dello Shell. Non crea nulla da sola — solo una proposta con un tap di conferma
+      // (vedi card sotto), mai il pattern "conferma nel messaggio successivo" già usato per i Percorsi.
+      const seedSuggestion = detectSeedWorthyIntent(userText) ? { content: userText } : null;
       setMessages((prev) => {
-        const next = [...prev, { id: assistantMsgId, role: "assistant", content: reply, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft, calendarProposal, usedWebSearch }];
+        const next = [...prev, { id: assistantMsgId, role: "assistant", content: reply, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft, calendarProposal, usedWebSearch, seedSuggestion }];
         return compactShellChatIfNeeded(next) || next; // Opzione 3: compatta+archivia (Legge 14) se sopra soglia, altrimenti passa
       });
       if (newStyleMemory !== styleMemory) setStyleMemory(newStyleMemory);
@@ -1718,6 +2180,14 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     } catch (e) { setCalStatus((s) => ({ ...s, [mid]: "error: " + e.message })); }
   };
   const dismissCalendarEvent = (mid) => setCalStatus((s) => ({ ...s, [mid]: "dismissed" }));
+  // Seme: un solo tap crea, nessuna azione se ignorato/rifiutato (nessuna traccia persistente, brief 1.A).
+  const [seedStatus, setSeedStatus] = useState({}); // mid -> "added" | "dismissed"
+  const confirmSeed = (mid, content) => {
+    addSeed?.(content, "conversational");
+    setSeedStatus((s) => ({ ...s, [mid]: "added" }));
+    setMessages((prev) => [...prev, { id: uid(), role: "system-note", content: `✓ Seme AIR salvato.` }]);
+  };
+  const dismissSeed = (mid) => setSeedStatus((s) => ({ ...s, [mid]: "dismissed" }));
   // Email da bozza Arms: stesso principio del Calendar, mai scrittura/invio automatico (Legge 8).
   // Il "recipient" nella bozza è una DESCRIZIONE dedotta dall'AI ("il tuo commercialista"), mai un
   // indirizzo verificato — l'indirizzo vero lo digita e conferma sempre il Ghost, qui, prima dell'invio.
@@ -1799,6 +2269,14 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
               ${calStatus[mid] === "saving" && html`<span class="r-spin">⏳</span> Salvo…`}
               ${calStatus[mid] === "done" && html`<div class="r-ok">✓ Salvato sul Calendar.</div>`}
               ${calStatus[mid]?.startsWith?.("error") && html`<div class="r-error">${calStatus[mid].replace("error: ", "")}</div>`}
+            </div>`}
+            ${m.seedSuggestion && !seedStatus[mid] && html`<div class="r-draft-card">
+              <div class="r-draft-label">🌱 SEME AIR — vuoi salvare questa idea?</div>
+              <div class="r-draft-body">${m.seedSuggestion.content}</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="r-btn r-draft-copy" onClick=${() => confirmSeed(mid, m.seedSuggestion.content)}>Salva come Seme AIR</button>
+                <button class="r-btn r-btn-ghost" onClick=${() => dismissSeed(mid)}>No grazie</button>
+              </div>
             </div>`}
             <div class="r-shell-msg-footer">
               ${m.usedWebSearch && html`<span class="r-badge" style="border-color:${C.core};color:${C.core}">🌐 WEB</span>`}
@@ -1886,6 +2364,53 @@ function KernelView({ kernel, onSave, driveStatus }) {
 //──────────────────────────────────────────────────────────
 // SETTINGS
 //──────────────────────────────────────────────────────────
+// TASK 1 (BRIEF_costtracking_balthasarsources 26/07/2026) — aggregatore costi/token in Setup.
+// Legge le entry type:"ai-cost" dal debug log esistente (nessun nuovo storage). LIMITE DICHIARATO:
+// pushDebugLog tiene un rolling log di SOLO 50 voci totali, condivise fra TUTTI i tipi di entry (non
+// solo ai-cost) — con uso attivo, "ultimi 7 giorni" in pratica mostra molto meno di 7 giorni reali,
+// perché le voci più vecchie vengono scartate ben prima. Non risolto qui deliberatamente: il brief
+// chiede di riusare la struttura esistente, non di crearne una parallela senza tetto.
+function CostSummaryPanel({ debugLog }) {
+  const costEntries = (debugLog || []).filter((e) => e.type === "ai-cost");
+  const today = todayISO();
+  const now = Date.now();
+  const isToday = (t) => (t || "").slice(0, 10) === today;
+  const isLast7d = (t) => { const d = new Date(t).getTime(); return !isNaN(d) && now - d <= 7 * 86400000; };
+  const byTag = (entries) => {
+    const map = {};
+    entries.forEach((e) => {
+      const tag = e.functionTag || "?";
+      const row = map[tag] || (map[tag] = { calls: 0, tokensTotal: 0, costUsd: 0, hasCost: false });
+      row.calls++;
+      if (typeof e.tokensTotal === "number") row.tokensTotal += e.tokensTotal;
+      if (typeof e.costUsd === "number") { row.costUsd += e.costUsd; row.hasCost = true; }
+    });
+    return map;
+  };
+  const todayEntries = costEntries.filter((e) => isToday(e.time));
+  const weekEntries = costEntries.filter((e) => isLast7d(e.time));
+  const weekByTag = byTag(weekEntries);
+  const sumTokens = (entries) => entries.reduce((a, e) => a + (typeof e.tokensTotal === "number" ? e.tokensTotal : 0), 0);
+  const sumCost = (entries) => entries.reduce((a, e) => a + (typeof e.costUsd === "number" ? e.costUsd : 0), 0);
+  const anyCostToday = todayEntries.some((e) => typeof e.costUsd === "number");
+  const anyCostWeek = weekEntries.some((e) => typeof e.costUsd === "number");
+  return html`<${Card} accent=${C.core}>
+    <div class="r-hub-title" style="color:#3A4750">Costi/token IA</div>
+    <div class="r-hub-detail">Solo le chiamate tracciate: Shell, Magi (Balthasar/Melchior/Caspar), Agente AIR, ricerca web on-demand, Seme (ricerca/esecuzione). Non include refresh pagina, login Google o sync Drive — non toccano mai un modello.</div>
+    ${costEntries.length === 0 ? html`<div class="r-hub-detail" style="margin-top:8px">Nessuna chiamata tracciata ancora nel log (max 50 voci totali, condivise con tutti gli eventi di debug).</div>` : html`
+      <div class="r-hub-detail" style="margin-top:10px"><b>Oggi</b>: ${todayEntries.length} chiamate · ${sumTokens(todayEntries)} token · ${anyCostToday ? `$${sumCost(todayEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
+      <div class="r-hub-detail" style="margin-top:4px"><b>Ultimi 7 giorni</b> (entro il tetto di 50 voci del log): ${weekEntries.length} chiamate · ${sumTokens(weekEntries)} token · ${anyCostWeek ? `$${sumCost(weekEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
+      <table style="width:100%;margin-top:10px;border-collapse:collapse;font-size:12.5px">
+        <thead><tr style="text-align:left;opacity:.6"><th>Funzione</th><th>Chiamate</th><th>Token</th><th>Costo</th></tr></thead>
+        <tbody>
+          ${Object.entries(weekByTag).map(([tag, row]) => html`<tr key=${tag} style="border-top:1px solid var(--border)">
+            <td style="padding:4px 0">${tag}</td><td>${row.calls}</td><td>${row.tokensTotal || "—"}</td><td>${row.hasCost ? `$${row.costUsd.toFixed(4)}` : "n/d"}</td>
+          </tr>`)}
+        </tbody>
+      </table>
+    `}
+  </${Card}>`;
+}
 function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDebugLog, pullAndMergeOnce }) {
   const presetIds = MODEL_OPTIONS.filter((m) => m.id !== "custom").map((m) => m.id);
   const isCustom = !presetIds.includes(settings.model);
@@ -1971,6 +2496,7 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
       ${!feedbackReady && html`<div class="r-hub-detail" style="margin-top:8px">Manca FEEDBACK_EMAIL in config.js — vedi README.md.</div>`}
       ${feedbackReady && html`<div class="r-hub-detail" style="margin-top:8px">Configurato — le segnalazioni arrivano a ${CONFIG.FEEDBACK_EMAIL} via Gmail (stesso account Google del login).</div>`}
     </${Card}>
+    <${CostSummaryPanel} debugLog=${debugLog} />
     <${Card} accent=${C.core}>
       <div class="r-hub-title" style="color:#3A4750">Log di debug — ${debugLog?.length || 0} eventi registrati</div>
       <div class="r-hub-detail">Turni dello Shell ed eventi di sincronizzazione (modello, esito, errori) — per capire cosa è successo senza screenshot</div>
@@ -2037,19 +2563,19 @@ Rispondi SOLO con questo JSON, nessun altro testo:
   return askModelJSON(system, userText, 0.2, 1400, settings);
 }
 const SKIP_TEXT = "preferisco non rispondere";
-function SkippableField({ label, value, onChange, placeholder, textarea, hint }) {
+function SkippableField({ label, value, onChange, placeholder, textarea, hint, maxLength }) {
   const skipped = value === SKIP_TEXT;
   const Field = textarea ? "textarea" : "input";
   return html`<label class="r-field">
     <span>${label}</span>
     ${hint && html`<small style="opacity:.7">${hint}</small>`}
-    <${Field} class=${textarea ? "r-textarea" : "r-input"} value=${skipped ? "" : value} disabled=${skipped}
+    <${Field} class=${textarea ? "r-textarea" : "r-input"} value=${skipped ? "" : value} disabled=${skipped} maxLength=${maxLength}
       onInput=${(e) => onChange(e.target.value)} placeholder=${skipped ? SKIP_TEXT : placeholder} />
     <button type="button" class="r-btn-ghost" style="margin-top:4px;font-size:12px"
       onClick=${() => onChange(skipped ? "" : SKIP_TEXT)}>${skipped ? "Annulla" : "Preferisco non rispondere"}</button>
   </label>`;
 }
-function OnboardingView({ onComplete, settings }) {
+function OnboardingView({ onComplete, settings, driveRecovery, onRecoverFromDrive }) {
   const [step, setStep] = useState("form"); // form → processing → confirm
   const [error, setError] = useState("");
   // Blocco 1 — Come ti muovi (cognitiveStyle)
@@ -2140,11 +2666,13 @@ function OnboardingView({ onComplete, settings }) {
       name: name.trim(),
       hardConstraints: hc,
       cognitiveStyle: { channel: channelList.join(", "), density, dialectic, dialecticOverride: null, reasoningStyle },
+      // Tutto il blocco è agganciato a buildPillarCtx, ma SOLO per bio/vidya — mai per air, dove nessuna
+      // nota freeform viene iniettata (nessuno di questi campi è filtrato e potrebbe nominare l'identità
+      // professionale del Ghost). Vedi PILLAR_CTX più in alto nel file.
       freeform: {
         motivation: motivation === SKIP_TEXT ? "" : motivation.trim(),
         context: context === SKIP_TEXT ? "" : context.trim(),
         request: request === SKIP_TEXT ? "" : request.trim(),
-        // Agganciato a buildPillarCtx (tutti e tre i pilastri) — vedi PILLAR_CTX più in alto nel file.
         strength: strengthAbility === SKIP_TEXT ? "" : strengthAbility.trim(),
       },
       distressCheck: classification?.distressCheck || null,
@@ -2193,6 +2721,23 @@ function OnboardingView({ onComplete, settings }) {
       <p>Resonance è un sistema che si adatta al tuo modo di pensare, invece di chiederti di adattarti a lui. Lo "Shell" è la parte dell'app che ti parla e ti accompagna — pensalo come un assistente che, da queste risposte, impara come parlarti, cosa non toccare mai, e come aiutarti a fare quello che vuoi fare.</p>
       <p>Le domande che seguono servono solo a questo. Restano solo tue: si salvano sul tuo Google Drive personale, nessun altro le vede, e puoi modificarle o cancellarle quando vuoi. Nessuna è obbligatoria — se una non ti va di compilarla ora, salta pure.</p>
       <p>Una nota prima di iniziare: alcune domande toccano salute e vita privata. Resonance non è un medico né uno psicologo, e non li sostituisce.</p></div>
+    <div class="r-card" style="border-left:3px solid ${C.core}">
+      ${driveRecovery.phase === "idle" && html`<div>
+        <h3>Hai già un account?</h3>
+        <p style="opacity:.7">Se hai già usato Resonance su un altro dispositivo, o hai perso i dati locali, recupera il tuo profilo da Google Drive invece di ripartire da qui.</p>
+        <button class="r-btn r-btn-ghost" onClick=${onRecoverFromDrive}>Ho già un account — Accedi con Google</button>
+      </div>`}
+      ${driveRecovery.phase === "connecting" && html`<p><span class="r-spin">⏳</span> Connessione con Google in corso…</p>`}
+      ${driveRecovery.phase === "checking" && html`<p><span class="r-spin">⏳</span> Recupero i tuoi dati da Drive…</p>`}
+      ${driveRecovery.phase === "notfound" && html`<div>
+        <p>Nessun dato precedente trovato per questo account.</p>
+        <p style="opacity:.7">Nessun problema — prosegui pure con il questionario qui sotto.</p>
+      </div>`}
+      ${driveRecovery.phase === "error" && html`<div>
+        <p class="r-error">Recupero non riuscito: ${driveRecovery.error} I tuoi dati non sono stati toccati — puoi riprovare quando vuoi.</p>
+        <button class="r-btn" onClick=${onRecoverFromDrive}>Riprova</button>
+      </div>`}
+    </div>
     ${error && html`<div class="r-card" style="border-left:3px solid var(--air)"><p>${error}</p></div>`}
     <div class="r-card">
       <h3>Come ti muovi</h3>
@@ -2234,9 +2779,9 @@ function OnboardingView({ onComplete, settings }) {
     </div>
     <div class="r-card">
       <h3>Il resto</h3>
-      <${SkippableField} label="Cosa speri che Resonance possa aiutarti a fare o a capire? Non serve una risposta definitiva — anche un'idea vaga va benissimo." value=${motivation} onChange=${setMotivation} textarea=${true} />
-      <${SkippableField} label="C'è qualcosa di te, non chiesta finora nel questionario, che ritieni utile per comprenderti meglio?" value=${context} onChange=${setContext} textarea=${true} />
-      <${SkippableField} label="Se Resonance potesse fare perfettamente una cosa sola per te, quale sceglieresti?" value=${request} onChange=${setRequest} />
+      <${SkippableField} label="Cosa speri che Resonance possa aiutarti a fare o a capire? Non serve una risposta definitiva — anche un'idea vaga va benissimo." value=${motivation} onChange=${setMotivation} textarea=${true} maxLength=${500} />
+      <${SkippableField} label="C'è qualcosa di te, non chiesta finora nel questionario, che ritieni utile per comprenderti meglio?" value=${context} onChange=${setContext} textarea=${true} maxLength=${500} />
+      <${SkippableField} label="Se Resonance potesse fare perfettamente una cosa sola per te, quale sceglieresti?" value=${request} onChange=${setRequest} maxLength=${500} />
       <button class="r-btn" disabled=${!canSubmit} onClick=${runClassification}>Continua</button>
     </div>
     <p style="opacity:.6;text-align:center;font-size:13px">Puoi tornare qui e modificare ogni risposta quando vuoi — niente qui è scritto nella pietra.</p>
@@ -2304,6 +2849,15 @@ function App() {
   const [pBio, setPBio] = useState(() => loadKey("percorsi-bio", []));
   const [pAir, setPAir] = useState(() => loadKey("percorsi-air", []));
   const [pVidya, setPVidya] = useState(() => loadKey("percorsi-vidya", []));
+  const [semi, setSemi] = useState(() => loadKey("semi-data", []));
+  // PUNTO 4 (BRIEF_correzioni_post_test 26/07/2026): "Discuti in Shell" — messaggio di contesto
+  // PREPARATO nell'input di Shell, mai inviato automaticamente (Legge 8). Non persistente (solo
+  // stato di sessione): consumato dall'effect in ShellView al mount successivo alla navigazione.
+  const [shellDraft, setShellDraft] = useState("");
+  const discussSeedInShell = useCallback((seed, strategy) => {
+    setShellDraft(`Vorrei discutere questa strategia proposta per il Seme AIR (id: ${seed.id}) — "${seed.content}":\n\n"${strategy.titolo}": ${strategy.descrizione}\n\nHo delle domande/aggiustamenti prima di approvarla. L'approvazione resta comunque dal pannello Semi, non da qui.`);
+    setView("shell");
+  }, []);
   const [kernel, setKernel] = useState(() => loadKey("kernel-data", { content: DEFAULT_KERNEL, version: 1, history: [] }));
   const [settings, setSettings] = useState(() => ({ ...DEFAULT_SETTINGS, ...loadKey("app-settings", {}) }));
   const [driveStatus, setDriveStatus] = useState({ state: "idle", time: null, error: null, remoteTime: null, fileId: null });
@@ -2356,7 +2910,7 @@ function App() {
   const syncFileIdRef = useRef(null);
   // Inizializzazione SINCRONA alla prima render: così il primo pull al mount trova già lo stato
   // reale in stateRef, senza dipendere dall'ordine di esecuzione degli effetti (Bug A).
-  const stateRef = useRef({ bio, air, vidya, pBio, pAir, pVidya, magi, shellChat, memory, styleMemory, kernel, resonance, ghostProfile });
+  const stateRef = useRef({ bio, air, vidya, pBio, pAir, pVidya, magi, semi, shellChat, memory, styleMemory, kernel, resonance, ghostProfile });
   const hasMountedRef = useRef(false);
   const skipStampRef = useRef(false);
   const skipAutosaveRef = useRef(false);
@@ -2369,11 +2923,11 @@ function App() {
   // NOTA: quest'effetto deve restare dichiarato PRIMA degli effetti di sync — l'ordine di
   // dichiarazione è l'ordine di esecuzione, e al mount stateRef va popolato prima del primo pull.
   useEffect(() => {
-    stateRef.current = { bio, air, vidya, pBio, pAir, pVidya, magi, shellChat, memory, styleMemory, kernel, resonance, ghostProfile };
+    stateRef.current = { bio, air, vidya, pBio, pAir, pVidya, magi, semi, shellChat, memory, styleMemory, kernel, resonance, ghostProfile };
     if (!hasMountedRef.current) { hasMountedRef.current = true; return; }          // idratazione iniziale: non è una modifica
     if (skipStampRef.current) { skipStampRef.current = false; return; }            // apply da Drive: il timestamp giusto l'ha già scritto applyMergedState
     saveKey("sync-last-modified", Date.now());                                     // modifica reale dell'utente/Shell
-  }, [bio, air, vidya, pBio, pAir, pVidya, magi, shellChat, memory, styleMemory, kernel, resonance, ghostProfile]);
+  }, [bio, air, vidya, pBio, pAir, pVidya, magi, semi, shellChat, memory, styleMemory, kernel, resonance, ghostProfile]);
 
   const applyMergedState = (merged) => {
     // Tutti i setState qui sotto sono sincroni e vengono raggruppati in un solo re-render:
@@ -2387,15 +2941,57 @@ function App() {
     setPAir(merged.pAir); saveKey("percorsi-air", merged.pAir);
     setPVidya(merged.pVidya); saveKey("percorsi-vidya", merged.pVidya);
     setMagi(merged.magi); saveKey("magi-data", merged.magi);
+    setSemi(merged.semi); saveKey("semi-data", merged.semi);
     setShellChatRaw(merged.shellChat); saveKey("shell-chat", merged.shellChat);
     setMemory(merged.memory); saveKey("shell-memory", merged.memory);
     setStyleMemoryRaw(merged.styleMemory); saveKey("shell-style-memory", merged.styleMemory);
     setKernel(merged.kernel); saveKey("kernel-data", merged.kernel);
     setResonance(merged.resonance); saveKey("simbiosi-data", merged.resonance);
     setGhostProfileRaw(merged.ghostProfile); saveKey("ghost-profile", merged.ghostProfile); setGhostProfile(merged.ghostProfile);
-    stateRef.current = { bio: merged.bio, air: merged.air, vidya: merged.vidya, pBio: merged.pBio, pAir: merged.pAir, pVidya: merged.pVidya, magi: merged.magi, shellChat: merged.shellChat, memory: merged.memory, styleMemory: merged.styleMemory, kernel: merged.kernel, resonance: merged.resonance, ghostProfile: merged.ghostProfile };
+    stateRef.current = { bio: merged.bio, air: merged.air, vidya: merged.vidya, pBio: merged.pBio, pAir: merged.pAir, pVidya: merged.pVidya, magi: merged.magi, semi: merged.semi, shellChat: merged.shellChat, memory: merged.memory, styleMemory: merged.styleMemory, kernel: merged.kernel, resonance: merged.resonance, ghostProfile: merged.ghostProfile };
     saveKey("sync-last-modified", merged.lastModified);
   };
+
+  // ═══ BRIEF2_login_precoce (26/07/2026) — "Ho già un account" in onboarding ═══
+  // Incidente reale che ha motivato questa feature: localStorage cancellato per errore → utente
+  // bloccato dentro l'onboarding completo, dati veri irraggiungibili su Drive, rischio di sovrascrivere
+  // il profilo vero con uno vuoto al termine del questionario (merge "ultima scrittura vince").
+  // idle → connecting (OAuth, STESSO connectDrive già usato per Drive/Calendar/Gmail, nessun secondo
+  // meccanismo di auth) → checking (ricerca+download del file di sync) → notfound | error, oppure
+  // successo silenzioso (ghostProfile smette di essere null, OnboardingView si smonta da sola).
+  const [driveRecovery, setDriveRecovery] = useState({ phase: "idle", error: "" });
+  const recoverFromDrive = useCallback(async () => {
+    setDriveRecovery({ phase: "connecting", error: "" });
+    try {
+      await connectDrive();
+      setDriveRecovery({ phase: "checking", error: "" });
+      const found = await findSyncFile();
+      if (!found) { setDriveRecovery({ phase: "notfound", error: "" }); return; }
+      const remote = await downloadSyncState(found.id);
+      if (!remote) { setDriveRecovery({ phase: "notfound", error: "" }); return; }
+      // CASO LIMITE 2 (BRIEF2): "local" è SYNC_DEFAULTS() puro, MAI stateRef.current — che a questo punto
+      // non contiene comunque risposte di onboarding (quelle vivono solo nello state locale, mai letto
+      // qui, di OnboardingView), ma usare i default esplicitamente rende il punto inequivocabile: il
+      // recupero non eredita MAI nulla dalla sessione di onboarding in corso, a prescindere da cosa il
+      // Ghost abbia già digitato in quello schermo.
+      const merged = mergeSyncState(SYNC_DEFAULTS(), remote);
+      syncFileIdRef.current = found.id;
+      // CASO LIMITE 5 (BRIEF2): applyMergedState è lo STESSO, UNICO percorso di scrittura già usato dal
+      // pull Drive manuale/automatico — mai saveGhostProfile/onComplete (quella scrive un profilo nuovo
+      // assemblato dalle risposte di onboarding, esattamente la funzione che ha causato l'incidente).
+      applyMergedState(merged);
+      // CASO LIMITE 3 (BRIEF2): già garantito da applyMergedState, che scrive bio-data/kernel-data/
+      // shell-chat/ecc. in localStorage anche se gli array sono vuoti — isExistingInstall() li troverà
+      // al prossimo avvio, quindi l'onboarding non ricomparirà.
+      updateSettings({ driveSyncEnabled: true }); // Drive è appena stato collegato: la sync va accesa
+      setDriveRecovery({ phase: "idle", error: "" }); // consumato — ghostProfile non è più null, OnboardingView si smonta
+    } catch (e) {
+      // CASO LIMITE 1 (BRIEF2), il più pericoloso: nessun applyMergedState è stato chiamato sopra se si
+      // arriva qui — zero stato parziale scritto. L'utente resta sulla stessa schermata con un errore
+      // esplicito e un modo di riprovare, mai forzato verso il questionario come unica via d'uscita.
+      setDriveRecovery({ phase: "error", error: e.message || "Errore sconosciuto durante il recupero." });
+    }
+  }, [updateSettings]);
 
   const syncCore = useCallback(async (applyLocally) => {
     const found = syncFileIdRef.current ? { id: syncFileIdRef.current } : await findSyncFile();
@@ -2468,7 +3064,7 @@ function App() {
     if (skipAutosaveRef.current) { skipAutosaveRef.current = false; return; }             // cambio causato da un apply: già sincronizzato
     const t = setTimeout(() => { pushMergedOnce(); }, 2000);
     return () => clearTimeout(t);
-  }, [bio, air, vidya, pBio, pAir, pVidya, magi, shellChat, memory, styleMemory, kernel, resonance, settings.driveSyncEnabled]);
+  }, [bio, air, vidya, pBio, pAir, pVidya, magi, semi, shellChat, memory, styleMemory, kernel, resonance, settings.driveSyncEnabled]);
 
   const addBio = useCallback((e) => setBio((prev) => { const n = [e, ...prev].sort((a, b) => b.date.localeCompare(a.date)); saveKey("bio-data", n); syncIfEnabled("04 BIO_STASIS", formatBioLog(n)); return n; }), [syncIfEnabled]);
   const delBio = useCallback((id) => setBio((prev) => { const n = prev.filter((e) => e.id !== id); saveKey("bio-data", n); syncIfEnabled("04 BIO_STASIS", formatBioLog(n)); return n; }), [syncIfEnabled]);
@@ -2481,6 +3077,94 @@ function App() {
   const setPBioSync = useCallback((n) => { setPBio(n); saveKey("percorsi-bio", n); syncIfEnabled("04 BIO_STASIS — Percorsi", formatPercorsiLog("BIO", n)); }, [syncIfEnabled]);
   const setPAirSync = useCallback((n) => { setPAir(n); saveKey("percorsi-air", n); syncIfEnabled("03 AIR_OPERATIONS — Percorsi", formatPercorsiLog("AIR", n)); }, [syncIfEnabled]);
   const setPVidyaSync = useCallback((n) => { setPVidya(n); saveKey("percorsi-vidya", n); syncIfEnabled("05 VIDYA_TUNING — Percorsi", formatPercorsiLog("VIDYA", n)); }, [syncIfEnabled]);
+  const setSemiSync = useCallback((n) => { setSemi(n); saveKey("semi-data", n); syncIfEnabled("03 AIR_OPERATIONS — Semi", formatSemiLog(n)); }, [syncIfEnabled]);
+  const addSeed = useCallback((content, originSource) => {
+    const s = {
+      id: uid(), createdAt: new Date().toISOString(), ttl: new Date(Date.now() + 90 * 86400000).toISOString(),
+      pillar: "air", content, originSource, status: "seed",
+      researchIterationCount: 0, executionIterationCount: 0, researchLog: [], executionLog: [],
+      proposedStrategies: [], approvedStrategy: null, gateReason: null,
+      gatedActionPreview: null, // testo esatto dell'azione candidata bloccata da runSeedGateCheck — vedi unlockGatedSeed
+    };
+    setSemiSync([s, ...stateRef.current.semi]);
+    pushDebugLog({ type: "seme-created", id: s.id, originSource, error: null });
+    return s;
+  }, [setSemiSync, pushDebugLog]);
+  const approveSeedStrategy = useCallback((id, strategy) => {
+    setSemiSync(stateRef.current.semi.map((s) => (s.id === id ? { ...s, approvedStrategy: strategy, status: "executing", gateReason: null } : s)));
+    pushDebugLog({ type: "seme-approved", id, strategyTitolo: strategy?.titolo || null, error: null });
+  }, [setSemiSync, pushDebugLog]);
+  // CORREZIONE 26/07/2026: "Sblocca/Conferma" non è più un bypass generico del gate — segue lo stesso
+  // pattern propose→confirm→execute già validato per Calendar/email (il Ghost vede il contenuto
+  // ESATTO dell'azione PRIMA di confermarla). gatedActionPreview è l'azione candidata mostrata in UI
+  // (SemiPanel): confermare la scrive in executionLog esattamente com'era mostrata, non una nuova
+  // azione rigenerata al prossimo avanzamento. Non incrementa executionIterationCount (il tentativo
+  // bloccato l'ha già consumata) — un solo gate pendente per Seme, quindi nessun rischio di scavalcare
+  // più azioni bloccate in sequenza alla cieca.
+  const unlockGatedSeed = useCallback((id) => {
+    const seed = stateRef.current.semi.find((s) => s.id === id);
+    const confirmedAction = seed?.gatedActionPreview || null;
+    setSemiSync(stateRef.current.semi.map((s) => {
+      if (s.id !== id) return s;
+      const log = confirmedAction
+        ? [...s.executionLog, { date: new Date().toISOString(), note: `Confermato manualmente dal Ghost nonostante il gate: ${confirmedAction}` }]
+        : s.executionLog;
+      return { ...s, status: "executing", gateReason: null, gatedActionPreview: null, executionLog: log };
+    }));
+    // Nessun testo grezzo nel log di debug (CHIARIMENTO 26/07/2026, punto 2) — il contenuto confermato
+    // resta solo nell'executionLog del Seme stesso (dato del Ghost, non un prompt inviato a un modello).
+    pushDebugLog({ type: "seme-unlocked", id, hadPendingAction: !!confirmedAction, error: null });
+  }, [setSemiSync, pushDebugLog]);
+  // Un solo avanzamento per apertura della tab Shell (Parte 3 del brief) — chiamata dall'effect di
+  // mount di ShellView, MAI da un timer o da ogni messaggio. Legge stato FRESCO via stateRef (stesso
+  // motivo della Simbiosi proattiva: subito dopo un pull Drive la closure del primo render sarebbe
+  // stale). Sceglie il primo Seme in "seed"/"researching" (Fase 1) o "executing" (Fase 2) trovato.
+  const advanceSeedIfDue = useCallback(async () => {
+    const s = stateRef.current;
+    const target = s.semi.find((x) => x.status === "seed" || x.status === "researching" || x.status === "executing");
+    if (!target) return;
+    if (target.status === "seed" || target.status === "researching") {
+      if (target.researchIterationCount >= SEME_RESEARCH_ITERATION_CAP) return;
+      try {
+        const { balthasar, approvedStrategies, rejectedStrategies, webSearchDiag, possibleHallucinatedSource } = await runSeedResearch(target, s.memory.air, settingsRef.current, pushDebugLog);
+        const nextCount = target.researchIterationCount + 1;
+        const newlyApproved = approvedStrategies.filter((a) => !target.proposedStrategies.some((p) => p.titolo === a.titolo));
+        const mergedStrategies = [...target.proposedStrategies, ...newlyApproved];
+        const nextStatus = mergedStrategies.length ? "awaiting_approval" : (nextCount >= SEME_RESEARCH_ITERATION_CAP ? "proposing" : "researching");
+        // TASK 2 (BRIEF_costtracking_balthasarsources): il sospetto di fonte allucinata va reso
+        // visibile al Ghost, non solo al log di debug tecnico — vedi detectPossibleHallucinatedSource.
+        const hallucinationNote = possibleHallucinatedSource ? " ⚠ possibile fonte non verificata nel testo — controlla prima di fidartene." : "";
+        const logEntry = { date: new Date().toISOString(), note: `Round ${nextCount}/${SEME_RESEARCH_ITERATION_CAP} — ${approvedStrategies.length} strategia/e approvata/e. Ricerca: ${balthasar.slice(0, 160)}${hallucinationNote}` };
+        const updated = { ...target, status: nextStatus, researchIterationCount: nextCount, researchLog: [...target.researchLog, logEntry], proposedStrategies: mergedStrategies };
+        setSemiSync(stateRef.current.semi.map((x) => (x.id === target.id ? updated : x)));
+        // Esito di Caspar-del-Seme nel log di debug: SOLO id scartato + motivo breve (≤200 caratteri,
+        // sintesi di Caspar) — MAI il testo/prompt completo inviato al modello (CHIARIMENTO 26/07/2026, p.2).
+        // webSearch*: diagnostica PUNTO 1 (BRIEF_correzioni_post_test) — permette di verificare nel
+        // prossimo test reale se Balthasar ha ricevuto citazioni vere o le sta inventando in sintesi.
+        // possibleHallucinatedSource: TASK 2 (BRIEF_costtracking_balthasarsources), caso (b).
+        pushDebugLog({ type: "seme-research", id: target.id, originSource: target.originSource, round: nextCount, approvedCount: approvedStrategies.length, casparRejections: rejectedStrategies, webSearchToolInvoked: webSearchDiag.toolInvoked, webSearchCitationCount: webSearchDiag.citationCount, webSearchCitationDomains: webSearchDiag.citationDomains, possibleHallucinatedSource, status: nextStatus, error: null });
+      } catch (e) {
+        pushDebugLog({ type: "seme-research", id: target.id, originSource: target.originSource, error: e.message });
+      }
+      return;
+    }
+    if (target.executionIterationCount >= SEME_EXECUTION_ITERATION_CAP) return;
+    try {
+      const stepText = await proposeSeedExecutionStep(target, s.memory.air, settingsRef.current, pushDebugLog);
+      const gate = await runSeedGateCheck(stepText, CURRENT_GHOST_PROFILE, settingsRef.current, pushDebugLog);
+      const nextCount = target.executionIterationCount + 1;
+      // Se bloccato, il passo candidato resta visibile in gatedActionPreview finché il Ghost non lo
+      // conferma o lo scarta (vedi unlockGatedSeed) — mai un unlock alla cieca senza vedere COSA si sblocca.
+      const updated = gate.gated
+        ? { ...target, status: "gated", executionIterationCount: nextCount, gateReason: gate.reason, gatedActionPreview: stepText, executionLog: [...target.executionLog, { date: new Date().toISOString(), note: `Bloccato: ${gate.reason}` }] }
+        : { ...target, executionIterationCount: nextCount, gatedActionPreview: null, executionLog: [...target.executionLog, { date: new Date().toISOString(), note: stepText }] };
+      setSemiSync(stateRef.current.semi.map((x) => (x.id === target.id ? updated : x)));
+      // reason incluso (breve, ≤20 parole, verdetto di Caspar) — MAI stepText/il prompt completo nel log di debug.
+      pushDebugLog({ type: "seme-execution", id: target.id, originSource: target.originSource, round: nextCount, gated: gate.gated, reason: gate.gated ? gate.reason : null, error: null });
+    } catch (e) {
+      pushDebugLog({ type: "seme-execution", id: target.id, originSource: target.originSource, error: e.message });
+    }
+  }, [setSemiSync, pushDebugLog]);
   const saveKernel = useCallback((content) => setKernel((prev) => {
     const n = { content, version: prev.version + 1, history: [...prev.history, { version: prev.version, content: prev.content, date: new Date().toISOString() }] };
     saveKey("kernel-data", n); syncIfEnabled("00 KERNEL_LOG", content); return n;
@@ -2560,26 +3244,31 @@ function App() {
   const digestBio = `Kernel: ${kernel.content.slice(0, 300)}\nUltime voci BIO: ${bio.slice(0, 5).map((e) => e.notes || e.weight).join("; ")}\nPercorsi esistenti: ${pBio.map((p) => p.title).join(", ") || "nessuno"}`;
   const digestAir = `Kernel: ${kernel.content.slice(0, 300)}\nUltimi vettori AIR: ${air.slice(0, 5).map((e) => `${e.title} (${e.status})`).join("; ")}\nPercorsi esistenti: ${pAir.map((p) => p.title).join(", ") || "nessuno"}`;
   const digestVidya = `Kernel: ${kernel.content.slice(0, 300)}\nUltimi log VIDYA: ${vidya.slice(0, 5).map((e) => e.title).join("; ")}\nPercorsi esistenti: ${pVidya.map((p) => p.title).join(", ") || "nessuno"}`;
+  // PUNTO 2 (BRIEF_correzioni_post_test 26/07/2026): badge sul tab AIR — "c'è qualcosa che avanza"
+  // visibile senza dover entrare in Percorsi. "archived" è l'unico stato che non richiede attenzione.
+  const activeSeedCount = semi.filter((s) => s.status !== "archived").length;
 
   return html`<div>
     <div class="r-ghost-texture"></div>
     <${HexTexture} />
     <div class="r-topbar"><div class="r-brand">RESONANCE<span>•</span></div></div>
-    ${!ghostProfile && html`<${OnboardingView} onComplete=${saveGhostProfile} settings=${settings} />`}
+    ${!ghostProfile && html`<${OnboardingView} onComplete=${saveGhostProfile} settings=${settings} driveRecovery=${driveRecovery} onRecoverFromDrive=${recoverFromDrive} />`}
     ${ghostProfile && html`<div>
     <${FeedbackWidget} view=${view} pushDebugLog=${pushDebugLog} />
     ${view === "hub" && html`<${Hub} bio=${bio} air=${air} vidya=${vidya} magi=${magi} resonance=${resonance} setView=${setView} pBio=${pBio} pAir=${pAir} pVidya=${pVidya} proactiveHint=${resonance.worthSurfacing} />`}
     ${view === "shell" && html`<${ShellView} messages=${shellChat} setMessages=${setShellChat} settings=${settings} addBio=${addBio} addAir=${addAir} addVidya=${addVidya}
       percorsi=${{ bio: pBio, air: pAir, vidya: pVidya }} setPercorsi=${{ bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }}
-      memory=${memory} updateMemoria=${updateMemoria} styleMemory=${styleMemory} setStyleMemory=${setStyleMemory} bio=${bio} air=${air} vidya=${vidya} pushDebugLog=${pushDebugLog} />`}
+      memory=${memory} updateMemoria=${updateMemoria} styleMemory=${styleMemory} setStyleMemory=${setStyleMemory} bio=${bio} air=${air} vidya=${vidya} pushDebugLog=${pushDebugLog}
+      addSeed=${addSeed} advanceSeedIfDue=${advanceSeedIfDue} shellDraft=${shellDraft} consumeShellDraft=${() => setShellDraft("")} />`}
     ${view === "bio" && html`<${BioView} entries=${bio} onAdd=${addBio} onDelete=${delBio} percorsi=${pBio} setPercorsi=${setPBioSync} settings=${settings} digest=${digestBio} memory=${memory} />`}
-    ${view === "air" && html`<${AirView} entries=${air} onAdd=${addAir} onDelete=${delAir} percorsi=${pAir} setPercorsi=${setPAirSync} settings=${settings} digest=${digestAir} memory=${memory} />`}
+    ${view === "air" && html`<${AirView} entries=${air} onAdd=${addAir} onDelete=${delAir} percorsi=${pAir} setPercorsi=${setPAirSync} settings=${settings} digest=${digestAir} memory=${memory}
+      semi=${semi} onAddSeed=${(content) => addSeed(content, "manual")} onApproveSeedStrategy=${approveSeedStrategy} onUnlockGatedSeed=${unlockGatedSeed} onDiscussInShell=${discussSeedInShell} pushDebugLog=${pushDebugLog} />`}
     ${view === "vidya" && html`<${VidyaView} entries=${vidya} onAdd=${addVidya} onDelete=${delVidya} percorsi=${pVidya} setPercorsi=${setPVidyaSync} settings=${settings} digest=${digestVidya} memory=${memory} />`}
-    ${view === "magi" && html`<${MagiView} sessions=${magi} onSave=${addMagi} onDelete=${delMagi} settings=${settings} memory=${memory} updateMemoria=${updateMemoria} />`}
+    ${view === "magi" && html`<${MagiView} sessions=${magi} onSave=${addMagi} onDelete=${delMagi} settings=${settings} memory=${memory} updateMemoria=${updateMemoria} pushDebugLog=${pushDebugLog} />`}
     ${view === "simbiosi" && html`<${SimbiosiView} resonance=${resonance} onRecalc=${recalcResonance} calculating=${resCalculating} error=${resError} onPromoteIdentity=${promoteToIdentity} onDismissIdentity=${dismissIdentityHint} />`}
     ${view === "kernel" && html`<${KernelView} kernel=${kernel} onSave=${saveKernel} driveStatus=${driveStatus} />`}
     ${view === "settings" && html`<${SettingsView} settings=${settings} updateSettings=${updateSettings} driveStatus=${driveStatus} debugLog=${debugLog} clearDebugLog=${clearDebugLog} pullAndMergeOnce=${pullAndMergeOnce} />`}
-    <div class="r-tab-bar"><div class="r-tab-bar-inner">${TABS.map((t) => html`<button class="r-tab ${view === t.key ? "active" : ""}" onClick=${() => setView(t.key)}>${t.label}</button>`)}</div></div>
+    <div class="r-tab-bar"><div class="r-tab-bar-inner">${TABS.map((t) => html`<button class="r-tab ${view === t.key ? "active" : ""}" onClick=${() => setView(t.key)}>${t.label}${t.key === "air" && activeSeedCount > 0 ? html`<span class="r-tab-badge">${activeSeedCount}</span>` : ""}</button>`)}</div></div>
     </div>`}
   </div>`;
 }
