@@ -6,7 +6,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-07-27 · websearch-params-fix-v1";
+const APP_BUILD = "2026-07-27 · antiloop-penalties-lowered-v1";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -522,7 +522,14 @@ function logAiCost(pushDebugLog, functionTag, model, raw) {
 // virgolette/parentesi/chiavi in un array JSON multi-elemento e possono corromperlo. Magi Caspar (0.2)
 // e le altre chiamate a bassa temperatura restano fuori: rischio di loop trascurabile, verificato ma
 // non applicato (richiesta esplicita del brief di verificare comunque).
-const ANTI_LOOP_PENALTIES = { repetition_penalty: 1.15, frequency_penalty: 0.4 };
+// FIX 27/07/2026 (BRIEF_batchtest_seme): la cascata web_search (30 ricerche/turno, causa radice
+// risolta e verificata dal vivo il 27/07 mattina) è ora il sospetto principale per il gibberish
+// osservato dopo l'introduzione di queste penalità (cirillico, "FIiationException", "getYi") — non le
+// penalità in sé, che potrebbero curare un sintomo della cascata invece che un problema reale del
+// modello. Abbassati qui SOLO i due valori (non rimossi: si isola l'effetto dell'abbassamento, non si
+// introduce una seconda variabile), per verificare con un test reale (FASE 2/3 del brief) se il loop
+// degenerativo si ripresenta ora che la cascata è chiusa.
+const ANTI_LOOP_PENALTIES = { repetition_penalty: 1.05, frequency_penalty: 0.1 };
 
 //──────────────────────────────────────────────────────────
 // TASK B (SPRINT_HARDENING 26/07/2026 sera) — freno di sicurezza automatico anti-degenerazione
