@@ -6,7 +6,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-07-27 · antiloop-penalties-lowered-v1";
+const APP_BUILD = "2026-07-27 · memoria-sedimento-e-simbiosi-ancorata-v1";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -239,6 +239,18 @@ function redactProfessionalIdentity(text, profile) {
 //──────────────────────────────────────────────────────────
 function loadKey(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } }
 function saveKey(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; } }
+// FASE 1.1 (BRIEF_fase1_memoria_sedimento 27/07/2026) — migrazione retrocompatibile obbligatoria:
+// la memoria procedurale era una stringa unica per pilastro, ora è { corrente, sedimento: [{id,date,text}] }.
+// Converte il formato vecchio senza perdere nulla (necessario anche per Marta, che ha dati propri già
+// salvati nel formato vecchio) — idempotente: un valore già nel formato nuovo passa invariato.
+function migratePillarMemory(value) {
+  if (typeof value === "string") return { corrente: value, sedimento: [] };
+  if (value && typeof value === "object" && typeof value.corrente === "string" && Array.isArray(value.sedimento)) return value;
+  return { corrente: "", sedimento: [] };
+}
+function migrateMemoryShape(raw) {
+  return { bio: migratePillarMemory(raw?.bio), air: migratePillarMemory(raw?.air), vidya: migratePillarMemory(raw?.vidya) };
+}
 
 // FIX 20/07/2026 (Opzione 3 — compattazione automatica): la chat Shell non ha limite di lunghezza per
 // il Ghost (è "sempre la stessa"), ma il payload localStorage/Drive-sync cresceva senza tetto. Il tetto
@@ -581,7 +593,7 @@ const MAGI_INTENSITY = { leggera: 0.95, media: 1.15, profonda: 1.35 };
 async function runTriadeMagi(question, onStage, settings, opts = {}, pushDebugLog = null) {
   const { memory = null, targetPillar = null, intensity = "media" } = opts;
   const baseCtx = `${nowContext()} Contesto: sei parte del sistema "Resonance", framework di sviluppo personale del Ghost (Flavio), tre pilastri: BIO (salute), AIR (autonomia economica), VIDYA (crescita creativa/cognitiva). Sei l'unico polo di perturbazione deliberata del sistema — gli altri meccanismi mantengono, tu spingi oltre la cristallizzazione. Rispondi in italiano, diretto, max 70 parole, senza premesse.`;
-  const memoriaCtx = memory ? `\n\nMemoria procedurale accumulata sui pilastri (leggila per generare una perturbazione radicata nella storia reale del sistema, non generica):\nBIO: ${memory.bio || "nessuna nota"}\nAIR: ${memory.air || "nessuna nota"}\nVIDYA: ${memory.vidya || "nessuna nota"}` : "";
+  const memoriaCtx = memory ? `\n\nMemoria procedurale accumulata sui pilastri (leggila per generare una perturbazione radicata nella storia reale del sistema, non generica):\nBIO: ${memory.bio?.corrente || "nessuna nota"}\nAIR: ${memory.air?.corrente || "nessuna nota"}\nVIDYA: ${memory.vidya?.corrente || "nessuna nota"}` : "";
   const targetCtx = targetPillar ? `\n\nQuesta perturbazione è MIRATA al pilastro ${targetPillar.toUpperCase()}.` : "";
   // Intensità: modula la temperatura di Balthasar. Su Claude-direct il tetto resta 1.0 (già gestito da askModel).
   const balthasarTemp = settings.provider === "openrouter" ? (MAGI_INTENSITY[intensity] || 1.15) : Math.min(MAGI_INTENSITY[intensity] || 1.0, 1.0);
@@ -627,7 +639,7 @@ async function reflectPerturbationIntoMemoria(targetPillar, synthesis, intensity
   if (!targetPillar) return null;
   const testo = await askModel(
     `Il pilastro ${targetPillar.toUpperCase()} ha appena ricevuto una perturbazione deliberata da Magi (intensità "${intensity}"). Non stai verificando se è "giusta" — stai riscrivendo la memoria procedurale del pilastro per registrare che è stato scosso e in che direzione. Riscrivi l'INTERA memoria del pilastro (non aggiungere in coda), integrando la perturbazione come tensione ora aperta. Inizia il testo con "[perturbato da Magi] ". Italiano, max 90 parole, denso e concreto.`,
-    `Memoria attuale di ${targetPillar.toUpperCase()}: ${memory[targetPillar] || "nessuna nota ancora"}\nVettore di Perturbazione appena generato: ${synthesis}`,
+    `Memoria attuale di ${targetPillar.toUpperCase()}: ${memory[targetPillar]?.corrente || "nessuna nota ancora"}\nVettore di Perturbazione appena generato: ${synthesis}`,
     0.5, 900, settings
   );
   return testo;
@@ -959,7 +971,7 @@ async function runAccettore(reading, settings) {
 async function reflectMemoriaBatch(acceptedReadings, memory, settings) {
   if (!acceptedReadings.length) return {};
   const pillars = [...new Set(acceptedReadings.map((r) => r.pillar))];
-  const blocco = pillars.map((p) => `Pilastro ${p.toUpperCase()} — memoria attuale: ${memory[p] || "nessuna nota ancora"}\nNuovi scambi: ${JSON.stringify(acceptedReadings.filter((r) => r.pillar === p))}`).join("\n\n");
+  const blocco = pillars.map((p) => `Pilastro ${p.toUpperCase()} — memoria attuale: ${memory[p]?.corrente || "nessuna nota ancora"}\nNuovi scambi: ${JSON.stringify(acceptedReadings.filter((r) => r.pillar === p))}`).join("\n\n");
   const data = await askModelJSON(
     `Il tuo compito non è verificare se qualcosa era "giusto" — è aggiornare la tua struttura interna (memoria procedurale) per ciascun pilastro elencato, alla luce del nuovo accoppiamento con il Ghost. Per ognuno, riscrivi l'INTERA memoria (non aggiungere in coda): come ti sei appena riorganizzato, non un verdetto. Italiano, max 90 parole per pilastro, denso, concreto.
 JSON con SOLO le chiavi dei pilastri elencati: {"bio":"...", "air":"...", "vidya":"..."}`,
@@ -982,7 +994,7 @@ async function runShellTurn(history, userMessage, settings, handlers, memory, st
   const windowMsgs = [...history.slice(-6), { role: "user", content: effectiveMessage + (image ? "\n[Immagine allegata]" : "") }];
   const recentText = windowMsgs.map((m) => `${m.role === "user" ? "Ghost" : "Shell"}: ${m.content}`).join("\n");
   const anochin = { afferenze: `Scambio letto attraverso le tre lenti insieme, non isolate (${windowMsgs.length} messaggi)${attachment ? ` + allegato (${attachment.kind === "image" ? "immagine" : "documento"}: ${attachment.name || "senza nome"}).` : "."}` };
-  const lente = `Memoria BIO: ${memory.bio || "nessuna nota ancora"}\nMemoria AIR: ${memory.air || "nessuna nota ancora"}\nMemoria VIDYA: ${memory.vidya || "nessuna nota ancora"}`;
+  const lente = `Memoria BIO: ${memory.bio?.corrente || "nessuna nota ancora"}\nMemoria AIR: ${memory.air?.corrente || "nessuna nota ancora"}\nMemoria VIDYA: ${memory.vidya?.corrente || "nessuna nota ancora"}`;
   const styleNote = styleMemory ? `\n\nCome hai imparato a parlare con questo Ghost finora — adattaci il registro, MAI il giudizio: ${styleMemory}` : "";
   const wantsWebSearch = settings.provider === "openrouter" && detectWebSearchIntent(userMessage);
   // FIX 20/07/2026: ricerca disaccoppiata (Opzione 2) — pre-fetch isolato PRIMA di costruire il prompt
@@ -1134,7 +1146,19 @@ async function closeSession(pillar, percorso, sessionNote, settings) {
 function stalledTitles(percorsi) {
   return percorsi.filter((p) => { const last = p.sessions[0]; return !last || (Date.now() - new Date(last.date).getTime()) / 86400000 > 10; }).map((p) => p.title);
 }
-function buildResonanceDigest({ bio, air, vidya, kernel, magi, pBio, pAir, pVidya }) {
+// FASE 1.2 (BRIEF_fase1_memoria_sedimento 27/07/2026) — formatta un blocco memoria procedurale per
+// un pilastro: nota corrente + ultimi 8 frammenti di sedimento, ciascuno etichettato con id e data
+// (fmtDate) in modo che Simbiosi possa citarli con un riferimento stabile e ispezionabile, non solo
+// dichiarato a parole (vedi campo "anchors" in computeResonance).
+function formatMemoriaDigestBlock(pillarMemory) {
+  const corrente = pillarMemory?.corrente || "nessuna nota corrente";
+  const frag = (pillarMemory?.sedimento || []).slice(-8);
+  const sedimentoText = frag.length
+    ? frag.map((f) => `[id:${f.id} · ${fmtDate(f.date)}] ${f.text}`).join(" | ")
+    : "nessun frammento storico ancora";
+  return `Corrente: ${corrente}\nSedimento (ultimi ${frag.length} frammenti storici, dal più vecchio al più recente): ${sedimentoText}`;
+}
+function buildResonanceDigest({ bio, air, vidya, kernel, magi, pBio, pAir, pVidya, memory }) {
   const lastMagi = magi[0];
   // Metabolizzazione (§4.4): NON letta da un tag nella memoria (plastica, si riscrive di continuo e
   // mentirebbe), ma CALCOLATA dai dati strutturati — quante voci del pilastro-bersaglio sono state
@@ -1167,7 +1191,10 @@ function buildResonanceDigest({ bio, air, vidya, kernel, magi, pBio, pAir, pVidy
 AIR: ultima voce ${daysSince(air[0]?.date) ?? "mai"} giorni fa. Percorsi attivi: ${pctx(pAir)}. Fermi: ${stalledTitles(pAir).join(", ") || "nessuno"}.
 VIDYA: ultima voce ${daysSince(vidya[0]?.date) ?? "mai"} giorni fa. Percorsi attivi: ${pctx(pVidya)}. Fermi: ${stalledTitles(pVidya).join(", ") || "nessuno"}.
 KERNEL V${kernel.version}: ${kernel.content.slice(0, 400)}
-Sessioni Magi totali: ${magi.length}. ${perturbLine}`;
+Sessioni Magi totali: ${magi.length}. ${perturbLine}
+MEMORIA PROCEDURALE BIO — ${formatMemoriaDigestBlock(memory?.bio)}
+MEMORIA PROCEDURALE AIR — ${formatMemoriaDigestBlock(memory?.air)}
+MEMORIA PROCEDURALE VIDYA — ${formatMemoriaDigestBlock(memory?.vidya)}`;
 }
 async function computeResonance(digest, settings, recentChatText = "") {
   const identityConstraintLine = CURRENT_GHOST_PROFILE.hasProfessionalConstraint
@@ -1181,17 +1208,21 @@ async function computeResonance(digest, settings, recentChatText = "") {
 3) convergenza identitaria emergente — guardando i Percorsi attivi e l'attività di un pilastro INSIEME, sta emergendo una direzione identitaria (un "chi sta diventando il Ghost") che nessun singolo percorso, preso da solo, dichiara? Considera solo percorsi NON già marcati [identitario]. Non contare quanti percorsi ci sono (nessuna soglia numerica): giudica se il quadro nel suo insieme rivela un divenire che vale la pena riconoscere.
 4) cristallizzazione (trigger di Balthasar-a-margine, distinto dal trigger Agorà completa del mandato 1) — pesa questi 4 segnali contro la STORIA SPECIFICA di ogni pilastro (mai soglie assolute): (a) bassa diversità tematica nella memoria procedurale recente rispetto alla media storica di quel pilastro; (b) un Percorso fermo senza variazione di approccio, quando in passato ne mostrava; (c) sintesi Magi ricorrenti sostanzialmente simili (perturbazione non metabolizzata); (d) segnale linguistico DIRETTO del Ghost negli scambi recenti sotto (es. "lo so già", "sempre la stessa cosa") — il più affidabile, non richiede inferenza. Conta quanti segnali sono realmente presenti ORA (0-4).
 Non usare MAI soglie fisse (di giorni o di numero): ogni giudizio è situato e qualitativo, relativo alla storia di questo sistema (Bateson).
+Da questo momento ricevi anche la memoria procedurale di ciascun pilastro nel digest sotto (nota "corrente" + frammenti di "sedimento" storico, ciascuno etichettato con un id e una data) — usala per dare consistenza storica ai tuoi giudizi, in particolare al mandato 4 (diversità tematica rispetto alla storia specifica del pilastro).
+OBBLIGO DI ANCORAGGIO: ogni discrepanza o tensione che segnali nel campo "text" deve indicare esplicitamente su quale frammento ti basi (cita l'id e la data esatti, es. "[id:xxxxxxx · 20/07/2026]") oppure sulla nota corrente. Se una lettura non è ancorabile a un frammento o alla nota corrente, dichiaralo esplicitamente ("non ancorabile a un dato specifico di memoria") invece di inventare un riferimento che non esiste nel digest.
+Una convergenza identitaria o una direzione emergente restano sempre una lettura interpretativa rivedibile (Brentano/Dennett — una stance, mai un verdetto): non prevedere mai cosa succederà, e non introdurre alcun meccanismo che confronti in seguito una direzione qui proposta con l'esito reale per dichiararla azzeccata o sbagliata.
 ${identityConstraintLine}
 Rispondi SOLO con JSON:
 {
-  "text": "3 parti separate da riga vuota: 1) giudizio qualitativo breve (mai un numero); 2) posizionamento tra ordine e caos + discrepanze specifiche; 3) una singola azione concreta — se il mandato 1 rivela cristallizzazione seria, può essere proporre di portare un tema preciso in Agorà Magi (quale + intensità leggera/profonda)",
+  "text": "3 parti separate da riga vuota: 1) giudizio qualitativo breve (mai un numero); 2) posizionamento tra ordine e caos + discrepanze specifiche, ciascuna ancorata a un frammento/nota corrente citato per id o dichiarata esplicitamente non ancorabile; 3) una singola azione concreta — se il mandato 1 rivela cristallizzazione seria, può essere proporre di portare un tema preciso in Agorà Magi (quale + intensità leggera/profonda)",
   "worthSurfacing": true/false (vale la pena che Adam parli per primo di questo al Ghost, o è routine/ripetizione di quanto già noto? Sii esigente: true solo se c'è una differenza reale che fa differenza),
   "identityHint": null oppure { "pillar": "bio|air|vidya", "title": "titolo esatto del percorso esistente coinvolto", "becoming": "diventare una persona che... (max 14 parole)" } — valorizzato SOLO se emerge una convergenza identitaria non ancora marcata, riferita a un percorso realmente presente nel digest,
-  "crystallization": { "signalCount": 0-4 (quanti dei 4 segnali del mandato 4 sono presenti ORA), "pillar": "bio|air|vidya" o null, "marginNote": null oppure "frammento di Balthasar (max 40 parole), tono perturbatore non risolutivo — SOLO se signalCount è ESATTAMENTE 1 (2+ segnali vanno invece nel campo text come proposta di Agorà, mai duplicati qui)" }
+  "crystallization": { "signalCount": 0-4 (quanti dei 4 segnali del mandato 4 sono presenti ORA), "pillar": "bio|air|vidya" o null, "marginNote": null oppure "frammento di Balthasar (max 40 parole), tono perturbatore non risolutivo — SOLO se signalCount è ESATTAMENTE 1 (2+ segnali vanno invece nel campo text come proposta di Agorà, mai duplicati qui)" },
+  "anchors": ["array di id (stringhe) dei frammenti di sedimento effettivamente citati in text — array vuoto se il giudizio si basa solo sulla nota corrente o non è ancorabile a nulla"]
 }`,
     digest + chatCtx, 0.6, 1700, settings
   );
-  if (!data) return { text: "Valutazione non riuscita (risposta non interpretabile). Riprova.", worthSurfacing: false, identityHint: null, crystallization: null };
+  if (!data) return { text: "Valutazione non riuscita (risposta non interpretabile). Riprova.", worthSurfacing: false, identityHint: null, crystallization: null, anchors: [] };
   // Normalizza e valida identityHint.pillar: modelli meno rigorosi (Llama/Kimi/DeepSeek) possono
   // restituire varianti ("Bio", "vidya ") nonostante l'esempio in minuscolo nel prompt. Un pillar
   // non valido viene scartato QUI, non lasciato arrivare a un bottone che poi non farebbe nulla.
@@ -1212,7 +1243,10 @@ Rispondi SOLO con JSON:
     const validNote = sc === 1 && crystallization.marginNote ? String(crystallization.marginNote).trim() : null;
     crystallization = validNote ? { signalCount: sc, pillar: crystallization.pillar || null, marginNote: validNote } : null;
   }
-  return { text: data.text || "", worthSurfacing: !!data.worthSurfacing, identityHint, crystallization };
+  // FASE 1.2 — anchors: ispezionabile, non solo dichiarato a parole nel testo. Difensivo contro
+  // modelli meno rigorosi che restituiscono un valore non-array o con elementi non stringa.
+  const anchors = Array.isArray(data.anchors) ? data.anchors.filter((a) => typeof a === "string" && a) : [];
+  return { text: data.text || "", worthSurfacing: !!data.worthSurfacing, identityHint, crystallization, anchors };
 }
 
 //──────────────────────────────────────────────────────────
@@ -1389,7 +1423,7 @@ function mergeById(localArr, remoteArr) {
 }
 const SYNC_DEFAULTS = () => ({
   bio: [], air: [], vidya: [], pBio: [], pAir: [], pVidya: [], magi: [], semi: [],
-  shellChat: [], memory: { bio: "", air: "", vidya: "" }, styleMemory: "",
+  shellChat: [], memory: { bio: { corrente: "", sedimento: [] }, air: { corrente: "", sedimento: [] }, vidya: { corrente: "", sedimento: [] } }, styleMemory: "",
   kernel: { content: DEFAULT_KERNEL, version: 1, history: [] }, resonance: { text: "", time: null },
   ghostProfile: DEFAULT_GHOST_PROFILE,
   lastModified: 0,
@@ -1808,7 +1842,7 @@ function BioView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, di
           ${e.sleep && html`<div class="r-entry-line">Sonno: ${e.sleep}</div>`}
           ${e.notes && html`<div class="r-entry-notes">${e.notes}</div>`}
         </div><button class="r-icon-btn" onClick=${() => onDelete(e.id)}>✕</button></div></${Card}>`)}</div>`}
-    ` : html`<${PercorsiPanel} pillar="bio" color=${C.bio} percorsi=${percorsi} setPercorsi=${setPercorsi} settings=${settings} digest=${digest} pillarMemory=${memory?.bio} />`}
+    ` : html`<${PercorsiPanel} pillar="bio" color=${C.bio} percorsi=${percorsi} setPercorsi=${setPercorsi} settings=${settings} digest=${digest} pillarMemory=${memory?.bio?.corrente} />`}
   </div>`;
 }
 function VidyaView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, digest, memory }) {
@@ -1832,7 +1866,7 @@ function VidyaView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, 
           <div class="r-entry-line"><b>${e.title}</b></div>
           ${e.notes && html`<div class="r-entry-notes">${e.notes}</div>`}
         </div><button class="r-icon-btn" onClick=${() => onDelete(e.id)}>✕</button></div></${Card}>`)}</div>`}
-    ` : html`<${PercorsiPanel} pillar="vidya" color=${C.vidya} percorsi=${percorsi} setPercorsi=${setPercorsi} settings=${settings} digest=${digest} pillarMemory=${memory?.vidya} />`}
+    ` : html`<${PercorsiPanel} pillar="vidya" color=${C.vidya} percorsi=${percorsi} setPercorsi=${setPercorsi} settings=${settings} digest=${digest} pillarMemory=${memory?.vidya?.corrente} />`}
   </div>`;
 }
 const AIR_STATUSES = ["idea", "in corso", "attivo", "bloccato"];
@@ -1844,13 +1878,30 @@ const SEME_STATUS_LABELS = {
   awaiting_approval: "in attesa di approvazione", executing: "in sviluppo",
   gated: "bloccato", archived: "archiviato",
 };
-function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed, onDiscussInShell }) {
+function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed, onDiscussInShell, onAdvance }) {
   const [newContent, setNewContent] = useState("");
+  const [advancing, setAdvancing] = useState(false);
   const submit = () => { if (!newContent.trim()) return; onAddSeed(newContent.trim()); setNewContent(""); };
   const lastLogNote = (s) => {
     const log = (s.status === "executing" || s.status === "gated") ? s.executionLog : s.researchLog;
     return (log && log.length) ? log[log.length - 1].note : "Nessun avanzamento ancora — attende l'apertura della prossima sessione Shell.";
   };
+  // FASE 2 (BRIEF_fase1_memoria_sedimento 27/07/2026) — prima un Seme che esauriva il tetto
+  // (researchIterationCount/executionIterationCount) smetteva di avanzare senza alcun segnale in
+  // UI. Mostra il contatore corrente rispetto al tetto fisso del codice, così il blocco è leggibile.
+  const seedCounterInfo = (s) => {
+    const isExecPhase = s.status === "executing" || s.status === "gated";
+    const count = isExecPhase ? s.executionIterationCount : s.researchIterationCount;
+    const cap = isExecPhase ? SEME_EXECUTION_ITERATION_CAP : SEME_RESEARCH_ITERATION_CAP;
+    const atCap = count >= cap;
+    return { label: `${isExecPhase ? "esecuzione" : "ricerca"} ${count}/${cap}${atCap ? " — tetto raggiunto" : ""}`, atCap };
+  };
+  // onAdvance è la STESSA advanceSeedIfDue già usata al mount di ShellView: non prende un id target,
+  // avanza sempre il primo Seme "dovuto" trovato nell'intero elenco — se più Semi fossero attivi
+  // insieme, il pulsante su QUALSIASI card avanzerebbe quello, non necessariamente quello cliccato
+  // (limite reale del wiring attuale, segnalato nel report, non risolto in questa fase). Già sicura
+  // da richiamare ripetutamente: verifica da sé i tetti ed esce in silenzio se non c'è nulla da fare.
+  const handleAdvance = async () => { if (advancing || !onAdvance) return; setAdvancing(true); try { await onAdvance(); } finally { setAdvancing(false); } };
   return html`<div>
     <${Card} accent=${color}>
       <${Field} label="Nuovo Seme — un'idea grezza, anche non sviluppata">
@@ -1859,10 +1910,11 @@ function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGate
       <button class="r-btn" style="background:${color}" onClick=${submit} disabled=${!newContent.trim()}>+ Nuovo Seme</button>
     </${Card}>
     ${semi.length === 0 ? html`<${Empty} text="Nessun Seme ancora." />` : html`<div class="r-list">
-      ${semi.map((s) => html`<${Card} accent=${color}>
+      ${semi.map((s) => { const counter = seedCounterInfo(s); return html`<${Card} accent=${color}>
         <div class="r-entry-line"><b>${s.content}</b></div>
-        <div class="r-hub-detail" style="margin-top:4px">Stato: <span class="r-badge" style="border-color:${color};color:${color}">${SEME_STATUS_LABELS[s.status] || s.status}</span> · origine: ${s.originSource === "manual" ? "manuale" : "conversazione"}</div>
+        <div class="r-hub-detail" style="margin-top:4px">Stato: <span class="r-badge" style="border-color:${color};color:${color}">${SEME_STATUS_LABELS[s.status] || s.status}</span> · origine: ${s.originSource === "manual" ? "manuale" : "conversazione"} · ${counter.label}</div>
         <div class="r-magi-text" style="margin-top:6px">${lastLogNote(s)}</div>
+        ${s.status !== "archived" && html`<button class="r-btn r-btn-ghost" style="margin-left:0;margin-top:8px" onClick=${handleAdvance} disabled=${advancing || counter.atCap}>${advancing ? "Avanzo…" : counter.atCap ? "Tetto raggiunto" : "Avanza ora"}</button>`}
         ${s.status === "awaiting_approval" && html`<div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
           ${(s.proposedStrategies || []).map((strat) => html`<div>
             <div class="r-entry-line"><b>${strat.titolo}</b></div>
@@ -1881,11 +1933,11 @@ function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGate
           </div>`}
           <button class="r-btn r-btn-ghost" style="margin-left:0;margin-top:8px" onClick=${() => onUnlockGatedSeed(s.id)}>Sblocca/Conferma questa azione</button>
         </div>`}
-      </${Card}>`)}
+      </${Card}>`; })}
     </div>`}
   </div>`;
 }
-function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, digest, memory, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed, onDiscussInShell, pushDebugLog }) {
+function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, digest, memory, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed, onDiscussInShell, pushDebugLog, advanceSeedIfDue }) {
   const [tab, setTab] = useState("log");
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(todayISO()); const [title, setTitle] = useState(""); const [status, setStatus] = useState("idea"); const [notes, setNotes] = useState("");
@@ -1911,8 +1963,8 @@ function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, di
           ${e.notes && html`<div class="r-entry-notes">${e.notes}</div>`}
         </div><button class="r-icon-btn" onClick=${() => onDelete(e.id)}>✕</button></div></${Card}>`)}</div>`}
     ` : tab === "percorsi" ? html`<div>
-        <${SemiPanel} color=${C.air} semi=${semi || []} onAddSeed=${onAddSeed} onApproveSeedStrategy=${onApproveSeedStrategy} onUnlockGatedSeed=${onUnlockGatedSeed} onDiscussInShell=${onDiscussInShell} />
-        <${PercorsiPanel} pillar="air" color=${C.air} percorsi=${percorsi} setPercorsi=${setPercorsi} settings=${settings} digest=${digest} pillarMemory=${memory?.air} />
+        <${SemiPanel} color=${C.air} semi=${semi || []} onAddSeed=${onAddSeed} onApproveSeedStrategy=${onApproveSeedStrategy} onUnlockGatedSeed=${onUnlockGatedSeed} onDiscussInShell=${onDiscussInShell} onAdvance=${advanceSeedIfDue} />
+        <${PercorsiPanel} pillar="air" color=${C.air} percorsi=${percorsi} setPercorsi=${setPercorsi} settings=${settings} digest=${digest} pillarMemory=${memory?.air?.corrente} />
       </div>`
     : html`<${Card} accent=${C.air}>
         <${Field} label="Cosa deve fare l'agente? (ricerca web reale)">
@@ -2888,9 +2940,25 @@ function App() {
   }, []);
   const [resCalculating, setResCalculating] = useState(false);
   const [resError, setResError] = useState("");
-  const [memory, setMemory] = useState(() => loadKey("shell-memory", { bio: "", air: "", vidya: "" }));
+  const [memory, setMemory] = useState(() => migrateMemoryShape(loadKey("shell-memory", { bio: "", air: "", vidya: "" })));
   const [styleMemory, setStyleMemoryRaw] = useState(() => loadKey("shell-style-memory", ""));
-  const updateMemoria = useCallback((pillar, text) => setMemory((prev) => { const n = { ...prev, [pillar]: text }; saveKey("shell-memory", n); return n; }), []);
+  // FASE 1.1 — Legge 14 applicata alla memoria procedurale (finora l'unica esclusa): prima di
+  // sovrascrivere la nota corrente, la versione precedente viene archiviata come frammento datato
+  // invece di essere distrutta. Lo strato corrente resta plastico (Manifesto §3.1) — si sovrascrive
+  // per intero come oggi — ma il sedimento dà al sistema una storia che prima non aveva.
+  // Tetto sedimento: 30 frammenti/pilastro, i più vecchi cadono (.slice(-30), array cresce in coda).
+  // Tetto corrente: 900 caratteri — il limite tecnico oggi mancante (AUDIT_SPRINT_HARDENING 26/07),
+  // finora solo un'istruzione nel prompt di reflectMemoriaBatch (max 90 parole), mai applicata nel codice.
+  const updateMemoria = useCallback((pillar, text) => setMemory((prev) => {
+    const prevPillar = prev[pillar] || { corrente: "", sedimento: [] };
+    const sedimento = (prevPillar.corrente && text !== prevPillar.corrente)
+      ? [...prevPillar.sedimento, { id: uid(), date: new Date().toISOString(), text: prevPillar.corrente }].slice(-30)
+      : prevPillar.sedimento;
+    const corrente = text.length > 900 ? text.slice(0, 900) : text;
+    const n = { ...prev, [pillar]: { corrente, sedimento } };
+    saveKey("shell-memory", n);
+    return n;
+  }), []);
   const setStyleMemory = useCallback((text) => setStyleMemoryRaw(() => { saveKey("shell-style-memory", text); return text; }), []);
   const [debugLog, setDebugLog] = useState(() => loadKey("debug-log", []));
   const pushDebugLog = useCallback((entry) => setDebugLog((prev) => { const n = [{ ...entry, time: new Date().toISOString() }, ...prev].slice(0, 50); saveKey("debug-log", n); return n; }), []);
@@ -3133,7 +3201,7 @@ function App() {
     if (target.status === "seed" || target.status === "researching") {
       if (target.researchIterationCount >= SEME_RESEARCH_ITERATION_CAP) return;
       try {
-        const { balthasar, approvedStrategies, rejectedStrategies, webSearchDiag, possibleHallucinatedSource } = await runSeedResearch(target, s.memory.air, settingsRef.current, pushDebugLog);
+        const { balthasar, approvedStrategies, rejectedStrategies, webSearchDiag, possibleHallucinatedSource } = await runSeedResearch(target, s.memory.air?.corrente, settingsRef.current, pushDebugLog);
         const nextCount = target.researchIterationCount + 1;
         const newlyApproved = approvedStrategies.filter((a) => !target.proposedStrategies.some((p) => p.titolo === a.titolo));
         const mergedStrategies = [...target.proposedStrategies, ...newlyApproved];
@@ -3157,7 +3225,7 @@ function App() {
     }
     if (target.executionIterationCount >= SEME_EXECUTION_ITERATION_CAP) return;
     try {
-      const stepText = await proposeSeedExecutionStep(target, s.memory.air, settingsRef.current, pushDebugLog);
+      const stepText = await proposeSeedExecutionStep(target, s.memory.air?.corrente, settingsRef.current, pushDebugLog);
       const gate = await runSeedGateCheck(stepText, CURRENT_GHOST_PROFILE, settingsRef.current, pushDebugLog);
       const nextCount = target.executionIterationCount + 1;
       // Se bloccato, il passo candidato resta visibile in gatedActionPreview finché il Ghost non lo
@@ -3182,7 +3250,7 @@ function App() {
     resonanceBusyRef.current = true;
     if (!silent) { setResCalculating(true); setResError(""); }
     try {
-      const digest = buildResonanceDigest({ bio, air, vidya, kernel, magi, pBio, pAir, pVidya });
+      const digest = buildResonanceDigest({ bio, air, vidya, kernel, magi, pBio, pAir, pVidya, memory });
       const recentChatText = recentShellText(stateRef.current.shellChat);
       const res = await computeResonance(digest, settingsRef.current, recentChatText);
       const next = { text: res.text, time: Date.now(), worthSurfacing: res.worthSurfacing, identityHint: res.identityHint || null };
@@ -3233,7 +3301,7 @@ function App() {
       if (signature === loadKey("simbiosi-eval-signature", "")) return; // nulla di nuovo dall'ultima valutazione
       resonanceBusyRef.current = true;
       try {
-        const digest = buildResonanceDigest({ bio: s.bio, air: s.air, vidya: s.vidya, kernel: s.kernel, magi: s.magi, pBio: s.pBio, pAir: s.pAir, pVidya: s.pVidya });
+        const digest = buildResonanceDigest({ bio: s.bio, air: s.air, vidya: s.vidya, kernel: s.kernel, magi: s.magi, pBio: s.pBio, pAir: s.pAir, pVidya: s.pVidya, memory: s.memory });
         const res = await computeResonance(digest, settingsRef.current, recentShellText(s.shellChat));
         const next = { text: res.text, time: Date.now(), worthSurfacing: res.worthSurfacing, identityHint: res.identityHint || null };
         setResonance(next); saveKey("simbiosi-data", next);
@@ -3241,7 +3309,7 @@ function App() {
           setShellChat((prev) => [...prev, { id: uid(), role: "balthasar-margin", pillar: res.crystallization.pillar || null, note: res.crystallization.marginNote }]);
         }
         saveKey("simbiosi-eval-signature", signature); // salvata SOLO dopo successo: un fallimento può riprovare al prossimo mount
-        pushDebugLog({ type: "simbiosi-proactive", worthSurfacing: res.worthSurfacing, hasIdentityHint: !!res.identityHint, error: null });
+        pushDebugLog({ type: "simbiosi-proactive", worthSurfacing: res.worthSurfacing, hasIdentityHint: !!res.identityHint, anchorsCount: res.anchors.length, anchors: res.anchors, error: null });
       } catch (e) { pushDebugLog({ type: "simbiosi-proactive", error: e.message }); } // signature NON salvata: si riproverà
       finally { resonanceBusyRef.current = false; }
     }, 3500);
@@ -3269,7 +3337,7 @@ function App() {
       addSeed=${addSeed} advanceSeedIfDue=${advanceSeedIfDue} shellDraft=${shellDraft} consumeShellDraft=${() => setShellDraft("")} />`}
     ${view === "bio" && html`<${BioView} entries=${bio} onAdd=${addBio} onDelete=${delBio} percorsi=${pBio} setPercorsi=${setPBioSync} settings=${settings} digest=${digestBio} memory=${memory} />`}
     ${view === "air" && html`<${AirView} entries=${air} onAdd=${addAir} onDelete=${delAir} percorsi=${pAir} setPercorsi=${setPAirSync} settings=${settings} digest=${digestAir} memory=${memory}
-      semi=${semi} onAddSeed=${(content) => addSeed(content, "manual")} onApproveSeedStrategy=${approveSeedStrategy} onUnlockGatedSeed=${unlockGatedSeed} onDiscussInShell=${discussSeedInShell} pushDebugLog=${pushDebugLog} />`}
+      semi=${semi} onAddSeed=${(content) => addSeed(content, "manual")} onApproveSeedStrategy=${approveSeedStrategy} onUnlockGatedSeed=${unlockGatedSeed} onDiscussInShell=${discussSeedInShell} pushDebugLog=${pushDebugLog} advanceSeedIfDue=${advanceSeedIfDue} />`}
     ${view === "vidya" && html`<${VidyaView} entries=${vidya} onAdd=${addVidya} onDelete=${delVidya} percorsi=${pVidya} setPercorsi=${setPVidyaSync} settings=${settings} digest=${digestVidya} memory=${memory} />`}
     ${view === "magi" && html`<${MagiView} sessions=${magi} onSave=${addMagi} onDelete=${delMagi} settings=${settings} memory=${memory} updateMemoria=${updateMemoria} pushDebugLog=${pushDebugLog} />`}
     ${view === "simbiosi" && html`<${SimbiosiView} resonance=${resonance} onRecalc=${recalcResonance} calculating=${resCalculating} error=${resError} onPromoteIdentity=${promoteToIdentity} onDismissIdentity=${dismissIdentityHint} />`}
