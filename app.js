@@ -6,7 +6,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-07-26 · sprint-hardening-v1";
+const APP_BUILD = "2026-07-27 · websearch-params-fix-v1";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -298,7 +298,36 @@ async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, m
   // FIX 20/07/2026: prima il tool era dichiarato ma il modello poteva ignorarlo ("auto") — con prompt
   // densi (es. Shell con Manifesto+memoria pilastri) il riflesso "non ho accesso al web" prevaleva
   // anche col tool disponibile. tool_choice:"required" costringe la chiamata a usarlo, non a deciderlo.
-  if (useWebSearch) { body.tools = [{ type: "openrouter:web_search" }]; body.tool_choice = "required"; }
+  // FIX 27/07/2026 (BRIEF_fix_parametri_websearch): il tool era dichiarato NUDO — nessun parametro —
+  // quindi ereditava il tetto di default del provider (max_tool_calls=30 a livello di richiesta),
+  // causa radice confermata della cascata "30 ricerche invece di 1" osservata in produzione (~$0,09-
+  // 0,24/turno, ~960k-999k prompt_tokens). Verificato sulla documentazione ufficiale OpenRouter
+  // (docs/guides/features/server-tools/web-search, 27/07/2026): max_tool_calls è un parametro di
+  // RICHIESTA (livello body, accanto a model/messages/tools), NON un parametro annidato nel tool —
+  // per questo il fix precedente (tool dichiarato senza alcun parametro) non lo toccava mai. Esiste
+  // anche un `max_uses` annidato in parameters, ma la stessa documentazione dichiara che viene
+  // "forwarded only to Anthropic (as max_uses); other native search providers ignore it" — inutile
+  // per Llama 3.3 70B (produzione attuale), quindi scartato: userebbe il nome giusto sulla carta ma
+  // non avrebbe alcun effetto reale sul modello che usiamo.
+  // Valori scelti (nessuna configurabilità utente richiesta dal brief):
+  // - max_tool_calls: 3 — tetto di richiesta condiviso da tutto il budget server-tool. L'uso reale è
+  //   una domanda puntuale (Shell on-demand, Agente AIR, ricerca Seme), non esplorazione multi-query:
+  //   3 lascia margine per una ricerca iniziale + 1-2 raffinamenti senza riaprire la cascata (10x
+  //   sotto il vecchio comportamento anche nel caso peggiore, tipicamente 1 sola ricerca eseguita).
+  //   La doc conferma che al raggiungimento del tetto il modello viene comunque invitato a produrre
+  //   la risposta finale con quanto raccolto finora (non un errore secco) — mitiga il rischio "non
+  //   riesce mai a concludere" con tool_choice:"required" citato nel brief, ma NON verificato dal vivo
+  //   in questa sessione (nessuna chiave OpenRouter disponibile — vedi riepilogo di consegna).
+  // - max_results: 5 (default documentato, reso esplicito) e max_total_results: 10 — contengono il
+  //   volume cumulativo di risultati per richiesta, indipendentemente da quante ricerche vengono fatte.
+  // - search_context_size: "low" — riduce il contenuto testuale recuperato per ciascun risultato:
+  //   è la leva più diretta sui prompt_tokens (960k-999k osservati con 30 ricerche non ha senso
+  //   spiegarlo solo col numero di ricerche, il contenuto per risultato pesa quanto il conteggio).
+  if (useWebSearch) {
+    body.tools = [{ type: "openrouter:web_search", parameters: { max_results: 5, max_total_results: 10, search_context_size: "low" } }];
+    body.tool_choice = "required";
+    body.max_tool_calls = 3;
+  }
   // TASK A (SPRINT_HARDENING 26/07/2026 sera): penalità anti-loop opzionali, applicate SOLO dai
   // chiamanti plain-text ad alta temperatura (mai da askModelJSON — vedi ANTI_LOOP_PENALTIES sotto).
   if (penalties) {
@@ -331,7 +360,13 @@ async function askModelWithHistory(system, messages, temperature, maxTokens, set
   // L'immagine si allega SOLO all'ultimo messaggio (turno corrente), mai alla storia passata
   const msgs = messages.map((m, i) => (i === messages.length - 1 && image ? { role: m.role, content: buildOpenRouterContent(m.content, image) } : m));
   const body = { model: settings.model, max_tokens: maxTokens, temperature, reasoning: { max_tokens: 300 }, messages: [{ role: "system", content: system }, ...msgs] };
-  if (useWebSearch) { body.tools = [{ type: "openrouter:web_search" }]; body.tool_choice = "required"; } // solo OpenRouter — Claude-direct esce già sopra
+  // FIX 27/07/2026 (BRIEF_fix_parametri_websearch): stessi parametri e stessa motivazione di askOpenRouter
+  // sopra (choke-point gemello) — vedi commento esteso lì per il ragionamento su max_tool_calls/max_uses.
+  if (useWebSearch) {
+    body.tools = [{ type: "openrouter:web_search", parameters: { max_results: 5, max_total_results: 10, search_context_size: "low" } }];
+    body.tool_choice = "required";
+    body.max_tool_calls = 3;
+  } // solo OpenRouter — Claude-direct esce già sopra
   // TASK A (SPRINT_HARDENING 26/07/2026 sera): stesse penalità anti-loop opzionali di askOpenRouter.
   if (penalties) {
     body.repetition_penalty = penalties.repetition_penalty ?? 1.15;
@@ -439,13 +474,35 @@ function extractUsageForLog(raw) {
   const costUsd = typeof u.cost === "number" ? u.cost : null; // mai stimato — solo se OpenRouter lo fornisce davvero
   return { tokensIn, tokensOut, tokensTotal, costUsd };
 }
+// PUNTO 2 (BRIEF_fix_parametri_websearch 27/07/2026) — rete di sicurezza indipendente dalla causa
+// specifica risolta al PUNTO 1: rilevatori A POSTERIORI (la chiamata è già stata pagata quando questi
+// flag vengono letti), non blocchi preventivi. Servono a rendere visibile SUBITO un'eventuale
+// regressione futura (es. un altro tool server-side dichiarato senza tetti) invece di scoprirla dopo
+// una settimana come accaduto con la cascata delle 30 ricerche.
+// Soglie proposte (nessun dato reale disponibile per calibrarle empiricamente in questa sessione):
+// - 50.000 prompt_tokens: una singola ricerca web puntuale (fetchWebSearchSnapshot, max 5 risultati,
+//   contesto "low") dovrebbe restare a poche migliaia di token; 50k è abbastanza alto da non scattare
+//   su un uso legittimo anche con più raffinamenti (max_tool_calls:3), ma resta due ordini di grandezza
+//   sotto i 960k-999k osservati nella cascata — un margine ampio ma non permissivo.
+// - $0,05 di costo per singola chiamata: la cascata da 30 ricerche costava $0,09-0,24; una chiamata
+//   legittima con 1-3 ricerche a $0,005 l'una resta ben sotto i 2 centesimi. $0,05 lascia margine
+//   senza avvicinarsi al costo osservato del bug.
+const PROMPT_TOKEN_CEILING = 50000;
+const COST_CEILING_USD = 0.05;
 // functionTag: SOLO i tag fissi previsti dal brief ("shell","balthasar","melchior","caspar",
 // "airAgent","webSearchSnapshot","seme_ricerca","seme_esecuzione") — scelta di scope esplicita del
 // brief (Shell, Magi/Balthasar/Melchior/Caspar, Seme, Agente AIR, ricerca web on-demand), non ogni
 // singola chiamata askModel/askModelJSON dell'app (quiz, percorsi, resonance, ecc. restano fuori).
 function logAiCost(pushDebugLog, functionTag, model, raw) {
   if (!pushDebugLog) return;
-  pushDebugLog({ type: "ai-cost", functionTag, model, ...extractUsageForLog(raw), error: null });
+  const usage = extractUsageForLog(raw);
+  const promptTokenCeilingExceeded = usage.tokensIn !== null && usage.tokensIn > PROMPT_TOKEN_CEILING;
+  const costCeilingExceeded = usage.costUsd !== null && usage.costUsd > COST_CEILING_USD;
+  if (promptTokenCeilingExceeded || costCeilingExceeded) {
+    // Visibile anche fuori dal pannello Setup (console), non solo nel rolling debug log.
+    console.warn(`[Resonance] Allarme costo/token AI su "${functionTag}"`, { promptTokenCeilingExceeded, costCeilingExceeded, ...usage });
+  }
+  pushDebugLog({ type: "ai-cost", functionTag, model, ...usage, promptTokenCeilingExceeded, costCeilingExceeded, error: null });
 }
 
 //──────────────────────────────────────────────────────────
