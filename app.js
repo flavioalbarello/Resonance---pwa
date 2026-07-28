@@ -6,7 +6,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-07-27 · memoria-sedimento-e-simbiosi-ancorata-v1";
+const APP_BUILD = "2026-07-27 · memoria-sedimento-sync-safe-v1";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1431,10 +1431,22 @@ const SYNC_DEFAULTS = () => ({
 // Per i dati non unibili (chat, memoria, kernel, simbiosi): vince in blocco chi ha lastModified più recente.
 // Limite accettato: i timestamp sono client-side — un orologio molto sballato può far vincere il device
 // sbagliato sui bundle (mai sui log, che sono additivi e non perdono voci).
+// FIX 27/07/2026 (BRIEF_syncfix_memoria) — varco di migrazione chiuso qui, non in applyMergedState:
+// "merged" non finisce solo in setMemory/saveKey, ma viene anche ricaricato su Drive da
+// uploadSyncState (vedi syncCore) — se il fix stesse solo al punto di scrittura sullo state React,
+// un bundle "remote" in formato vecchio che vince il merge (remoteWins) resterebbe comunque nel
+// formato vecchio DENTRO "merged", e verrebbe ri-uploadato su Drive tale e quale, perpetuando il
+// problema indefinitamente anche dopo il "fix". Migrando qui, l'invariante "mergeSyncState
+// restituisce sempre memory nel formato nuovo" vale per ogni consumatore, presente e futuro, con un
+// solo punto di garanzia. migrateMemoryShape è idempotente (verificato anche qui sotto con un test
+// esplicito) — applicarla a un valore già nel formato nuovo (il caso comune di l.memory, che discende
+// dallo state React già migrato all'avvio) non ha alcun effetto collaterale.
 function mergeSyncState(local, remote) {
   const l = { ...SYNC_DEFAULTS(), ...local };
+  l.memory = migrateMemoryShape(l.memory);
   if (!remote) return { ...l, lastModified: l.lastModified || Date.now() };
   const r = { ...SYNC_DEFAULTS(), ...remote }; // difesa: bundle mancanti nel file remoto non diventano undefined
+  r.memory = migrateMemoryShape(r.memory);
   const remoteWins = (r.lastModified || 0) > (l.lastModified || 0);
   return {
     bio: mergeById(l.bio, r.bio), air: mergeById(l.air, r.air), vidya: mergeById(l.vidya, r.vidya),
