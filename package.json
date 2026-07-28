@@ -1,0 +1,11 @@
+{
+  "name": "resonance-api",
+  "private": true,
+  "description": "Dipendenze SOLO per le serverless functions in /api (Vercel). Il frontend (app.js, index.html, styles.css) resta senza build step: nessuno script qui li tocca.",
+  "engines": {
+    "node": "22.x"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "2.6.2"
+  }
+}
