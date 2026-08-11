@@ -6,7 +6,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-07-27 · memoria-sedimento-sync-safe-v1";
+const APP_BUILD = "2026-07-27 · effettori-contratto-e-printify-v1";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -674,6 +674,129 @@ async function fetchWebSearchSnapshot(query, settings, pushDebugLog = null) {
 // apertura della tab Shell (vedi l'effect di mount in ShellView), mai ad ogni messaggio.
 const SEME_RESEARCH_ITERATION_CAP = 5;  // Fase 1 — round di ricerca senza convergenza
 const SEME_EXECUTION_ITERATION_CAP = 5; // Fase 2 — passi di sviluppo, contatore indipendente dal precedente
+
+//──────────────────────────────────────────────────────────
+// EFFETTORI AIR — registro, contratto, esecutore (BRIEF_effettori_printify 27/07/2026)
+//──────────────────────────────────────────────────────────
+// Problema risolto: il passo di esecuzione del Seme aveva come unici "strumenti" un modello
+// linguistico e la ricerca web — produceva quindi PROSA che descrive un'azione ("Eseguire una
+// ricerca su Etsy per identificare le verticali..."), mai l'azione stessa. Non risolvibile
+// calibrando i prompt: mancavano gli effettori. Decisione del Ghost: generalizzare il CONTRATTO
+// d'azione, non i singoli connettori — ogni canale futuro deve costare un solo file adattatore
+// (un endpoint /api) + una voce di registro qui, non una riscrittura del flusso Seme.
+// Il registro è l'UNICA fonte di verità su "cosa il sistema può fare": il modello SCEGLIE da qui,
+// non inventa verbi (vedi proposeSeedExecutionStep sotto). "nessuno_disponibile" è l'esito onesto
+// quando nessun effettore reale può realizzare il passo — mai più una descrizione testuale
+// spacciata per azione.
+const EFFECTOR_REGISTRY = [
+  {
+    id: "immagine_vettoriale",
+    descrizione: "Genera un design grafico come SVG (testo/lettering/composizioni geometriche, forme) e lo converte in PNG ad alta risoluzione lato server. Usa questo per grafiche TIPOGRAFICHE o con testo: il testo resta testo, nessun rischio di rendering sbagliato, costo zero, nessuna chiave, nessuna quota. L'immagine risultante viene depositata su Drive per ispezione.",
+    schemaParametri: { svg: "string — markup SVG completo e valido (root <svg> con viewBox), testo/forme/colori già definiti", widthPx: "number opzionale, default 4500 (standard Printify t-shirt a 300 DPI)", heightPx: "number opzionale, default 5400", driveLabel: "string breve per il nome del file su Drive" },
+    richiedeGate: false,
+    reversibile: true,
+    costoStimato: 0,
+  },
+  {
+    id: "immagine_raster",
+    descrizione: "Genera un'immagine da prompt testuale tramite un provider esterno di generazione immagine. Usa questo SOLO per illustrazione/texture dove l'SVG non arriva (MAI per design con testo leggibile: i modelli raster sbagliano spesso il rendering del testo dentro l'immagine). L'immagine risultante viene depositata su Drive per ispezione.",
+    schemaParametri: { prompt: "string — descrizione dell'immagine da generare, in inglese se il provider lo richiede", driveLabel: "string breve per il nome del file su Drive" },
+    richiedeGate: false,
+    reversibile: true,
+    costoStimato: 0.02,
+  },
+  {
+    id: "printify_crea_prodotto",
+    descrizione: "Crea un prodotto REALE nel catalogo Printify (verificabile aprendo la dashboard Printify), a partire da un'immagine già generata da immagine_vettoriale o immagine_raster. Azione con effetto esterno reale e irreversibile senza intervento manuale — passa SEMPRE dal gate.",
+    schemaParametri: { imagePngBase64: "string — base64 del PNG da usare, ottenuto da un passo immagine_vettoriale/immagine_raster precedente", blueprintId: "number — id del blueprint di prodotto Printify (dal catalogo)", printProviderId: "number — id del print provider Printify per quel blueprint", variantIds: "array di number — id delle varianti (taglie/colori) da attivare", title: "string — titolo del prodotto", description: "string — descrizione del prodotto" },
+    richiedeGate: true,
+    reversibile: false,
+    costoStimato: 0,
+  },
+  {
+    id: "nessuno_disponibile",
+    descrizione: "Nessun effettore di questo registro può realizzare il passo che ritieni necessario ORA. Usa questo per dichiararlo esplicitamente — MAI ripiegare su una descrizione testuale spacciata per azione.",
+    schemaParametri: { spiegazione: "string — cosa servirebbe concretamente e perché non è disponibile in questo registro" },
+    richiedeGate: false,
+    reversibile: true,
+    costoStimato: 0,
+  },
+];
+// Mappa 1:1 effettore→endpoint /api: ogni canale futuro aggiunge UNA riga qui + un file in /api,
+// mai un cambiamento al contratto o all'esecutore (vedi FASE 2 del brief).
+const EFFECTOR_ENDPOINTS = {
+  immagine_vettoriale: "/api/svg-to-png",
+  immagine_raster: "/api/generate-image",
+  printify_crea_prodotto: "/api/printify-create-product",
+};
+// Effettori che producono un'immagine (PNG base64) da depositare su Drive con l'infrastruttura
+// già esistente (createDriveFile, già riscritta per Blob binari — vedi invokeEffector sotto).
+const IMAGE_PRODUCING_EFFECTORS = new Set(["immagine_vettoriale", "immagine_raster"]);
+// Formatta il contratto in una stringa leggibile per l'UI ESISTENTE di gatedActionPreview
+// (SemiPanel, invariata — vedi CORREZIONE 26/07/2026 sopra su unlockGatedSeed): il Ghost deve
+// vedere l'azione ESATTA prima di sbloccarla, mai un unlock generico.
+function formatContractPreview(contract) {
+  return `Effettore: ${contract.effettore}\nParametri: ${JSON.stringify(contract.parametri, null, 2)}\nRazionale: ${contract.razionale || "—"}`;
+}
+// Formatta l'esito REALE (dati veri restituiti dall'adattatore, mai un riassunto narrativo) per
+// l'executionLog del Seme — stessa funzione usata sia dall'esecuzione diretta sia dopo conferma
+// del gate (unlockGatedSeed), per non duplicare la logica di formattazione.
+function formatRealResultNote(contract, risultato) {
+  if (!risultato?.ok) return `Errore esecuzione effettore "${contract.effettore}": ${risultato?.error || "errore sconosciuto"}`;
+  const { ok, ...dati } = risultato;
+  const dettagli = Object.entries(dati).filter(([k]) => k !== "driveFileId" || dati.driveFileId).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join(", ");
+  return `Eseguito "${contract.effettore}" — ${dettagli || "nessun dettaglio restituito"}`;
+}
+// Esecutore di basso livello: chiama l'endpoint /api mappato, non decide MAI se eseguire (quello
+// è compito di executeSeedContract, che verifica gate/AIR PRIMA di chiamare questa funzione).
+// Per gli effettori che producono un'immagine, deposita SEMPRE il PNG su Drive dopo la chiamata
+// (riusando createDriveFile, che vive nel client — Drive usa l'OAuth del Ghost, mai accessibile
+// da un endpoint /api) e include l'id del file Drive nel risultato restituito al chiamante.
+async function invokeEffector(effectorId, parametri, pushDebugLog) {
+  const endpoint = EFFECTOR_ENDPOINTS[effectorId];
+  if (!endpoint) return { ok: false, error: `Nessun endpoint /api mappato per l'effettore "${effectorId}".` };
+  let data;
+  try {
+    const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(parametri) });
+    data = await res.json();
+  } catch (e) {
+    pushDebugLog?.({ type: "effettore-eseguito", effectorId, ok: false, error: e.message });
+    return { ok: false, error: e.message };
+  }
+  if (data.ok && IMAGE_PRODUCING_EFFECTORS.has(effectorId) && data.pngBase64) {
+    try {
+      const bin = atob(data.pngBase64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: "image/png" });
+      const driveLabel = parametri?.driveLabel || `effettore-${effectorId}`;
+      const driveFile = await createDriveFile(`Resonance – ${driveLabel} – ${new Date().toISOString().slice(0, 19).replace("T", " ")}.png`, blob, "image/png");
+      data = { ...data, driveFileId: driveFile.id };
+    } catch (e) {
+      // Deposito su Drive fallito: l'azione (generazione immagine) è comunque riuscita — non far
+      // fallire l'intero esito per questo, ma rendere l'errore visibile nel debug log.
+      pushDebugLog?.({ type: "effettore-drive-deposito", effectorId, error: e.message });
+    }
+  }
+  pushDebugLog?.({ type: "effettore-eseguito", effectorId, ok: !!data.ok, error: data.ok ? null : (data.error || "errore sconosciuto") });
+  return data;
+}
+// Esecutore unico (FASE 1.3): riceve il contratto, verifica il vincolo AIR e il gate SUI PARAMETRI
+// CONCRETI dell'azione (mai su un riassunto), e o esegue chiamando l'adattatore o si ferma
+// presentando al Ghost l'azione esatta in attesa di conferma (vedi advanceSeedIfDue/unlockGatedSeed).
+async function executeSeedContract(contract, profile, settings, pushDebugLog = null) {
+  const effettore = EFFECTOR_REGISTRY.find((e) => e.id === contract?.effettore);
+  if (!contract || !effettore || contract.effettore === "nessuno_disponibile") {
+    return { esito: "nessuna_azione", dettaglio: contract?.parametri?.spiegazione || "Nessun effettore disponibile per questo passo.", gated: false };
+  }
+  // Gate invariato (le 4 condizioni + vincolo AIR restano quelle di runSeedGateCheck, non
+  // riprogettate) — chiamato SEMPRE, per ogni contratto, esattamente come accadeva PRIMA per ogni
+  // stepText testuale: nessun bypass introdotto per gli effettori a richiedeGate:false.
+  const gate = await runSeedGateCheck(contract, profile, settings, pushDebugLog);
+  if (gate.gated) return { esito: "gate", gated: true, reason: gate.reason, contract };
+  const risultato = await invokeEffector(contract.effettore, contract.parametri, pushDebugLog);
+  return { esito: risultato.ok ? "eseguito" : "errore", gated: false, contract, risultato };
+}
 // Euristica leggera, zero costo — stesso stile di detectWebSearchIntent: riconosce un'idea grezza
 // buttata lì in conversazione ("potrei fare X", "sarebbe interessante Y"), non una richiesta diretta
 // né una domanda. Non crea nulla da sola: propone solo il tap di conferma (vedi ShellView).
@@ -787,23 +910,32 @@ Genera 2-3 strategie, ciascuna specifica e azionabile (non generica). Non citare
   return { balthasar, approvedStrategies: approved, rejectedStrategies: rejected, candidateCount: candidate.length, webSearchDiag, possibleHallucinatedSource };
 }
 // Fase 2 — un passo per volta (stile proposeNextStep dei Percorsi), MAI un'azione che tocchi il
-// mondo esterno: il gate-check (runSeedGateCheck) verifica il passo PRIMA che venga considerato eseguito.
+// mondo esterno DIRETTAMENTE da qui: il gate-check + l'esecutore (executeSeedContract) verificano
+// e/o eseguono DOPO. FIX 27/07/2026 (BRIEF_effettori_printify): questa funzione produceva PROSA
+// libera che descriveva un'azione, mai l'azione — causa radice del bug osservato in produzione
+// (Seme jl2qlksd: "Eseguire una ricerca approfondita su Etsy..." mai davvero eseguita). Ora produce
+// un CONTRATTO strutturato: il modello SCEGLIE un effettore dal registro, non inventa verbi.
 async function proposeSeedExecutionStep(seme, pillarMemory, settings, pushDebugLog = null) {
   const logDigest = (seme.executionLog || []).map((e) => `- ${e.note}`).join("\n") || "nessun passo ancora eseguito";
-  return askWithDegenerateGuard(
-    () => askModel(
-      `Sei lo Shell del sistema Resonance, pilastro AIR — sviluppo autonomo di un Seme già approvato dal Ghost. ${PILLAR_CTX.air}
+  const registryText = EFFECTOR_REGISTRY.map((e) => `- "${e.id}": ${e.descrizione} Parametri attesi: ${JSON.stringify(e.schemaParametri)}.`).join("\n");
+  return askModelJSON(
+    `Sei lo Shell del sistema Resonance, pilastro AIR — sviluppo autonomo di un Seme già approvato dal Ghost. ${PILLAR_CTX.air}
 Memoria procedurale AIR: ${pillarMemory || "nessuna nota ancora"}
-Proponi il PROSSIMO passo concreto di sviluppo (bozza di prodotto, ricerca dettagliata, o piano operativo — mai un'azione che tocchi il mondo esterno: nessun acquisto, pubblicazione, iscrizione o account reale). Un solo passo, specifico, max 120 parole.`,
-      `Idea: ${seme.content}\nStrategia approvata: ${seme.approvedStrategy?.titolo || ""} — ${seme.approvedStrategy?.descrizione || ""}\nPassi già fatti:\n${logDigest}`,
-      0.6, 900, settings, false, null, (raw) => logAiCost(pushDebugLog, "seme_esecuzione", settings.model, raw), ANTI_LOOP_PENALTIES
-    ),
-    "seme_esecuzione", pushDebugLog
+Il tuo compito NON è descrivere un'azione a parole: devi SCEGLIERE un effettore dal registro sottostante e produrre i parametri concreti per eseguirlo davvero. Non inventare verbi o azioni fuori dal registro.
+REGISTRO EFFETTORI DISPONIBILI:
+${registryText}
+Se nessun effettore disponibile può realizzare il passo che ritieni necessario ORA, scegli "nessuno_disponibile" con una spiegazione nei parametri — MAI ripiegare su una descrizione testuale spacciata per azione: la prosa descrittiva non è un esito valido di questo passo.
+JSON: {"effettore":"<id esatto dal registro>","parametri":{...secondo lo schema atteso per quell'effettore},"razionale":"perché questo passo, max 40 parole","costoStimato":<numero>,"richiedeGate":<bool, copia il valore dichiarato nel registro per l'effettore scelto>}`,
+    `Idea: ${seme.content}\nStrategia approvata: ${seme.approvedStrategy?.titolo || ""} — ${seme.approvedStrategy?.descrizione || ""}\nPassi già fatti:\n${logDigest}`,
+    0.6, 1200, settings, null, (raw) => logAiCost(pushDebugLog, "seme_esecuzione", settings.model, raw)
   );
 }
-// Gate-check obbligatorio (Parte 6 del brief) — lista CHIUSA di 4 condizioni, non un giudizio
-// discrezionale. Modellato su runAccettore (unico altro hard-stop vero e proprio del sistema).
-async function runSeedGateCheck(stepText, profile, settings, pushDebugLog = null) {
+// Gate-check obbligatorio (Parte 6 del brief precedente) — lista CHIUSA di 4 condizioni, non un
+// giudizio discrezionale. Modellato su runAccettore (unico altro hard-stop vero e proprio del
+// sistema). INVARIATA nelle 4 condizioni e nel vincolo AIR (BRIEF_effettori_printify: "non
+// riprogettare il gate") — adattato SOLO nell'input: riceve il CONTRATTO strutturato invece di una
+// stringa di prosa, così la verifica avviene sui parametri concreti dell'azione, non su un riassunto.
+async function runSeedGateCheck(contract, profile, settings, pushDebugLog = null) {
   const identityConstraint = profile.hasProfessionalConstraint
     ? ` Vincolo aggiuntivo sempre attivo, indipendente dalle 4 condizioni sopra: il passo non deve MAI esporre l'identità professionale del Ghost (${profile.professionalIdentity}) — se lo fa, blocca comunque.`
     : "";
@@ -814,7 +946,7 @@ async function runSeedGateCheck(stepText, profile, settings, pushDebugLog = null
 3) azione irreversibile o costosa da disfare (creazione account, commit a servizi terzi, cancellazioni);
 4) richiede una credenziale non disponibile in questo sistema (es. API key di un servizio esterno non configurata).${identityConstraint}
 Se nessuna delle 4 condizioni scatta, via libera. Rispondi SOLO "VIA LIBERA" oppure "BLOCCATO: <quale condizione, max 20 parole>".`,
-    `Passo candidato: ${stepText}`, 0.2, 300, settings, false, null, (raw) => logAiCost(pushDebugLog, "seme_esecuzione", settings.model, raw)
+    `Effettore scelto: "${contract.effettore}"\nParametri concreti: ${JSON.stringify(contract.parametri)}\nRazionale dichiarato: ${contract.razionale || ""}`, 0.2, 300, settings, false, null, (raw) => logAiCost(pushDebugLog, "seme_esecuzione", settings.model, raw)
   );
   const gated = /BLOCCATO/i.test(text);
   return { gated, reason: text.replace(/^(VIA LIBERA|BLOCCATO):?\s*/i, "") };
@@ -829,7 +961,7 @@ Se nessuna delle 4 condizioni scatta, via libera. Rispondi SOLO "VIA LIBERA" opp
 // — è parte della checklist di consegna (vedi CLAUDE.md).
 const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nominare in conversazione (per distinguere "sto parlando di una funzionalità di Resonance" da "sto parlando della mia vita/lavoro reale"):
 - Percorsi: competenze o percorsi identitari tracciati per pilastro (BIO/AIR/VIDYA), con nodi, sessioni, quiz di verifica.
-- Semi (solo AIR): un'idea grezza non ancora sviluppata. Si crea buttandola lì in chat (lo Shell propone di salvarla) o con un pulsante manuale in AIR → Percorsi. Stati possibili: "nuovo/in ricerca" (lo Shell la sta ricercando online e traducendo in strategie), "in attesa di approvazione" (2-3 strategie pronte, il Ghost ne approva una), "in sviluppo" (esecuzione autonoma sorvegliata passo-passo), "bloccato" (un gate di sicurezza ha fermato un passo, richiede conferma esplicita del Ghost).
+- Semi (solo AIR): un'idea grezza non ancora sviluppata. Si crea buttandola lì in chat (lo Shell propone di salvarla) o con un pulsante manuale in AIR → Percorsi. Stati possibili: "nuovo/in ricerca" (lo Shell la sta ricercando online e traducendo in strategie), "in attesa di approvazione" (2-3 strategie pronte, il Ghost ne approva una), "in sviluppo" (esecuzione autonoma sorvegliata passo-passo), "bloccato" (un gate di sicurezza ha fermato un passo, richiede conferma esplicita del Ghost). Dal 27/07/2026 lo sviluppo di un Seme non produce più solo prosa che descrive un'azione: sceglie un EFFETTORE reale da un registro (genera un'immagine SVG→PNG, genera un'immagine raster, o crea un prodotto vero nel catalogo Printify) e lo esegue davvero — l'esecuzione produce dati reali (id prodotto Printify, file su Drive), non un riassunto narrativo. Ogni Seme ha anche un pulsante "Avanza ora" manuale in AIR → Percorsi, con il contatore round/tetto visibile sulla card.
 - Agorà Magi: una perturbazione deliberata generata su richiesta (Balthasar→Melchior→Caspar), non una funzione automatica.
 - Calendar: promemoria/eventi che lo Shell propone dalla conversazione, mai salvati senza conferma esplicita.
 - Kernel: lo stato di sistema versionato, modificabile dal Ghost.
@@ -3171,7 +3303,8 @@ function App() {
       pillar: "air", content, originSource, status: "seed",
       researchIterationCount: 0, executionIterationCount: 0, researchLog: [], executionLog: [],
       proposedStrategies: [], approvedStrategy: null, gateReason: null,
-      gatedActionPreview: null, // testo esatto dell'azione candidata bloccata da runSeedGateCheck — vedi unlockGatedSeed
+      gatedActionPreview: null, // stringa leggibile dell'azione candidata bloccata — vedi unlockGatedSeed
+      gatedActionContract: null, // FASE 1 (BRIEF_effettori_printify): contratto strutturato { effettore, parametri, ... } dietro gatedActionPreview — è quello che unlockGatedSeed esegue davvero alla conferma, gatedActionPreview resta solo la sua resa leggibile per la UI esistente
     };
     setSemiSync([s, ...stateRef.current.semi]);
     pushDebugLog({ type: "seme-created", id: s.id, originSource, error: null });
@@ -3184,23 +3317,41 @@ function App() {
   // CORREZIONE 26/07/2026: "Sblocca/Conferma" non è più un bypass generico del gate — segue lo stesso
   // pattern propose→confirm→execute già validato per Calendar/email (il Ghost vede il contenuto
   // ESATTO dell'azione PRIMA di confermarla). gatedActionPreview è l'azione candidata mostrata in UI
-  // (SemiPanel): confermare la scrive in executionLog esattamente com'era mostrata, non una nuova
-  // azione rigenerata al prossimo avanzamento. Non incrementa executionIterationCount (il tentativo
-  // bloccato l'ha già consumata) — un solo gate pendente per Seme, quindi nessun rischio di scavalcare
-  // più azioni bloccate in sequenza alla cieca.
-  const unlockGatedSeed = useCallback((id) => {
+  // (SemiPanel, invariata). Non incrementa executionIterationCount (il tentativo bloccato l'ha già
+  // consumata) — un solo gate pendente per Seme, quindi nessun rischio di scavalcare più azioni
+  // bloccate in sequenza alla cieca.
+  // FIX 27/07/2026 (BRIEF_effettori_printify, FASE 1.3): prima confermare scriveva solo una NOTA in
+  // executionLog ("Confermato manualmente..."), nessuna azione reale veniva mai eseguita — coerente
+  // col fatto che allora non esistevano effettori. Ora, se il Seme ha un gatedActionContract (Seme
+  // creato/bloccato DOPO questo fix), la conferma esegue DAVVERO l'effettore tramite invokeEffector
+  // e registra l'esito reale. Retrocompatibilità: un Seme più vecchio, bloccato PRIMA di questo fix
+  // (solo gatedActionPreview testuale, nessun contratto salvato), mantiene il comportamento
+  // precedente — non c'è alcun contratto da eseguire davvero, quindi si limita a registrare la nota.
+  const unlockGatedSeed = useCallback(async (id) => {
     const seed = stateRef.current.semi.find((s) => s.id === id);
-    const confirmedAction = seed?.gatedActionPreview || null;
-    setSemiSync(stateRef.current.semi.map((s) => {
-      if (s.id !== id) return s;
-      const log = confirmedAction
-        ? [...s.executionLog, { date: new Date().toISOString(), note: `Confermato manualmente dal Ghost nonostante il gate: ${confirmedAction}` }]
-        : s.executionLog;
-      return { ...s, status: "executing", gateReason: null, gatedActionPreview: null, executionLog: log };
-    }));
-    // Nessun testo grezzo nel log di debug (CHIARIMENTO 26/07/2026, punto 2) — il contenuto confermato
-    // resta solo nell'executionLog del Seme stesso (dato del Ghost, non un prompt inviato a un modello).
-    pushDebugLog({ type: "seme-unlocked", id, hadPendingAction: !!confirmedAction, error: null });
+    const contract = seed?.gatedActionContract || null;
+    if (!contract) {
+      const confirmedAction = seed?.gatedActionPreview || null;
+      setSemiSync(stateRef.current.semi.map((s) => {
+        if (s.id !== id) return s;
+        const log = confirmedAction
+          ? [...s.executionLog, { date: new Date().toISOString(), note: `Confermato manualmente dal Ghost nonostante il gate: ${confirmedAction}` }]
+          : s.executionLog;
+        return { ...s, status: "executing", gateReason: null, gatedActionPreview: null, executionLog: log };
+      }));
+      // Nessun testo grezzo nel log di debug (CHIARIMENTO 26/07/2026, punto 2) — il contenuto confermato
+      // resta solo nell'executionLog del Seme stesso (dato del Ghost, non un prompt inviato a un modello).
+      pushDebugLog({ type: "seme-unlocked", id, hadPendingAction: !!confirmedAction, error: null });
+      return;
+    }
+    const risultato = await invokeEffector(contract.effettore, contract.parametri, pushDebugLog);
+    const note = formatRealResultNote(contract, risultato);
+    setSemiSync(stateRef.current.semi.map((s) => (s.id === id
+      ? { ...s, status: "executing", gateReason: null, gatedActionPreview: null, gatedActionContract: null, executionLog: [...s.executionLog, { date: new Date().toISOString(), note }] }
+      : s)));
+    // Nessun parametro grezzo nel log di debug (stesso principio del CHIARIMENTO 26/07/2026, punto 2):
+    // solo esito booleano + errore eventuale, i dati reali restano nell'executionLog del Seme.
+    pushDebugLog({ type: "seme-unlocked", id, effettore: contract.effettore, ok: !!risultato.ok, error: risultato.ok ? null : (risultato.error || null) });
   }, [setSemiSync, pushDebugLog]);
   // Un solo avanzamento per apertura della tab Shell (Parte 3 del brief) — chiamata dall'effect di
   // mount di ShellView, MAI da un timer o da ogni messaggio. Legge stato FRESCO via stateRef (stesso
@@ -3237,17 +3388,29 @@ function App() {
     }
     if (target.executionIterationCount >= SEME_EXECUTION_ITERATION_CAP) return;
     try {
-      const stepText = await proposeSeedExecutionStep(target, s.memory.air?.corrente, settingsRef.current, pushDebugLog);
-      const gate = await runSeedGateCheck(stepText, CURRENT_GHOST_PROFILE, settingsRef.current, pushDebugLog);
+      // FIX 27/07/2026 (BRIEF_effettori_printify): stepText/prosa sostituito dal contratto strutturato
+      // (vedi proposeSeedExecutionStep) — executeSeedContract verifica gate/AIR sui parametri concreti
+      // ed esegue davvero (o si ferma) tramite invokeEffector, mai più solo una nota narrativa.
+      const contract = await proposeSeedExecutionStep(target, s.memory.air?.corrente, settingsRef.current, pushDebugLog);
       const nextCount = target.executionIterationCount + 1;
-      // Se bloccato, il passo candidato resta visibile in gatedActionPreview finché il Ghost non lo
-      // conferma o lo scarta (vedi unlockGatedSeed) — mai un unlock alla cieca senza vedere COSA si sblocca.
-      const updated = gate.gated
-        ? { ...target, status: "gated", executionIterationCount: nextCount, gateReason: gate.reason, gatedActionPreview: stepText, executionLog: [...target.executionLog, { date: new Date().toISOString(), note: `Bloccato: ${gate.reason}` }] }
-        : { ...target, executionIterationCount: nextCount, gatedActionPreview: null, executionLog: [...target.executionLog, { date: new Date().toISOString(), note: stepText }] };
+      if (!contract) throw new Error("Contratto d'azione non interpretabile (risposta JSON non valida).");
+      const esito = await executeSeedContract(contract, CURRENT_GHOST_PROFILE, settingsRef.current, pushDebugLog);
+      // Se bloccato, il contratto candidato resta visibile (gatedActionPreview leggibile +
+      // gatedActionContract eseguibile) finché il Ghost non lo conferma o lo scarta (vedi
+      // unlockGatedSeed) — mai un unlock alla cieca senza vedere ESATTAMENTE cosa si sblocca.
+      let updated;
+      if (esito.esito === "gate") {
+        updated = { ...target, status: "gated", executionIterationCount: nextCount, gateReason: esito.reason, gatedActionPreview: formatContractPreview(contract), gatedActionContract: contract, executionLog: [...target.executionLog, { date: new Date().toISOString(), note: `Bloccato: ${esito.reason}` }] };
+      } else if (esito.esito === "nessuna_azione") {
+        updated = { ...target, executionIterationCount: nextCount, executionLog: [...target.executionLog, { date: new Date().toISOString(), note: `Nessuna azione disponibile: ${esito.dettaglio}` }] };
+      } else {
+        // "eseguito" o "errore": in entrambi i casi l'azione è stata TENTATA davvero (mai solo narrata)
+        // — formatRealResultNote distingue i due casi nel testo registrato.
+        updated = { ...target, executionIterationCount: nextCount, gatedActionPreview: null, gatedActionContract: null, executionLog: [...target.executionLog, { date: new Date().toISOString(), note: formatRealResultNote(contract, esito.risultato) }] };
+      }
       setSemiSync(stateRef.current.semi.map((x) => (x.id === target.id ? updated : x)));
-      // reason incluso (breve, ≤20 parole, verdetto di Caspar) — MAI stepText/il prompt completo nel log di debug.
-      pushDebugLog({ type: "seme-execution", id: target.id, originSource: target.originSource, round: nextCount, gated: gate.gated, reason: gate.gated ? gate.reason : null, error: null });
+      // reason incluso (breve, ≤20 parole, verdetto di Caspar) — MAI il contratto/prompt completo nel log di debug.
+      pushDebugLog({ type: "seme-execution", id: target.id, originSource: target.originSource, round: nextCount, effettore: contract.effettore, esito: esito.esito, gated: esito.esito === "gate", reason: esito.esito === "gate" ? esito.reason : null, error: esito.esito === "errore" ? (esito.risultato?.error || null) : null });
     } catch (e) {
       pushDebugLog({ type: "seme-execution", id: target.id, originSource: target.originSource, error: e.message });
     }
