@@ -1017,7 +1017,8 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Calendar: promemoria/eventi che lo Shell propone dalla conversazione, mai salvati senza conferma esplicita.
 - Kernel: lo stato di sistema versionato, modificabile dal Ghost.
 - Simbiosi (Adam): il punto di incontro tra i pilastri, sensing su ordine/caos e convergenze identitarie.
-- Vincoli dichiarati (Setup): i vincoli del Ghost (alimentari, di tempo, identità professionale da tenere separata da AIR, ecc.) sono voci rieditabili in ogni momento in Setup → "Vincoli dichiarati"/"Identità professionale" — si possono aggiungere, correggere o rimuovere lì, non solo al primo avvio con l'onboarding.`;
+- Vincoli dichiarati (Setup): i vincoli del Ghost (alimentari, di tempo, identità professionale da tenere separata da AIR, ecc.) sono voci rieditabili in ogni momento in Setup → "Vincoli dichiarati"/"Identità professionale" — si possono aggiungere, correggere o rimuovere lì, non solo al primo avvio con l'onboarding.
+Capacità NON disponibili in questa app (elenco a mano, mantenuto qui insieme alle presenti — non generato dinamicamente, per lo stesso motivo per cui il Master Index andava mantenuto a mano: un elenco derivato in un punto diverso dal codice reale si disallinea): notifiche push, promemoria o azioni che si attivano da soli senza che il Ghost apra l'app, invio automatico di messaggi/email/post senza conferma esplicita del Ghost (le "Braccia" preparano sempre solo bozze pronte da copiare o eventi Calendar da confermare, mai spedizione automatica), pubblicazione automatica su social o piattaforme esterne, esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost quando il gate lo richiede.`;
 
 //──────────────────────────────────────────────────────────
 // SHELL — ciclo di percezione-azione (Manifesto V3 §3: accoppiamento continuo, non predici-e-verifica)
