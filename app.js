@@ -6,7 +6,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-07-27 · effettori-contratto-e-printify-v1";
+const APP_BUILD = "2026-08-12 · blocco1-hardconstraints-costituzionali";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -123,30 +123,26 @@ const MODEL_OPTIONS = [
 ];
 
 // Profilo del Ghost — prima era testo fisso (PILLAR_CTX), poi uno schema semplice (name/cognitiveNotes/
-// bioConstraints/hasProfessionalConstraint/professionalIdentity), ora lo schema ricco a 3 blocchi
+// bioConstraints/hasProfessionalConstraint/professionalIdentity), poi lo schema a 3 blocchi
 // (hardConstraints/cognitiveStyle/freeform) allineato al questionario di Onboarding Fase 0 a 11 domande.
-// hasProfessionalConstraint/professionalIdentity restano campi di comodo a LIVELLO SUPERIORE (non annidati
-// in hardConstraints) apposta: sono letti da Caspar/Accettore/Simbiosi come hard-stop e non vanno toccati
-// per non rischiare regressioni sull'unico vincolo davvero non negoziabile del sistema.
+// FASE 1 (BRIEF_blocco1 12/08/2026, C.9/C.15): hardConstraints è ora un array dichiarativo uniforme
+// [{id, testo, pilastro, dataDichiarazione}] — un vincolo = un'istanza rieditabile, non una categoria
+// cablata (raw/bio/air/vidya/priority, formato precedente, ora prodotto solo da migrateHardConstraints
+// per compatibilità con profili già salvati). hasProfessionalConstraint/professionalIdentity restano
+// campi di comodo in cima al profilo — letti da Caspar/Accettore/Simbiosi come hard-stop esattamente
+// come prima — ma ora DERIVATI dal record con tipo:"identita-professionale" (deriveProfessionalConstraint),
+// non più duplicati a mano: G.1 è quel record, prima istanza dello schema, non un caso speciale nel codice.
 // Il default replica ESATTAMENTE il profilo di Flavio: zero cambio di comportamento per lui.
 // Un secondo Ghost (nuovo utente) parte dal questionario di onboarding, non da questo default.
+const DEFAULT_GHOST_HARD_CONSTRAINTS = [
+  { id: "g1", tipo: "identita-professionale", testo: "mai esporre l'identità professionale (PhysioAlba) con il pilastro AIR, in nessuna forma di output — vincolo reputazionale, non negoziabile", pilastro: "air", dataDichiarazione: null, identita: "fisioterapista, PhysioAlba" },
+  { id: "bio-1", testo: "esclude zucchine e fagiolini", pilastro: "bio", dataDichiarazione: null },
+  { id: "bio-2", testo: "quasi nessun pesce (eccetto tonno in scatola, salmone affumicato, molluschi e crostacei)", pilastro: "bio", dataDichiarazione: null },
+  { id: "bio-3", testo: "target ~1600 kcal/die, 5 occasioni alimentari, colazioni/spuntini salati, alternative portatili lun/mer/ven", pilastro: "bio", dataDichiarazione: null },
+];
 const DEFAULT_GHOST_PROFILE = {
   name: "Flavio (Can)",
-  hardConstraints: {
-    raw: [
-      "no zucchine — intolleranza",
-      "no fagiolini",
-      "pesce solo tonno in scatola/salmone affumicato/molluschi e crostacei",
-      "mai esporre identità professionale (PhysioAlba) con AIR — vincolo reputazionale",
-    ],
-    bio: {
-      general: ["esclude zucchine e fagiolini", "quasi nessun pesce (eccetto tonno in scatola, salmone affumicato, molluschi e crostacei)", "target ~1600 kcal/die, 5 occasioni alimentari, colazioni/spuntini salati, alternative portatili lun/mer/ven"],
-      medical: [],
-    },
-    air: ["mai esporre identità professionale (PhysioAlba) con AIR"],
-    vidya: [],
-    priority: "mai esporre l'identità professionale (PhysioAlba) con AIR",
-  },
+  hardConstraints: DEFAULT_GHOST_HARD_CONSTRAINTS,
   cognitiveStyle: {
     channel: "uditivo-cinestesico",
     density: "densa",
@@ -160,8 +156,7 @@ const DEFAULT_GHOST_PROFILE = {
     context: "",
     request: "",
   },
-  hasProfessionalConstraint: true,
-  professionalIdentity: "fisioterapista, PhysioAlba",
+  ...deriveProfessionalConstraint(DEFAULT_GHOST_HARD_CONSTRAINTS),
 };
 // Traduce il profilo in contesto per pilastro. Il vincolo AIR resta hard-stop SOLO se il Ghost
 // ne ha dichiarato uno in onboarding (hasProfessionalConstraint) — non tutti i Ghost ne avranno uno.
@@ -173,8 +168,8 @@ function buildPillarCtx(profile) {
     cs.density && `Densità di risposta preferita: ${cs.density}.`,
     cs.reasoningStyle && `Stile di ragionamento: ${cs.reasoningStyle}.`,
   ].filter(Boolean).join(" ");
-  const hc = profile.hardConstraints || {};
-  const bioList = [...(hc.bio?.general || []), ...(hc.bio?.medical || []).map((m) => `terapia/farmaco in corso: ${m}`)];
+  const bioList = (Array.isArray(profile.hardConstraints) ? profile.hardConstraints : [])
+    .filter((c) => c?.pilastro === "bio").map((c) => c.testo);
   const air = profile.hasProfessionalConstraint
     ? `Vincolo assoluto, hard-stop non negoziabile: nessuna strategia deve esporre l'identità professionale del Ghost (${profile.professionalIdentity}) né richiedere dilatazione del suo tempo lineare di lavoro. È l'unico punto del sistema dove la lettura non è negoziabile — tutto il resto resta revisionabile.`
     : `Nessun vincolo di compartimentazione professionale dichiarato per questo Ghost. Resta comunque valido il principio generale: non richiedere dilatazione insostenibile del suo tempo lineare di lavoro.`;
@@ -185,21 +180,33 @@ function buildPillarCtx(profile) {
   const motivationNote = profile.freeform?.motivation ? ` Motivazione dichiarata dal Ghost per l'uso di Resonance: ${profile.freeform.motivation}.` : "";
   const contextNote = profile.freeform?.context ? ` Contesto aggiuntivo dichiarato dal Ghost su di sé: ${profile.freeform.context}.` : "";
   const requestNote = profile.freeform?.request ? ` Richiesta prioritaria dichiarata dal Ghost (l'unica cosa che vorrebbe da Resonance): ${profile.freeform.request}.` : "";
-  // Nessuno dei quattro campi è filtrato: qualunque di essi può nominare l'identità professionale del
+  // FASE 3 (BRIEF_blocco1 12/08/2026, C.10) — fino a qui il blocco freeform andava SOLO in bio/vidya:
+  // nessuno dei quattro campi è filtrato, quindi ciascuno può nominare l'identità professionale del
   // Ghost (anche "punto di forza" o "richiesta" — es. "sono fisioterapista da 16 anni" ci starebbe
-  // benissimo in entrambi). Per questo l'intero blocco freeform va SOLO in bio/vidya: il contesto air
-  // resta il pattern preesistente, senza alcuna nota freeform, per non rischiare mai di violare il
-  // vincolo assoluto hasProfessionalConstraint.
+  // benissimo in entrambi), e il contesto air restava escluso a monte come filtro preventivo — causa
+  // strutturale per cui freeform risultava inerte per AIR (Architettura Evolutiva V1 §2.4): l'Agente
+  // AIR/Balthasar/Melchior non vedevano MAI la motivazione/contesto/richiesta reali del Ghost.
+  // Rimossa: il vincolo G.1 resta protetto SOLO dal check agganciato alla soglia di irreversibilità
+  // (runSeedGateCheck, subito prima che executeSeedContract invochi un effettore reale — l'unico punto
+  // dove un Seme tocca il mondo esterno) — non da un filtro preventivo separato qui. Verificato con 2
+  // chiamate reali (freeform vicino al confine identitario, non esplicito): il gate intercetta
+  // correttamente prima di ogni esecuzione — vedi REPORT_BLOCCO1 per il dettaglio.
   const freeformNotes = strengthNote + motivationNote + contextNote + requestNote;
   return {
     vidya: cogText + freeformNotes,
     bio: bioList.join("; ") + " Ogni lettura BIO è una stance interpretativa rivedibile dal Ghost, mai un verdetto medico oggettivo." + freeformNotes,
-    air,
+    air: air + freeformNotes,
   };
 }
 let CURRENT_GHOST_PROFILE = DEFAULT_GHOST_PROFILE;
 let PILLAR_CTX = buildPillarCtx(DEFAULT_GHOST_PROFILE);
-function setGhostProfile(profile) { CURRENT_GHOST_PROFILE = profile; PILLAR_CTX = buildPillarCtx(profile); }
+// Normalizza SEMPRE (migrazione hardConstraints + derivazione hasProfessionalConstraint/professionalIdentity)
+// prima di rendere il profilo "corrente": unico punto d'ingresso per CURRENT_GHOST_PROFILE, così nessun
+// chiamante può mai impostare un profilo con lo schema vecchio o con i due campi hard-stop scaduti.
+function setGhostProfile(profile) {
+  CURRENT_GHOST_PROFILE = normalizeGhostProfile(profile);
+  PILLAR_CTX = buildPillarCtx(CURRENT_GHOST_PROFILE);
+}
 
 // Funzione pura (nessuna dipendenza da stato globale/DOM — testabile in isolamento). Primo strato di
 // difesa del vincolo AIR/PhysioAlba per la feature Seme (Manifesto §6.1): il contenuto di un Seme è
@@ -250,6 +257,47 @@ function migratePillarMemory(value) {
 }
 function migrateMemoryShape(raw) {
   return { bio: migratePillarMemory(raw?.bio), air: migratePillarMemory(raw?.air), vidya: migratePillarMemory(raw?.vidya) };
+}
+
+// FASE 1 (BRIEF_blocco1 12/08/2026, C.9/C.15) — hardConstraints passa da un oggetto per-pilastro
+// cablato (raw/bio/air/vidya/priority) a uno schema dichiarativo uniforme, un vincolo = un'istanza
+// rieditabile: [{id, testo, pilastro, dataDichiarazione}]. Migrazione retrocompatibile obbligatoria
+// (stesso pattern di migratePillarMemory): un profilo salvato nel formato vecchio va convertito senza
+// perdita — nessuna voce esistente (di Flavio o di un futuro secondo Ghost come Marta) sparisce.
+// Idempotente: un valore già nel formato nuovo passa invariato.
+function migrateHardConstraints(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (!raw || typeof raw !== "object") return [];
+  const out = [];
+  const push = (testo, pilastro) => { if (testo && String(testo).trim()) out.push({ id: uid(), testo: String(testo).trim(), pilastro, dataDichiarazione: null }); };
+  (raw.bio?.general || []).forEach((t) => push(t, "bio"));
+  (raw.bio?.medical || []).forEach((t) => push(`terapia/farmaco in corso: ${t}`, "bio"));
+  (raw.air || []).forEach((t) => push(t, "air"));
+  (raw.vidya || []).forEach((t) => push(t, "vidya"));
+  if (raw.priority) push(raw.priority, null); // trasversale, non assegnabile a un solo pilastro
+  return out;
+}
+// G.1 (identità professionale vs AIR) è l'UNICO vincolo davvero hard-stop del sistema (vedi commento
+// storico su DEFAULT_GHOST_PROFILE) — troppo critico per restare solo testo libero in hardConstraints:
+// il record che lo rappresenta porta un marcatore esplicito (tipo:"identita-professionale") e un campo
+// dedicato (identita) da cui i due campi di comodo hasProfessionalConstraint/professionalIdentity
+// vengono DERIVATI, non più scritti a mano in due posti paralleli. Le ~8 funzioni che leggono questi
+// due campi (buildPillarCtx, redactProfessionalIdentity, Caspar-del-Seme, gate del Seme, Simbiosi)
+// restano INVARIATE: continuano a leggerli in cima al profilo esattamente come prima — zero rischio di
+// regressione sull'unico vincolo non negoziabile, che resta l'oggetto di massima cautela di questo file.
+function deriveProfessionalConstraint(hardConstraints) {
+  const g1 = (hardConstraints || []).find((c) => c?.tipo === "identita-professionale");
+  return { hasProfessionalConstraint: !!g1, professionalIdentity: g1?.identita || "" };
+}
+// Punto unico di normalizzazione di un ghostProfile, in lettura (mai in scrittura silenziosa): applica
+// la migrazione dello schema hardConstraints e ri-deriva hasProfessionalConstraint/professionalIdentity
+// da esso. Va chiamata su OGNI ghostProfile prima che raggiunga buildPillarCtx o venga letto da una
+// funzione di enforcement — mai assumere che un profilo caricato da localStorage/Drive sia già nel
+// formato nuovo (utenti esistenti hanno dati salvati nel formato vecchio).
+function normalizeGhostProfile(profile) {
+  if (!profile) return profile;
+  const hardConstraints = migrateHardConstraints(profile.hardConstraints);
+  return { ...profile, hardConstraints, ...deriveProfessionalConstraint(hardConstraints) };
 }
 
 // FIX 20/07/2026 (Opzione 3 — compattazione automatica): la chat Shell non ha limite di lunghezza per
@@ -893,7 +941,10 @@ Genera 2-3 strategie, ciascuna specifica e azionabile (non generica). Non citare
     const casparIdentityLine = CURRENT_GHOST_PROFILE.hasProfessionalConstraint
       ? `1) non deve esporre l'identità professionale RICONOSCIBILE del Ghost — il suo nome, il brand/studio (${CURRENT_GHOST_PROFILE.professionalIdentity}), o affermazioni che leghino esplicitamente il contenuto alla sua pratica reale (es. "il mio studio", "i miei pazienti"). Il dominio della fisioterapia in sé (biomeccanica, riabilitazione, prevenzione infortuni, ecc.) NON è vietato — bocciare per il solo dominio, senza un marcatore di identità riconoscibile, è un ERRORE da evitare; 2) non deve richiedere dilatazione del suo tempo lineare di lavoro.`
       : `non deve richiedere dilatazione insostenibile del tempo lineare di lavoro del Ghost (nessun vincolo di identità professionale dichiarato per questo Ghost).`;
-    const airHc = (CURRENT_GHOST_PROFILE.hardConstraints?.air || []).join("; ");
+    // Esclude il record G.1 (tipo:"identita-professionale"): già coperto per intero da casparIdentityLine
+    // sopra — includerlo anche qui duplicherebbe la stessa istruzione due volte nello stesso prompt.
+    const airHc = (Array.isArray(CURRENT_GHOST_PROFILE.hardConstraints) ? CURRENT_GHOST_PROFILE.hardConstraints : [])
+      .filter((c) => c?.pilastro === "air" && c.tipo !== "identita-professionale").map((c) => c.testo).join("; ");
     const casparSystem = `Sei CASPAR nel sistema Resonance, pilastro AIR — verifica ciascuna strategia contro i vincoli ASSOLUTI e non negoziabili: ${casparIdentityLine}${airHc ? ` Vincoli AIR aggiuntivi dichiarati dal Ghost: ${airHc}.` : ""} Boccia SOLO per violazione di un vincolo assoluto, mai per qualità o preferenza. JSON: {"verdetti":[{"id":"0","approvata":true/false,"motivo":"se bocciata, max 20 parole"}]}`;
     const casparData = await askModelJSON(casparSystem, `Testo originale dell'idea (non redatto, per verifica completa): ${seme.content}\nStrategie da verificare: ${JSON.stringify(candidate.map(({ id, titolo, descrizione }) => ({ id, titolo, descrizione })))}`, 0.2, 1200, settings, null, (raw) => logAiCost(pushDebugLog, "seme_ricerca", settings.model, raw));
     const verdetti = new Map((casparData?.verdetti || []).map((v) => [String(v.id), v]));
@@ -965,7 +1016,8 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Agorà Magi: una perturbazione deliberata generata su richiesta (Balthasar→Melchior→Caspar), non una funzione automatica.
 - Calendar: promemoria/eventi che lo Shell propone dalla conversazione, mai salvati senza conferma esplicita.
 - Kernel: lo stato di sistema versionato, modificabile dal Ghost.
-- Simbiosi (Adam): il punto di incontro tra i pilastri, sensing su ordine/caos e convergenze identitarie.`;
+- Simbiosi (Adam): il punto di incontro tra i pilastri, sensing su ordine/caos e convergenze identitarie.
+- Vincoli dichiarati (Setup): i vincoli del Ghost (alimentari, di tempo, identità professionale da tenere separata da AIR, ecc.) sono voci rieditabili in ogni momento in Setup → "Vincoli dichiarati"/"Identità professionale" — si possono aggiungere, correggere o rimuovere lì, non solo al primo avvio con l'onboarding.`;
 
 //──────────────────────────────────────────────────────────
 // SHELL — ciclo di percezione-azione (Manifesto V3 §3: accoppiamento continuo, non predici-e-verifica)
@@ -1576,9 +1628,11 @@ const SYNC_DEFAULTS = () => ({
 function mergeSyncState(local, remote) {
   const l = { ...SYNC_DEFAULTS(), ...local };
   l.memory = migrateMemoryShape(l.memory);
+  l.ghostProfile = normalizeGhostProfile(l.ghostProfile); // stesso motivo di l.memory sopra: mai perpetuare lo schema hardConstraints vecchio via re-upload
   if (!remote) return { ...l, lastModified: l.lastModified || Date.now() };
   const r = { ...SYNC_DEFAULTS(), ...remote }; // difesa: bundle mancanti nel file remoto non diventano undefined
   r.memory = migrateMemoryShape(r.memory);
+  r.ghostProfile = normalizeGhostProfile(r.ghostProfile);
   const remoteWins = (r.lastModified || 0) > (l.lastModified || 0);
   return {
     bio: mergeById(l.bio, r.bio), air: mergeById(l.air, r.air), vidya: mergeById(l.vidya, r.vidya),
@@ -2614,7 +2668,38 @@ function CostSummaryPanel({ debugLog }) {
     `}
   </${Card}>`;
 }
-function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDebugLog, pullAndMergeOnce }) {
+function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDebugLog, pullAndMergeOnce, ghostProfile, saveGhostProfile }) {
+  // FASE 2 (BRIEF_blocco1 12/08/2026, C.9) — chiude il gap per cui ghostProfile era scrivibile una
+  // sola volta: OnboardingView (e quindi saveGhostProfile) era raggiungibile SOLO quando ghostProfile
+  // era ancora null (vedi condizione di render in App). I vincoli sono dichiarati dal Ghost (C.9):
+  // deve poterli rieditare in qualunque momento, non solo al primo avvio. saveGhostProfile fa già
+  // sostituzione integrale (mai append, verificato in Fase 1) — qui costruiamo l'array hardConstraints
+  // aggiornato per intero e lo passiamo così com'è: una modifica sostituisce, non accumula.
+  const hardConstraints = Array.isArray(ghostProfile?.hardConstraints) ? ghostProfile.hardConstraints : [];
+  const [newConstraintText, setNewConstraintText] = useState("");
+  const [newConstraintPillar, setNewConstraintPillar] = useState("bio");
+  const [editProfessional, setEditProfessional] = useState(!!ghostProfile?.hasProfessionalConstraint);
+  const [editProfessionalIdentity, setEditProfessionalIdentity] = useState(ghostProfile?.professionalIdentity || "");
+  const addConstraint = () => {
+    if (!newConstraintText.trim() || !ghostProfile) return;
+    const next = [...hardConstraints, { id: uid(), testo: newConstraintText.trim(), pilastro: newConstraintPillar, dataDichiarazione: todayISO() }];
+    saveGhostProfile({ ...ghostProfile, hardConstraints: next });
+    setNewConstraintText("");
+  };
+  const removeConstraint = (id) => {
+    if (!ghostProfile) return;
+    saveGhostProfile({ ...ghostProfile, hardConstraints: hardConstraints.filter((c) => c.id !== id) });
+  };
+  // Il record G.1 (tipo:"identita-professionale") è sempre AL MASSIMO uno: salvare qui lo sostituisce
+  // per intero (o lo rimuove, se il checkbox torna disattivato) — mai un secondo record accumulato.
+  const saveProfessionalConstraint = () => {
+    if (!ghostProfile) return;
+    const withoutG1 = hardConstraints.filter((c) => c.tipo !== "identita-professionale");
+    const next = editProfessional && editProfessionalIdentity.trim()
+      ? [...withoutG1, { id: "g1", tipo: "identita-professionale", pilastro: "air", dataDichiarazione: todayISO(), identita: editProfessionalIdentity.trim(), testo: `mai esporre l'identità professionale (${editProfessionalIdentity.trim()}) con il pilastro AIR, in nessuna forma di output — vincolo reputazionale, non negoziabile` }]
+      : withoutG1;
+    saveGhostProfile({ ...ghostProfile, hardConstraints: next });
+  };
   const presetIds = MODEL_OPTIONS.filter((m) => m.id !== "custom").map((m) => m.id);
   const isCustom = !presetIds.includes(settings.model);
   const [driveMsg, setDriveMsg] = useState(""); const [connecting, setConnecting] = useState(false);
@@ -2662,6 +2747,36 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
         ${isCustom && html`<${Field} label="Slug personalizzato"><input class="r-input" value=${settings.model} onInput=${(e) => updateSettings({ model: e.target.value })} placeholder="es. z-ai/glm-5.2" /></${Field}>`}
       `}
       <div class="r-hub-detail">La chiave resta solo su questo dispositivo (localStorage).</div>
+    </${Card}>
+    <${Card} accent=${C.core}>
+      <div class="r-hub-title" style="color:#3A4750">Vincoli dichiarati</div>
+      <div class="r-hub-detail">Ogni vincolo è un'istanza dichiarata da te, rieditabile in qualunque momento — non più cablata nel codice. Aggiungerne o toglierne uno sostituisce lo stato salvato, non lo accumula.</div>
+      ${hardConstraints.filter((c) => c.tipo !== "identita-professionale").length === 0 && html`<div class="r-hub-detail" style="margin-top:8px">Nessun vincolo dichiarato.</div>`}
+      ${hardConstraints.filter((c) => c.tipo !== "identita-professionale").map((c) => html`
+        <div class="r-settings-row" key=${c.id}>
+          <span><b>[${c.pilastro || "generale"}]</b> ${c.testo}</span>
+          <button class="r-btn-ghost" onClick=${() => removeConstraint(c.id)}>Rimuovi</button>
+        </div>
+      `)}
+      <div class="r-settings-row" style="margin-top:10px; gap:8px; flex-wrap:wrap;">
+        <select class="r-input" style="flex:0 0 auto" value=${newConstraintPillar} onInput=${(e) => setNewConstraintPillar(e.target.value)}>
+          <option value="bio">BIO</option><option value="air">AIR</option><option value="vidya">VIDYA</option>
+        </select>
+        <input class="r-input" style="flex:1" value=${newConstraintText} onInput=${(e) => setNewConstraintText(e.target.value)} placeholder="Nuovo vincolo..." />
+        <button class="r-btn" onClick=${addConstraint}>Aggiungi</button>
+      </div>
+    </${Card}>
+    <${Card} accent=${C.core}>
+      <div class="r-hub-title" style="color:#3A4750">Identità professionale/reputazionale</div>
+      <div class="r-hub-detail">L'unico vincolo hard-stop del sistema — mai esposto in output AIR quando attivo. Sempre da confermare tu, mai solo dedotto.</div>
+      <div class="r-settings-row" style="margin-top:10px">
+        <span>Hai un'identità professionale/pubblica da tenere separata dal pilastro AIR?</span>
+        <input type="checkbox" checked=${editProfessional} onInput=${(e) => setEditProfessional(e.target.checked)} />
+      </div>
+      ${editProfessional && html`<${Field} label="Descrivila brevemente — non verrà mai esposta in output AIR">
+        <input class="r-input" value=${editProfessionalIdentity} onInput=${(e) => setEditProfessionalIdentity(e.target.value)} placeholder="es. fisioterapista, Studio Rossi" />
+      </${Field}>`}
+      <button class="r-btn" style="margin-top:10px" onClick=${saveProfessionalConstraint}>Salva</button>
     </${Card}>
     <${Card} accent=${C.core}>
       <div class="r-settings-row"><div><div class="r-hub-title" style="color:#3A4750">Braccia — Bozze pronte</div>
@@ -2852,19 +2967,32 @@ function OnboardingView({ onComplete, settings, driveRecovery, onRecoverFromDriv
     }
   };
 
+  // FASE 1 (BRIEF_blocco1 12/08/2026): costruisce direttamente il nuovo schema hardConstraints
+  // [{id, testo, pilastro, dataDichiarazione}] invece dell'oggetto per-categoria precedente. Il
+  // checkbox/campo di identità professionale resta manuale (mai solo dedotto dalla classificazione AI
+  // — commento storico più sotto), ma ora produce un record hardConstraints con tipo:"identita-
+  // professionale" invece di due campi paralleli: hasProfessionalConstraint/professionalIdentity
+  // vengono derivati da questo record da normalizeGhostProfile/setGhostProfile, non scritti qui.
   const finalize = () => {
-    const hc = { raw: [], bio: { general: [], medical: [] }, air: [], vidya: [], priority: priority.trim() };
+    const hc = [];
+    const pushHc = (testo, pilastro) => { if (testo && testo.trim()) hc.push({ id: uid(), testo: testo.trim(), pilastro, dataDichiarazione: todayISO() }); };
     (classification?.hardConstraintsClassified || []).forEach((item) => {
-      hc.raw.push(item.text);
-      (item.pillars || []).forEach((p) => { if (p === "bio") hc.bio.general.push(item.text); else if (hc[p] && Array.isArray(hc[p])) hc[p].push(item.text); });
+      (item.pillars || []).forEach((p) => pushHc(item.text, p));
     });
-    if (medical.trim() && medical !== SKIP_TEXT) hc.bio.medical.push(medical.trim());
-    // bodyMindConcern e familyHistory vanno in bio.general (non bio.medical): quest'ultimo viene
-    // prefissato altrove come "terapia/farmaco in corso" — etichetta sbagliata per un disagio
-    // percepito o una familiarità non certificata, che devono restare letture aperte, non farmaci.
-    if (bodyMindConcern.trim() && bodyMindConcern !== SKIP_TEXT) hc.bio.general.push(bodyMindConcern.trim());
-    if (familyHistory.trim() && familyHistory !== SKIP_TEXT) hc.bio.general.push(`familiarità (non confermata): ${familyHistory.trim()}`);
-    if (timeRhythm.trim() && timeRhythm !== SKIP_TEXT) hc.air.push(timeRhythm.trim());
+    // bodyMindConcern e familyHistory restano letture aperte (non farmaci): "terapia/farmaco in corso"
+    // resta un prefisso esplicito solo per il campo medical, non per queste due.
+    if (medical.trim() && medical !== SKIP_TEXT) pushHc(`terapia/farmaco in corso: ${medical.trim()}`, "bio");
+    if (bodyMindConcern.trim() && bodyMindConcern !== SKIP_TEXT) pushHc(bodyMindConcern.trim(), "bio");
+    if (familyHistory.trim() && familyHistory !== SKIP_TEXT) pushHc(`familiarità (non confermata): ${familyHistory.trim()}`, "bio");
+    if (timeRhythm.trim() && timeRhythm !== SKIP_TEXT) pushHc(timeRhythm.trim(), "air");
+    if (priority.trim()) pushHc(priority.trim(), null); // trasversale, non assegnabile a un solo pilastro
+    if (manualHasProfessional && manualProfessionalIdentity.trim()) {
+      hc.push({
+        id: "g1", tipo: "identita-professionale", pilastro: "air", dataDichiarazione: todayISO(),
+        identita: manualProfessionalIdentity.trim(),
+        testo: `mai esporre l'identità professionale (${manualProfessionalIdentity.trim()}) con il pilastro AIR, in nessuna forma di output — vincolo reputazionale, non negoziabile`,
+      });
+    }
     onComplete({
       name: name.trim(),
       hardConstraints: hc,
@@ -2879,8 +3007,6 @@ function OnboardingView({ onComplete, settings, driveRecovery, onRecoverFromDriv
         strength: strengthAbility === SKIP_TEXT ? "" : strengthAbility.trim(),
       },
       distressCheck: classification?.distressCheck || null,
-      hasProfessionalConstraint: manualHasProfessional,
-      professionalIdentity: manualHasProfessional ? manualProfessionalIdentity.trim() : "",
     });
   };
 
@@ -3074,13 +3200,14 @@ function App() {
   const isExistingInstall = () => localStorage.getItem("kernel-data") !== null || localStorage.getItem("bio-data") !== null || localStorage.getItem("shell-chat") !== null;
   const [ghostProfile, setGhostProfileRaw] = useState(() => {
     const saved = loadKey("ghost-profile", null);
-    if (saved) return saved;
+    if (saved) return normalizeGhostProfile(saved); // profili salvati prima della FASE 1 sono nello schema hardConstraints vecchio
     if (isExistingInstall()) { saveKey("ghost-profile", DEFAULT_GHOST_PROFILE); return DEFAULT_GHOST_PROFILE; }
     return null; // davvero nessun dato pregresso: onboarding
   });
   useEffect(() => { if (ghostProfile) setGhostProfile(ghostProfile); }, []); // solo al mount, stato già caricato sincrono sopra
   const saveGhostProfile = useCallback((profile) => {
-    setGhostProfileRaw(profile); saveKey("ghost-profile", profile); setGhostProfile(profile);
+    const normalized = normalizeGhostProfile(profile);
+    setGhostProfileRaw(normalized); saveKey("ghost-profile", normalized); setGhostProfile(normalized);
   }, []);
   const [resCalculating, setResCalculating] = useState(false);
   const [resError, setResError] = useState("");
@@ -3472,7 +3599,13 @@ function App() {
     const t = setTimeout(async () => {
       if (resonanceBusyRef.current) return; // recalc manuale già in volo: la proattiva si astiene
       const s = stateRef.current; // stato FRESCO (post-sync), non la closure del primo render (evita stale closure)
-      const signature = `${s.bio.length}|${s.air.length}|${s.vidya.length}|${s.pBio.length}|${s.pAir.length}|${s.pVidya.length}|${s.magi.length}|${s.bio[0]?.date||""}|${s.air[0]?.date||""}|${s.vidya[0]?.date||""}`;
+      // FASE 4 (BRIEF_blocco1 12/08/2026, gap segnalato dal Blocco 0): la memoria procedurale non
+      // entrava mai nella firma — solo Log/Percorsi. Bug reale osservato: un aggiornamento di
+      // memory.air (via reflectMemoriaBatch) non cambiava la firma, quindi non riattivava mai una
+      // nuova valutazione anche quando la memoria fresca contraddiceva il giudizio già salvato.
+      // Aggiunta SOLA inclusione richiesta dal Blocco 0, nessun altro cambio alla logica del gate.
+      const memSedimentoLast = (pillar) => (s.memory?.[pillar]?.sedimento || []).slice(-1)[0]?.id || "";
+      const signature = `${s.bio.length}|${s.air.length}|${s.vidya.length}|${s.pBio.length}|${s.pAir.length}|${s.pVidya.length}|${s.magi.length}|${s.bio[0]?.date||""}|${s.air[0]?.date||""}|${s.vidya[0]?.date||""}|${s.memory?.bio?.sedimento?.length||0}|${s.memory?.air?.sedimento?.length||0}|${s.memory?.vidya?.sedimento?.length||0}|${memSedimentoLast("bio")}|${memSedimentoLast("air")}|${memSedimentoLast("vidya")}|${s.memory?.bio?.corrente||""}|${s.memory?.air?.corrente||""}|${s.memory?.vidya?.corrente||""}`;
       if (signature === loadKey("simbiosi-eval-signature", "")) return; // nulla di nuovo dall'ultima valutazione
       resonanceBusyRef.current = true;
       try {
@@ -3517,7 +3650,7 @@ function App() {
     ${view === "magi" && html`<${MagiView} sessions=${magi} onSave=${addMagi} onDelete=${delMagi} settings=${settings} memory=${memory} updateMemoria=${updateMemoria} pushDebugLog=${pushDebugLog} />`}
     ${view === "simbiosi" && html`<${SimbiosiView} resonance=${resonance} onRecalc=${recalcResonance} calculating=${resCalculating} error=${resError} onPromoteIdentity=${promoteToIdentity} onDismissIdentity=${dismissIdentityHint} />`}
     ${view === "kernel" && html`<${KernelView} kernel=${kernel} onSave=${saveKernel} driveStatus=${driveStatus} />`}
-    ${view === "settings" && html`<${SettingsView} settings=${settings} updateSettings=${updateSettings} driveStatus=${driveStatus} debugLog=${debugLog} clearDebugLog=${clearDebugLog} pullAndMergeOnce=${pullAndMergeOnce} />`}
+    ${view === "settings" && html`<${SettingsView} settings=${settings} updateSettings=${updateSettings} driveStatus=${driveStatus} debugLog=${debugLog} clearDebugLog=${clearDebugLog} pullAndMergeOnce=${pullAndMergeOnce} ghostProfile=${ghostProfile} saveGhostProfile=${saveGhostProfile} />`}
     <div class="r-tab-bar"><div class="r-tab-bar-inner">${TABS.map((t) => html`<button class="r-tab ${view === t.key ? "active" : ""}" onClick=${() => setView(t.key)}>${t.label}${t.key === "air" && activeSeedCount > 0 ? html`<span class="r-tab-badge">${activeSeedCount}</span>` : ""}</button>`)}</div></div>
     </div>`}
   </div>`;
