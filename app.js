@@ -6,7 +6,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-12 · blocco1-hardconstraints-costituzionali";
+const APP_BUILD = "2026-08-14 · buildout-printify-etsy-e-backup-dati";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -321,6 +321,90 @@ function compactShellChatIfNeeded(shellChat) {
     content: `— ${overflow.length} messaggi più vecchi compattati e archiviati localmente il ${fmtDate(new Date())} (chiave: ${archiveKey}). La memoria procedurale dei pilastri resta intatta e non dipende da questi messaggi grezzi; nulla è andato perso, solo alleggerito dalla vista attiva. —`,
   };
   return [marker, ...kept];
+}
+
+//──────────────────────────────────────────────────────────
+// BACKUP E RIPRISTINO DEI DATI (COMPITO A.4, brief 14/08/2026)
+//──────────────────────────────────────────────────────────
+// Il codice è già protetto da git; i DATI no. Prima di questo blocco l'unico export
+// esistente era quello del log di debug (Setup) — utile per diagnosi, inutile come backup:
+// non contiene log dei pilastri, percorsi, memoria procedurale, kernel, profilo.
+// Qui si esporta TUTTO lo stato locale in un unico file, e — punto che distingue un backup
+// da un souvenir — lo si sa anche RILEGGERE: restoreFullBackup è l'inverso esatto di
+// buildFullBackup, e i due sono verificati insieme (vedi test round-trip in REPORT).
+const BACKUP_FORMAT_VERSION = 1;
+// Elenco esplicito, non derivato: enumerare localStorage a runtime prenderebbe anche chiavi
+// di altri siti sullo stesso dominio e chiavi future non previste da questo formato. Le
+// chiavi di archivio della chat (shell-chat-archive-*, generate dinamicamente da
+// compactShellChatIfNeeded) sono l'unica eccezione e vengono raccolte per prefisso.
+const BACKUP_KEYS = [
+  "bio-data", "air-data", "vidya-data",
+  "percorsi-bio", "percorsi-air", "percorsi-vidya",
+  "magi-data", "semi-data", "shell-chat", "shell-memory", "shell-style-memory",
+  "kernel-data", "simbiosi-data", "simbiosi-eval-signature", "ghost-profile",
+  "app-settings", "debug-log", "json-parse-failures", "sync-last-modified",
+];
+const BACKUP_ARCHIVE_PREFIX = "shell-chat-archive-";
+function buildFullBackup() {
+  const dati = {};
+  for (const k of BACKUP_KEYS) {
+    const v = localStorage.getItem(k);
+    if (v !== null) dati[k] = v; // stringa grezza: nessun re-parse, nessuna perdita di forma
+  }
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(BACKUP_ARCHIVE_PREFIX)) dati[k] = localStorage.getItem(k);
+  }
+  // La chiave API viene DELIBERATAMENTE esclusa: un file di backup gira per email, Drive e
+  // chat, e una chiave dentro un file che gira è una chiave bruciata. Costa 10 secondi
+  // rimetterla dopo un ripristino, e il file resta condivisibile senza pensieri.
+  let apiKeyOmessa = false;
+  if (dati["app-settings"]) {
+    try {
+      const s = JSON.parse(dati["app-settings"]);
+      if (s && s.apiKey) { apiKeyOmessa = true; s.apiKey = ""; dati["app-settings"] = JSON.stringify(s); }
+    } catch { /* impostazioni illeggibili: si esportano come sono, senza bloccare il backup */ }
+  }
+  // Stessa forma del file su Drive (SYNC_DEFAULTS), così il backup è confrontabile a occhio
+  // con resonance-sync-state.json senza doverlo tradurre.
+  const j = (k, fb) => { try { return dati[k] ? JSON.parse(dati[k]) : fb; } catch { return fb; } };
+  const syncState = {
+    bio: j("bio-data", []), air: j("air-data", []), vidya: j("vidya-data", []),
+    pBio: j("percorsi-bio", []), pAir: j("percorsi-air", []), pVidya: j("percorsi-vidya", []),
+    magi: j("magi-data", []), semi: j("semi-data", []), shellChat: j("shell-chat", []),
+    memory: migrateMemoryShape(j("shell-memory", null)), styleMemory: j("shell-style-memory", ""),
+    kernel: j("kernel-data", { content: DEFAULT_KERNEL, version: 1, history: [] }),
+    resonance: j("simbiosi-data", { text: "", time: null }),
+    ghostProfile: normalizeGhostProfile(j("ghost-profile", null)),
+    lastModified: j("sync-last-modified", 0),
+  };
+  return {
+    _formato: "resonance-backup", _versione: BACKUP_FORMAT_VERSION,
+    _creato: new Date().toISOString(), _appBuild: APP_BUILD,
+    _apiKeyOmessa: apiKeyOmessa,
+    _chiavi: Object.keys(dati).length,
+    syncState, dati,
+  };
+}
+// Ripristino. Non fa merge e non prova a essere furbo: riporta le chiavi esattamente com'erano.
+// Un merge qui produrrebbe uno stato che non è né quello di prima né quello di adesso — proprio
+// la situazione da cui un ripristino dovrebbe tirare fuori.
+function restoreFullBackup(backup) {
+  if (!backup || backup._formato !== "resonance-backup") {
+    return { ok: false, errore: "Questo file non è un backup di Resonance (manca il marcatore di formato)." };
+  }
+  if (Number(backup._versione) > BACKUP_FORMAT_VERSION) {
+    return { ok: false, errore: `Il backup è in formato ${backup._versione}, questa versione dell'app legge fino al ${BACKUP_FORMAT_VERSION}. Aggiorna l'app prima di ripristinare.` };
+  }
+  const dati = backup.dati || {};
+  const chiavi = Object.keys(dati);
+  if (!chiavi.length) return { ok: false, errore: "Il backup non contiene nessun dato." };
+  let scritte = 0;
+  const fallite = [];
+  for (const k of chiavi) {
+    try { localStorage.setItem(k, dati[k]); scritte++; } catch (e) { fallite.push(k); }
+  }
+  return { ok: fallite.length === 0, scritte, fallite, apiKeyOmessa: !!backup._apiKeyOmessa, creato: backup._creato || null };
 }
 
 //──────────────────────────────────────────────────────────
@@ -672,8 +756,13 @@ async function runTriadeMagi(question, onStage, settings, opts = {}, pushDebugLo
   const caspar = await askModel(`${baseCtx} Sei CASPAR, l'Ancora. Verifica il piano contro i vincoli assoluti: salute, tempo lineare del Ghost, sostenibilità economica, ${casparIdentityLine}. ${containmentCtx}\n\nPiano: "${melchior}"`, question, 0.2, 1600, settings, false, null, (raw) => logAiCost(pushDebugLog, "caspar", settings.model, raw));
   onStage("caspar", caspar);
   onStage("synthesis", null);
+  // FASE 1.3 (brief 14/08/2026) — la sintesi era l'UNICA delle quattro chiamate della Triade senza
+  // tracciamento costi (passava null al posto del callback): il pannello costi in Setup mostrava
+  // quindi una Agora Magi sistematicamente piu' economica di quanto fosse davvero, e l'errore
+  // cresceva proprio sulla chiamata finale, che e' quella con il prompt piu' lungo (contiene per
+  // intero l'output dei tre Magi precedenti).
   const synthesis = await askWithDegenerateGuard(
-    () => askModel(`${baseCtx} Genera la SINTESI ESECUTIVA: piano calibrato in 2-3 frasi + "Vettore di Perturbazione V+1".\n\nBalthasar: "${balthasar}"\nMelchior: "${melchior}"\nCaspar: "${caspar}"`, question, 0.6, 1500, settings, false, null, null, ANTI_LOOP_PENALTIES),
+    () => askModel(`${baseCtx} Genera la SINTESI ESECUTIVA: piano calibrato in 2-3 frasi + "Vettore di Perturbazione V+1".\n\nBalthasar: "${balthasar}"\nMelchior: "${melchior}"\nCaspar: "${caspar}"`, question, 0.6, 1500, settings, false, null, (raw) => logAiCost(pushDebugLog, "magi_synthesis", settings.model, raw), ANTI_LOOP_PENALTIES),
     "magi_synthesis", pushDebugLog
   );
   onStage("synthesis", synthesis);
@@ -683,18 +772,21 @@ async function runTriadeMagi(question, onStage, settings, opts = {}, pushDebugLo
 // il Vettore V+1 non evapora più). Il prefisso [perturbato da Magi] è una nota di CONTESTO per lo Shell
 // quando rilegge la memoria — NON è più il segnale di metabolizzazione (che Simbiosi ora calcola dai dati
 // strutturati delle voci post-perturbazione, vedi buildResonanceDigest). Riscrive l'INTERA memoria, non appende.
-async function reflectPerturbationIntoMemoria(targetPillar, synthesis, intensity, memory, settings) {
+async function reflectPerturbationIntoMemoria(targetPillar, synthesis, intensity, memory, settings, pushDebugLog = null) {
   if (!targetPillar) return null;
   const testo = await askModel(
     `Il pilastro ${targetPillar.toUpperCase()} ha appena ricevuto una perturbazione deliberata da Magi (intensità "${intensity}"). Non stai verificando se è "giusta" — stai riscrivendo la memoria procedurale del pilastro per registrare che è stato scosso e in che direzione. Riscrivi l'INTERA memoria del pilastro (non aggiungere in coda), integrando la perturbazione come tensione ora aperta. Inizia il testo con "[perturbato da Magi] ". Italiano, max 90 parole, denso e concreto.`,
     `Memoria attuale di ${targetPillar.toUpperCase()}: ${memory[targetPillar]?.corrente || "nessuna nota ancora"}\nVettore di Perturbazione appena generato: ${synthesis}`,
-    0.5, 900, settings
+    // FASE 1.3 — quinta chiamata di una Agora Magi mirata, anch'essa mai tracciata finora.
+    0.5, 900, settings, false, null, (raw) => logAiCost(pushDebugLog, "magi_riflessione", settings.model, raw)
   );
   return testo;
 }
-async function runAirAgent(task, settings, pushDebugLog = null) {
+async function runAirAgent(task, settings, pushDebugLog = null, pillarMemory = null) {
   if (settings.provider !== "openrouter") throw new Error("L'Agente AIR richiede il motore OpenRouter (per la ricerca web).");
-  const system = `${nowContext()} Sei l'Agente AIR del sistema Resonance: assistente per il pilastro dell'autonomia economica. Hai accesso alla ricerca web — cerca informazioni aggiornate a oggi, non presentare risultati datati come attuali. ${PILLAR_CTX.air} Rispondi in italiano, concreto, con passi azionabili e fonti quando le usi.`;
+  // FASE 1.1 — vedi memoriaProceduraleBlock: l'Agente AIR riceveva il profilo statico (PILLAR_CTX.air)
+  // ma non la memoria accumulata sul pilastro, quindi non sapeva nulla di cosa era già stato provato.
+  const system = `${nowContext()} Sei l'Agente AIR del sistema Resonance: assistente per il pilastro dell'autonomia economica. Hai accesso alla ricerca web — cerca informazioni aggiornate a oggi, non presentare risultati datati come attuali. ${PILLAR_CTX.air}${memoriaProceduraleBlock(pillarMemory)} Rispondi in italiano, concreto, con passi azionabili e fonti quando le usi.`;
   return askWithDegenerateGuard(
     () => askOpenRouter(system, task, 0.7, 1900, settings.apiKey, settings.model, true, null, (raw) => logAiCost(pushDebugLog, "airAgent", settings.model, raw), ANTI_LOOP_PENALTIES),
     "airAgent", pushDebugLog
@@ -722,6 +814,10 @@ async function fetchWebSearchSnapshot(query, settings, pushDebugLog = null) {
 // apertura della tab Shell (vedi l'effect di mount in ShellView), mai ad ogni messaggio.
 const SEME_RESEARCH_ITERATION_CAP = 5;  // Fase 1 — round di ricerca senza convergenza
 const SEME_EXECUTION_ITERATION_CAP = 5; // Fase 2 — passi di sviluppo, contatore indipendente dal precedente
+// FASE 1.3 (brief 14/08/2026) — uscita anticipata: due round consecutivi a zero strategie approvate
+// fermano il Seme senza aspettare il tetto di 5. Due e non uno perche' un singolo round vuoto puo'
+// essere una ricerca web andata male, non un'idea che non regge; due di fila sono un segnale.
+const SEME_EMPTY_ROUNDS_BEFORE_EXIT = 2;
 
 //──────────────────────────────────────────────────────────
 // EFFETTORI AIR — registro, contratto, esecutore (BRIEF_effettori_printify 27/07/2026)
@@ -762,6 +858,22 @@ const EFFECTOR_REGISTRY = [
     costoStimato: 0,
   },
   {
+    id: "printify_cerca_prodotto_base",
+    descrizione: "Cerca nel catalogo Printify il tipo di prodotto su cui stampare (t-shirt, tazza, poster, borsa...) e restituisce gli id concreti che servono per crearlo: blueprintId, printProviderId e l'elenco delle variantIds. Usa questo PRIMA di printify_crea_prodotto: senza, quegli id andrebbero indovinati, e un id indovinato non dà un errore leggibile — dà il prodotto sbagliato. Non crea niente, non pubblica niente, non costa niente.",
+    schemaParametri: { azione: "string — usa \"prodottoPiuSemplice\" per ottenere una combinazione pronta in un colpo solo", cerca: "string — nome del tipo di prodotto in inglese, es. \"t-shirt\", \"mug\", \"poster\", \"tote bag\"" },
+    richiedeGate: false,
+    reversibile: true,
+    costoStimato: 0,
+  },
+  {
+    id: "printify_pubblica_su_etsy",
+    descrizione: "Pubblica sul negozio Etsy collegato un prodotto GIA' creato nel catalogo Printify. È l'unico passo che rende la cosa visibile e comprabile da un estraneo: da qui in poi non si torna indietro con un comando. Passa SEMPRE dal gate. Prima di usarlo, verifica con azione \"statoNegozi\" che un negozio Etsy sia davvero collegato, altrimenti la pubblicazione fallisce dopo aver già creato il prodotto.",
+    schemaParametri: { azione: "string — \"statoNegozi\" per controllare il collegamento a Etsy, \"pubblica\" per pubblicare davvero", productId: "string — l'id restituito da printify_crea_prodotto (serve solo per \"pubblica\")" },
+    richiedeGate: true,
+    reversibile: false,
+    costoStimato: 0,
+  },
+  {
     id: "nessuno_disponibile",
     descrizione: "Nessun effettore di questo registro può realizzare il passo che ritieni necessario ORA. Usa questo per dichiararlo esplicitamente — MAI ripiegare su una descrizione testuale spacciata per azione.",
     schemaParametri: { spiegazione: "string — cosa servirebbe concretamente e perché non è disponibile in questo registro" },
@@ -776,7 +888,17 @@ const EFFECTOR_ENDPOINTS = {
   immagine_vettoriale: "/api/svg-to-png",
   immagine_raster: "/api/generate-image",
   printify_crea_prodotto: "/api/printify-create-product",
+  printify_cerca_prodotto_base: "/api/printify-catalog",
+  printify_pubblica_su_etsy: "/api/printify-publish",
 };
+// FASE 2 (brief 14/08/2026) — modalità "prova a vuoto". Quando è accesa, ogni effettore che tocca
+// il mondo esterno riceve dryRun:true e risponde descrivendo per intero la chiamata che SAREBBE
+// partita, senza farla partire. Serve a percorrere la catena completa a costo zero e senza effetti,
+// che è il gate della Fase 2 del brief. Vive in localStorage e non nello stato React perché
+// invokeEffector è una funzione di modulo, fuori dall'albero dei componenti.
+const DRY_RUN_KEY = "effettori-prova-a-vuoto";
+function isProvaAVuoto() { return loadKey(DRY_RUN_KEY, false) === true; }
+function setProvaAVuoto(attiva) { saveKey(DRY_RUN_KEY, !!attiva); }
 // Effettori che producono un'immagine (PNG base64) da depositare su Drive con l'infrastruttura
 // già esistente (createDriveFile, già riscritta per Blob binari — vedi invokeEffector sotto).
 const IMAGE_PRODUCING_EFFECTORS = new Set(["immagine_vettoriale", "immagine_raster"]);
@@ -791,6 +913,12 @@ function formatContractPreview(contract) {
 // del gate (unlockGatedSeed), per non duplicare la logica di formattazione.
 function formatRealResultNote(contract, risultato) {
   if (!risultato?.ok) return `Errore esecuzione effettore "${contract.effettore}": ${risultato?.error || "errore sconosciuto"}`;
+  // FASE 2 — in prova a vuoto la nota deve dire a chiare lettere che NON è successo niente, altrimenti
+  // il log di esecuzione del Seme sembrerebbe identico a quello di un'esecuzione vera.
+  if (risultato.provaAVuoto) {
+    const chiamate = (risultato.chiamateCheSarebberoPartite || []).map((c) => `${c.metodo} ${c.url}`).join(" · ");
+    return `PROVA A VUOTO — "${contract.effettore}" NON è stato eseguito davvero. ${risultato.descrizione || ""} Chiamate che sarebbero partite: ${chiamate || "nessuna"}.`;
+  }
   const { ok, ...dati } = risultato;
   const dettagli = Object.entries(dati).filter(([k]) => k !== "driveFileId" || dati.driveFileId).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join(", ");
   return `Eseguito "${contract.effettore}" — ${dettagli || "nessun dettaglio restituito"}`;
@@ -803,13 +931,22 @@ function formatRealResultNote(contract, risultato) {
 async function invokeEffector(effectorId, parametri, pushDebugLog) {
   const endpoint = EFFECTOR_ENDPOINTS[effectorId];
   if (!endpoint) return { ok: false, error: `Nessun endpoint /api mappato per l'effettore "${effectorId}".` };
+  // FASE 2 — il flag viaggia nel corpo della richiesta, così è l'endpoint stesso a fermarsi:
+  // un interruttore che vive solo nel frontend proteggerebbe solo finché nessuno chiama /api
+  // direttamente, cioè non proteggerebbe.
+  const provaAVuoto = isProvaAVuoto();
+  const corpo = provaAVuoto ? { ...parametri, dryRun: true } : parametri;
   let data;
   try {
-    const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(parametri) });
+    const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
     data = await res.json();
   } catch (e) {
-    pushDebugLog?.({ type: "effettore-eseguito", effectorId, ok: false, error: e.message });
+    pushDebugLog?.({ type: "effettore-eseguito", effectorId, provaAVuoto, ok: false, error: e.message });
     return { ok: false, error: e.message };
+  }
+  if (provaAVuoto) {
+    pushDebugLog?.({ type: "effettore-eseguito", effectorId, provaAVuoto: true, ok: !!data.ok, error: data.error || null });
+    return { ...data, provaAVuoto: true };
   }
   if (data.ok && IMAGE_PRODUCING_EFFECTORS.has(effectorId) && data.pngBase64) {
     try {
@@ -1018,6 +1155,9 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Kernel: lo stato di sistema versionato, modificabile dal Ghost.
 - Simbiosi (Adam): il punto di incontro tra i pilastri, sensing su ordine/caos e convergenze identitarie.
 - Vincoli dichiarati (Setup): i vincoli del Ghost (alimentari, di tempo, identità professionale da tenere separata da AIR, ecc.) sono voci rieditabili in ogni momento in Setup → "Vincoli dichiarati"/"Identità professionale" — si possono aggiungere, correggere o rimuovere lì, non solo al primo avvio con l'onboarding.
+- Catena Printify→Etsy (solo AIR, dal 14/08/2026): un Seme può ora arrivare a un prodotto vero in vendita. Tre effettori in fila — cercare nel catalogo Printify il tipo di prodotto e i suoi id concreti, creare il prodotto, pubblicarlo sul negozio Etsy collegato. La pubblicazione è l'unico passo irreversibile e passa SEMPRE dal gate: il sistema si ferma e mostra al Ghost cosa sta per uscire, e lui conferma. Etsy non viene toccato direttamente: il collegamento passa da Printify, che è anche il partner di produzione che Etsy obbliga a dichiarare. Le chiavi vivono solo su Vercel, mai nell'app.
+- Prova a vuoto (Setup): un interruttore che fa percorrere ai Semi l'intera catena degli effettori senza che parta nessuna chiamata reale — al posto del risultato viene mostrato per intero cosa sarebbe partito. Serve a verificare il giro a costo zero prima di far uscire qualcosa nel mondo. Quando è accesa, nulla di reale viene creato o pubblicato, nemmeno confermando un'azione bloccata dal gate.
+- Backup e ripristino dei dati (Setup): scarica in un unico file tutto lo stato locale (log dei pilastri, percorsi, memoria, semi, kernel, profilo, impostazioni) e sa anche rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo e ricarica l'app, previa conferma.
 Capacità NON disponibili in questa app (elenco a mano, mantenuto qui insieme alle presenti — non generato dinamicamente, per lo stesso motivo per cui il Master Index andava mantenuto a mano: un elenco derivato in un punto diverso dal codice reale si disallinea): notifiche push, promemoria o azioni che si attivano da soli senza che il Ghost apra l'app, invio automatico di messaggi/email/post senza conferma esplicita del Ghost (le "Braccia" preparano sempre solo bozze pronte da copiare o eventi Calendar da confermare, mai spedizione automatica), pubblicazione automatica su social o piattaforme esterne, esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost quando il gate lo richiede.`;
 
 //──────────────────────────────────────────────────────────
@@ -1265,9 +1405,9 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
 //──────────────────────────────────────────────────────────
 // Genera la "frase-divenire" di un percorso identitario: non cosa studi, ma chi diventi completandolo.
 // Stance interpretativa (Brentano/Dennett), modificabile dal Ghost — non un verdetto del sistema.
-async function generateIdentityGoal(pillar, title, settings) {
+async function generateIdentityGoal(pillar, title, settings, pillarMemory = null) {
   const data = await askModelJSON(
-    `Sei lo Shell del sistema Resonance, pilastro ${pillar.toUpperCase()}. ${PILLAR_CTX[pillar]}\nIl Ghost ha scelto di trattare questo percorso come IDENTITARIO: non vuole solo studiare l'argomento, vuole DIVENTARE una persona che sa fare la cosa più ampia che l'argomento serve. Esprimi in UNA frase breve (max 14 parole), che inizi con "diventare una persona che...", il divenire completo che questo percorso rappresenta — non ripetere il titolo, cogli la trasformazione più ampia dietro di esso.\nJSON: {"identityGoal": "diventare una persona che..."}`,
+    `Sei lo Shell del sistema Resonance, pilastro ${pillar.toUpperCase()}. ${PILLAR_CTX[pillar]}${memoriaProceduraleBlock(pillarMemory)}\nIl Ghost ha scelto di trattare questo percorso come IDENTITARIO: non vuole solo studiare l'argomento, vuole DIVENTARE una persona che sa fare la cosa più ampia che l'argomento serve. Esprimi in UNA frase breve (max 14 parole), che inizi con "diventare una persona che...", il divenire completo che questo percorso rappresenta — non ripetere il titolo, cogli la trasformazione più ampia dietro di esso.\nJSON: {"identityGoal": "diventare una persona che..."}`,
     `Percorso: "${title}"`, 0.6, 500, settings
   );
   return data?.identityGoal || `diventare una persona che padroneggia: ${title}`;
@@ -1295,17 +1435,29 @@ async function suggestPercorsi(pillar, digest, settings) {
   );
   return data?.suggestions || [];
 }
-async function proposeNextStep(pillar, percorso, settings) {
+// FASE 1.1 (brief 14/08/2026) — threading esplicito della memoria procedurale.
+// pillarMemory era GIA' disponibile al sito di chiamata (PercorsoDetail la riceve come prop) ma non
+// veniva passata qui: il "prossimo passo" veniva proposto senza sapere nulla di ciò che il sistema
+// aveva già imparato su quel pilastro. Su BIO è la stessa forma del bug già pagato una volta (un
+// piano alimentare generato senza vedere memory.bio, quindi senza le esclusioni alimentari).
+// Il blocco è formulato come in generateArtifact, che era l'unica funzione a farlo bene: la memoria
+// non è "contesto in più", contiene vincoli assoluti da non contraddire.
+function memoriaProceduraleBlock(pillarMemory) {
+  return pillarMemory
+    ? `\nMemoria procedurale accumulata su questo pilastro (contiene vincoli/preferenze già emersi in conversazione — rispettali sempre, non contraddirli; se contiene esclusioni, NON proporle mai, nemmeno come alternativa): ${pillarMemory}`
+    : "";
+}
+async function proposeNextStep(pillar, percorso, settings, pillarMemory = null) {
   const topicsDigest = percorso.topics.map((t) => `${t.label}: ${t.status}`).join("; ");
   return askModel(
-    `Sei lo Shell del sistema Resonance, pilastro ${pillar.toUpperCase()}. ${PILLAR_CTX[pillar]}\nProponi il prossimo "quanto" di lavoro/studio su questo percorso: concreto, breve (max 80 parole), calibrato sullo stato dei nodi e sulle competenze già accumulate.`,
+    `Sei lo Shell del sistema Resonance, pilastro ${pillar.toUpperCase()}. ${PILLAR_CTX[pillar]}${memoriaProceduraleBlock(pillarMemory)}\nProponi il prossimo "quanto" di lavoro/studio su questo percorso: concreto, breve (max 80 parole), calibrato sullo stato dei nodi e sulle competenze già accumulate.`,
     `Percorso: ${percorso.title}\nNodi: ${topicsDigest}\nCompetenze finora: ${percorso.competenze || "nessuna nota ancora"}`,
     0.7, 1500, settings
   );
 }
-async function generateQuizQuestion(pillar, percorso, topic, settings) {
+async function generateQuizQuestion(pillar, percorso, topic, settings, pillarMemory = null) {
   return askModel(
-    `Sei lo Shell, pilastro ${pillar.toUpperCase()}. ${PILLAR_CTX[pillar]}\nGenera UNA domanda di verifica testuale sul nodo indicato. Diretta, concreta, max 40 parole.`,
+    `Sei lo Shell, pilastro ${pillar.toUpperCase()}. ${PILLAR_CTX[pillar]}${memoriaProceduraleBlock(pillarMemory)}\nGenera UNA domanda di verifica testuale sul nodo indicato. Diretta, concreta, max 40 parole.`,
     `Percorso: ${percorso.title}\nNodo da verificare: ${topic.label}\nCompetenze note: ${percorso.competenze || "nessuna"}`,
     0.6, 1200, settings
   );
@@ -1691,7 +1843,7 @@ function PercorsiPanel({ pillar, color, percorsi, setPercorsi, settings, digest,
     setCreating(true); setError("");
     try {
       let identityGoal = null;
-      if (useKind === "identitario") identityGoal = await generateIdentityGoal(pillar, title.trim(), settings);
+      if (useKind === "identitario") identityGoal = await generateIdentityGoal(pillar, title.trim(), settings, pillarMemory);
       const labels = await decomposeTopics(pillar, title.trim(), settings, useKind, identityGoal);
       const p = { id: uid(), pillar, title: title.trim(), kind: useKind, identityGoal, createdAt: new Date().toISOString(),
         topics: (labels.length ? labels : ["Primo passo"]).map((l) => ({ id: uid(), label: l, status: "non iniziato", lastTouched: null })),
@@ -1762,13 +1914,13 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
   const [artMsg, setArtMsg] = useState("");
   const fetchNextStep = async () => {
     setLoadingStep(true); setStepError("");
-    try { setNextStep(await proposeNextStep(pillar, percorso, settings)); }
+    try { setNextStep(await proposeNextStep(pillar, percorso, settings, pillarMemory)); }
     catch (e) { setStepError(e.message); } finally { setLoadingStep(false); }
   };
   useEffect(() => { fetchNextStep(); }, [percorso.id]);
   const startQuiz = async (topic) => {
     setQuizTopic(topic); setQuizAnswer(""); setQuizEval(""); setQuizRunning(true);
-    try { setQuizQuestion(await generateQuizQuestion(pillar, percorso, topic, settings)); }
+    try { setQuizQuestion(await generateQuizQuestion(pillar, percorso, topic, settings, pillarMemory)); }
     catch (e) { setQuizQuestion("Errore: " + e.message); } finally { setQuizRunning(false); }
   };
   const submitQuizAnswer = async () => {
@@ -2077,7 +2229,7 @@ const SEME_STATUS_LABELS = {
   awaiting_approval: "in attesa di approvazione", executing: "in sviluppo",
   gated: "bloccato", archived: "archiviato",
 };
-function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed, onDiscussInShell, onAdvance }) {
+function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed, onDiscussInShell, onAdvance, onArchiveSeed }) {
   const [newContent, setNewContent] = useState("");
   const [advancing, setAdvancing] = useState(false);
   const submit = () => { if (!newContent.trim()) return; onAddSeed(newContent.trim()); setNewContent(""); };
@@ -2113,7 +2265,17 @@ function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGate
         <div class="r-entry-line"><b>${s.content}</b></div>
         <div class="r-hub-detail" style="margin-top:4px">Stato: <span class="r-badge" style="border-color:${color};color:${color}">${SEME_STATUS_LABELS[s.status] || s.status}</span> · origine: ${s.originSource === "manual" ? "manuale" : "conversazione"} · ${counter.label}</div>
         <div class="r-magi-text" style="margin-top:6px">${lastLogNote(s)}</div>
-        ${s.status !== "archived" && html`<button class="r-btn r-btn-ghost" style="margin-left:0;margin-top:8px" onClick=${handleAdvance} disabled=${advancing || counter.atCap}>${advancing ? "Avanzo…" : counter.atCap ? "Tetto raggiunto" : "Avanza ora"}</button>`}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          ${s.status !== "archived" && html`<button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${handleAdvance} disabled=${advancing || counter.atCap}>${advancing ? "Avanzo…" : counter.atCap ? "Tetto raggiunto" : "Avanza ora"}</button>`}
+          ${/* FASE 5 (brief 14/08/2026) — lo stato "archiviato" esisteva fra le etichette ma niente
+                lo impostava: un Seme non poteva essere fermato in nessun modo. E' C.15 applicata al
+                caso piu' semplice — il sistema deve poter togliere, non solo aggiungere. Archiviare
+                non cancella: il Seme resta leggibile con tutta la sua storia, smette solo di
+                avanzare e di consumare round. Da archiviato si puo' tornare indietro. */ ""}
+          ${s.status !== "archived"
+            ? html`<button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => onArchiveSeed?.(s.id, true)}>Archivia</button>`
+            : html`<button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => onArchiveSeed?.(s.id, false)}>Riattiva</button>`}
+        </div>
         ${s.status === "awaiting_approval" && html`<div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
           ${(s.proposedStrategies || []).map((strat) => html`<div>
             <div class="r-entry-line"><b>${strat.titolo}</b></div>
@@ -2136,14 +2298,14 @@ function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGate
     </div>`}
   </div>`;
 }
-function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, digest, memory, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed, onDiscussInShell, pushDebugLog, advanceSeedIfDue }) {
+function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, digest, memory, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed, onDiscussInShell, pushDebugLog, advanceSeedIfDue, onArchiveSeed }) {
   const [tab, setTab] = useState("log");
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(todayISO()); const [title, setTitle] = useState(""); const [status, setStatus] = useState("idea"); const [notes, setNotes] = useState("");
   const submit = () => { if (!title) return; onAdd({ id: uid(), date, title, status, notes }); setTitle(""); setNotes(""); setStatus("idea"); setOpen(false); };
   const [task, setTask] = useState(""); const [running, setRunning] = useState(false); const [result, setResult] = useState(""); const [error, setError] = useState("");
   const runAgent = async () => { if (!task.trim() || running) return; setRunning(true); setError(""); setResult("");
-    try { setResult(await runAirAgent(task.trim(), settings, pushDebugLog)); } catch (e) { setError(e.message); } finally { setRunning(false); } };
+    try { setResult(await runAirAgent(task.trim(), settings, pushDebugLog, memory?.air?.corrente)); } catch (e) { setError(e.message); } finally { setRunning(false); } };
   return html`<div class="r-screen">
     <${SectionHeader} color=${C.air} title="AIR" subtitle="Autonomia economica, sganciata dal tempo del Ghost" />
     <${SubTabs} color=${C.air} tabs=${[{ key: "log", label: "Log" }, { key: "percorsi", label: "Percorsi" }, { key: "agent", label: "Agente" }]} active=${tab} setActive=${setTab} />
@@ -2162,7 +2324,7 @@ function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, di
           ${e.notes && html`<div class="r-entry-notes">${e.notes}</div>`}
         </div><button class="r-icon-btn" onClick=${() => onDelete(e.id)}>✕</button></div></${Card}>`)}</div>`}
     ` : tab === "percorsi" ? html`<div>
-        <${SemiPanel} color=${C.air} semi=${semi || []} onAddSeed=${onAddSeed} onApproveSeedStrategy=${onApproveSeedStrategy} onUnlockGatedSeed=${onUnlockGatedSeed} onDiscussInShell=${onDiscussInShell} onAdvance=${advanceSeedIfDue} />
+        <${SemiPanel} color=${C.air} semi=${semi || []} onAddSeed=${onAddSeed} onApproveSeedStrategy=${onApproveSeedStrategy} onUnlockGatedSeed=${onUnlockGatedSeed} onDiscussInShell=${onDiscussInShell} onAdvance=${advanceSeedIfDue} onArchiveSeed=${onArchiveSeed} />
         <${PercorsiPanel} pillar="air" color=${C.air} percorsi=${percorsi} setPercorsi=${setPercorsi} settings=${settings} digest=${digest} pillarMemory=${memory?.air?.corrente} />
       </div>`
     : html`<${Card} accent=${C.air}>
@@ -2194,7 +2356,7 @@ function MagiView({ sessions, onSave, onDelete, settings, memory, updateMemoria,
       onSave({ id: uid(), date: new Date().toISOString(), question: question.trim(), engine: engineLabel, pillar: targetPillar || null, intensity, ...result });
       // La perturbazione lascia traccia nella memoria del pilastro-bersaglio (§4.1) — non blocca in caso di errore.
       if (targetPillar && updateMemoria) {
-        try { const nuovaMemoria = await reflectPerturbationIntoMemoria(targetPillar, result.synthesis, intensity, memory, settings); if (nuovaMemoria) updateMemoria(targetPillar, nuovaMemoria); }
+        try { const nuovaMemoria = await reflectPerturbationIntoMemoria(targetPillar, result.synthesis, intensity, memory, settings, pushDebugLog); if (nuovaMemoria) updateMemoria(targetPillar, nuovaMemoria); }
         catch { /* la traccia in memoria è best-effort: la sessione Magi è già salvata */ }
       }
       setQuestion("");
@@ -2654,7 +2816,7 @@ function CostSummaryPanel({ debugLog }) {
   const anyCostWeek = weekEntries.some((e) => typeof e.costUsd === "number");
   return html`<${Card} accent=${C.core}>
     <div class="r-hub-title" style="color:#3A4750">Costi/token IA</div>
-    <div class="r-hub-detail">Solo le chiamate tracciate: Shell, Magi (Balthasar/Melchior/Caspar), Agente AIR, ricerca web on-demand, Seme (ricerca/esecuzione). Non include refresh pagina, login Google o sync Drive — non toccano mai un modello.</div>
+    <div class="r-hub-detail">Solo le chiamate tracciate: Shell, Magi per intero (Balthasar, Melchior, Caspar, sintesi finale e — se la perturbazione è mirata a un pilastro — la riscrittura della sua memoria), Agente AIR, ricerca web on-demand, Seme (ricerca/esecuzione). Non include refresh pagina, login Google o sync Drive — non toccano mai un modello.</div>
     ${costEntries.length === 0 ? html`<div class="r-hub-detail" style="margin-top:8px">Nessuna chiamata tracciata ancora nel log (max 50 voci totali, condivise con tutti gli eventi di debug).</div>` : html`
       <div class="r-hub-detail" style="margin-top:10px"><b>Oggi</b>: ${todayEntries.length} chiamate · ${sumTokens(todayEntries)} token · ${anyCostToday ? `$${sumCost(todayEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
       <div class="r-hub-detail" style="margin-top:4px"><b>Ultimi 7 giorni</b> (entro il tetto di 50 voci del log): ${weekEntries.length} chiamate · ${sumTokens(weekEntries)} token · ${anyCostWeek ? `$${sumCost(weekEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
@@ -2728,6 +2890,45 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `resonance-json-failures-${todayISO()}.json`; a.click();
     URL.revokeObjectURL(url);
+  };
+  // FASE 2 — interruttore della modalità "prova a vuoto" degli effettori.
+  const [provaAVuoto, setProvaAVuotoState] = useState(() => isProvaAVuoto());
+  const cambiaProvaAVuoto = (attiva) => { setProvaAVuoto(attiva); setProvaAVuotoState(attiva); };
+  // COMPITO A.4 — backup completo dei DATI (il codice lo protegge git, i dati no).
+  const [backupMsg, setBackupMsg] = useState("");
+  const [ripristinoInCorso, setRipristinoInCorso] = useState(false);
+  const scaricaBackup = () => {
+    try {
+      const backup = buildFullBackup();
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = `resonance-backup-${todayISO()}.json`; a.click();
+      URL.revokeObjectURL(url);
+      setBackupMsg(`Backup scaricato: ${backup._chiavi} voci salvate.${backup._apiKeyOmessa ? " La chiave API non è stata inclusa (di proposito) — dopo un ripristino va rimessa a mano." : ""}`);
+    } catch (e) { setBackupMsg("Errore durante il backup: " + e.message); }
+  };
+  // Il ripristino sovrascrive TUTTI i dati locali: passa da una conferma esplicita, e ricarica
+  // subito dopo — senza reload l'app resterebbe a schermo con i dati vecchi in memoria mentre
+  // localStorage ne ha già di nuovi, cioè lo stato più confuso possibile.
+  const caricaBackup = (file) => {
+    if (!file) return;
+    setRipristinoInCorso(true); setBackupMsg("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const backup = JSON.parse(reader.result);
+        const quando = backup?._creato ? new Date(backup._creato).toLocaleString("it-IT") : "data sconosciuta";
+        if (!confirm(`Stai per sostituire TUTTI i dati di questo dispositivo con quelli del backup del ${quando}.\n\nQuello che c'è ora su questo telefono/computer viene perso, a meno che tu non ne abbia fatto un backup poco fa.\n\nProcedo?`)) {
+          setRipristinoInCorso(false); setBackupMsg("Ripristino annullato — non è stato toccato nulla."); return;
+        }
+        const esito = restoreFullBackup(backup);
+        if (!esito.ok && !esito.scritte) { setRipristinoInCorso(false); setBackupMsg("Ripristino non riuscito: " + (esito.errore || `non sono state scritte ${esito.fallite?.length || 0} voci`)); return; }
+        setBackupMsg(`Ripristinate ${esito.scritte} voci. Ricarico l'app…`);
+        setTimeout(() => location.reload(), 1200);
+      } catch (e) { setRipristinoInCorso(false); setBackupMsg("Il file non è leggibile come backup: " + e.message); }
+    };
+    reader.onerror = () => { setRipristinoInCorso(false); setBackupMsg("Non sono riuscito a leggere il file."); };
+    reader.readAsText(file);
   };
   return html`<div class="r-screen">
     <${SectionHeader} color=${C.core} title="SETUP" subtitle="Motore AI e sincronizzazione Drive" />
@@ -2814,6 +3015,26 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
       <div class="r-hub-detail">Il pulsante "Segnala" (in alto a destra, in ogni schermata) manda un'email diretta via Gmail — nessuna cartella o condivisione da configurare, nessun servizio terzo. Richiede lo stesso login Google già usato per la sincronizzazione.</div>
       ${!feedbackReady && html`<div class="r-hub-detail" style="margin-top:8px">Manca FEEDBACK_EMAIL in config.js — vedi README.md.</div>`}
       ${feedbackReady && html`<div class="r-hub-detail" style="margin-top:8px">Configurato — le segnalazioni arrivano a ${CONFIG.FEEDBACK_EMAIL} via Gmail (stesso account Google del login).</div>`}
+    </${Card}>
+    <${Card} accent=${C.core}>
+      <div class="r-settings-row"><div><div class="r-hub-title" style="color:#3A4750">Prova a vuoto</div>
+        <div class="r-hub-detail">Quando è accesa, i Semi percorrono tutta la catena — cercare il prodotto nel catalogo, crearlo, pubblicarlo — ma nessuna chiamata parte davvero. Al posto del risultato vero ti viene mostrato, per intero, cosa sarebbe partito. Serve a controllare che il giro funzioni prima di far uscire qualcosa nel mondo, a costo zero.</div></div>
+        <input type="checkbox" checked=${provaAVuoto} onInput=${(e) => cambiaProvaAVuoto(e.target.checked)} /></div>
+      ${provaAVuoto && html`<div class="r-hub-detail" style="margin-top:8px"><b>Accesa.</b> Finché resta accesa non verrà creato né pubblicato niente di reale, nemmeno se confermi un'azione bloccata dal gate.</div>`}
+    </${Card}>
+    <${Card} accent=${C.core}>
+      <div class="r-hub-title" style="color:#3A4750">Backup e ripristino dei dati</div>
+      <div class="r-hub-detail">Salva in un unico file tutto quello che questa app sa di te: log dei tre pilastri, percorsi, memoria, semi, kernel, profilo, impostazioni. Serve perché il codice è già al sicuro su GitHub, i tuoi dati no. Tienilo dove tieni le cose che non vuoi perdere.</div>
+      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${scaricaBackup}>Scarica backup completo</button>
+        <label class="r-btn r-btn-ghost" style="margin-left:0; cursor:pointer">
+          Ripristina da backup
+          <input type="file" accept="application/json,.json" style="display:none" disabled=${ripristinoInCorso}
+            onChange=${(e) => { caricaBackup(e.target.files?.[0]); e.target.value = ""; }} />
+        </label>
+      </div>
+      ${backupMsg && html`<div class="r-hub-detail" style="margin-top:8px">${backupMsg}</div>`}
+      <div class="r-hub-detail" style="margin-top:8px">Il ripristino sostituisce i dati di questo dispositivo con quelli del file, e poi ricarica l'app. Ti viene chiesta conferma prima. La chiave API non finisce mai dentro il file di backup — così puoi mandartelo via mail senza pensieri — quindi dopo un ripristino va rimessa qui sopra.</div>
     </${Card}>
     <${CostSummaryPanel} debugLog=${debugLog} />
     <${Card} accent=${C.core}>
@@ -3429,7 +3650,7 @@ function App() {
     const s = {
       id: uid(), createdAt: new Date().toISOString(), ttl: new Date(Date.now() + 90 * 86400000).toISOString(),
       pillar: "air", content, originSource, status: "seed",
-      researchIterationCount: 0, executionIterationCount: 0, researchLog: [], executionLog: [],
+      researchIterationCount: 0, executionIterationCount: 0, consecutiveEmptyRounds: 0, researchLog: [], executionLog: [],
       proposedStrategies: [], approvedStrategy: null, gateReason: null,
       gatedActionPreview: null, // stringa leggibile dell'azione candidata bloccata — vedi unlockGatedSeed
       gatedActionContract: null, // FASE 1 (BRIEF_effettori_printify): contratto strutturato { effettore, parametri, ... } dietro gatedActionPreview — è quello che unlockGatedSeed esegue davvero alla conferma, gatedActionPreview resta solo la sua resa leggibile per la UI esistente
@@ -3455,6 +3676,18 @@ function App() {
   // e registra l'esito reale. Retrocompatibilità: un Seme più vecchio, bloccato PRIMA di questo fix
   // (solo gatedActionPreview testuale, nessun contratto salvato), mantiene il comportamento
   // precedente — non c'è alcun contratto da eseguire davvero, quindi si limita a registrare la nota.
+  // FASE 5 (brief 14/08/2026) — archiviazione di un Seme. Lo stato "archived" era gia' fra le
+  // etichette ma niente lo impostava: un Seme partito male non poteva essere fermato in nessun modo,
+  // continuava a comparire e a proporre "Avanza ora". E' C.15 (contrazione adattiva) nel caso piu'
+  // semplice: il sistema deve poter togliere, non solo aggiungere.
+  // Archiviare NON cancella (Legge 14, mai sovrascrittura distruttiva): il Seme resta per intero,
+  // con tutta la sua storia, e si puo' riattivare. Cambia solo il fatto che smette di avanzare.
+  // Alla riattivazione torna a "seed": ripartire dal principio e' l'unico stato sensato senza sapere
+  // quanto tempo e' passato, e i contatori di round restano dov'erano — riattivare non regala giri.
+  const archiveSeed = useCallback((id, archivia) => {
+    setSemiSync(stateRef.current.semi.map((s) => (s.id === id ? { ...s, status: archivia ? "archived" : "seed" } : s)));
+    pushDebugLog({ type: "seme-archiviazione", id, archiviato: !!archivia });
+  }, [pushDebugLog]);
   const unlockGatedSeed = useCallback(async (id) => {
     const seed = stateRef.current.semi.find((s) => s.id === id);
     const contract = seed?.gatedActionContract || null;
@@ -3496,12 +3729,26 @@ function App() {
         const nextCount = target.researchIterationCount + 1;
         const newlyApproved = approvedStrategies.filter((a) => !target.proposedStrategies.some((p) => p.titolo === a.titolo));
         const mergedStrategies = [...target.proposedStrategies, ...newlyApproved];
-        const nextStatus = mergedStrategies.length ? "awaiting_approval" : (nextCount >= SEME_RESEARCH_ITERATION_CAP ? "proposing" : "researching");
+        // FASE 1.3 (brief 14/08/2026) — uscita anticipata. Prima, un Seme che non produceva NESSUNA
+        // strategia continuava comunque fino al tetto di 5 round. Ogni round e' una runSeedResearch
+        // intera (3 chiamate: Balthasar con ricerca web + Melchior + Caspar), misurata oggi a
+        // ~$0,0078: cinque round a vuoto sono ~4 centesimi spesi per non concludere niente.
+        // Due round consecutivi a zero strategie sono gia' un segnale sufficiente: l'idea, cosi'
+        // com'e' formulata, non produce strategie che superino Caspar. Il Seme si ferma in
+        // "proposte in stallo" — lo stesso stato terminale del tetto, che l'interfaccia gia'
+        // conosce — invece di consumare altri tre round per arrivarci lo stesso.
+        const zeroQuestoRound = approvedStrategies.length === 0;
+        const vuotiConsecutivi = zeroQuestoRound ? (target.consecutiveEmptyRounds || 0) + 1 : 0;
+        const uscitaAnticipata = vuotiConsecutivi >= SEME_EMPTY_ROUNDS_BEFORE_EXIT && !mergedStrategies.length;
+        const nextStatus = mergedStrategies.length
+          ? "awaiting_approval"
+          : (uscitaAnticipata || nextCount >= SEME_RESEARCH_ITERATION_CAP ? "proposing" : "researching");
         // TASK 2 (BRIEF_costtracking_balthasarsources): il sospetto di fonte allucinata va reso
         // visibile al Ghost, non solo al log di debug tecnico — vedi detectPossibleHallucinatedSource.
         const hallucinationNote = possibleHallucinatedSource ? " ⚠ possibile fonte non verificata nel testo — controlla prima di fidartene." : "";
-        const logEntry = { date: new Date().toISOString(), note: `Round ${nextCount}/${SEME_RESEARCH_ITERATION_CAP} — ${approvedStrategies.length} strategia/e approvata/e. Ricerca: ${balthasar.slice(0, 160)}${hallucinationNote}` };
-        const updated = { ...target, status: nextStatus, researchIterationCount: nextCount, researchLog: [...target.researchLog, logEntry], proposedStrategies: mergedStrategies };
+        const notaUscita = uscitaAnticipata ? ` — fermato qui: ${vuotiConsecutivi} round consecutivi senza nessuna strategia approvata. Riformula l'idea in modo più concreto e riavvia, invece di far girare a vuoto i round rimasti.` : "";
+        const logEntry = { date: new Date().toISOString(), note: `Round ${nextCount}/${SEME_RESEARCH_ITERATION_CAP} — ${approvedStrategies.length} strategia/e approvata/e. Ricerca: ${balthasar.slice(0, 160)}${hallucinationNote}${notaUscita}` };
+        const updated = { ...target, status: nextStatus, researchIterationCount: nextCount, consecutiveEmptyRounds: vuotiConsecutivi, researchLog: [...target.researchLog, logEntry], proposedStrategies: mergedStrategies };
         setSemiSync(stateRef.current.semi.map((x) => (x.id === target.id ? updated : x)));
         // Esito di Caspar-del-Seme nel log di debug: SOLO id scartato + motivo breve (≤200 caratteri,
         // sintesi di Caspar) — MAI il testo/prompt completo inviato al modello (CHIARIMENTO 26/07/2026, p.2).
@@ -3646,7 +3893,7 @@ function App() {
       addSeed=${addSeed} advanceSeedIfDue=${advanceSeedIfDue} shellDraft=${shellDraft} consumeShellDraft=${() => setShellDraft("")} />`}
     ${view === "bio" && html`<${BioView} entries=${bio} onAdd=${addBio} onDelete=${delBio} percorsi=${pBio} setPercorsi=${setPBioSync} settings=${settings} digest=${digestBio} memory=${memory} />`}
     ${view === "air" && html`<${AirView} entries=${air} onAdd=${addAir} onDelete=${delAir} percorsi=${pAir} setPercorsi=${setPAirSync} settings=${settings} digest=${digestAir} memory=${memory}
-      semi=${semi} onAddSeed=${(content) => addSeed(content, "manual")} onApproveSeedStrategy=${approveSeedStrategy} onUnlockGatedSeed=${unlockGatedSeed} onDiscussInShell=${discussSeedInShell} pushDebugLog=${pushDebugLog} advanceSeedIfDue=${advanceSeedIfDue} />`}
+      semi=${semi} onAddSeed=${(content) => addSeed(content, "manual")} onApproveSeedStrategy=${approveSeedStrategy} onUnlockGatedSeed=${unlockGatedSeed} onDiscussInShell=${discussSeedInShell} pushDebugLog=${pushDebugLog} advanceSeedIfDue=${advanceSeedIfDue} onArchiveSeed=${archiveSeed} />`}
     ${view === "vidya" && html`<${VidyaView} entries=${vidya} onAdd=${addVidya} onDelete=${delVidya} percorsi=${pVidya} setPercorsi=${setPVidyaSync} settings=${settings} digest=${digestVidya} memory=${memory} />`}
     ${view === "magi" && html`<${MagiView} sessions=${magi} onSave=${addMagi} onDelete=${delMagi} settings=${settings} memory=${memory} updateMemoria=${updateMemoria} pushDebugLog=${pushDebugLog} />`}
     ${view === "simbiosi" && html`<${SimbiosiView} resonance=${resonance} onRecalc=${recalcResonance} calculating=${resCalculating} error=${resError} onPromoteIdentity=${promoteToIdentity} onDismissIdentity=${dismissIdentityHint} />`}
