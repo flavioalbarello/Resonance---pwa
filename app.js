@@ -1,12 +1,20 @@
-import { h, render } from "https://esm.sh/preact@10.24.2";
-import { useState, useEffect, useCallback, useRef } from "https://esm.sh/preact@10.24.2/hooks";
-import htm from "https://esm.sh/htm@3.1.1";
+// GESTO A (brief esoscheletro 15/08/2026) — Preact e htm erano caricati da una CDN esterna.
+// Misurato: la catena costava ~900 ms sul percorso critico PRIMA che esistesse una schermata, perche'
+// esm.sh risponde con un rimando ("export * from ...") e ogni modulo costa quindi due viaggi di rete
+// invece di uno. Con il budget di 200 ms del brief, quella sola catena valeva quattro volte tutto.
+// Peggio: senza rete l'app non si disegnava affatto, nemmeno con tutti i dati gia' sul dispositivo.
+// Ora i tre moduli vivono nel repo, sono gli stessi byte scaricati da esm.sh (nessuna versione
+// cambiata), e il service worker puo' finalmente metterli in cache come tutto il resto.
+// Non e' un passo di build: sono tre file copiati.
+import { h, render } from "./vendor/preact.mjs";
+import { useState, useEffect, useCallback, useRef } from "./vendor/preact-hooks.mjs";
+import htm from "./vendor/htm.mjs";
 import { CONFIG } from "./config.js";
 
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-14 · buildout-printify-etsy-e-backup-dati";
+const APP_BUILD = "2026-08-15 · esoscheletro-postura-respiro-aptica";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -88,6 +96,87 @@ function stopSpeaking() {
 }
 
 const daysSince = (iso) => iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : null;
+
+//──────────────────────────────────────────────────────────
+// APTICA — ritorno fisico immediato (GESTO B.1 / B.4, brief 15/08/2026)
+//──────────────────────────────────────────────────────────
+// navigator.vibrate funziona su Chrome Android e richiede un gesto dell'utente: va invocata
+// SINCRONA dentro il gestore del tocco. Un setTimeout prima della chiamata rompe la catena del
+// gesto e la vibrazione non parte, in silenzio — e' la stessa trappola gia' pagata con la voce.
+// Per questo qui non c'e' nessuna attesa, nessuna promessa, nessun await: si chiama e basta.
+//
+// B.4 — tre firme distinte, non tre durate a caso. Devono essere riconoscibili al buio, quindi
+// differiscono per NUMERO DI IMPULSI e ritmo, che si distinguono al tatto, non per durata di un
+// singolo colpo, che non si distingue.
+//   BIO   — un colpo pieno, singolo: il corpo, una cosa sola.
+//   AIR   — due colpi rapidi: il passo doppio del fare.
+//   VIDYA — tre colpi brevi in crescendo: la cosa che si articola.
+const FIRME_APTICHE = {
+  bio: [28],
+  air: [16, 40, 16],
+  vidya: [10, 30, 14, 30, 20],
+  conferma: [14],
+  errore: [40, 60, 40],
+};
+function vibra(firma) {
+  try {
+    const pattern = FIRME_APTICHE[firma] || FIRME_APTICHE.conferma;
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      return navigator.vibrate(pattern); // true se il dispositivo l'ha accettata
+    }
+  } catch { /* un dispositivo che non vibra non deve mai far fallire il gesto */ }
+  return false;
+}
+
+//──────────────────────────────────────────────────────────
+// POSTURA — lettura di stato locale, deterministica, zero rete (GESTO A.2 / C.2, brief 15/08/2026)
+//──────────────────────────────────────────────────────────
+// Risponde a "come sta Adam adesso" senza leggere una riga di testo e senza chiedere niente a
+// nessuno: si calcola da dati gia' in localStorage, in una frazione di millisecondi, prima che
+// qualunque rete parta. E' esplicitamente una LETTURA DI STATO, non un giudizio di rilevanza:
+// niente qui decide se qualcosa "conta", si limita a misurare quanto e' passato e quanto c'e'.
+// Per questo puo' usare soglie di giorni senza contraddire Bateson — non e' un innesco, e' un
+// termometro. Il giudizio situato resta di Simbiosi, che gira altrove e con altri dati.
+//
+// Tre numeri per pilastro, tutti fra 0 e 1:
+//  - freschezza: 1 se c'e' attivita' oggi, scende verso 0 col passare dei giorni dall'ultima voce
+//  - densita': quanta memoria procedurale si e' accumulata su quel pilastro
+//  - fermo: quanti percorsi sono in stallo (alza la tensione)
+// La "tensione" complessiva e' quella che alimenta anche il ritmo del respiro (C.2).
+const POSTURA_GIORNI_PIENI = 21; // oltre tre settimane senza una voce, la freschezza e' a zero
+function calcolaPosturaPilastro(voci, percorsi, memoriaPilastro) {
+  const g = daysSince(voci?.[0]?.date);
+  const freschezza = g === null ? 0 : Math.max(0, 1 - g / POSTURA_GIORNI_PIENI);
+  const frammenti = (memoriaPilastro?.sedimento || []).length;
+  const haCorrente = (memoriaPilastro?.corrente || "").trim().length > 0;
+  const densita = Math.min(1, (frammenti + (haCorrente ? 1 : 0)) / 8);
+  const attivi = (percorsi || []).length;
+  const fermi = stalledTitles(percorsi || []).length;
+  const quotaFermi = attivi ? fermi / attivi : 0;
+  // Tensione: sale quando il pilastro e' fermo da tanto o ha percorsi in stallo, scende quando
+  // scorre. E' il numero che il respiro traduce in ritmo.
+  const tensione = Math.min(1, Math.max(0, (1 - freschezza) * 0.7 + quotaFermi * 0.3));
+  return {
+    giorni: g, freschezza: Number(freschezza.toFixed(3)), densita: Number(densita.toFixed(3)),
+    percorsiAttivi: attivi, percorsiFermi: fermi, tensione: Number(tensione.toFixed(3)),
+  };
+}
+function calcolaPostura({ bio, air, vidya, pBio, pAir, pVidya, memory }) {
+  const p = {
+    bio: calcolaPosturaPilastro(bio, pBio, memory?.bio),
+    air: calcolaPosturaPilastro(air, pAir, memory?.air),
+    vidya: calcolaPosturaPilastro(vidya, pVidya, memory?.vidya),
+  };
+  const tensioni = [p.bio.tensione, p.air.tensione, p.vidya.tensione];
+  const tensioneMedia = Number((tensioni.reduce((a, b) => a + b, 0) / 3).toFixed(3));
+  // Durata di un ciclo di respiro: piu' teso = piu' corto e nervoso, piu' disteso = piu' lungo e
+  // calmo. Da 3,2 s (tutto fermo) a 7,0 s (tutto in movimento). E' l'unico punto in cui un numero
+  // dello stato reale diventa un tempo: senza questo aggancio il movimento sarebbe uno screensaver.
+  const secondiRespiro = Number((7.0 - tensioneMedia * 3.8).toFixed(2));
+  // Squilibrio: quanto i tre pilastri sono distanti fra loro. Non e' un voto, e' una distanza.
+  const squilibrio = Number((Math.max(...tensioni) - Math.min(...tensioni)).toFixed(3));
+  return { ...p, tensioneMedia, secondiRespiro, squilibrio };
+}
 // Ultimi scambi Shell in testo semplice, per il segnale linguistico diretto della cristallizzazione
 // (Simbiosi mandato 4, punto d). Esclude system-note (rumore, non linguaggio del Ghost).
 function recentShellText(shellChat, n = 10) {
@@ -1157,6 +1246,8 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Vincoli dichiarati (Setup): i vincoli del Ghost (alimentari, di tempo, identità professionale da tenere separata da AIR, ecc.) sono voci rieditabili in ogni momento in Setup → "Vincoli dichiarati"/"Identità professionale" — si possono aggiungere, correggere o rimuovere lì, non solo al primo avvio con l'onboarding.
 - Catena Printify→Etsy (solo AIR, dal 14/08/2026): un Seme può ora arrivare a un prodotto vero in vendita. Tre effettori in fila — cercare nel catalogo Printify il tipo di prodotto e i suoi id concreti, creare il prodotto, pubblicarlo sul negozio Etsy collegato. La pubblicazione è l'unico passo irreversibile e passa SEMPRE dal gate: il sistema si ferma e mostra al Ghost cosa sta per uscire, e lui conferma. Etsy non viene toccato direttamente: il collegamento passa da Printify, che è anche il partner di produzione che Etsy obbliga a dichiarare. Le chiavi vivono solo su Vercel, mai nell'app.
 - Prova a vuoto (Setup): un interruttore che fa percorrere ai Semi l'intera catena degli effettori senza che parta nessuna chiamata reale — al posto del risultato viene mostrato per intero cosa sarebbe partito. Serve a verificare il giro a costo zero prima di far uscire qualcosa nel mondo. Quando è accesa, nulla di reale viene creato o pubblicato, nemmeno confermando un'azione bloccata dal gate.
+- Postura e respiro (schermata iniziale, dal 15/08/2026): tre barre, una per pilastro, che mostrano a colpo d'occhio quanto di recente ciascuno si e' mosso. Si calcolano solo da dati gia' sul dispositivo, senza chiedere niente a nessuno, e compaiono prima di qualunque rete. Respirano lentamente, e il ritmo del respiro dipende dallo stato reale: piu' corto quando qualcosa e' fermo da troppo, piu' lungo quando le cose scorrono. Se il telefono e' impostato per ridurre le animazioni, il respiro non parte. E' una lettura di stato, mai un giudizio.
+- Ritorno aptico (dal 15/08/2026): quando il Ghost registra qualcosa su un pilastro il telefono vibra subito, con una firma diversa per pilastro — un colpo per BIO, due per AIR, tre per VIDYA — cosi' si riconosce al tatto su cosa si e' appena scritto. La voce compare e la postura si aggiorna nello stesso istante, senza aspettare nessuna rete.
 - Backup e ripristino dei dati (Setup): scarica in un unico file tutto lo stato locale (log dei pilastri, percorsi, memoria, semi, kernel, profilo, impostazioni) e sa anche rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo e ricarica l'app, previa conferma.
 Capacità NON disponibili in questa app (elenco a mano, mantenuto qui insieme alle presenti — non generato dinamicamente, per lo stesso motivo per cui il Master Index andava mantenuto a mano: un elenco derivato in un punto diverso dal codice reale si disallinea): notifiche push, promemoria o azioni che si attivano da soli senza che il Ghost apra l'app, invio automatico di messaggi/email/post senza conferma esplicita del Ghost (le "Braccia" preparano sempre solo bozze pronte da copiare o eventi Calendar da confermare, mai spedizione automatica), pubblicazione automatica su social o piattaforme esterne, esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost quando il gate lo richiede.`;
 
@@ -2128,7 +2219,42 @@ function AnochinRing({ bioN, airN, vidyaN, onNav }) {
       return html`<button class="r-ring-node r-ring-node-${n.key}" style="left:${x - 28}px;top:${y - 28}px" onClick=${() => onNav(n.key)}><span>${n.label}</span><span class="r-ring-count">${n.n}</span></button>`; })}
   </div>`;
 }
-function Hub({ bio, air, vidya, magi, resonance, setView, pBio, pAir, pVidya, proactiveHint }) {
+// GESTO A.2 + A.3 + C — indicatore di postura: tre barre, una per pilastro.
+// Altezza = freschezza (quanto di recente quel pilastro si e' mosso). Spessore del bordo = densita'
+// di memoria. Il respiro (C) e' una animazione CSS la cui DURATA arriva dalla tensione reale
+// calcolata sopra, non da un numero scelto a occhio: e' il vincolo che separa un organismo da uno
+// screensaver. Nessun ciclo di ridisegno in JavaScript: si imposta una variabile CSS e basta.
+//
+// A.3 — micro-movimento all'apertura: le barre partono schiacciate e salgono alla loro altezza vera
+// in poco meno di mezzo secondo. Non e' decorazione, e' la differenza fra un oggetto acceso e uno
+// spento: disegnarle gia' ferme direbbe "questa cosa era gia' finita prima che tu arrivassi".
+function PosturaIndicator({ postura, onNav }) {
+  const [montato, setMontato] = useState(false);
+  useEffect(() => {
+    // Due fotogrammi di attesa, non uno: con uno solo il browser puo' accorpare lo stato iniziale
+    // e quello finale in un unico calcolo di stile, e la transizione non parte proprio.
+    const r = requestAnimationFrame(() => requestAnimationFrame(() => setMontato(true)));
+    return () => cancelAnimationFrame(r);
+  }, []);
+  const pilastri = [
+    { k: "bio", etichetta: "BIO", colore: C.bio, d: postura.bio },
+    { k: "air", etichetta: "AIR", colore: C.air, d: postura.air },
+    { k: "vidya", etichetta: "VIDYA", colore: C.vidya, d: postura.vidya },
+  ];
+  return html`<div class="r-postura" style=${`--respiro:${postura.secondiRespiro}s`}>
+    <div class="r-postura-barre">
+      ${pilastri.map((p) => html`<div class="r-postura-col" key=${p.k} onClick=${() => onNav(p.k)}
+          title=${`${p.etichetta} — ${p.d.giorni === null ? "nessuna voce ancora" : p.d.giorni === 0 ? "attività oggi" : p.d.giorni === 1 ? "ultima voce ieri" : "ultima voce " + p.d.giorni + " giorni fa"}${p.d.percorsiFermi ? ` · ${p.d.percorsiFermi} percorso/i fermo/i` : ""}`}>
+        <div class="r-postura-tubo">
+          <div class="r-postura-riempimento" style=${`height:${montato ? Math.round(8 + p.d.freschezza * 92) : 6}%;background:${p.colore};border-top:${1 + Math.round(p.d.densita * 3)}px solid ${p.colore}`}></div>
+        </div>
+        <div class="r-postura-etichetta" style=${`color:${p.colore}`}>${p.etichetta}</div>
+      </div>`)}
+    </div>
+    <div class="r-postura-nota">Com'è adesso — letto da ciò che è già sul dispositivo. È una lettura, non un giudizio.</div>
+  </div>`;
+}
+function Hub({ bio, air, vidya, magi, resonance, setView, pBio, pAir, pVidya, proactiveHint, postura }) {
   const lastBio = bio[0], lastAir = air[0], lastVidya = vidya[0];
   // Countdown identitario: tra TUTTI i percorsi identitari attivi, quello più vicino al traguardo
   // (meno nodi non-consolidati mancanti, ma >0). Solo distanza attuale, mai delta (niente regressi).
@@ -2150,6 +2276,7 @@ function Hub({ bio, air, vidya, magi, resonance, setView, pBio, pAir, pVidya, pr
       <div class="r-identity-count">${identityCountdown.missing}</div>
       <div class="r-identity-text">${identityCountdown.missing === 1 ? "passaggio" : "passaggi"} verso <b>${identityCountdown.goal}</b></div>
     </div>`}
+    ${postura && html`<${PosturaIndicator} postura=${postura} onNav=${setView} />`}
     <${AnochinRing} bioN=${bio.length} airN=${air.length} vidyaN=${vidya.length} onNav=${setView} />
     <p class="r-hero-sub">Tre pilastri, un ciclo. Tocca un nodo per aprire il pilastro.</p>
     <div class="r-hub-grid">
@@ -2174,7 +2301,10 @@ function BioView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, di
   const [tab, setTab] = useState("log");
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(todayISO()); const [weight, setWeight] = useState(""); const [sleep, setSleep] = useState(""); const [notes, setNotes] = useState("");
-  const submit = () => { if (!weight && !sleep && !notes) return; onAdd({ id: uid(), date, weight, sleep, notes }); setWeight(""); setSleep(""); setNotes(""); setOpen(false); };
+  // GESTO B.1 — la vibrazione parte per PRIMA, sincrona dentro il gestore del tocco: e' la
+  // conferma percepibile, e deve arrivare prima di qualunque altra cosa. Poi la voce entra
+  // nell'elenco e la postura si aggiorna, tutto locale, zero rete.
+  const submit = () => { if (!weight && !sleep && !notes) return; vibra("bio"); onAdd({ id: uid(), date, weight, sleep, notes }); setWeight(""); setSleep(""); setNotes(""); setOpen(false); };
   return html`<div class="r-screen">
     <${SectionHeader} color=${C.bio} title="BIO" subtitle="Sostegno biologico dell'azione" />
     <${SubTabs} color=${C.bio} tabs=${[{ key: "log", label: "Log" }, { key: "percorsi", label: "Percorsi" }]} active=${tab} setActive=${setTab} />
@@ -2200,7 +2330,7 @@ function VidyaView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, 
   const [tab, setTab] = useState("log");
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(todayISO()); const [title, setTitle] = useState(""); const [notes, setNotes] = useState("");
-  const submit = () => { if (!title) return; onAdd({ id: uid(), date, title, notes }); setTitle(""); setNotes(""); setOpen(false); };
+  const submit = () => { if (!title) return; vibra("vidya"); onAdd({ id: uid(), date, title, notes }); setTitle(""); setNotes(""); setOpen(false); };
   return html`<div class="r-screen">
     <${SectionHeader} color=${C.vidya} title="VIDYA" subtitle="Attrito cognitivo, artefatto per ciclo" />
     <${SubTabs} color=${C.vidya} tabs=${[{ key: "log", label: "Log" }, { key: "percorsi", label: "Percorsi" }]} active=${tab} setActive=${setTab} />
@@ -2232,7 +2362,7 @@ const SEME_STATUS_LABELS = {
 function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed, onDiscussInShell, onAdvance, onArchiveSeed }) {
   const [newContent, setNewContent] = useState("");
   const [advancing, setAdvancing] = useState(false);
-  const submit = () => { if (!newContent.trim()) return; onAddSeed(newContent.trim()); setNewContent(""); };
+  const submit = () => { if (!newContent.trim()) return; vibra("air"); onAddSeed(newContent.trim()); setNewContent(""); };
   const lastLogNote = (s) => {
     const log = (s.status === "executing" || s.status === "gated") ? s.executionLog : s.researchLog;
     return (log && log.length) ? log[log.length - 1].note : "Nessun avanzamento ancora — attende l'apertura della prossima sessione Shell.";
@@ -2302,7 +2432,7 @@ function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, di
   const [tab, setTab] = useState("log");
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(todayISO()); const [title, setTitle] = useState(""); const [status, setStatus] = useState("idea"); const [notes, setNotes] = useState("");
-  const submit = () => { if (!title) return; onAdd({ id: uid(), date, title, status, notes }); setTitle(""); setNotes(""); setStatus("idea"); setOpen(false); };
+  const submit = () => { if (!title) return; vibra("air"); onAdd({ id: uid(), date, title, status, notes }); setTitle(""); setNotes(""); setStatus("idea"); setOpen(false); };
   const [task, setTask] = useState(""); const [running, setRunning] = useState(false); const [result, setResult] = useState(""); const [error, setError] = useState("");
   const runAgent = async () => { if (!task.trim() || running) return; setRunning(true); setError(""); setResult("");
     try { setResult(await runAirAgent(task.trim(), settings, pushDebugLog, memory?.air?.corrente)); } catch (e) { setError(e.message); } finally { setRunning(false); } };
@@ -3872,6 +4002,12 @@ function App() {
     return () => clearTimeout(t);
   }, []); // intenzionalmente solo al mount; legge stato fresco via stateRef
 
+  // GESTO A.2 — la postura si calcola qui, in modo sincrono, da stato che e' gia' in memoria perche'
+  // caricato da localStorage al primo render. Sta quindi PRIMA di qualunque rete per costruzione,
+  // non per accordo: non c'e' un punto in cui potrebbe aspettare qualcosa.
+  // Si ricalcola quando cambiano i dati che la compongono — compreso subito dopo una nuova voce,
+  // che e' cio' che fa muovere l'indicatore nel gesto B senza aspettare niente.
+  const postura = calcolaPostura({ bio, air, vidya, pBio, pAir, pVidya, memory });
   const digestBio = `Kernel: ${kernel.content.slice(0, 300)}\nUltime voci BIO: ${bio.slice(0, 5).map((e) => e.notes || e.weight).join("; ")}\nPercorsi esistenti: ${pBio.map((p) => p.title).join(", ") || "nessuno"}`;
   const digestAir = `Kernel: ${kernel.content.slice(0, 300)}\nUltimi vettori AIR: ${air.slice(0, 5).map((e) => `${e.title} (${e.status})`).join("; ")}\nPercorsi esistenti: ${pAir.map((p) => p.title).join(", ") || "nessuno"}`;
   const digestVidya = `Kernel: ${kernel.content.slice(0, 300)}\nUltimi log VIDYA: ${vidya.slice(0, 5).map((e) => e.title).join("; ")}\nPercorsi esistenti: ${pVidya.map((p) => p.title).join(", ") || "nessuno"}`;
@@ -3886,7 +4022,7 @@ function App() {
     ${!ghostProfile && html`<${OnboardingView} onComplete=${saveGhostProfile} settings=${settings} driveRecovery=${driveRecovery} onRecoverFromDrive=${recoverFromDrive} />`}
     ${ghostProfile && html`<div>
     <${FeedbackWidget} view=${view} pushDebugLog=${pushDebugLog} />
-    ${view === "hub" && html`<${Hub} bio=${bio} air=${air} vidya=${vidya} magi=${magi} resonance=${resonance} setView=${setView} pBio=${pBio} pAir=${pAir} pVidya=${pVidya} proactiveHint=${resonance.worthSurfacing} />`}
+    ${view === "hub" && html`<${Hub} bio=${bio} air=${air} vidya=${vidya} magi=${magi} resonance=${resonance} setView=${setView} pBio=${pBio} pAir=${pAir} pVidya=${pVidya} proactiveHint=${resonance.worthSurfacing} postura=${postura} />`}
     ${view === "shell" && html`<${ShellView} messages=${shellChat} setMessages=${setShellChat} settings=${settings} addBio=${addBio} addAir=${addAir} addVidya=${addVidya}
       percorsi=${{ bio: pBio, air: pAir, vidya: pVidya }} setPercorsi=${{ bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }}
       memory=${memory} updateMemoria=${updateMemoria} styleMemory=${styleMemory} setStyleMemory=${setStyleMemory} bio=${bio} air=${air} vidya=${vidya} pushDebugLog=${pushDebugLog}

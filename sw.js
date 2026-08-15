@@ -1,10 +1,13 @@
-const CACHE = "resonance-v4"; // bump di versione: invalida qualunque cache residua e serve il nuovo app.js
+const CACHE = "resonance-v5"; // bump di versione: invalida qualunque cache residua e serve il nuovo app.js
 const SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
   "./config.js",
+  "./vendor/preact.mjs",
+  "./vendor/preact-hooks.mjs",
+  "./vendor/htm.mjs",
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
