@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-16 · piano-di-controllo-blocchi-2-e-5";
+const APP_BUILD = "2026-08-16 · piano-di-controllo-blocco-3";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -315,6 +315,33 @@ const AZIONI_CONVERSAZIONALI = [
     richiedeGate: false,
     reversibile: true,
     accesaDiDefault: true,
+  },
+  // BLOCCO 3 (16/08/2026) — CLASSE B: il mondo digitale gia' autorizzato. Le credenziali ci sono
+  // gia' (stesso login Google di Drive). Cio' che cambia rispetto alla Classe A non e' la classe:
+  // e' la REVERSIBILITA'. Un evento di calendario si cancella; una mail partita non torna. Per
+  // questo l'evento ha un gate leggero (mostro e confermi) e la mail ha il gate pieno di C.10
+  // (testo integrale e indirizzo per esteso sotto gli occhi, e non parte finche' non tocchi quel
+  // pulsante li'). Entrambe nascono SPENTE (§8): una capacita' che tocca il mondo esterno non si
+  // accende da sola il giorno del rilascio.
+  {
+    id: "crea_evento_calendario",
+    classe: "B",
+    etichetta: "Mettere un evento sul calendario",
+    descrizione: "Crea un appuntamento o un promemoria sul calendario Google del Ghost. Usa questa quando chiede di segnarsi qualcosa a una data o a un'ora. NON calcolare tu la data e NON scrivere date in cifre: copia le sue parole cosi' come le ha dette (\"domani alle 15\", \"martedi' prossimo\"), la data la ricava il programma.",
+    parametri: { contenuto: "string — nella forma \"titolo | quando\". Esempio: \"chiamare il commercialista | domani alle 15\". Nel campo quando copia le parole del Ghost, non tradurle in una data." },
+    richiedeGate: true,
+    reversibile: true,   // un evento si modifica e si cancella: gate leggero
+    accesaDiDefault: false,
+  },
+  {
+    id: "invia_mail",
+    classe: "B",
+    etichetta: "Inviare una mail",
+    descrizione: "Scrive e invia una mail dall'indirizzo Gmail del Ghost. Usa questa SOLO quando chiede esplicitamente di mandare una mail a qualcuno. Se non ha detto l'indirizzo lascialo vuoto: lo scrivera' lui, non inventarlo mai. Il testo scrivilo per intero, pronto da spedire.",
+    parametri: { contenuto: "string — nella forma \"indirizzo | oggetto | testo completo\". Se l'indirizzo non lo ha detto, lascia vuoto prima della prima barra. Esempio: \" | Disdetta di giovedi | Buongiorno, purtroppo devo disdire...\"" },
+    richiedeGate: true,
+    reversibile: false,  // irreversibile: gate pieno C.10
+    accesaDiDefault: false,
   },
 ];
 // D1 (approvata dal Ghost, 16/08/2026) — modello piu' capace SOLO per il turno in cui si decide
@@ -1572,9 +1599,10 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Ritorno aptico (dal 15/08/2026): quando il Ghost registra qualcosa su un pilastro il telefono vibra subito, con una firma diversa per pilastro — un colpo per BIO, due per AIR, tre per VIDYA — cosi' si riconosce al tatto su cosa si e' appena scritto. La voce compare e la postura si aggiorna nello stesso istante, senza aspettare nessuna rete.
 - Piano di controllo conversazionale (dal 16/08/2026): lo Shell sa quali percorsi e Semi esistono davvero — prima non lo sapeva, e per questo non riusciva a riprenderne uno. Se il Ghost dice "riprendi quello sul sonno", lo cerca fra quelli che esistono senza chiedere niente a nessun modello, e se ne trova due chiede quale invece di sceglierne uno. Quando ne apre uno, la chat mostra sempre in alto "stiamo lavorando su: [nome]", che si chiude con un tocco e scade da solo dopo otto ore. Ogni azione viene mostrata PRIMA di essere eseguita e si annulla anche dopo. Le capacita' si accendono e spengono una per una in Setup, e ogni azione proposta, confermata o annullata finisce in un registro con l'orario.
 - Azioni parlando (dal 16/08/2026): oltre a riprendere un percorso, lo Shell puo' ora — sempre chiedendo conferma prima — segnare una voce su un pilastro, salvare un'idea come Seme AIR, cercare davvero nella memoria cosa si era detto su un argomento, e avanzare sul percorso gia' aperto. Ogni azione viene mostrata prima di essere eseguita e si annulla anche dopo. Una sola azione per messaggio. Quando cerca nella memoria dice sempre dove ha guardato, e porta su anche uno o due frammenti nati lo stesso giorno anche se non c'entrano — servono a far venire in mente cose per accostamento, non per somiglianza.
+- Calendario e mail parlando (dal 16/08/2026, NASCONO SPENTE in Setup): lo Shell sa mettere un evento sul Calendar e inviare una mail da Gmail, ma solo dopo che il Ghost ha acceso quella voce e ha confermato quello specifico invio. Un evento si cancella, una mail no: l'evento chiede una conferma semplice, la mail mostra prima testo integrale e indirizzo per esteso. Le date le ricava il programma dalle parole del Ghost, mai il modello, e le mostra per esteso (giorno, data, ora). Dopo ogni azione rilegge dalla fonte e, se non ci riesce, dichiara fallimento invece di dire "fatto". Un invio senza risposta resta "incerto" e non viene mai rispedito da solo.
 - Tetto di spesa (Setup): al raggiungimento di 5 dollari nel mese si fermano SOLO le cose che partono da sole (Semi che avanzano, Simbiosi). La chat resta utilizzabile: il tetto protegge dalle spese che il Ghost non vede partire, non da quelle che sta decidendo lui in quel momento.
 - Backup e ripristino dei dati (Setup): scarica in un unico file tutto lo stato locale (log dei pilastri, percorsi, memoria, semi, kernel, profilo, impostazioni) e sa anche rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo e ricarica l'app, previa conferma.
-Capacità NON disponibili in questa app (elenco a mano, mantenuto qui insieme alle presenti — non generato dinamicamente, per lo stesso motivo per cui il Master Index andava mantenuto a mano: un elenco derivato in un punto diverso dal codice reale si disallinea): notifiche push, promemoria o azioni che si attivano da soli senza che il Ghost apra l'app, invio automatico di messaggi/email/post senza conferma esplicita del Ghost (le "Braccia" preparano sempre solo bozze pronte da copiare o eventi Calendar da confermare, mai spedizione automatica), pubblicazione automatica su social o piattaforme esterne, esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost quando il gate lo richiede.`;
+Capacità NON disponibili in questa app (elenco a mano, mantenuto qui insieme alle presenti — non generato dinamicamente, per lo stesso motivo per cui il Master Index andava mantenuto a mano: un elenco derivato in un punto diverso dal codice reale si disallinea): notifiche push, promemoria o azioni che si attivano da soli senza che il Ghost apra l'app, invio automatico di messaggi/email/post senza conferma esplicita del Ghost (dal 16/08/2026 lo Shell SA inviare una mail e creare un evento, ma solo se il Ghost ha acceso quella capacità in Setup e solo dopo che ha confermato quello specifico invio guardandone il testo per esteso: nessuna spedizione parte da un processo automatico, da un Seme che avanza o da un "sì" detto in un messaggio precedente), pubblicazione automatica su social o piattaforme esterne, esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost quando il gate lo richiede.`;
 
 //──────────────────────────────────────────────────────────
 // SHELL — ciclo di percezione-azione (Manifesto V3 §3: accoppiamento continuo, non predici-e-verifica)
@@ -1629,6 +1657,331 @@ async function sendGmail(to, subject, body) {
   });
   if (!res.ok) { const errBody = await res.json().catch(() => null); throw new Error(errBody?.error?.message || `Errore invio Gmail (${res.status})`); }
   return res.json();
+}
+
+//──────────────────────────────────────────────────────────
+// BLOCCO 3 — CLASSE B: calendario e posta (16/08/2026)
+//──────────────────────────────────────────────────────────
+// Quattro pezzi, e nessuno dei quattro e' decorativo:
+//  1. le date le calcola il CODICE, mai il modello (§3 del piano: "martedi' prossimo" e' l'errore
+//     piu' frequente dei modelli e il piu' invisibile — invisibile perche' la risposta sembra giusta);
+//  2. dopo ogni azione esterna si RILEGGE il risultato dalla fonte e lo si mostra (§3.1). Se la
+//     rilettura non riesce, si dichiara fallimento: mai dire "fatto" per cio' che non si e' riletto;
+//  3. IDEMPOTENZA (§3.2): la chiave nasce alla proposta, e prima di rifare si guarda se risulta
+//     gia' fatta. Una mail spedita due volte e' un danno vero e non recuperabile;
+//  4. i vincoli dichiarati si controllano PRIMA di mostrare al gate (§3.3), non dopo.
+
+// ── 1. Le date, ricavate dal codice ──────────────────────
+// Il modello riceve l'ordine di NON tradurre le date: copia le parole del Ghost ("domani alle 15")
+// e basta. Qui si trasformano in un istante preciso, con regole leggibili e verificabili una per una.
+const GIORNI_IT = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"];
+const MESI_IT = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
+// Confronto senza accenti: il Ghost scrive indifferentemente "martedì" e "martedi", e una data
+// persa per un accento sarebbe il piu' stupido dei modi di sbagliare un appuntamento.
+function senzaAccenti(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
+// Un solo posto dove si decide cos'e' un indirizzo valido, usato sia dal gate sia dall'esecutore.
+const EMAIL_VALIDA_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const due = (n) => String(n).padStart(2, "0");
+// ISO LOCALE, non UTC. createCalendarEvent manda l'ora insieme a timeZone "Europe/Rome": l'ora da
+// mandare e' quella dell'orologio del Ghost. new Date().toISOString() darebbe l'ora di Greenwich e
+// d'estate sposterebbe ogni appuntamento di due ore — errore silenzioso, del tipo peggiore.
+function isoLocale(d) { return `${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}T${due(d.getHours())}:${due(d.getMinutes())}:00`; }
+const NUMERI_IT = { un: 1, uno: 1, una: 1, due: 2, tre: 3, quattro: 4, cinque: 5, sei: 6, sette: 7, otto: 8, nove: 9, dieci: 10, quindici: 15 };
+// ALTRO ESITO DEL GATE 3: new Date(2026, 1, 30) non esplode, scivola al 2 marzo. Un "30 febbraio"
+// diventava cosi' un appuntamento reale in un altro mese, senza che nessuno se ne accorgesse.
+// Qui si verifica che la data costruita sia ancora quella chiesta; se non lo e', si rifiuta.
+function giornoCoerente(d, anno, mese, giorno) {
+  return d.getFullYear() === anno && d.getMonth() === mese && d.getDate() === giorno;
+}
+// Restituisce SEMPRE un oggetto, mai un'eccezione: chi chiama deve poter dire al Ghost cosa non ha
+// capito, invece di mostrargli un errore tecnico.
+//   { ok:false, motivo }                                   — non c'e' una data ricavabile
+//   { ok:true, inizioISO, fineISO, tuttoIlGiorno, ambiguo, motivoAmbiguita }
+function normalizzaData(espressione, adesso = new Date()) {
+  let t = senzaAccenti(espressione).replace(/\s+/g, " ").trim();
+  if (!t) return { ok: false, motivo: "non mi hai detto quando" };
+  let ambiguo = false, motivoAmbiguita = "";
+  // MISURATO DAL GATE 3 (16/08/2026) — questo controllo non c'era e il test l'ha scoperto:
+  // "ieri alle 15" finiva nel ramo "c'e' solo l'ora" e diventava OGGI alle 15. Cioe' una parola
+  // che il codice non conosce veniva ignorata in silenzio e l'appuntamento nasceva nel giorno
+  // sbagliato — esattamente la classe di errore che questo blocco esiste per impedire. Le
+  // espressioni al passato ora si rifiutano dichiarandolo, invece di essere scavalcate.
+  if (/\b(ieri|l'altro ieri|scors[ao]|passat[ao]|fa)\b/.test(t)) {
+    return { ok: false, motivo: `"${String(espressione).trim()}" indica un momento passato: sul calendario si mettono cose future` };
+  }
+
+  // ORA — si estrae per prima e si toglie dal testo, cosi' il "15" di "alle 15" non viene poi
+  // riletto come il giorno 15 del mese.
+  let ore = null, minuti = 0;
+  let m = t.match(/\b(?:alle|all'|ore|h)\s*([0-2]?\d)(?:[:.,]([0-5]\d))?\b/);
+  if (!m) m = t.match(/\b([0-2]?\d)[:.]([0-5]\d)\b/);
+  if (m) {
+    ore = Number(m[1]); minuti = m[2] ? Number(m[2]) : 0;
+    t = (t.slice(0, m.index) + " " + t.slice(m.index + m[0].length)).replace(/\s+/g, " ").trim();
+    if (/\be mezz[ao]\b/.test(t)) minuti = 30;
+    if (/\be un quarto\b/.test(t)) minuti = 15;
+    if (ore < 12 && /\b(di pomeriggio|del pomeriggio|di sera|della sera|pomeriggio|sera)\b/.test(t)) ore += 12;
+  } else if (/\bstasera\b/.test(t)) { ore = 21; }
+  else if (/\bstamattina|stamane|mattina\b/.test(t)) { ore = 9; }
+  else if (/\bmezzogiorno\b/.test(t)) { ore = 12; }
+  if (ore !== null && (ore > 23 || minuti > 59)) return { ok: false, motivo: `"${ore}:${due(minuti)}" non e' un orario valido` };
+
+  // GIORNO — in ordine di specificita': prima quello che il Ghost ha detto in chiaro, poi le
+  // espressioni relative, per ultimo il nome del giorno della settimana (il caso ambiguo).
+  const base = new Date(adesso.getFullYear(), adesso.getMonth(), adesso.getDate());
+  let giorno = null;
+  let mm = t.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
+  if (mm) {
+    const g = Number(mm[1]), me = Number(mm[2]);
+    let anno = mm[3] ? Number(mm[3]) : adesso.getFullYear();
+    if (anno < 100) anno += 2000;
+    if (me < 1 || me > 12 || g < 1 || g > 31) return { ok: false, motivo: `"${mm[0]}" non e' una data valida` };
+    giorno = new Date(anno, me - 1, g);
+    if (!giornoCoerente(giorno, anno, me - 1, g)) return { ok: false, motivo: `"${mm[0]}" non esiste sul calendario` };
+  }
+  if (!giorno) {
+    mm = t.match(new RegExp(`\\b(\\d{1,2})\\s+(${MESI_IT.map(senzaAccenti).join("|")})\\b(?:\\s+(\\d{4}))?`));
+    if (mm) {
+      const g = Number(mm[1]), me = MESI_IT.map(senzaAccenti).indexOf(mm[2]);
+      let anno = mm[3] ? Number(mm[3]) : adesso.getFullYear();
+      giorno = new Date(anno, me, g);
+      if (!giornoCoerente(giorno, anno, me, g)) return { ok: false, motivo: `"${mm[0]}" non esiste sul calendario` };
+      // "19 agosto" detto il 20 agosto vuol dire l'anno prossimo. Si sposta, ma lo si dichiara.
+      if (!mm[3] && giorno.getTime() < base.getTime()) {
+        giorno = new Date(anno + 1, me, g);
+        ambiguo = true; motivoAmbiguita = "quella data quest'anno e' gia' passata: ho inteso l'anno prossimo";
+      }
+    }
+  }
+  if (!giorno && /\bdopodomani\b/.test(t)) giorno = new Date(base.getTime() + 2 * 86400000);
+  if (!giorno && /\bdomani\b/.test(t)) giorno = new Date(base.getTime() + 86400000);
+  if (!giorno && /\b(oggi|stasera|stamattina|stamane|stanotte)\b/.test(t)) giorno = new Date(base.getTime());
+  if (!giorno) {
+    mm = t.match(/\b(?:fra|tra)\s+(\d+|un|uno|una|due|tre|quattro|cinque|sei|sette|otto|nove|dieci|quindici)\s+(giorni?|settiman[ae]|mes[ei])\b/);
+    if (mm) {
+      const n = /^\d+$/.test(mm[1]) ? Number(mm[1]) : (NUMERI_IT[mm[1]] || 1);
+      if (/^giorn/.test(mm[2])) giorno = new Date(base.getTime() + n * 86400000);
+      else if (/^settiman/.test(mm[2])) giorno = new Date(base.getTime() + n * 7 * 86400000);
+      else { giorno = new Date(base.getFullYear(), base.getMonth() + n, base.getDate()); }
+    }
+  }
+  if (!giorno) {
+    const indice = GIORNI_IT.map(senzaAccenti).findIndex((g) => new RegExp(`\\b${g}\\b`).test(t));
+    if (indice >= 0) {
+      // Regola dichiarata: il nome di un giorno significa la sua PRIMA ricorrenza dopo oggi.
+      // Mai oggi stesso, anche se cade oggi: "vediamoci martedi'" detto di martedi' non e' fra un'ora.
+      let delta = (indice - base.getDay() + 7) % 7;
+      if (delta === 0) delta = 7;
+      giorno = new Date(base.getTime() + delta * 86400000);
+      // "martedi' prossimo" e' genuinamente ambiguo fra parlanti italiani: per alcuni e' questo
+      // martedi', per altri quello della settimana dopo. Non si indovina: si sceglie la regola
+      // dichiarata sopra e SI AVVISA, perche' la card mostra comunque giorno e data per esteso.
+      if (/\bprossim[ao]\b/.test(t)) {
+        ambiguo = true;
+        motivoAmbiguita = "hai detto \"prossimo\": ho inteso la prima ricorrenza, non quella della settimana dopo";
+      }
+    }
+  }
+  // Solo l'ora, senza giorno: oggi se e' ancora nel futuro, altrimenti domani. Sempre dichiarato.
+  if (!giorno && ore !== null) {
+    const oggiConOra = new Date(base.getFullYear(), base.getMonth(), base.getDate(), ore, minuti);
+    giorno = oggiConOra.getTime() > adesso.getTime() ? new Date(base.getTime()) : new Date(base.getTime() + 86400000);
+    ambiguo = true; motivoAmbiguita = "non hai detto il giorno: ho inteso quello qui sotto";
+  }
+  if (!giorno) return { ok: false, motivo: "non sono riuscito a ricavare una data da quello che hai detto" };
+
+  const tuttoIlGiorno = ore === null;
+  const inizio = new Date(giorno.getFullYear(), giorno.getMonth(), giorno.getDate(), tuttoIlGiorno ? 0 : ore, tuttoIlGiorno ? 0 : minuti);
+  if (Number.isNaN(inizio.getTime())) return { ok: false, motivo: "la data che ho ricavato non e' valida" };
+  if (inizio.getTime() < adesso.getTime() - 5 * 60000) {
+    return { ok: false, motivo: `la data che ho ricavato (${formatDataPerEsteso(isoLocale(inizio), tuttoIlGiorno)}) e' gia' passata` };
+  }
+  const fine = tuttoIlGiorno ? new Date(inizio.getTime() + 86400000) : new Date(inizio.getTime() + 3600000);
+  return { ok: true, inizioISO: isoLocale(inizio), fineISO: isoLocale(fine), tuttoIlGiorno, ambiguo, motivoAmbiguita };
+}
+// Giorno della settimana, data e ora PER ESTESO — la forma richiesta dal piano. Scritta a mano
+// invece che con toLocaleString perche' deve dare la stessa identica stringa su ogni telefono e
+// dentro i test: e' il testo su cui il Ghost decide se confermare.
+function formatDataPerEsteso(iso, tuttoIlGiorno) {
+  const d = new Date(String(iso || ""));
+  if (Number.isNaN(d.getTime())) return String(iso || "");
+  const testa = `${GIORNI_IT[d.getDay()]} ${d.getDate()} ${MESI_IT[d.getMonth()]} ${d.getFullYear()}`;
+  return tuttoIlGiorno ? `${testa} (tutto il giorno)` : `${testa} alle ${due(d.getHours())}:${due(d.getMinutes())}`;
+}
+
+// ── 2. Controllo dei vincoli PRIMA del gate (§3.3) ───────
+// Una mail e' output generato dal sistema: il vincolo sull'identita' professionale vale per intero.
+// Non si redige in silenzio (su una mail sarebbe peggio del problema: il Ghost firmerebbe un testo
+// bucato senza saperlo): si BLOCCA e si dice quale parola l'ha fatto scattare.
+// Riusa redactProfessionalIdentity — stessa e unica fonte di verita', cosi' i due controlli non
+// possono divergere col tempo.
+function controllaVincoliInUscita(testo, profile = CURRENT_GHOST_PROFILE) {
+  const originale = String(testo || "");
+  const prof = normalizeGhostProfile(profile);
+  if (!originale.trim() || !prof?.hasProfessionalConstraint) return { ok: true, violazioni: [] };
+  if (redactProfessionalIdentity(originale, prof) === originale) return { ok: true, violazioni: [] };
+  // C'e' una violazione: si cerca di NOMINARLA, parola per parola, invece di dire "c'e' qualcosa".
+  const violazioni = [];
+  for (const parola of new Set(originale.match(/[\p{L}\p{N}'’-]+/gu) || [])) {
+    if (redactProfessionalIdentity(parola, prof) !== parola) violazioni.push(parola);
+  }
+  if (!violazioni.length) violazioni.push("un'espressione che richiama la tua attività professionale");
+  return { ok: false, violazioni };
+}
+
+// ── 3. Idempotenza (§3.2) ────────────────────────────────
+// La chiave nasce alla PROPOSTA ed e' deterministica sul contenuto: gli stessi oggetto e testo
+// danno la stessa chiave, quindi un secondo tentativo si riconosce anche dopo una ricarica dell'app.
+const ESECUZIONI_KEY = "azioni-esecuzioni";
+const ESECUZIONI_TETTO = 200;
+function hashStabile(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+function chiaveIdempotenza(tipo, parti) {
+  const corpo = (parti || []).map((p) => String(p == null ? "" : p).trim().toLowerCase().replace(/\s+/g, " ")).join(" ");
+  return `${tipo}-${hashStabile(tipo + " " + corpo)}`;
+}
+// L'indirizzo si aggiunge alla chiave solo al momento dell'esecuzione: lo stesso testo mandato a
+// due persone diverse sono due invii legittimi, non un doppione.
+function chiaveConDestinatario(chiaveBase, indirizzo) {
+  return `${chiaveBase}-${hashStabile(String(indirizzo || "").trim().toLowerCase())}`;
+}
+function leggiEsecuzioni() { const v = loadKey(ESECUZIONI_KEY, {}); return (v && typeof v === "object") ? v : {}; }
+function leggiEsecuzione(chiave) { return leggiEsecuzioni()[chiave] || null; }
+function segnaEsecuzione(chiave, voce) {
+  const tutte = leggiEsecuzioni();
+  tutte[chiave] = { ...(tutte[chiave] || {}), ...voce, aggiornata: new Date().toISOString() };
+  const chiavi = Object.keys(tutte);
+  if (chiavi.length > ESECUZIONI_TETTO) {
+    chiavi.sort((a, b) => String(tutte[a].aggiornata).localeCompare(String(tutte[b].aggiornata)));
+    for (const k of chiavi.slice(0, chiavi.length - ESECUZIONI_TETTO)) delete tutte[k];
+  }
+  saveKey(ESECUZIONI_KEY, tutte);
+  return tutte[chiave];
+}
+
+// ── 4. Verifica di ritorno (§3.1) ────────────────────────
+// Non ci si fida della risposta ricevuta: si torna a chiedere alla fonte e si guarda cosa c'e'
+// davvero. E' C.6 applicata alle azioni invece che al codice.
+async function rileggiEventoDallaFonte(eventId) {
+  if (!eventId) return { ok: false, motivo: "il calendario non ha restituito nessun identificativo" };
+  const res = await driveFetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`);
+  if (!res.ok) return { ok: false, motivo: `il calendario ha risposto ${res.status}` };
+  const d = await res.json().catch(() => null);
+  if (!d || d.error || !d.id) return { ok: false, motivo: d?.error?.message || "risposta del calendario non leggibile" };
+  if (d.status === "cancelled") return { ok: false, motivo: "l'evento risulta cancellato" };
+  return { ok: true, id: d.id, titolo: d.summary || "", inizio: d.start?.dateTime || d.start?.date || "", tuttoIlGiorno: !!d.start?.date, link: d.htmlLink || "" };
+}
+async function rileggiMailDallaFonte(messageId) {
+  if (!messageId) return { ok: false, motivo: "Gmail non ha restituito nessun identificativo" };
+  const url = `https://www.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=metadata&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date`;
+  const res = await driveFetch(url);
+  if (!res.ok) return { ok: false, motivo: `Gmail ha risposto ${res.status}` };
+  const d = await res.json().catch(() => null);
+  if (!d || d.error || !d.id) return { ok: false, motivo: d?.error?.message || "risposta di Gmail non leggibile" };
+  const h = {};
+  for (const x of (d.payload?.headers || [])) h[String(x.name || "").toLowerCase()] = x.value;
+  return { ok: true, id: d.id, a: h.to || "", oggetto: h.subject || "", quando: h.date || "", inviata: (d.labelIds || []).includes("SENT") };
+}
+
+// ── Gli esecutori di Classe B ────────────────────────────
+// confermaEsplicita non e' una formalita': e' il modo di rendere VERIFICABILE §7 dell'architettura
+// ("nessuna azione di Classe B puo' essere eseguita da un processo schedulato"). Solo il gestore del
+// tocco sul pulsante del gate passa true. Qualunque altro chiamante — un timer, un effetto, un
+// avanzamento automatico dei Semi — riceve un rifiuto, non un invio.
+async function creaEventoConVerifica(evento, chiave, confermaEsplicita) {
+  if (confermaEsplicita !== true) return { esito: "rifiutata", motivo: "manca la conferma esplicita: questa azione non parte da sola" };
+  const vincoli = controllaVincoliInUscita([evento?.title, evento?.notes].filter(Boolean).join("\n"));
+  if (!vincoli.ok) return { esito: "bloccata-dai-vincoli", violazioni: vincoli.violazioni };
+  const gia = leggiEsecuzione(chiave);
+  if (gia && gia.stato !== "fallita") return { esito: "gia-eseguita", precedente: gia };
+  segnaEsecuzione(chiave, { stato: "in-corso", tipo: "calendario", descrizione: evento?.title || "" });
+  let creato = null;
+  try { creato = await createCalendarEvent(evento); }
+  catch (e) {
+    // Un evento e' reversibile: se il tentativo fallisce si puo' ritentare senza rischio, perche'
+    // al massimo nasce un doppione cancellabile. Per questo qui "fallita" e non "incerta".
+    segnaEsecuzione(chiave, { stato: "fallita", errore: e.message });
+    return { esito: "fallita", motivo: e.message };
+  }
+  segnaEsecuzione(chiave, { stato: "eseguita", idEsterno: creato?.id || null });
+  let v;
+  try { v = await rileggiEventoDallaFonte(creato?.id || ""); }
+  catch (e) { v = { ok: false, motivo: e.message }; }
+  if (!v.ok) {
+    segnaEsecuzione(chiave, { stato: "eseguita-non-verificata", motivoVerifica: v.motivo });
+    return { esito: "non-verificata", idEsterno: creato?.id || null, motivo: v.motivo };
+  }
+  const atteso = evento.allDay ? String(evento.startISO).slice(0, 10) : String(evento.startISO).slice(0, 16);
+  const trovato = v.tuttoIlGiorno ? String(v.inizio).slice(0, 10) : String(v.inizio).slice(0, 16);
+  if (trovato !== atteso || String(v.titolo).trim() !== String(evento.title).trim()) {
+    segnaEsecuzione(chiave, { stato: "eseguita-non-verificata", motivoVerifica: "quello che c'e' sul calendario non combacia con quello che avevi confermato" });
+    return { esito: "non-combacia", idEsterno: v.id, letto: v, atteso };
+  }
+  segnaEsecuzione(chiave, { stato: "verificata", idEsterno: v.id });
+  return { esito: "verificata", letto: v };
+}
+async function inviaMailConVerifica({ a, oggetto, corpo, chiave, confermaEsplicita, forza = false }) {
+  if (confermaEsplicita !== true) return { esito: "rifiutata", motivo: "manca la conferma esplicita: una mail non parte da sola" };
+  if (!EMAIL_VALIDA_RE.test(String(a || "").trim())) return { esito: "rifiutata", motivo: "l'indirizzo non e' un indirizzo valido" };
+  const vincoli = controllaVincoliInUscita([oggetto, corpo].join("\n"));
+  if (!vincoli.ok) return { esito: "bloccata-dai-vincoli", violazioni: vincoli.violazioni };
+  const gia = leggiEsecuzione(chiave);
+  if (gia && !forza) return { esito: "gia-eseguita", precedente: gia };
+  segnaEsecuzione(chiave, { stato: "in-corso", tipo: "mail", descrizione: `${a} — ${oggetto}` });
+  let inviata = null;
+  try { inviata = await sendGmail(a, oggetto || "(nessun oggetto)", corpo); }
+  catch (e) {
+    // Qui sta il punto di §3.2. Se la rete cade DOPO che la mail e' partita ma PRIMA della
+    // risposta, questo ramo scatta lo stesso — e la mail e' gia' fuori. Segnare "fallita"
+    // permetterebbe al secondo tentativo di rispedirla: mai. Si segna "incerta", il secondo
+    // tentativo si ferma, e resta al Ghost la scelta consapevole di forzare.
+    segnaEsecuzione(chiave, { stato: "incerta", errore: e.message });
+    return { esito: "incerta", motivo: e.message };
+  }
+  segnaEsecuzione(chiave, { stato: "eseguita", idEsterno: inviata?.id || null });
+  let v;
+  try { v = await rileggiMailDallaFonte(inviata?.id || ""); }
+  catch (e) { v = { ok: false, motivo: e.message }; }
+  if (!v.ok) {
+    segnaEsecuzione(chiave, { stato: "eseguita-non-verificata", motivoVerifica: v.motivo });
+    return { esito: "non-verificata", idEsterno: inviata?.id || null, motivo: v.motivo };
+  }
+  // Combacia? Si confronta l'indirizzo davvero registrato da Gmail, non quello che credevamo.
+  const destinatarioLetto = senzaAccenti(v.a).includes(senzaAccenti(a));
+  if (!destinatarioLetto) {
+    segnaEsecuzione(chiave, { stato: "eseguita-non-verificata", motivoVerifica: "il destinatario riletto da Gmail non e' quello confermato" });
+    return { esito: "non-combacia", idEsterno: v.id, letto: v };
+  }
+  segnaEsecuzione(chiave, { stato: "verificata", idEsterno: v.id });
+  return { esito: "verificata", letto: v };
+}
+// Prepara la proposta di Classe B: e' QUI che la data viene ricavata dal codice e che i vincoli
+// vengono controllati — prima che qualunque cosa venga mostrata al gate, come chiede §3.3.
+// E' anche qui che nasce la chiave di idempotenza (§3.2): alla proposta, non all'esecuzione.
+// Torna un oggetto vuoto per tutto cio' che non e' di Classe B, cosi' il chiamante non deve sapere
+// quali azioni siano di che classe.
+function preparaClasseB(azioneId, parametro, adesso = new Date()) {
+  const grezzo = String(parametro || "");
+  if (azioneId === "crea_evento_calendario") {
+    const pezzi = grezzo.split("|");
+    const titolo = (pezzi[0] || "").trim();
+    const quandoDetto = pezzi.slice(1).join("|").trim();
+    const data = normalizzaData(quandoDetto, adesso);
+    const vincoli = controllaVincoliInUscita(titolo);
+    return { evento: { titolo, quandoDetto, ...data, vincoli }, chiaveBase: chiaveIdempotenza("calendario", [titolo, data.inizioISO || quandoDetto]) };
+  }
+  if (azioneId === "invia_mail") {
+    const pezzi = grezzo.split("|");
+    const a = (pezzi[0] || "").trim();
+    const oggetto = (pezzi[1] || "").trim();
+    const corpo = pezzi.slice(2).join("|").trim();
+    const vincoli = controllaVincoliInUscita([oggetto, corpo].join("\n"));
+    return { mail: { a, oggetto, corpo, vincoli }, chiaveBase: chiaveIdempotenza("mail", [oggetto, corpo]) };
+  }
+  return {};
 }
 // Filtro difensivo: i modelli a volte scrivono "non-letture" ("Nessuna menzione di...") nonostante il prompt.
 function isGarbageReading(r) {
@@ -3019,7 +3372,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
             // voce o creare un Seme non si riferiscono a niente di gia' presente.
             const cercaOggetto = scelta.azioneId === "apri_percorso";
             const ric = cercaOggetto ? recuperoGrado0(scelta.parametro, { pBio, pAir, pVidya, semi }) : { esito: "diretto", candidati: [] };
-            azioneProposta = { azioneId: scelta.azioneId, parametro: scelta.parametro, esito: ric.esito, candidati: ric.candidati, stato: "proposta" };
+            azioneProposta = { azioneId: scelta.azioneId, parametro: scelta.parametro, esito: ric.esito, candidati: ric.candidati, stato: "proposta", ...preparaClasseB(scelta.azioneId, scelta.parametro) };
             registraAzione({ fase: "proposta", azioneId: scelta.azioneId, parametro: scelta.parametro, esitoRicerca: ric.esito, candidati: ric.candidati.map((c) => ({ id: c.id, etichetta: c.etichetta })) });
           }
         } catch (e) {
@@ -3182,6 +3535,39 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     vibra("conferma");
     setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "avanza", etichetta: f.etichetta, id: f.id } }));
     registraAzione({ fase: "eseguita", azioneId: "avanza_percorso", id: f.id, etichetta: f.etichetta });
+  };
+  // ── BLOCCO 3 — esecutori di Classe B ──────────────────────────────────────────────
+  // Differenza dalla Classe A: qui si tocca il mondo fuori. Quindi (a) si conferma sempre prima,
+  // (b) dopo si RILEGGE dalla fonte, (c) la chiave di idempotenza impedisce il doppio invio.
+  // L'indirizzo della mail e' un campo che il Ghost vede e puo' correggere: il modello non ne
+  // inventa mai uno, e se non l'ha detto lui il campo resta vuoto finche' non lo scrive.
+  const [indirizzoMail, setIndirizzoMail] = useState({}); // mid -> indirizzo digitato
+  const eseguiCreaEvento = async (mid, proposta) => {
+    const ev = proposta.evento;
+    if (!ev?.ok || !ev.titolo) {
+      setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "rifiutato", motivo: ev?.motivo || "manca il titolo dell'evento" } }));
+      registraAzione({ fase: "rifiutata", azioneId: "crea_evento_calendario", motivo: ev?.motivo || "titolo mancante" });
+      return;
+    }
+    vibra("conferma");
+    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "in-corso", cosa: "sto scrivendo sul calendario e poi lo rileggo" } }));
+    const evento = { title: ev.titolo, notes: "", startISO: ev.inizioISO, endISO: ev.fineISO, allDay: ev.tuttoIlGiorno };
+    const r = await creaEventoConVerifica(evento, proposta.chiaveBase, true);
+    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "esito-calendario", ...r, evento: ev } }));
+    registraAzione({ fase: r.esito === "verificata" ? "eseguita-e-verificata" : "esito-" + r.esito, azioneId: "crea_evento_calendario", etichetta: ev.titolo, motivo: r.motivo || "" });
+  };
+  const eseguiInviaMail = async (mid, proposta, forza = false) => {
+    const ml = proposta.mail;
+    const a = (indirizzoMail[mid] ?? ml?.a ?? "").trim();
+    if (!EMAIL_VALIDA_RE.test(a)) {
+      setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "rifiutato", motivo: a ? `"${a}" non e' un indirizzo valido` : "manca l'indirizzo: scrivilo tu, non lo invento" } }));
+      return;
+    }
+    vibra("conferma");
+    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "in-corso", cosa: "sto inviando e poi rileggo da Gmail" } }));
+    const r = await inviaMailConVerifica({ a, oggetto: ml.oggetto, corpo: ml.corpo, chiave: chiaveConDestinatario(proposta.chiaveBase, a), confermaEsplicita: true, forza });
+    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "esito-mail", ...r, a, oggetto: ml.oggetto, proposta } }));
+    registraAzione({ fase: r.esito === "verificata" ? "eseguita-e-verificata" : "esito-" + r.esito, azioneId: "invia_mail", etichetta: `${a} — ${ml.oggetto}`, motivo: r.motivo || "" });
   };
   const confermaAzione = (mid, candidato) => {
     vibra("conferma"); // sincrona dentro il gestore del tocco: mai dopo un'attesa
@@ -3352,6 +3738,56 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                   <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Annulla</button>
                 </div>
               </div>`}
+              ${/* BLOCCO 3 — GATE LEGGERO (calendario). L'evento si cancella, quindi basta vedere
+                    e confermare. Ma la data e' scritta PER ESTESO — giorno della settimana, data,
+                    ora — perche' e' li' che l'errore del modello si nasconde, e l'ha ricavata il
+                    programma dalle parole del Ghost, non il modello. */ ""}
+              ${m.azioneProposta.azioneId === "crea_evento_calendario" && html`<div>
+                ${m.azioneProposta.evento?.vincoli?.ok === false
+                  ? html`<div><div class="r-draft-label">▸ NON LO METTO</div>
+                      <div class="r-error">Il titolo richiama la tua identità professionale (${m.azioneProposta.evento.vincoli.violazioni.join(", ")}). È il vincolo che mi hai dato: non lo mando fuori. Riscrivilo diversamente.</div>
+                      <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Va bene</button></div>`
+                  : !m.azioneProposta.evento?.ok
+                  ? html`<div><div class="r-draft-label">▸ NON HO CAPITO QUANDO</div>
+                      <div class="r-draft-body">Hai detto "${m.azioneProposta.evento?.quandoDetto || ""}" e ${m.azioneProposta.evento?.motivo || "non sono riuscito a ricavarne una data"}. Non me la invento: ridimmela con giorno e ora.</div>
+                      <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Va bene</button></div>`
+                  : html`<div>
+                      <div class="r-draft-label">▸ METTO QUESTO SUL CALENDARIO — conferma prima che accada</div>
+                      <div class="r-draft-subject">${m.azioneProposta.evento.titolo}</div>
+                      <div class="r-draft-body"><b>${formatDataPerEsteso(m.azioneProposta.evento.inizioISO, m.azioneProposta.evento.tuttoIlGiorno)}</b></div>
+                      <div class="r-hub-detail">La data l'ho calcolata io da "${m.azioneProposta.evento.quandoDetto}", non l'ha scritta il modello. Controllala: è il punto dove si sbaglia più spesso.</div>
+                      ${m.azioneProposta.evento.ambiguo && html`<div class="r-error">Attenzione: ${m.azioneProposta.evento.motivoAmbiguita}.</div>`}
+                      <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="r-btn r-draft-copy" onClick=${() => eseguiCreaEvento(mid, m.azioneProposta)}>Sì, mettilo</button>
+                        <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Annulla</button>
+                      </div>
+                    </div>`}
+              </div>`}
+              ${/* GATE PIENO C.10 (mail). Irreversibile: il sistema si ferma e mostra ESATTAMENTE
+                    cio' che sta per uscire — testo integrale, mai troncato, e indirizzo per esteso —
+                    e non parte finche' il Ghost non tocca quel pulsante. Il pulsante nomina
+                    l'indirizzo: cosi' la conferma non e' deducibile dal contesto, e' su quell'invio
+                    li'. Un "si'" scritto in chat tre messaggi dopo non e' e non sara' mai una conferma. */ ""}
+              ${m.azioneProposta.azioneId === "invia_mail" && html`<div>
+                ${m.azioneProposta.mail?.vincoli?.ok === false
+                  ? html`<div><div class="r-draft-label">▸ NON LA MANDO</div>
+                      <div class="r-error">Il testo richiama la tua identità professionale (${m.azioneProposta.mail.vincoli.violazioni.join(", ")}). È il vincolo che mi hai dato, e una mail è output che esce davvero: mi fermo qui. Riscrivila diversamente.</div>
+                      <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Va bene</button></div>`
+                  : html`<div>
+                      <div class="r-draft-label">▸ STO PER INVIARE QUESTA MAIL — leggila tutta prima di confermare</div>
+                      <div class="r-hub-detail">Una mail inviata non torna indietro. Qui sotto c'è esattamente quello che parte, per intero.</div>
+                      <div style="margin-top:8px"><span class="r-hub-detail">A:</span>
+                        <input class="r-input" type="email" inputmode="email" placeholder="scrivi tu l'indirizzo — non lo invento"
+                          value=${indirizzoMail[mid] ?? m.azioneProposta.mail.a ?? ""}
+                          onInput=${(e) => setIndirizzoMail((s) => ({ ...s, [mid]: e.target.value }))} /></div>
+                      <div class="r-draft-subject">Oggetto: ${m.azioneProposta.mail.oggetto || "(nessun oggetto)"}</div>
+                      <div class="r-mail-integrale">${m.azioneProposta.mail.corpo}</div>
+                      <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="r-btn r-draft-copy" onClick=${() => eseguiInviaMail(mid, m.azioneProposta)}>Invia adesso a ${(indirizzoMail[mid] ?? m.azioneProposta.mail.a ?? "").trim() || "…"}</button>
+                        <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Annulla</button>
+                      </div>
+                    </div>`}
+              </div>`}
               ${(m.azioneProposta.esito === "nessun-riscontro" || m.azioneProposta.esito === "nessuna-parola-utile") && html`<div>
                 <div class="r-draft-label">▸ NON L'HO TROVATO</div>
                 <div class="r-draft-body">Non c'è niente che corrisponda a "${m.azioneProposta.parametro}" fra i percorsi e i semi che esistono adesso. Non ne apro uno a caso: dimmi tu quale, o creiamolo.</div>
@@ -3364,6 +3800,30 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
             ${azioneStatus[mid]?.tipo === "scritto" && html`<div class="r-ok">✓ Segnato su ${azioneStatus[mid].pilastro.toUpperCase()}: ${azioneStatus[mid].testo}</div>`}
             ${azioneStatus[mid]?.tipo === "seme" && html`<div class="r-ok">✓ Salvato come Seme AIR — lo trovi in AIR → Percorsi.</div>`}
             ${azioneStatus[mid]?.tipo === "avanza" && html`<div class="r-ok">✓ Fuoco su ${azioneStatus[mid].etichetta} — chiedimi pure il prossimo passo.</div>`}
+            ${/* BLOCCO 3 §3.1 — la verifica di ritorno mostrata al Ghost. "Verificata" vuol dire
+                  una cosa sola: sono tornato a chiedere alla fonte e l'ho visto. Ogni altro esito
+                  e' scritto come un fallimento, anche quando l'invio potrebbe essere riuscito —
+                  perche' dichiarare fatto cio' che non si e' riletto e' esattamente il difetto che
+                  questo blocco esiste per chiudere. */ ""}
+            ${azioneStatus[mid]?.tipo === "in-corso" && html`<div class="r-hub-detail">… ${azioneStatus[mid].cosa}</div>`}
+            ${azioneStatus[mid]?.tipo === "esito-calendario" && html`<div>
+              ${azioneStatus[mid].esito === "verificata" && html`<div class="r-ok">✓ C'è, l'ho riletto dal calendario: <b>${azioneStatus[mid].letto.titolo}</b> — ${formatDataPerEsteso(azioneStatus[mid].letto.inizio, azioneStatus[mid].letto.tuttoIlGiorno)}.${azioneStatus[mid].letto.link ? html` <a href=${azioneStatus[mid].letto.link} target="_blank" rel="noopener">aprilo</a>` : ""}</div>`}
+              ${azioneStatus[mid].esito === "non-verificata" && html`<div class="r-error">L'ho creato, ma NON sono riuscito a rileggerlo dal calendario (${azioneStatus[mid].motivo}). Non posso dirti che c'è: controlla tu prima di contarci.</div>`}
+              ${azioneStatus[mid].esito === "non-combacia" && html`<div class="r-error">Quello che c'è sul calendario non combacia con quello che avevi confermato: risulta "${azioneStatus[mid].letto.titolo}" il ${formatDataPerEsteso(azioneStatus[mid].letto.inizio, azioneStatus[mid].letto.tuttoIlGiorno)}. Controllalo a mano.</div>`}
+              ${azioneStatus[mid].esito === "fallita" && html`<div class="r-error">Non è stato creato: ${azioneStatus[mid].motivo}. Un evento si può ritentare senza rischio — al massimo nasce un doppione e si cancella.</div>`}
+              ${azioneStatus[mid].esito === "gia-eseguita" && html`<div class="r-hub-detail">Questo evento risulta già messo (${new Date(azioneStatus[mid].precedente.aggiornata).toLocaleString("it-IT")}). Non lo rifaccio.</div>`}
+              ${azioneStatus[mid].esito === "bloccata-dai-vincoli" && html`<div class="r-error">Bloccato dal vincolo sull'identità professionale (${azioneStatus[mid].violazioni.join(", ")}).</div>`}
+            </div>`}
+            ${azioneStatus[mid]?.tipo === "esito-mail" && html`<div>
+              ${azioneStatus[mid].esito === "verificata" && html`<div class="r-ok">✓ Inviata, e riletta da Gmail: a <b>${azioneStatus[mid].letto.a}</b>, oggetto "${azioneStatus[mid].letto.oggetto}"${azioneStatus[mid].letto.quando ? `, ${azioneStatus[mid].letto.quando}` : ""}.</div>`}
+              ${azioneStatus[mid].esito === "non-verificata" && html`<div class="r-error">È partita, ma NON sono riuscito a rileggerla da Gmail (${azioneStatus[mid].motivo}). Non ti dico che è arrivata: guarda nella cartella "Inviata" prima di darla per fatta.</div>`}
+              ${azioneStatus[mid].esito === "non-combacia" && html`<div class="r-error">È partita, ma il destinatario che Gmail mi ha restituito ("${azioneStatus[mid].letto.a}") non è quello che avevi confermato. Controlla subito.</div>`}
+              ${azioneStatus[mid].esito === "incerta" && html`<div class="r-error">Non ho ricevuto risposta (${azioneStatus[mid].motivo}). <b>Potrebbe essere partita lo stesso.</b> Non la rimando da solo: controlla in "Posta inviata". Se non c'è, puoi farla partire di nuovo qui sotto — sapendo che se invece c'era, ne arrivano due.
+                <button class="r-btn r-btn-ghost" style="margin-left:0;margin-top:6px" onClick=${() => eseguiInviaMail(mid, azioneStatus[mid].proposta, true)}>Ho controllato: non è partita, mandala</button></div>`}
+              ${azioneStatus[mid].esito === "gia-eseguita" && html`<div class="r-hub-detail">Questa mail risulta già gestita (stato: ${azioneStatus[mid].precedente.stato}, ${new Date(azioneStatus[mid].precedente.aggiornata).toLocaleString("it-IT")}). Non la rimando: un doppio invio non si annulla.</div>`}
+              ${azioneStatus[mid].esito === "bloccata-dai-vincoli" && html`<div class="r-error">Bloccata dal vincolo sull'identità professionale (${azioneStatus[mid].violazioni.join(", ")}).</div>`}
+              ${azioneStatus[mid].esito === "rifiutata" && html`<div class="r-error">Non l'ho mandata: ${azioneStatus[mid].motivo}.</div>`}
+            </div>`}
             ${azioneStatus[mid]?.tipo === "memoria" && html`<div class="r-draft-card">
               <div class="r-draft-label">↳ HO GUARDATO ${azioneStatus[mid].doveHoGuardato.toUpperCase()}</div>
               ${azioneStatus[mid].frammenti.length === 0
@@ -3747,9 +4207,12 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
         <div class="r-hub-detail">Misurato il 16/08: con le cinque azioni di oggi il modello normale ci azzecca 18 volte su 18, esattamente come quello caro, che però costa 35 volte tanto. Tienilo spento finché le azioni non diventano molte di più.</div></div>
         <input type="checkbox" checked=${modelloCapace} onInput=${(e) => cambiaModelloCapace(e.target.checked)} />
       </div>
+      ${/* BLOCCO 3 — le capacita' che toccano il mondo esterno (Classe B) sono marcate come tali e
+            nascono spente: chi legge questa schermata deve vedere a colpo d'occhio quali restano
+            dentro l'app e quali escono. */ ""}
       ${AZIONI_CONVERSAZIONALI.map((a) => html`<div class="r-settings-row" key=${a.id} style="margin-top:10px">
-        <div><div style="font-weight:600;font-size:13px">${a.etichetta}</div>
-        <div class="r-hub-detail">${a.reversibile ? "Reversibile — si annulla subito." : "Non reversibile — passa sempre da una conferma."}</div></div>
+        <div><div style="font-weight:600;font-size:13px">${a.etichetta}${a.classe === "B" ? " — esce fuori dall'app" : ""}</div>
+        <div class="r-hub-detail">${a.reversibile ? "Reversibile — si annulla subito." : "Non reversibile — passa sempre da una conferma."}${a.classe === "B" ? " Nasce spenta: accendila tu quando la vuoi. Prima di ogni esecuzione ti mostro cosa sta per uscire, e dopo torno a controllare alla fonte che sia davvero successo." : ""}</div></div>
         <input type="checkbox" checked=${interruttori[a.id]} onInput=${(e) => cambiaInterruttore(a.id, e.target.checked)} />
       </div>`)}
     </${Card}>
