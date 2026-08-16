@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-16 · piano-di-controllo-blocco-1-fondamenta";
+const APP_BUILD = "2026-08-16 · piano-di-controllo-blocchi-2-e-5";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -181,6 +181,49 @@ const PAROLE_VUOTE = new Set(["il","lo","la","i","gli","le","un","uno","una","di
 function paroleUtili(testo) {
   return normalizzaTesto(testo).split(" ").filter((p) => p.length > 2 && !PAROLE_VUOTE.has(p));
 }
+// ── Recupero di Grado 1 + BLOCCO 5 (strati 1 e 2) — ricerca nella memoria, ZERO token ──
+// Grado 1: ricerca testuale sul contenuto dei frammenti. Restituisce FRAMMENTI, non documenti
+// interi: e' la differenza fra recuperare e ricaricare tutto.
+// Strato 1: cerca anche fra le "chiavi" — termini con cui qualcuno potrebbe cercare quel testo e
+// che nel testo NON compaiono, dedotti dentro la chiamata di sedimentazione che si paga gia'.
+// Strato 2: contiguita' — i frammenti nati nello stesso giorno di uno trovato vengono portati su
+// anche se non c'entrano niente. E' la proprieta' che la somiglianza semantica NON ha: recupera
+// cose che non si somigliano affatto, unite solo dall'essere state pensate insieme. Per un pensiero
+// arborescente vale piu' della somiglianza di dominio, che riporta cose a cui si arriverebbe da soli.
+const CONTIGUITA_TETTO = 2; // pochi, e dichiarati come tali: e' un accostamento, non un risultato
+function cercaNellaMemoria(argomento, memory) {
+  const parole = paroleUtili(argomento);
+  const tutti = [];
+  for (const pil of ["bio", "air", "vidya"]) {
+    const m = memory?.[pil];
+    if (m?.corrente) tutti.push({ pilastro: pil, id: "corrente-" + pil, date: null, text: m.corrente, chiavi: [], corrente: true });
+    for (const f of m?.sedimento || []) tutti.push({ pilastro: pil, id: f.id, date: f.date, text: f.text, chiavi: f.chiavi || [] });
+  }
+  if (!parole.length) return { frammenti: [], perContiguita: [], doveHoGuardato: "nessuna parola utile nella richiesta", totaleEsaminati: tutti.length };
+  const punteggiati = tutti.map((f) => {
+    const t = normalizzaTesto(f.text);
+    const k = normalizzaTesto((f.chiavi || []).join(" "));
+    let punti = 0;
+    for (const p of parole) {
+      if (t.includes(p)) punti += 3;          // la parola c'e' davvero nel testo
+      else if (k && k.includes(p)) punti += 2; // c'e' fra le chiavi dedotte (strato 1)
+    }
+    return { ...f, punti, viaChiavi: punti > 0 && !parole.some((p) => normalizzaTesto(f.text).includes(p)) };
+  }).filter((f) => f.punti > 0).sort((a, b) => b.punti - a.punti);
+  const trovati = punteggiati.slice(0, 5);
+  // Strato 2 — contiguita': stessa data di uno trovato, ma NON gia' fra i trovati.
+  const giorniTrovati = new Set(trovati.map((f) => (f.date || "").slice(0, 10)).filter(Boolean));
+  const idTrovati = new Set(trovati.map((f) => f.id));
+  const perContiguita = tutti
+    .filter((f) => f.date && giorniTrovati.has(f.date.slice(0, 10)) && !idTrovati.has(f.id))
+    .slice(0, CONTIGUITA_TETTO);
+  return {
+    frammenti: trovati,
+    perContiguita,
+    doveHoGuardato: `nelle note correnti e nei frammenti dei tre pilastri (${tutti.length} in tutto)`,
+    totaleEsaminati: tutti.length,
+  };
+}
 function recuperoGrado0(frase, { pBio, pAir, pVidya, semi }) {
   const parole = paroleUtili(frase);
   if (!parole.length) return { esito: "nessuna-parola-utile", candidati: [] };
@@ -230,7 +273,106 @@ const AZIONI_CONVERSAZIONALI = [
     reversibile: true,
     accesaDiDefault: true,    // Classe A nasce accesa, B e C spente (§8)
   },
+  // BLOCCO 2 (16/08/2026) — le quattro azioni approvate dal Ghost (D2). La sesta (invocare Magi)
+  // NON e' costruita: sospesa dal Ghost perche' si sovrappone nell'uso reale con "riprendi" e
+  // "avanza", e finche' non si vede come le usa non e' chiaro se servano due azioni o una.
+  {
+    id: "scrivi_su_pilastro",
+    classe: "A",
+    etichetta: "Scrivere una voce su un pilastro",
+    descrizione: "Registra una voce nel diario di un pilastro. Usa questa quando il Ghost racconta un fatto accaduto da annotare: un peso, una sessione di studio, un passo di lavoro. NON usarla per opinioni, domande o pensieri: solo per fatti che lui vuole tenere.",
+    parametri: { contenuto: "string — nella forma \"pilastro | testo della voce\", dove pilastro è esattamente bio, air o vidya. Esempio: \"bio | pesato 123,4 stamattina, dormito male\"" },
+    richiedeGate: false,
+    reversibile: true,
+    accesaDiDefault: true,
+  },
+  {
+    id: "crea_seme",
+    classe: "A",
+    etichetta: "Creare un Seme AIR",
+    descrizione: "Salva un'idea grezza di autonomia economica perche' il sistema la sviluppi dopo. Usa questa quando il Ghost butta li' un'idea di qualcosa da vendere, produrre o monetizzare, anche vaga. NON usarla per idee di studio o di salute: i Semi sono solo di AIR.",
+    parametri: { contenuto: "string — l'idea come il Ghost l'ha detta, senza riformularla" },
+    richiedeGate: false,
+    reversibile: true,
+    accesaDiDefault: true,
+  },
+  {
+    id: "interroga_memoria",
+    classe: "A",
+    etichetta: "Cercare nella memoria",
+    descrizione: "Cerca fra le note e i frammenti accumulati cosa si era detto su un argomento. Usa questa quando il Ghost chiede \"cosa avevo detto su X\", \"ti ricordi di X\", \"cosa sappiamo di X\". Non risponde a memoria: va a cercare davvero.",
+    parametri: { argomento: "string — l'argomento da cercare, con le parole del Ghost" },
+    richiedeGate: false,
+    reversibile: true,
+    accesaDiDefault: true,
+  },
+  {
+    id: "avanza_percorso",
+    classe: "A",
+    etichetta: "Avanzare il percorso aperto",
+    descrizione: "Chiede il prossimo passo concreto sul percorso su cui si sta gia' lavorando. Usa questa quando il Ghost dice \"e adesso?\", \"cosa faccio ora\", \"andiamo avanti\" mentre un percorso e' aperto. Se non c'e' nessun percorso aperto NON usarla: chiedi prima quale.",
+    parametri: { nota: "string — scrivi 'avanti' e basta: l'oggetto e' quello gia' aperto, non serve indicarlo" },
+    richiedeGate: false,
+    reversibile: true,
+    accesaDiDefault: true,
+  },
 ];
+// D1 (approvata dal Ghost, 16/08/2026) — modello piu' capace SOLO per il turno in cui si decide
+// quale azione compiere. Il resto della conversazione resta sul modello economico.
+// Il turno di selezione e' breve (poche decine di token in uscita), raro (solo quando il Ghost
+// chiede qualcosa di azionabile) e costosissimo da sbagliare: aprire la cosa sbagliata obbliga a
+// controllare sempre, e a quel punto l'esoscheletro pesa invece di aiutare.
+// MISURATO IL 16/08/2026, e il dato contraddice la previsione. Su 18 richieste reali formulate in
+// modo vario (13 comandi + 5 casi di sola conversazione), i due modelli hanno fatto ENTRAMBI 18/18.
+// Il modello capace costa 35 volte tanto ($0,0077 contro $0,00022 a turno) e non compra niente.
+// Perche' la previsione era ragionevole ma prematura: parlava di "quindici azioni disponibili", e
+// qui ce ne sono cinque. Con cinque azioni ben descritte la scelta e' facile anche per il modello
+// economico. La capacita' resta costruita e accendibile in Setup, spenta di default: quando il
+// registro crescera' si rimisura, e allora il numero dira' se accenderla.
+const MODELLO_SELEZIONE = "anthropic/claude-sonnet-4.5";
+const SELEZIONE_MODELLO_CAPACE_KEY = "selezione-modello-capace";
+function usaModelloCapacePerSelezione() { return loadKey(SELEZIONE_MODELLO_CAPACE_KEY, false) === true; }
+function impostaModelloCapacePerSelezione(v) { saveKey(SELEZIONE_MODELLO_CAPACE_KEY, !!v); return !!v; }
+// Le impostazioni del turno di selezione: stesso provider e stessa chiave, modello diverso solo
+// se il Ghost ha acceso l'interruttore.
+function settingsPerSelezione(settings) {
+  return usaModelloCapacePerSelezione() ? { ...settings, model: MODELLO_SELEZIONE } : settings;
+}
+// Euristica a costo zero: decide se vale la pena spendere un turno di selezione. Un messaggio che
+// non contiene nessun verbo di comando non merita una chiamata in piu' — e questo tiene il costo
+// del modello capace proporzionale alle richieste vere, non al numero di frasi scambiate.
+const VERBI_AZIONE = /\b(riprend|ripiglia|apri|aprire|torniamo|torna|continu|avanz|prossim|adesso che|e ora|segna|annota|registra|scrivi|aggiungi|metti|nota che|idea|potrei|si potrebbe|vendere|monetizz|ricordi|ricordati|cosa avevo|cosa abbiamo|cosa sappiamo|avevo detto|cerca|trova)\w*/i;
+function meritaTurnoDiSelezione(messaggio) { return VERBI_AZIONE.test(String(messaggio || "")); }
+// Il turno di selezione: una chiamata dedicata, brevissima, che decide SOLO quale azione e con
+// quale parametro. Separata dalla conversazione di proposito — mescolarla al turno normale
+// significherebbe chiedere allo stesso modello di parlare bene e scegliere bene insieme, e le due
+// cose competono. Qui non si genera prosa: si sceglie da un elenco chiuso.
+// Il costo viene tracciato con un tag suo (§D1), cosi' il Ghost vede quanto pesa davvero invece
+// di fidarsi di una stima.
+async function scegliAzione(messaggio, inventario, fuoco, azioni, settings, pushDebugLog = null) {
+  if (!azioni.length) return null;
+  const elenco = azioni.map((a) => `- ${a.id}: ${a.descrizione} Parametro: ${Object.values(a.parametri)[0]}`).join("\n");
+  const sys = `Sei il selettore di azioni del sistema Resonance. Il tuo unico compito e' decidere se il messaggio del Ghost chiede una delle azioni sotto, e con quale parametro. Non conversare, non spiegare, non salutare.
+
+${inventario}
+${formatFuocoBlock(fuoco)}
+
+AZIONI DISPONIBILI:
+${elenco}
+
+Regole non negoziabili:
+- Se il messaggio NON chiede nessuna di queste azioni, rispondi {"azione": null}. E' l'esito piu' frequente e va bene cosi': la maggior parte dei messaggi e' conversazione, non comando.
+- Una sola azione per messaggio. Se ne chiede piu' di una, scegli la PRIMA che ha nominato.
+- Non inventare azioni che non sono nell'elenco.
+- Il parametro va copiato dalle parole del Ghost, non riformulato.
+- Se il messaggio si riferisce a un oggetto ma non e' chiaro quale, scegli comunque l'azione e metti nel parametro le parole cosi' come le ha dette: sara' il programma a cercare e, se e' ambiguo, a chiedere.
+Rispondi SOLO con JSON: {"azione": "<id o null>", "parametro": "<testo>"}`;
+  const data = await askModelJSON(sys, messaggio, 0.1, 200, settings, null, (raw) => logAiCost(pushDebugLog, "selezione_azione", settings.model, raw));
+  if (!data || !data.azione) return null;
+  const az = azioni.find((a) => a.id === String(data.azione).trim());
+  if (!az) return null; // ha nominato qualcosa che non esiste: si ignora, non si indovina
+  return { azioneId: az.id, parametro: String(data.parametro || "").trim() };
+}
 const AZIONI_INTERRUTTORI_KEY = "azioni-interruttori";
 function leggiInterruttori() {
   const salvati = loadKey(AZIONI_INTERRUTTORI_KEY, {});
@@ -1429,6 +1571,8 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Postura e respiro (schermata iniziale, dal 15/08/2026): tre barre, una per pilastro, che mostrano a colpo d'occhio quanto di recente ciascuno si e' mosso. Si calcolano solo da dati gia' sul dispositivo, senza chiedere niente a nessuno, e compaiono prima di qualunque rete. Respirano lentamente, e il ritmo del respiro dipende dallo stato reale: piu' corto quando qualcosa e' fermo da troppo, piu' lungo quando le cose scorrono. Se il telefono e' impostato per ridurre le animazioni, il respiro non parte. E' una lettura di stato, mai un giudizio.
 - Ritorno aptico (dal 15/08/2026): quando il Ghost registra qualcosa su un pilastro il telefono vibra subito, con una firma diversa per pilastro — un colpo per BIO, due per AIR, tre per VIDYA — cosi' si riconosce al tatto su cosa si e' appena scritto. La voce compare e la postura si aggiorna nello stesso istante, senza aspettare nessuna rete.
 - Piano di controllo conversazionale (dal 16/08/2026): lo Shell sa quali percorsi e Semi esistono davvero — prima non lo sapeva, e per questo non riusciva a riprenderne uno. Se il Ghost dice "riprendi quello sul sonno", lo cerca fra quelli che esistono senza chiedere niente a nessun modello, e se ne trova due chiede quale invece di sceglierne uno. Quando ne apre uno, la chat mostra sempre in alto "stiamo lavorando su: [nome]", che si chiude con un tocco e scade da solo dopo otto ore. Ogni azione viene mostrata PRIMA di essere eseguita e si annulla anche dopo. Le capacita' si accendono e spengono una per una in Setup, e ogni azione proposta, confermata o annullata finisce in un registro con l'orario.
+- Azioni parlando (dal 16/08/2026): oltre a riprendere un percorso, lo Shell puo' ora — sempre chiedendo conferma prima — segnare una voce su un pilastro, salvare un'idea come Seme AIR, cercare davvero nella memoria cosa si era detto su un argomento, e avanzare sul percorso gia' aperto. Ogni azione viene mostrata prima di essere eseguita e si annulla anche dopo. Una sola azione per messaggio. Quando cerca nella memoria dice sempre dove ha guardato, e porta su anche uno o due frammenti nati lo stesso giorno anche se non c'entrano — servono a far venire in mente cose per accostamento, non per somiglianza.
+- Tetto di spesa (Setup): al raggiungimento di 5 dollari nel mese si fermano SOLO le cose che partono da sole (Semi che avanzano, Simbiosi). La chat resta utilizzabile: il tetto protegge dalle spese che il Ghost non vede partire, non da quelle che sta decidendo lui in quel momento.
 - Backup e ripristino dei dati (Setup): scarica in un unico file tutto lo stato locale (log dei pilastri, percorsi, memoria, semi, kernel, profilo, impostazioni) e sa anche rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo e ricarica l'app, previa conferma.
 Capacità NON disponibili in questa app (elenco a mano, mantenuto qui insieme alle presenti — non generato dinamicamente, per lo stesso motivo per cui il Master Index andava mantenuto a mano: un elenco derivato in un punto diverso dal codice reale si disallinea): notifiche push, promemoria o azioni che si attivano da soli senza che il Ghost apra l'app, invio automatico di messaggi/email/post senza conferma esplicita del Ghost (le "Braccia" preparano sempre solo bozze pronte da copiare o eventi Calendar da confermare, mai spedizione automatica), pubblicazione automatica su social o piattaforme esterne, esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost quando il gate lo richiede.`;
 
@@ -1569,12 +1713,31 @@ async function reflectMemoriaBatch(acceptedReadings, memory, settings) {
   if (!acceptedReadings.length) return {};
   const pillars = [...new Set(acceptedReadings.map((r) => r.pillar))];
   const blocco = pillars.map((p) => `Pilastro ${p.toUpperCase()} — memoria attuale: ${memory[p]?.corrente || "nessuna nota ancora"}\nNuovi scambi: ${JSON.stringify(acceptedReadings.filter((r) => r.pillar === p))}`).join("\n\n");
+  // BLOCCO 5, strato 1 (16/08/2026) — le chiavi di ricerca si chiedono QUI, dentro una chiamata
+  // che si stava gia' facendo e gia' pagando. Costo marginale: una ventina di token in uscita.
+  // A cosa servono: il frammento che parla di "riposo notturno" oggi non si trova cercando "sonno",
+  // perche' quella parola non c'e' dentro. Con le chiavi si trova, riusando la stessa ricerca
+  // testuale gia' costruita — nessuna infrastruttura nuova, nessuna chiamata nuova.
   const data = await askModelJSON(
     `Il tuo compito non è verificare se qualcosa era "giusto" — è aggiornare la tua struttura interna (memoria procedurale) per ciascun pilastro elencato, alla luce del nuovo accoppiamento con il Ghost. Per ognuno, riscrivi l'INTERA memoria (non aggiungere in coda): come ti sei appena riorganizzato, non un verdetto. Italiano, max 90 parole per pilastro, denso, concreto.
-JSON con SOLO le chiavi dei pilastri elencati: {"bio":"...", "air":"...", "vidya":"..."}`,
-    blocco, 0.5, 900, settings
+Per ciascun pilastro elenca anche fino a cinque termini con cui qualcuno potrebbe cercare quel testo e che nel testo NON compaiono. Parole singole, minuscole, italiano. Servono a ritrovarlo più tardi: se il testo parla di riposo notturno, un termine utile è "sonno".
+JSON con SOLO le chiavi dei pilastri elencati: {"bio":{"memoria":"...","chiavi":["...","..."]}, "air":{...}, "vidya":{...}}`,
+    blocco, 0.5, 1100, settings
   );
   return data || {};
+}
+// Il formato di ritorno di reflectMemoriaBatch e' cambiato (da stringa a oggetto con memoria+chiavi).
+// Questa funzione tollera ENTRAMBI: i modelli economici sbagliano forma con regolarita', e un
+// consumatore che accetta solo la forma nuova perderebbe in silenzio la memoria del turno — che e'
+// esattamente il tipo di perdita silenziosa che questo progetto ha gia' pagato.
+function estraiMemoriaEChiavi(valore) {
+  if (typeof valore === "string") return { memoria: valore, chiavi: [] };
+  if (valore && typeof valore === "object") {
+    const memoria = typeof valore.memoria === "string" ? valore.memoria : "";
+    const chiavi = Array.isArray(valore.chiavi) ? valore.chiavi.filter((c) => typeof c === "string" && c.trim()).map((c) => c.trim().toLowerCase()).slice(0, 5) : [];
+    return { memoria, chiavi };
+  }
+  return { memoria: "", chiavi: [] };
 }
 // Plasticità di superficie: come lo Shell ha imparato a PARLARE al Ghost — mai il giudizio, solo il registro.
 async function reflectStyle(styleMemory, userMessage, shellReply, settings) {
@@ -1661,7 +1824,12 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
       reflectMemoriaBatch(accepted, memory, settings),
       reflectStyle(styleMemory, userMessage, reply, settings),
     ]);
-    Object.entries(memoriaAggiornata).forEach(([pillar, testo]) => handlers.updateMemoria(pillar, testo));
+    // BLOCCO 5 — il risultato ora porta memoria E chiavi. estraiMemoriaEChiavi tollera anche la
+    // forma vecchia (sola stringa), che i modelli economici restituiscono con regolarita'.
+    Object.entries(memoriaAggiornata).forEach(([pillar, valore]) => {
+      const { memoria, chiavi } = estraiMemoriaEChiavi(valore);
+      if (memoria) handlers.updateMemoria(pillar, memoria, chiavi);
+    });
     newStyleMemory = style;
   } catch { /* riflessione fallita: non blocca il turno */ }
   anochin.accettore = accettoreNotes.length ? accettoreNotes.join(" · ") : "—";
@@ -2836,14 +3004,29 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // oggetto separato: cosi' il Ghost la vede come proposta (§7.2d, sempre visibile prima
       // dell'esecuzione) invece che come una riga di sintassi in mezzo alla risposta.
       // La risoluzione e' di Grado 0: deterministica, zero token, e se e' ambigua NON sceglie.
-      const propostaGrezza = estraiProposta(reply);
+      // BLOCCO 2 — la proposta arriva ora dal TURNO DI SELEZIONE, una chiamata dedicata e brevissima,
+      // non piu' da una riga di sintassi nascosta nella risposta. Due vantaggi concreti: la risposta
+      // in chat resta pulita, e chi sceglie l'azione non deve anche parlare bene nello stesso fiato.
+      // Il turno parte solo se il messaggio contiene un verbo di comando: una frase di sola
+      // conversazione non merita una chiamata in piu', e cosi' il costo segue le richieste vere.
       let azioneProposta = null;
-      let replyPulita = reply;
-      if (propostaGrezza) {
-        replyPulita = propostaGrezza.testoPulito || reply;
-        const ric = recuperoGrado0(propostaGrezza.parametro, { pBio, pAir, pVidya, semi });
-        azioneProposta = { azioneId: propostaGrezza.azioneId, parametro: propostaGrezza.parametro, esito: ric.esito, candidati: ric.candidati, stato: "proposta" };
-        registraAzione({ fase: "proposta", azioneId: propostaGrezza.azioneId, parametro: propostaGrezza.parametro, esitoRicerca: ric.esito, candidati: ric.candidati.map((c) => ({ id: c.id, etichetta: c.etichetta })) });
+      const replyPulita = reply;
+      if (meritaTurnoDiSelezione(userText)) {
+        try {
+          const scelta = await scegliAzione(userText, costruisciInventario({ pBio, pAir, pVidya, semi }), leggiFuoco(), azioniAttive(), settingsPerSelezione(settings), pushDebugLog);
+          if (scelta) {
+            // Solo le azioni che puntano a un oggetto esistente passano dal recupero: scrivere una
+            // voce o creare un Seme non si riferiscono a niente di gia' presente.
+            const cercaOggetto = scelta.azioneId === "apri_percorso";
+            const ric = cercaOggetto ? recuperoGrado0(scelta.parametro, { pBio, pAir, pVidya, semi }) : { esito: "diretto", candidati: [] };
+            azioneProposta = { azioneId: scelta.azioneId, parametro: scelta.parametro, esito: ric.esito, candidati: ric.candidati, stato: "proposta" };
+            registraAzione({ fase: "proposta", azioneId: scelta.azioneId, parametro: scelta.parametro, esitoRicerca: ric.esito, candidati: ric.candidati.map((c) => ({ id: c.id, etichetta: c.etichetta })) });
+          }
+        } catch (e) {
+          // Un turno di selezione fallito non deve MAI far fallire la conversazione: il Ghost ha
+          // comunque la sua risposta, semplicemente senza proposta d'azione.
+          pushDebugLog?.({ type: "selezione-azione", error: e.message });
+        }
       }
       setMessages((prev) => {
         const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft, calendarProposal, usedWebSearch, seedSuggestion, azioneProposta }];
@@ -2944,6 +3127,62 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   // qui si valida (l'identificativo deve esistere davvero, §2.4), si esegue, si registra.
   // Classe A: nessun gate, ma annullamento sempre disponibile nel turno stesso (§5.1).
   const [azioneStatus, setAzioneStatus] = useState({});
+  // BLOCCO 2 — esecutori delle azioni di Classe A. Uno per azione, tutti nel PROGRAMMA: il modello
+  // ha solo proposto. Tutti reversibili, tutti con annullamento nel turno stesso.
+  //
+  // Il brief chiede esplicitamente che il ritorno immediato del gesto — vibrazione, comparsa nella
+  // lista, aggiornamento della postura — si attivi anche quando l'azione arriva dalla CHAT e non
+  // solo dal pulsante del pilastro. Qui il percorso e' unificato: si chiama la stessa funzione di
+  // aggiunta (addBio/addAir/addVidya) usata dal modulo del pilastro, quindi la postura si ricalcola
+  // e la voce compare esattamente come se il Ghost avesse premuto il pulsante. La vibrazione parte
+  // sincrona dentro il gestore del tocco, con la firma del pilastro giusto.
+  const PILASTRI_VALIDI = { bio: addBio, air: addAir, vidya: addVidya };
+  const eseguiScriviSuPilastro = (mid, parametro) => {
+    // Validazione dal codice, mai dal modello (§4.3): il pilastro deve essere uno dei tre veri.
+    const [grezzo, ...resto] = String(parametro || "").split("|");
+    const pil = String(grezzo || "").trim().toLowerCase();
+    const testo = resto.join("|").trim();
+    if (!PILASTRI_VALIDI[pil] || !testo) {
+      setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "rifiutato", motivo: !PILASTRI_VALIDI[pil] ? `"${pil}" non è uno dei tre pilastri` : "il testo della voce è vuoto" } }));
+      registraAzione({ fase: "rifiutata", azioneId: "scrivi_su_pilastro", motivo: "parametro non valido", parametro });
+      return;
+    }
+    vibra(pil); // firma aptica del pilastro: la stessa del pulsante, cosi' al buio si riconosce uguale
+    const voce = pil === "bio" ? { id: uid(), date: todayISO(), weight: "", sleep: "", notes: testo }
+      : pil === "air" ? { id: uid(), date: todayISO(), title: testo.slice(0, 60), status: "idea", notes: testo }
+      : { id: uid(), date: todayISO(), title: testo.slice(0, 60), notes: testo };
+    PILASTRI_VALIDI[pil](voce);
+    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "scritto", pilastro: pil, testo, voceId: voce.id } }));
+    registraAzione({ fase: "eseguita", azioneId: "scrivi_su_pilastro", pilastro: pil, voceId: voce.id, testo: testo.slice(0, 120) });
+  };
+  const eseguiCreaSeme = (mid, parametro) => {
+    const testo = String(parametro || "").trim();
+    if (!testo) { setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "rifiutato", motivo: "l'idea è vuota" } })); return; }
+    vibra("air"); // i Semi sono solo di AIR
+    addSeed(testo, "conversazione");
+    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "seme", testo } }));
+    registraAzione({ fase: "eseguita", azioneId: "crea_seme", testo: testo.slice(0, 120) });
+  };
+  // Interrogare la memoria e' l'unica delle quattro che LEGGE invece di scrivere: non modifica
+  // niente, quindi non ha bisogno di annullamento. Cerca davvero, a costo zero, e mostra dove ha
+  // guardato (§3.4: dove il sistema sceglie cosa recuperare, la scelta si mostra, mai si nasconde).
+  const eseguiInterrogaMemoria = (mid, parametro) => {
+    vibra("conferma");
+    const esito = cercaNellaMemoria(parametro, memory);
+    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "memoria", argomento: parametro, ...esito } }));
+    registraAzione({ fase: "eseguita", azioneId: "interroga_memoria", argomento: parametro, trovati: esito.frammenti.length });
+  };
+  const eseguiAvanzaPercorso = (mid) => {
+    const f = leggiFuoco();
+    if (f.tipo === "nessuno") {
+      setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "rifiutato", motivo: "non c'è nessun percorso aperto: dimmi quale prima" } }));
+      registraAzione({ fase: "rifiutata", azioneId: "avanza_percorso", motivo: "nessun fuoco aperto" });
+      return;
+    }
+    vibra("conferma");
+    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "avanza", etichetta: f.etichetta, id: f.id } }));
+    registraAzione({ fase: "eseguita", azioneId: "avanza_percorso", id: f.id, etichetta: f.etichetta });
+  };
   const confermaAzione = (mid, candidato) => {
     vibra("conferma"); // sincrona dentro il gestore del tocco: mai dopo un'attesa
     // Validazione: l'oggetto deve esistere ANCORA adesso, non solo quando fu proposto.
@@ -3081,6 +3320,38 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                   <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Nessuno</button>
                 </div>
               </div>`}
+              ${m.azioneProposta.esito === "diretto" && m.azioneProposta.azioneId === "scrivi_su_pilastro" && html`<div>
+                <div class="r-draft-label">▸ SEGNO QUESTO — conferma prima che accada</div>
+                <div class="r-draft-body">${m.azioneProposta.parametro}</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="r-btn r-draft-copy" onClick=${() => eseguiScriviSuPilastro(mid, m.azioneProposta.parametro)}>Sì, segnalo</button>
+                  <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Annulla</button>
+                </div>
+              </div>`}
+              ${m.azioneProposta.esito === "diretto" && m.azioneProposta.azioneId === "crea_seme" && html`<div>
+                <div class="r-draft-label">▸ SALVO QUESTA IDEA COME SEME AIR</div>
+                <div class="r-draft-body">${m.azioneProposta.parametro}</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="r-btn r-draft-copy" onClick=${() => eseguiCreaSeme(mid, m.azioneProposta.parametro)}>Sì, salvala</button>
+                  <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Annulla</button>
+                </div>
+              </div>`}
+              ${m.azioneProposta.esito === "diretto" && m.azioneProposta.azioneId === "interroga_memoria" && html`<div>
+                <div class="r-draft-label">▸ CERCO NELLA MEMORIA</div>
+                <div class="r-draft-body">"${m.azioneProposta.parametro}"</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="r-btn r-draft-copy" onClick=${() => eseguiInterrogaMemoria(mid, m.azioneProposta.parametro)}>Cerca</button>
+                  <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Lascia stare</button>
+                </div>
+              </div>`}
+              ${m.azioneProposta.esito === "diretto" && m.azioneProposta.azioneId === "avanza_percorso" && html`<div>
+                <div class="r-draft-label">▸ AVANZO SU QUELLO CHE È APERTO</div>
+                <div class="r-draft-body">${fuoco.tipo !== "nessuno" ? fuoco.etichetta : "non c'è niente di aperto in questo momento"}</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="r-btn r-draft-copy" onClick=${() => eseguiAvanzaPercorso(mid)}>Avanti</button>
+                  <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Annulla</button>
+                </div>
+              </div>`}
               ${(m.azioneProposta.esito === "nessun-riscontro" || m.azioneProposta.esito === "nessuna-parola-utile") && html`<div>
                 <div class="r-draft-label">▸ NON L'HO TROVATO</div>
                 <div class="r-draft-body">Non c'è niente che corrisponda a "${m.azioneProposta.parametro}" fra i percorsi e i semi che esistono adesso. Non ne apro uno a caso: dimmi tu quale, o creiamolo.</div>
@@ -3088,7 +3359,23 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
               </div>`}
             </div>`}
             ${azioneStatus[mid]?.tipo === "aperto" && html`<div class="r-ok">✓ Aperto: ${azioneStatus[mid].etichetta} — <button class="r-fuoco-chiudi" onClick=${() => annullaApertura(mid)}>annulla</button></div>`}
-            ${azioneStatus[mid]?.tipo === "annullato" && html`<div class="r-hub-detail">Annullato — non è stato aperto niente.</div>`}
+            ${azioneStatus[mid]?.tipo === "annullato" && html`<div class="r-hub-detail">Annullato — non è stato fatto niente.</div>`}
+            ${azioneStatus[mid]?.tipo === "rifiutato" && html`<div class="r-error">Non l'ho fatto: ${azioneStatus[mid].motivo}.</div>`}
+            ${azioneStatus[mid]?.tipo === "scritto" && html`<div class="r-ok">✓ Segnato su ${azioneStatus[mid].pilastro.toUpperCase()}: ${azioneStatus[mid].testo}</div>`}
+            ${azioneStatus[mid]?.tipo === "seme" && html`<div class="r-ok">✓ Salvato come Seme AIR — lo trovi in AIR → Percorsi.</div>`}
+            ${azioneStatus[mid]?.tipo === "avanza" && html`<div class="r-ok">✓ Fuoco su ${azioneStatus[mid].etichetta} — chiedimi pure il prossimo passo.</div>`}
+            ${azioneStatus[mid]?.tipo === "memoria" && html`<div class="r-draft-card">
+              <div class="r-draft-label">↳ HO GUARDATO ${azioneStatus[mid].doveHoGuardato.toUpperCase()}</div>
+              ${azioneStatus[mid].frammenti.length === 0
+                ? html`<div class="r-draft-body">Non ho trovato niente su "${azioneStatus[mid].argomento}". Non vuol dire che non ne abbiamo parlato: vuol dire che non è finito nella memoria.</div>`
+                : html`<div>${azioneStatus[mid].frammenti.map((f) => html`<div class="r-draft-body" key=${f.id} style="margin-bottom:6px">
+                    <b>${f.pilastro.toUpperCase()}</b>${f.date ? " · " + fmtDate(f.date) : " · nota corrente"}${f.viaChiavi ? " · trovato per affinità, la parola non c'era nel testo" : ""}<br/>${f.text}
+                  </div>`)}</div>`}
+              ${azioneStatus[mid].perContiguita?.length > 0 && html`<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,0,0,.08)">
+                <div class="r-hub-detail">Nato lo stesso giorno, anche se non c'entra:</div>
+                ${azioneStatus[mid].perContiguita.map((f) => html`<div class="r-draft-body" key=${f.id} style="opacity:.75">${f.text}</div>`)}
+              </div>`}
+            </div>`}
             ${m.seedSuggestion && !seedStatus[mid] && html`<div class="r-draft-card">
               <div class="r-draft-label">🌱 SEME AIR — vuoi salvare questa idea?</div>
               <div class="r-draft-body">${m.seedSuggestion.content}</div>
@@ -3192,6 +3479,19 @@ function KernelView({ kernel, onSave, driveStatus }) {
 // §12 — tetto di spesa dichiarato dal Ghost il 15/08/2026. Un tetto che non si vede non esiste
 // (C.16), quindi il contatore mensile e la distanza dal tetto stanno in Setup insieme al resto.
 const TETTO_MENSILE_USD = 5;
+// D4 (approvata dal Ghost, 16/08/2026) — al raggiungimento del tetto si fermano SOLO le operazioni
+// automatiche: Semi che avanzano da soli, Simbiosi proattiva, qualunque cosa parta senza che il
+// Ghost la stia chiedendo in quel momento. La chat resta utilizzabile.
+// Ragione: il tetto protegge dalle spese che il Ghost non vede partire, non da quelle che sta
+// decidendo lui adesso — ed e' la lettura corretta di C.16, che governa le operazioni AUTONOME.
+// Fermare la chat a meta' di una frase sarebbe protezione applicata proprio dove non serve.
+function spesaDelMeseCorrente() {
+  const mese = todayISO().slice(0, 7);
+  return (loadKey("debug-log", []) || [])
+    .filter((e) => e.type === "ai-cost" && (e.time || "").slice(0, 7) === mese)
+    .reduce((a, e) => a + (typeof e.costUsd === "number" ? e.costUsd : 0), 0);
+}
+function operazioniAutomaticheConsentite() { return spesaDelMeseCorrente() < TETTO_MENSILE_USD; }
 function CostSummaryPanel({ debugLog }) {
   const costEntries = (debugLog || []).filter((e) => e.type === "ai-cost");
   const today = todayISO();
@@ -3310,6 +3610,8 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
   // tornare indietro butta via anche le otto. Qui si spegne la singola capacita', senza deploy.
   const [interruttori, setInterruttoriState] = useState(() => leggiInterruttori());
   const cambiaInterruttore = (id, accesa) => setInterruttoriState(scriviInterruttore(id, accesa));
+  const [modelloCapace, setModelloCapaceState] = useState(() => usaModelloCapacePerSelezione());
+  const cambiaModelloCapace = (v) => setModelloCapaceState(impostaModelloCapacePerSelezione(v));
   const [registroAzioni, setRegistroAzioni] = useState(() => loadKey("registro-azioni", []));
   const svuotaRegistroAzioni = () => { saveKey("registro-azioni", []); setRegistroAzioni([]); };
   // FASE 2 — interruttore della modalità "prova a vuoto" degli effettori.
@@ -3440,6 +3742,11 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
     <${Card} accent=${C.core}>
       <div class="r-hub-title" style="color:#3A4750">Cosa lo Shell può fare parlando</div>
       <div class="r-hub-detail">Ogni capacità si spegne da sola, senza toccare le altre e senza aspettare un rilascio. Se una si comporta male, spegni quella e il resto continua a funzionare.</div>
+      <div class="r-settings-row" style="margin-top:12px">
+        <div><div style="font-weight:600;font-size:13px">Modello più accurato per capire cosa vuoi</div>
+        <div class="r-hub-detail">Misurato il 16/08: con le cinque azioni di oggi il modello normale ci azzecca 18 volte su 18, esattamente come quello caro, che però costa 35 volte tanto. Tienilo spento finché le azioni non diventano molte di più.</div></div>
+        <input type="checkbox" checked=${modelloCapace} onInput=${(e) => cambiaModelloCapace(e.target.checked)} />
+      </div>
       ${AZIONI_CONVERSAZIONALI.map((a) => html`<div class="r-settings-row" key=${a.id} style="margin-top:10px">
         <div><div style="font-weight:600;font-size:13px">${a.etichetta}</div>
         <div class="r-hub-detail">${a.reversibile ? "Reversibile — si annulla subito." : "Non reversibile — passa sempre da una conferma."}</div></div>
@@ -3882,10 +4189,13 @@ function App() {
   // Tetto sedimento: 30 frammenti/pilastro, i più vecchi cadono (.slice(-30), array cresce in coda).
   // Tetto corrente: 900 caratteri — il limite tecnico oggi mancante (AUDIT_SPRINT_HARDENING 26/07),
   // finora solo un'istruzione nel prompt di reflectMemoriaBatch (max 90 parole), mai applicata nel codice.
-  const updateMemoria = useCallback((pillar, text) => setMemory((prev) => {
+  // BLOCCO 5 — le chiavi arrivano insieme alla nuova memoria e vengono scritte sul frammento che
+  // sta per sedimentare, cioe' su quello che ESCE dallo strato corrente: e' quel testo che le
+  // chiavi descrivono, non quello nuovo che lo sostituisce.
+  const updateMemoria = useCallback((pillar, text, chiavi = []) => setMemory((prev) => {
     const prevPillar = prev[pillar] || { corrente: "", sedimento: [] };
     const sedimento = (prevPillar.corrente && text !== prevPillar.corrente)
-      ? [...prevPillar.sedimento, { id: uid(), date: new Date().toISOString(), text: prevPillar.corrente }].slice(-30)
+      ? [...prevPillar.sedimento, { id: uid(), date: new Date().toISOString(), text: prevPillar.corrente, chiavi: Array.isArray(chiavi) ? chiavi : [] }].slice(-30)
       : prevPillar.sedimento;
     const corrente = text.length > 900 ? text.slice(0, 900) : text;
     const n = { ...prev, [pillar]: { corrente, sedimento } };
@@ -4159,6 +4469,11 @@ function App() {
   // motivo della Simbiosi proattiva: subito dopo un pull Drive la closure del primo render sarebbe
   // stale). Sceglie il primo Seme in "seed"/"researching" (Fase 1) o "executing" (Fase 2) trovato.
   const advanceSeedIfDue = useCallback(async () => {
+    // D4 — operazione automatica: si ferma al tetto. Il Ghost non l'ha chiesta adesso.
+    if (!operazioniAutomaticheConsentite()) {
+      pushDebugLog({ type: "tetto-raggiunto", operazione: "avanzamento-seme", spesaMese: Number(spesaDelMeseCorrente().toFixed(4)), tetto: TETTO_MENSILE_USD });
+      return;
+    }
     const s = stateRef.current;
     const target = s.semi.find((x) => x.status === "seed" || x.status === "researching" || x.status === "executing");
     if (!target) return;
@@ -4283,6 +4598,12 @@ function App() {
     if (proactiveRanRef.current) return;
     proactiveRanRef.current = true;
     if (!settingsRef.current.apiKey) return; // niente API: niente valutazione
+    // D4 — la Simbiosi proattiva parte da sola: e' esattamente il tipo di spesa che il Ghost non
+      // vede partire, quindi si ferma al tetto.
+    if (!operazioniAutomaticheConsentite()) {
+      pushDebugLog({ type: "tetto-raggiunto", operazione: "simbiosi-proattiva", spesaMese: Number(spesaDelMeseCorrente().toFixed(4)), tetto: TETTO_MENSILE_USD });
+      return;
+    }
     // Ritardo: lascia finire mount + eventuale sync (che popola stateRef via applyMergedState) prima di valutare.
     const t = setTimeout(async () => {
       if (resonanceBusyRef.current) return; // recalc manuale già in volo: la proattiva si astiene
