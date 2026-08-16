@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-15 · esoscheletro-postura-respiro-aptica";
+const APP_BUILD = "2026-08-16 · piano-di-controllo-blocco-1-fondamenta";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -96,6 +96,186 @@ function stopSpeaking() {
 }
 
 const daysSince = (iso) => iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : null;
+
+//──────────────────────────────────────────────────────────
+// PIANO DI CONTROLLO — BLOCCO 1: FONDAMENTA (architettura Shell V1, 16/08/2026)
+//──────────────────────────────────────────────────────────
+// NOTA DI DIAGNOSI, misurata prima di scrivere una riga (16/08/2026).
+// Il documento di architettura attribuiva il difetto "lo Shell non riesce a riprendere un percorso"
+// alla mancanza di stato conversazionale, e il problema di costo al fatto che ogni turno rimanda
+// "Manifesto, memoria dei tre pilastri, sedimento e profilo". Misurando il prompt reale:
+//   - e' 6.775 caratteri, circa 1.880 token, e NON cresce con la storia del sistema;
+//   - il sedimento NON c'e' (entra solo in buildResonanceDigest, che e' Simbiosi, non lo Shell);
+//   - i percorsi NON ci sono, in nessuna forma: ne' i titoli, ne' gli identificativi.
+// Quindi la causa prima non e' la memoria della conversazione: e' che lo Shell non ha MAI saputo
+// quali percorsi esistano. Anche con uno stato conversazionale perfetto non potrebbe riprenderne
+// uno, perche' non ne conosce il nome. E' la stessa classe del piano alimentare — una funzione che
+// non riceve cio' che dovrebbe avere sotto mano — ma la cura non e' infrastruttura di recupero:
+// e' un inventario, piccolo e limitato.
+// Il fuoco serve comunque, ed e' costruito qui: senza, l'inventario dice cosa esiste ma non su cosa
+// si sta lavorando adesso.
+
+// ── Il fuoco conversazionale (§2.2) ──
+// Deliberatamente povero: un puntatore, non un riassunto. Una struttura ricca qui diventerebbe una
+// seconda fonte di verita', classe di bug gia' pagata con la sincronizzazione.
+const FUOCO_SCADENZA_ORE = 8; // oltre, torna a "nessuno": un contesto ereditato da ieri e non
+                              // dichiarato e' peggio di nessun contesto (§2.2)
+const FUOCO_VUOTO = { tipo: "nessuno", id: null, etichetta: null, apertoIl: null, ultimoTocco: null };
+function fuocoScaduto(f) {
+  if (!f || f.tipo === "nessuno" || !f.ultimoTocco) return true;
+  return (Date.now() - new Date(f.ultimoTocco).getTime()) / 3600000 > FUOCO_SCADENZA_ORE;
+}
+// Letto SEMPRE attraverso questa funzione, mai direttamente: e' l'unico punto in cui la scadenza
+// viene applicata, quindi non esiste un percorso di lettura che possa dimenticarsene.
+function leggiFuoco() {
+  const f = loadKey("fuoco-conversazionale", FUOCO_VUOTO);
+  return fuocoScaduto(f) ? FUOCO_VUOTO : f;
+}
+function scriviFuoco(f) { saveKey("fuoco-conversazionale", f || FUOCO_VUOTO); return f || FUOCO_VUOTO; }
+function apriFuoco(tipo, id, etichetta) {
+  const ora = new Date().toISOString();
+  const prec = leggiFuoco();
+  // Riaprire lo stesso oggetto non azzera da quando ci si lavora: aggiorna solo l'ultimo tocco.
+  const apertoIl = prec.tipo === tipo && prec.id === id && prec.apertoIl ? prec.apertoIl : ora;
+  return scriviFuoco({ tipo, id, etichetta, apertoIl, ultimoTocco: ora });
+}
+function chiudiFuoco() { return scriviFuoco(FUOCO_VUOTO); }
+
+// ── Inventario (la causa reale) ──
+// Cosa esiste, in forma minima: titolo e identificativo. Limitato apposta — un inventario che cresce
+// senza tetto ricrea esattamente il problema di costo che il documento temeva (e che oggi non c'e').
+const INVENTARIO_TETTO_PER_PILASTRO = 8;
+function costruisciInventario({ pBio, pAir, pVidya, semi }) {
+  const riga = (p) => `${p.title}${p.kind === "identitario" ? " [identitario]" : ""} (id:${p.id})`;
+  const perPilastro = (lista, nome) => {
+    const attivi = (lista || []).slice(0, INVENTARIO_TETTO_PER_PILASTRO);
+    return `${nome}: ${attivi.length ? attivi.map(riga).join(" · ") : "nessun percorso aperto"}`;
+  };
+  // Stato in forma grezza e non tradotto di proposito: SEME_STATUS_LABELS e' un const dichiarato
+  // piu' in basso nel file, e dipenderne da qui creerebbe un ordine fragile. Il vocabolario degli
+  // stati e' gia' spiegato al modello in APP_CAPABILITIES_CONTEXT, quindi la traduzione e' inutile.
+  const semiAttivi = (semi || []).filter((s) => s.status !== "archived").slice(0, INVENTARIO_TETTO_PER_PILASTRO);
+  return `Percorsi e Semi che esistono ORA in questo sistema — quando il Ghost si riferisce a uno di essi, anche in modo vago ("quello sul sonno"), e' uno di questi e nessun altro. Non inventarne, non ricordarne di vecchi: se non e' in questo elenco, non esiste.
+${perPilastro(pBio, "BIO")}
+${perPilastro(pAir, "AIR")}
+${perPilastro(pVidya, "VIDYA")}
+Semi AIR: ${semiAttivi.length ? semiAttivi.map((s) => `"${String(s.content).slice(0, 60)}" (id:${s.id}, ${s.status})`).join(" · ") : "nessuno"}`;
+}
+function formatFuocoBlock(fuoco) {
+  if (!fuoco || fuoco.tipo === "nessuno") return "Non state lavorando su niente in particolare in questo momento.";
+  const da = fuoco.apertoIl ? fmtDate(fuoco.apertoIl) : "poco fa";
+  return `State lavorando su: ${fuoco.etichetta} (${fuoco.tipo}, id:${fuoco.id}, aperto il ${da}). Quando il Ghost dice "questo", "quello", "il percorso", senza altre indicazioni, si riferisce a questo. Se cambia argomento in modo evidente, dillo invece di continuare ad assumerlo.`;
+}
+
+// ── Recupero di Grado 0 (§3.2) — deterministico, ZERO token ──
+// Non serve un modello per trovare un percorso dal titolo: e' una ricerca che il programma fa da
+// solo sulle strutture gia' in memoria. Copre la maggioranza dei casi reali.
+// Restituisce SEMPRE l'elenco completo dei candidati, mai una scelta: la disambiguazione e'
+// obbligatoria (§7.2b), e chi cerca non deve poter decidere al posto del Ghost.
+function normalizzaTesto(s) {
+  return String(s || "").toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "") // via gli accenti: "però" e "pero" devono incontrarsi
+    .replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+const PAROLE_VUOTE = new Set(["il","lo","la","i","gli","le","un","uno","una","di","a","da","in","con","su","per","tra","fra","e","o","che","quello","questa","questo","quella","sul","sulla","sui","del","della","dei","delle","mio","mia","riprendi","apri","continua","vai","al","allo","alla","ai","agli","alle","nel","nella"]);
+function paroleUtili(testo) {
+  return normalizzaTesto(testo).split(" ").filter((p) => p.length > 2 && !PAROLE_VUOTE.has(p));
+}
+function recuperoGrado0(frase, { pBio, pAir, pVidya, semi }) {
+  const parole = paroleUtili(frase);
+  if (!parole.length) return { esito: "nessuna-parola-utile", candidati: [] };
+  const oggetti = [
+    ...(pBio || []).map((p) => ({ tipo: "percorso", pilastro: "bio", id: p.id, etichetta: p.title, testo: `${p.title} ${p.identityGoal || ""} ${(p.topics || []).map((t) => t.label).join(" ")}` })),
+    ...(pAir || []).map((p) => ({ tipo: "percorso", pilastro: "air", id: p.id, etichetta: p.title, testo: `${p.title} ${p.identityGoal || ""} ${(p.topics || []).map((t) => t.label).join(" ")}` })),
+    ...(pVidya || []).map((p) => ({ tipo: "percorso", pilastro: "vidya", id: p.id, etichetta: p.title, testo: `${p.title} ${p.identityGoal || ""} ${(p.topics || []).map((t) => t.label).join(" ")}` })),
+    ...(semi || []).filter((s) => s.status !== "archived").map((s) => ({ tipo: "seme", pilastro: "air", id: s.id, etichetta: String(s.content).slice(0, 60), testo: String(s.content) })),
+  ];
+  // Un identificativo scritto per esteso vince su tutto: e' un riferimento esatto, non una ricerca.
+  const perId = oggetti.find((o) => normalizzaTesto(frase).includes(normalizzaTesto(o.id)));
+  if (perId) return { esito: "trovato", candidati: [{ ...perId, punteggio: 999 }] };
+  const punteggiati = oggetti.map((o) => {
+    const t = normalizzaTesto(o.testo);
+    const titolo = normalizzaTesto(o.etichetta);
+    let punti = 0;
+    for (const p of parole) {
+      if (titolo.includes(p)) punti += 3; // nel titolo pesa piu' che nei nodi
+      else if (t.includes(p)) punti += 1;
+    }
+    return { ...o, punteggio: punti };
+  }).filter((o) => o.punteggio > 0).sort((a, b) => b.punteggio - a.punteggio);
+  if (!punteggiati.length) return { esito: "nessun-riscontro", candidati: [] };
+  // Piu' oggetti a pari punteggio massimo = ambiguo. Si mostrano e si chiede: mai scegliere il piu'
+  // recente, che e' esattamente il modo in cui un copilota apre la cosa sbagliata (§7.2b).
+  const massimo = punteggiati[0].punteggio;
+  const aPari = punteggiati.filter((o) => o.punteggio === massimo);
+  return { esito: aPari.length > 1 ? "ambiguo" : "trovato", candidati: aPari.length > 1 ? aPari : [punteggiati[0]] };
+}
+
+// ── Registro delle azioni conversazionali (§4, §5, §8) ──
+// Invariante non negoziabile (§4.2): il modello NON inventa azioni a runtime. Sceglie da questo
+// registro fisso, dichiarato nel codice, e produce i parametri. L'esecuzione e' del programma,
+// sempre. Chi propone non e' chi esegue: e' la sola ragione per cui l'impianto e' ispezionabile.
+//
+// Blocco 1 dichiara UNA sola azione, deliberatamente (§7.2a: meglio poche azioni fatte benissimo
+// che venti approssimative). E' quella che il Ghost ha segnalato come rotta — riprendere un
+// percorso — e serve anche a provare l'impianto prima di allargarlo nel Blocco 2.
+const AZIONI_CONVERSAZIONALI = [
+  {
+    id: "apri_percorso",
+    classe: "A", // dentro Adam: reversibile, nessun contatto col mondo esterno
+    etichetta: "Aprire o riprendere un percorso",
+    descrizione: 'Porta il fuoco della conversazione su un percorso o un Seme che ESISTE GIA\' nell\'inventario. Usa questa quando il Ghost dice "riprendi X", "apri X", "torniamo su X", "parliamo di X" riferendosi a qualcosa dell\'elenco. Non crea niente: sposta solo l\'attenzione.',
+    parametri: { riferimento: "string — le parole con cui il Ghost ha indicato l'oggetto, cosi' come le ha dette (es. \"quello sul sonno\")" },
+    richiedeGate: false,      // Classe A: nessun gate, ma annullamento sempre disponibile (§5.1)
+    reversibile: true,
+    accesaDiDefault: true,    // Classe A nasce accesa, B e C spente (§8)
+  },
+];
+const AZIONI_INTERRUTTORI_KEY = "azioni-interruttori";
+function leggiInterruttori() {
+  const salvati = loadKey(AZIONI_INTERRUTTORI_KEY, {});
+  const stato = {};
+  for (const a of AZIONI_CONVERSAZIONALI) {
+    stato[a.id] = Object.prototype.hasOwnProperty.call(salvati, a.id) ? !!salvati[a.id] : a.accesaDiDefault;
+  }
+  return stato;
+}
+function scriviInterruttore(id, accesa) {
+  const s = loadKey(AZIONI_INTERRUTTORI_KEY, {});
+  s[id] = !!accesa; saveKey(AZIONI_INTERRUTTORI_KEY, s); return leggiInterruttori();
+}
+function azioniAttive() {
+  const i = leggiInterruttori();
+  return AZIONI_CONVERSAZIONALI.filter((a) => i[a.id]);
+}
+// Blocco descrittivo per il prompt. Se nessuna azione e' accesa, il modello deve saperlo invece di
+// proporre cose che il programma poi rifiuterebbe in silenzio.
+function formatAzioniBlock(attive) {
+  if (!attive.length) return "In questo momento non puoi compiere nessuna azione: sono tutte spente in Setup. Puoi solo parlare. Non proporre azioni.";
+  return `Azioni che puoi PROPORRE (non eseguire: esegue il programma, dopo). Se il Ghost ne chiede una, rispondi normalmente E aggiungi in fondo, su una riga a se', esattamente questa forma: [AZIONE: <id> | <parametro>]
+${attive.map((a) => `- ${a.id}: ${a.descrizione} Parametro: ${Object.values(a.parametri)[0]}`).join("\n")}
+Una sola azione per turno (§7.3): se il Ghost ne chiede tre, proponi la prima e di' che le altre le farete dopo. Se non e' chiaro a cosa si riferisce, NON proporre l'azione: chiedi.`;
+}
+// Estrae la proposta dal testo del modello. Deliberatamente rigida: una forma sola, riconoscibile,
+// e se non corrisponde non succede niente. Un parser permissivo qui significa azioni eseguite per
+// caso su un testo che le nominava soltanto.
+const AZIONE_RE = /\[AZIONE:\s*([a-z_]+)\s*\|\s*([^\]]+)\]/i;
+function estraiProposta(testo) {
+  const m = String(testo || "").match(AZIONE_RE);
+  if (!m) return null;
+  const azione = AZIONI_CONVERSAZIONALI.find((a) => a.id === m[1].toLowerCase());
+  if (!azione) return null; // il modello ha nominato un'azione che non esiste: si ignora
+  return { azioneId: azione.id, parametro: m[2].trim(), testoPulito: String(testo).replace(AZIONE_RE, "").trim() };
+}
+// Registro delle azioni COMPIUTE (§9): cosa proposto, cosa confermato, cosa eseguito, con orario.
+// E' cio' che rende possibile capire DOPO perche' una cosa e' andata storta. Separato dal registro
+// di debug perche' risponde a una domanda diversa e non deve essere spinto fuori dal suo tetto.
+const REGISTRO_AZIONI_TETTO = 60;
+function registraAzione(voce) {
+  const n = [{ ...voce, quando: new Date().toISOString() }, ...loadKey("registro-azioni", [])].slice(0, REGISTRO_AZIONI_TETTO);
+  saveKey("registro-azioni", n);
+  return n;
+}
 
 //──────────────────────────────────────────────────────────
 // APTICA — ritorno fisico immediato (GESTO B.1 / B.4, brief 15/08/2026)
@@ -1248,6 +1428,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Prova a vuoto (Setup): un interruttore che fa percorrere ai Semi l'intera catena degli effettori senza che parta nessuna chiamata reale — al posto del risultato viene mostrato per intero cosa sarebbe partito. Serve a verificare il giro a costo zero prima di far uscire qualcosa nel mondo. Quando è accesa, nulla di reale viene creato o pubblicato, nemmeno confermando un'azione bloccata dal gate.
 - Postura e respiro (schermata iniziale, dal 15/08/2026): tre barre, una per pilastro, che mostrano a colpo d'occhio quanto di recente ciascuno si e' mosso. Si calcolano solo da dati gia' sul dispositivo, senza chiedere niente a nessuno, e compaiono prima di qualunque rete. Respirano lentamente, e il ritmo del respiro dipende dallo stato reale: piu' corto quando qualcosa e' fermo da troppo, piu' lungo quando le cose scorrono. Se il telefono e' impostato per ridurre le animazioni, il respiro non parte. E' una lettura di stato, mai un giudizio.
 - Ritorno aptico (dal 15/08/2026): quando il Ghost registra qualcosa su un pilastro il telefono vibra subito, con una firma diversa per pilastro — un colpo per BIO, due per AIR, tre per VIDYA — cosi' si riconosce al tatto su cosa si e' appena scritto. La voce compare e la postura si aggiorna nello stesso istante, senza aspettare nessuna rete.
+- Piano di controllo conversazionale (dal 16/08/2026): lo Shell sa quali percorsi e Semi esistono davvero — prima non lo sapeva, e per questo non riusciva a riprenderne uno. Se il Ghost dice "riprendi quello sul sonno", lo cerca fra quelli che esistono senza chiedere niente a nessun modello, e se ne trova due chiede quale invece di sceglierne uno. Quando ne apre uno, la chat mostra sempre in alto "stiamo lavorando su: [nome]", che si chiude con un tocco e scade da solo dopo otto ore. Ogni azione viene mostrata PRIMA di essere eseguita e si annulla anche dopo. Le capacita' si accendono e spengono una per una in Setup, e ogni azione proposta, confermata o annullata finisce in un registro con l'orario.
 - Backup e ripristino dei dati (Setup): scarica in un unico file tutto lo stato locale (log dei pilastri, percorsi, memoria, semi, kernel, profilo, impostazioni) e sa anche rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo e ricarica l'app, previa conferma.
 Capacità NON disponibili in questa app (elenco a mano, mantenuto qui insieme alle presenti — non generato dinamicamente, per lo stesso motivo per cui il Master Index andava mantenuto a mano: un elenco derivato in un punto diverso dal codice reale si disallinea): notifiche push, promemoria o azioni che si attivano da soli senza che il Ghost apra l'app, invio automatico di messaggi/email/post senza conferma esplicita del Ghost (le "Braccia" preparano sempre solo bozze pronte da copiare o eventi Calendar da confermare, mai spedizione automatica), pubblicazione automatica su social o piattaforme esterne, esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost quando il gate lo richiede.`;
 
@@ -1403,7 +1584,9 @@ async function reflectStyle(styleMemory, userMessage, shellReply, settings) {
     0.5, 400, settings
   );
 }
-async function runShellTurn(history, userMessage, settings, handlers, memory, styleMemory, attachment, dialecticOverride = null, pushDebugLog = null) {
+// BLOCCO 1 (16/08/2026) — inventario e fuoco arrivano ESPLICITAMENTE nella firma, non per assunzione
+// e non letti da dentro: e' la stessa regola che ha chiuso le quattro funzioni generative il 14/08.
+async function runShellTurn(history, userMessage, settings, handlers, memory, styleMemory, attachment, dialecticOverride = null, pushDebugLog = null, inventario = null, fuoco = null) {
   const attachmentNote = attachment?.kind === "text" ? `\n\n[Allegato: ${attachment.name}]\n${attachment.content.slice(0, 6000)}` : "";
   const effectiveMessage = userMessage + attachmentNote;
   const image = attachment?.kind === "image" ? attachment : null;
@@ -1429,6 +1612,9 @@ async function runShellTurn(history, userMessage, settings, handlers, memory, st
   const system = `${nowContext()} Sei lo Shell del sistema Resonance: estensione esecutiva digitale del Ghost (Flavio), in accoppiamento strutturale continuo con lui — non hai coscienza né volontà propria, non sei un partner autonomo. Ogni messaggio del Ghost non ti istruisce, ti perturba: è la tua struttura interna (memoria procedurale) a determinare come ti riorganizzi.
 ${PILLAR_CTX.bio} ${PILLAR_CTX.air} ${PILLAR_CTX.vidya}
 ${APP_CAPABILITIES_CONTEXT}
+${inventario || "Inventario dei percorsi non disponibile in questo turno — non fare finta di sapere quali esistono: chiedi."}
+${formatFuocoBlock(fuoco)}
+${formatAzioniBlock(azioniAttive())}
 Memoria procedurale accumulata sui tre pilastri (leggila sempre insieme — l'interpretazione resta integrata anche quando l'azione è mirata a un solo pilastro): ${lente}${styleNote}
 Dialoga in modo diretto e concreto, massimo 110 parole per risposta — TRANNE quando il Ghost chiede esplicitamente un contenuto strutturato intrinsecamente lungo (un piano, un elenco multi-giorno, un documento): in quel caso il limite non si applica, genera il contenuto per intero, completo, senza comprimerlo né riassumerlo per stare corto. NON scrivere mai sintassi tecnica o tag tra parentesi quadre nella risposta. Rispondi solo in linguaggio naturale.${dialecticNote}
 Non hai accesso a diagnosticare te stesso o l'infrastruttura tecnica su cui giri. Se il Ghost te lo chiede, NON inventare mai una spiegazione plausibile — di' semplicemente che non lo sai e che potrebbe essere un limite tecnico, senza dettagli inventati.
@@ -2569,7 +2755,10 @@ function AnochinTrace({ trace }) {
     </div>`}
   </div>`;
 }
-function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory, bio, air, vidya, pushDebugLog, addSeed, advanceSeedIfDue, shellDraft, consumeShellDraft }) {
+function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory, bio, air, vidya, pushDebugLog, addSeed, advanceSeedIfDue, shellDraft, consumeShellDraft, pBio, pAir, pVidya, semi }) {
+  // BLOCCO 1 — il fuoco vive qui perche' e' della conversazione, non dell'app intera.
+  const [fuoco, setFuocoState] = useState(() => leggiFuoco());
+  const cambiaFuoco = (f) => setFuocoState(f);
   const [input, setInput] = useState("");
   // Trigger di avanzamento Seme (Parte 3 del brief): una sola volta per apertura di questa tab —
   // ShellView viene smontata/rimontata ad ogni cambio di `view` in App() (reso condizionale, non
@@ -2638,19 +2827,32 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
           setMessages((prev) => [...prev, { id: uid(), role: "system-note", content: `✓ Percorso "${title}" creato in ${pillar.toUpperCase()}.` }]);
         }
       }
-      const { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, calendarProposal, usedWebSearch } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya, updateMemoria }, memory, styleMemory, currentAttachment, dialecticOverride, pushDebugLog);
+      const { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, calendarProposal, usedWebSearch } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya, updateMemoria }, memory, styleMemory, currentAttachment, dialecticOverride, pushDebugLog, costruisciInventario({ pBio, pAir, pVidya, semi }), leggiFuoco());
       // Canale primario Seme (brief Parte 1.A): euristica a costo zero sul messaggio del Ghost, non
       // sulla risposta dello Shell. Non crea nulla da sola — solo una proposta con un tap di conferma
       // (vedi card sotto), mai il pattern "conferma nel messaggio successivo" già usato per i Percorsi.
       const seedSuggestion = detectSeedWorthyIntent(userText) ? { content: userText } : null;
+      // BLOCCO 1 — il modello ha PROPOSTO un'azione? La proposta viene tolta dal testo e resa un
+      // oggetto separato: cosi' il Ghost la vede come proposta (§7.2d, sempre visibile prima
+      // dell'esecuzione) invece che come una riga di sintassi in mezzo alla risposta.
+      // La risoluzione e' di Grado 0: deterministica, zero token, e se e' ambigua NON sceglie.
+      const propostaGrezza = estraiProposta(reply);
+      let azioneProposta = null;
+      let replyPulita = reply;
+      if (propostaGrezza) {
+        replyPulita = propostaGrezza.testoPulito || reply;
+        const ric = recuperoGrado0(propostaGrezza.parametro, { pBio, pAir, pVidya, semi });
+        azioneProposta = { azioneId: propostaGrezza.azioneId, parametro: propostaGrezza.parametro, esito: ric.esito, candidati: ric.candidati, stato: "proposta" };
+        registraAzione({ fase: "proposta", azioneId: propostaGrezza.azioneId, parametro: propostaGrezza.parametro, esitoRicerca: ric.esito, candidati: ric.candidati.map((c) => ({ id: c.id, etichetta: c.etichetta })) });
+      }
       setMessages((prev) => {
-        const next = [...prev, { id: assistantMsgId, role: "assistant", content: reply, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft, calendarProposal, usedWebSearch, seedSuggestion }];
+        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft, calendarProposal, usedWebSearch, seedSuggestion, azioneProposta }];
         return compactShellChatIfNeeded(next) || next; // Opzione 3: compatta+archivia (Legge 14) se sopra soglia, altrimenti passa
       });
       if (newStyleMemory !== styleMemory) setStyleMemory(newStyleMemory);
       // L'auto-play parte dopo un await e può perdere lo status di "gesto utente" su Chrome mobile;
       // in quel caso il 🔊 manuale funziona sempre (chiamata sincrona dentro il tap).
-      if (settings.voiceEnabled) toggleSpeak(assistantMsgId, reply);
+      if (settings.voiceEnabled) toggleSpeak(assistantMsgId, replyPulita);
       pushDebugLog?.({ type: "shell-turn", userText: userText.slice(0, 100), model: settings.model, provider: settings.provider, attachment: currentAttachment ? currentAttachment.kind : null, replyLength: reply.length, actionsLog, alertsCount: alerts?.length || 0, hasDraft: !!draft, anochinDecisione: anochin?.decisione, anochinAccettore: anochin?.accettore, error: null });
     } catch (e) {
       setError(e.message);
@@ -2738,6 +2940,36 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     setMessages((prev) => [...prev, { id: uid(), role: "system-note", content: `✓ Seme AIR salvato.` }]);
   };
   const dismissSeed = (mid) => setSeedStatus((s) => ({ ...s, [mid]: "dismissed" }));
+  // BLOCCO 1 §2.3 — l'esecuzione e' del PROGRAMMA, mai del modello. Il modello ha solo proposto;
+  // qui si valida (l'identificativo deve esistere davvero, §2.4), si esegue, si registra.
+  // Classe A: nessun gate, ma annullamento sempre disponibile nel turno stesso (§5.1).
+  const [azioneStatus, setAzioneStatus] = useState({});
+  const confermaAzione = (mid, candidato) => {
+    vibra("conferma"); // sincrona dentro il gestore del tocco: mai dopo un'attesa
+    // Validazione: l'oggetto deve esistere ANCORA adesso, non solo quando fu proposto.
+    const esisteOra = [...(pBio || []), ...(pAir || []), ...(pVidya || []), ...(semi || [])].some((o) => o.id === candidato.id);
+    if (!esisteOra) {
+      setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "annullato" } }));
+      registraAzione({ fase: "rifiutata", azioneId: "apri_percorso", motivo: "identificativo non piu' esistente", id: candidato.id });
+      return;
+    }
+    const nuovo = apriFuoco(candidato.tipo, candidato.id, candidato.etichetta);
+    cambiaFuoco(nuovo);
+    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "aperto", etichetta: candidato.etichetta, id: candidato.id } }));
+    registraAzione({ fase: "eseguita", azioneId: "apri_percorso", id: candidato.id, etichetta: candidato.etichetta, tipo: candidato.tipo });
+  };
+  const annullaAzione = (mid) => {
+    vibra("conferma");
+    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "annullato" } }));
+    registraAzione({ fase: "annullata-prima-di-eseguire", azioneId: "apri_percorso" });
+  };
+  // Annullamento DOPO l'esecuzione: e' quello che rende l'azione davvero reversibile (C.14).
+  const annullaApertura = (mid) => {
+    vibra("conferma");
+    cambiaFuoco(chiudiFuoco());
+    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "annullato" } }));
+    registraAzione({ fase: "annullata-dopo-esecuzione", azioneId: "apri_percorso" });
+  };
   // Email da bozza Arms: stesso principio del Calendar, mai scrittura/invio automatico (Legge 8).
   // Il "recipient" nella bozza è una DESCRIZIONE dedotta dall'AI ("il tuo commercialista"), mai un
   // indirizzo verificato — l'indirizzo vero lo digita e conferma sempre il Ghost, qui, prima dell'invio.
@@ -2760,6 +2992,13 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   const lastBio = bio?.[0], lastAir = air?.[0], lastVidya = vidya?.[0];
   return html`<div class="r-screen">
     <${SectionHeader} color="#2A2E35" title="SHELL" subtitle="Dialogo diretto — ciclo di percezione-azione visibile per verifica" />
+    ${/* BLOCCO 1 §2.2 — il fuoco e' VISIBILE e CHIUDIBILE IN UN GESTO. Un copilota che non dice
+          dove siete non e' affidabile; e C.14 vuole che ogni cosa mediata resti disfabile senza
+          attrito. La barra compare solo quando c'e' un fuoco: a vuoto non occupa spazio. */ ""}
+    ${fuoco.tipo !== "nessuno" && html`<div class="r-fuoco">
+      <span class="r-fuoco-testo">Stiamo lavorando su: <b>${fuoco.etichetta}</b></span>
+      <button class="r-fuoco-chiudi" title="Chiudi il fuoco" onClick=${() => { vibra("conferma"); cambiaFuoco(chiudiFuoco()); }}>chiudi</button>
+    </div>`}
     <div class="r-settings-row" style="font-size:13px;margin-bottom:8px">
       <span>Modalità oggi: ${dialecticOverride === null ? "default profilo" : dialecticOverride ? "mettimi alla prova" : "confermami"}</span>
       <div style="display:flex;gap:6px">
@@ -2820,6 +3059,36 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
               ${calStatus[mid] === "done" && html`<div class="r-ok">✓ Salvato sul Calendar.</div>`}
               ${calStatus[mid]?.startsWith?.("error") && html`<div class="r-error">${calStatus[mid].replace("error: ", "")}</div>`}
             </div>`}
+            ${/* BLOCCO 1 — la proposta d'azione, sempre visibile PRIMA dell'esecuzione (§7.2d),
+                  anche in Classe A dove non c'e' gate: vedere "apro il percorso X" prima che
+                  accada e' cio' che consente di fermarlo. Tre casi, tre comportamenti diversi:
+                  trovato -> si conferma; ambiguo -> si mostra e si CHIEDE, mai scegliere il piu'
+                  recente (§7.2b); nessun riscontro -> si dichiara, non si inventa. */ ""}
+            ${m.azioneProposta && !azioneStatus[mid] && html`<div class="r-draft-card">
+              ${m.azioneProposta.esito === "trovato" && html`<div>
+                <div class="r-draft-label">▸ APRO QUESTO — conferma prima che accada</div>
+                <div class="r-draft-body">${m.azioneProposta.candidati[0].etichetta} <span style="opacity:.6">(${m.azioneProposta.candidati[0].tipo}, ${m.azioneProposta.candidati[0].pilastro.toUpperCase()})</span></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="r-btn r-draft-copy" onClick=${() => confermaAzione(mid, m.azioneProposta.candidati[0])}>Sì, aprilo</button>
+                  <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Annulla</button>
+                </div>
+              </div>`}
+              ${m.azioneProposta.esito === "ambiguo" && html`<div>
+                <div class="r-draft-label">▸ QUALE DEI DUE? — non scelgo io</div>
+                <div class="r-draft-body">Con "${m.azioneProposta.parametro}" possono intendersi più cose. Dimmi quale.</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  ${m.azioneProposta.candidati.map((c) => html`<button class="r-btn r-draft-copy" key=${c.id} onClick=${() => confermaAzione(mid, c)}>${c.etichetta}</button>`)}
+                  <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Nessuno</button>
+                </div>
+              </div>`}
+              ${(m.azioneProposta.esito === "nessun-riscontro" || m.azioneProposta.esito === "nessuna-parola-utile") && html`<div>
+                <div class="r-draft-label">▸ NON L'HO TROVATO</div>
+                <div class="r-draft-body">Non c'è niente che corrisponda a "${m.azioneProposta.parametro}" fra i percorsi e i semi che esistono adesso. Non ne apro uno a caso: dimmi tu quale, o creiamolo.</div>
+                <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Va bene</button>
+              </div>`}
+            </div>`}
+            ${azioneStatus[mid]?.tipo === "aperto" && html`<div class="r-ok">✓ Aperto: ${azioneStatus[mid].etichetta} — <button class="r-fuoco-chiudi" onClick=${() => annullaApertura(mid)}>annulla</button></div>`}
+            ${azioneStatus[mid]?.tipo === "annullato" && html`<div class="r-hub-detail">Annullato — non è stato aperto niente.</div>`}
             ${m.seedSuggestion && !seedStatus[mid] && html`<div class="r-draft-card">
               <div class="r-draft-label">🌱 SEME AIR — vuoi salvare questa idea?</div>
               <div class="r-draft-body">${m.seedSuggestion.content}</div>
@@ -2920,6 +3189,9 @@ function KernelView({ kernel, onSave, driveStatus }) {
 // solo ai-cost) — con uso attivo, "ultimi 7 giorni" in pratica mostra molto meno di 7 giorni reali,
 // perché le voci più vecchie vengono scartate ben prima. Non risolto qui deliberatamente: il brief
 // chiede di riusare la struttura esistente, non di crearne una parallela senza tetto.
+// §12 — tetto di spesa dichiarato dal Ghost il 15/08/2026. Un tetto che non si vede non esiste
+// (C.16), quindi il contatore mensile e la distanza dal tetto stanno in Setup insieme al resto.
+const TETTO_MENSILE_USD = 5;
 function CostSummaryPanel({ debugLog }) {
   const costEntries = (debugLog || []).filter((e) => e.type === "ai-cost");
   const today = todayISO();
@@ -2942,11 +3214,23 @@ function CostSummaryPanel({ debugLog }) {
   const weekByTag = byTag(weekEntries);
   const sumTokens = (entries) => entries.reduce((a, e) => a + (typeof e.tokensTotal === "number" ? e.tokensTotal : 0), 0);
   const sumCost = (entries) => entries.reduce((a, e) => a + (typeof e.costUsd === "number" ? e.costUsd : 0), 0);
+  // Spesa del mese in corso e distanza dal tetto. Limite dichiarato apertamente: il registro di
+  // debug tiene 50 voci a rotazione, quindi con molto uso il totale mensile e' un MINIMO osservato,
+  // non la spesa reale. Dirlo e' meglio di mostrare un numero che si crede completo.
+  const meseCorrente = today.slice(0, 7);
+  const meseEntries = costEntries.filter((e) => (e.time || "").slice(0, 7) === meseCorrente);
+  const spesaMese = meseEntries.reduce((a, e) => a + (typeof e.costUsd === "number" ? e.costUsd : 0), 0);
+  const quotaTetto = Math.min(100, Math.round((spesaMese / TETTO_MENSILE_USD) * 100));
   const anyCostToday = todayEntries.some((e) => typeof e.costUsd === "number");
   const anyCostWeek = weekEntries.some((e) => typeof e.costUsd === "number");
   return html`<${Card} accent=${C.core}>
     <div class="r-hub-title" style="color:#3A4750">Costi/token IA</div>
     <div class="r-hub-detail">Solo le chiamate tracciate: Shell, Magi per intero (Balthasar, Melchior, Caspar, sintesi finale e — se la perturbazione è mirata a un pilastro — la riscrittura della sua memoria), Agente AIR, ricerca web on-demand, Seme (ricerca/esecuzione). Non include refresh pagina, login Google o sync Drive — non toccano mai un modello.</div>
+    <div class="r-hub-detail" style="margin-top:10px">
+      <b>Questo mese</b>: $${spesaMese.toFixed(4)} su un tetto di $${TETTO_MENSILE_USD} (${quotaTetto}%).
+      ${quotaTetto >= 80 ? html`<span style="color:#B4553A"> — ci sei quasi.</span>` : ""}
+      <br/><span style="opacity:.7">È un minimo osservato, non la spesa certa: il registro tiene le ultime 50 voci, quindi le più vecchie del mese possono esserne già uscite.</span>
+    </div>
     ${costEntries.length === 0 ? html`<div class="r-hub-detail" style="margin-top:8px">Nessuna chiamata tracciata ancora nel log (max 50 voci totali, condivise con tutti gli eventi di debug).</div>` : html`
       <div class="r-hub-detail" style="margin-top:10px"><b>Oggi</b>: ${todayEntries.length} chiamate · ${sumTokens(todayEntries)} token · ${anyCostToday ? `$${sumCost(todayEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
       <div class="r-hub-detail" style="margin-top:4px"><b>Ultimi 7 giorni</b> (entro il tetto di 50 voci del log): ${weekEntries.length} chiamate · ${sumTokens(weekEntries)} token · ${anyCostWeek ? `$${sumCost(weekEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
@@ -3021,6 +3305,13 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
     const a = document.createElement("a"); a.href = url; a.download = `resonance-json-failures-${todayISO()}.json`; a.click();
     URL.revokeObjectURL(url);
   };
+  // BLOCCO 1 §2.5 — interruttori per capacita'. Il ripristino protegge dal codice ROTTO, non da
+  // quello che funziona male, ed e' tutto-o-niente: se otto capacita' su dieci vanno e due no,
+  // tornare indietro butta via anche le otto. Qui si spegne la singola capacita', senza deploy.
+  const [interruttori, setInterruttoriState] = useState(() => leggiInterruttori());
+  const cambiaInterruttore = (id, accesa) => setInterruttoriState(scriviInterruttore(id, accesa));
+  const [registroAzioni, setRegistroAzioni] = useState(() => loadKey("registro-azioni", []));
+  const svuotaRegistroAzioni = () => { saveKey("registro-azioni", []); setRegistroAzioni([]); };
   // FASE 2 — interruttore della modalità "prova a vuoto" degli effettori.
   const [provaAVuoto, setProvaAVuotoState] = useState(() => isProvaAVuoto());
   const cambiaProvaAVuoto = (attiva) => { setProvaAVuoto(attiva); setProvaAVuotoState(attiva); };
@@ -3145,6 +3436,25 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
       <div class="r-hub-detail">Il pulsante "Segnala" (in alto a destra, in ogni schermata) manda un'email diretta via Gmail — nessuna cartella o condivisione da configurare, nessun servizio terzo. Richiede lo stesso login Google già usato per la sincronizzazione.</div>
       ${!feedbackReady && html`<div class="r-hub-detail" style="margin-top:8px">Manca FEEDBACK_EMAIL in config.js — vedi README.md.</div>`}
       ${feedbackReady && html`<div class="r-hub-detail" style="margin-top:8px">Configurato — le segnalazioni arrivano a ${CONFIG.FEEDBACK_EMAIL} via Gmail (stesso account Google del login).</div>`}
+    </${Card}>
+    <${Card} accent=${C.core}>
+      <div class="r-hub-title" style="color:#3A4750">Cosa lo Shell può fare parlando</div>
+      <div class="r-hub-detail">Ogni capacità si spegne da sola, senza toccare le altre e senza aspettare un rilascio. Se una si comporta male, spegni quella e il resto continua a funzionare.</div>
+      ${AZIONI_CONVERSAZIONALI.map((a) => html`<div class="r-settings-row" key=${a.id} style="margin-top:10px">
+        <div><div style="font-weight:600;font-size:13px">${a.etichetta}</div>
+        <div class="r-hub-detail">${a.reversibile ? "Reversibile — si annulla subito." : "Non reversibile — passa sempre da una conferma."}</div></div>
+        <input type="checkbox" checked=${interruttori[a.id]} onInput=${(e) => cambiaInterruttore(a.id, e.target.checked)} />
+      </div>`)}
+    </${Card}>
+    <${Card} accent=${C.core}>
+      <div class="r-hub-title" style="color:#3A4750">Registro delle azioni — ${registroAzioni.length} voci</div>
+      <div class="r-hub-detail">Cosa è stato proposto, cosa hai confermato, cosa è stato eseguito, con l'orario. Serve a capire dopo perché una cosa è andata storta, invece di ricostruirla a memoria.</div>
+      ${registroAzioni.length === 0
+        ? html`<div class="r-hub-detail" style="margin-top:8px">Nessuna azione ancora.</div>`
+        : html`<div style="margin-top:8px">${registroAzioni.slice(0, 12).map((v, i) => html`<div class="r-hub-detail" key=${i} style="margin-top:4px">
+            ${new Date(v.quando).toLocaleString("it-IT")} — <b>${v.fase}</b> · ${v.azioneId}${v.etichetta ? ` · ${v.etichetta}` : ""}${v.esitoRicerca ? ` · ricerca: ${v.esitoRicerca}` : ""}${v.motivo ? ` · ${v.motivo}` : ""}
+          </div>`)}</div>`}
+      ${registroAzioni.length > 0 && html`<button class="r-btn r-btn-ghost" style="margin-left:0;margin-top:10px" onClick=${svuotaRegistroAzioni}>Svuota registro</button>`}
     </${Card}>
     <${Card} accent=${C.core}>
       <div class="r-settings-row"><div><div class="r-hub-title" style="color:#3A4750">Prova a vuoto</div>
@@ -4026,7 +4336,8 @@ function App() {
     ${view === "shell" && html`<${ShellView} messages=${shellChat} setMessages=${setShellChat} settings=${settings} addBio=${addBio} addAir=${addAir} addVidya=${addVidya}
       percorsi=${{ bio: pBio, air: pAir, vidya: pVidya }} setPercorsi=${{ bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }}
       memory=${memory} updateMemoria=${updateMemoria} styleMemory=${styleMemory} setStyleMemory=${setStyleMemory} bio=${bio} air=${air} vidya=${vidya} pushDebugLog=${pushDebugLog}
-      addSeed=${addSeed} advanceSeedIfDue=${advanceSeedIfDue} shellDraft=${shellDraft} consumeShellDraft=${() => setShellDraft("")} />`}
+      addSeed=${addSeed} advanceSeedIfDue=${advanceSeedIfDue} shellDraft=${shellDraft} consumeShellDraft=${() => setShellDraft("")}
+      pBio=${pBio} pAir=${pAir} pVidya=${pVidya} semi=${semi} />`}
     ${view === "bio" && html`<${BioView} entries=${bio} onAdd=${addBio} onDelete=${delBio} percorsi=${pBio} setPercorsi=${setPBioSync} settings=${settings} digest=${digestBio} memory=${memory} />`}
     ${view === "air" && html`<${AirView} entries=${air} onAdd=${addAir} onDelete=${delAir} percorsi=${pAir} setPercorsi=${setPAirSync} settings=${settings} digest=${digestAir} memory=${memory}
       semi=${semi} onAddSeed=${(content) => addSeed(content, "manual")} onApproveSeedStrategy=${approveSeedStrategy} onUnlockGatedSeed=${unlockGatedSeed} onDiscussInShell=${discussSeedInShell} pushDebugLog=${pushDebugLog} advanceSeedIfDue=${advanceSeedIfDue} onArchiveSeed=${archiveSeed} />`}
