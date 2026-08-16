@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-16 · piano-di-controllo-blocco-3";
+const APP_BUILD = "2026-08-16 · correzioni-prova-reale";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -419,22 +419,33 @@ function azioniAttive() {
 }
 // Blocco descrittivo per il prompt. Se nessuna azione e' accesa, il modello deve saperlo invece di
 // proporre cose che il programma poi rifiuterebbe in silenzio.
+// CORRETTO IL 16/08/2026 (sera), dopo la prova reale del Ghost — §1.4 del brief.
+// Il Ghost vedeva in chat righe come "[AZIONE: apri_percorso | ...]" e "[AZIONE: calendar | ...]".
+// La causa era mia, introdotta nel Blocco 2: questo blocco ORDINAVA al modello di scrivere il tag,
+// mentre poche righe piu' sotto lo stesso prompt gli vietava i tag fra parentesi quadre — due
+// istruzioni opposte nello stesso respiro — e la funzione che toglieva il tag dal testo mostrato
+// (estraiProposta) era rimasta definita ma non veniva piu' chiamata da nessuna parte.
+// Dal Blocco 2 l'azione la sceglie un TURNO DI SELEZIONE dedicato: il modello conversazionale non
+// deve produrre nessuna sintassi, mai. Qui ora si limita a sapere cosa il programma sa fare, per
+// poterne parlare a parole.
 function formatAzioniBlock(attive) {
-  if (!attive.length) return "In questo momento non puoi compiere nessuna azione: sono tutte spente in Setup. Puoi solo parlare. Non proporre azioni.";
-  return `Azioni che puoi PROPORRE (non eseguire: esegue il programma, dopo). Se il Ghost ne chiede una, rispondi normalmente E aggiungi in fondo, su una riga a se', esattamente questa forma: [AZIONE: <id> | <parametro>]
-${attive.map((a) => `- ${a.id}: ${a.descrizione} Parametro: ${Object.values(a.parametri)[0]}`).join("\n")}
-Una sola azione per turno (§7.3): se il Ghost ne chiede tre, proponi la prima e di' che le altre le farete dopo. Se non e' chiaro a cosa si riferisce, NON proporre l'azione: chiedi.`;
+  if (!attive.length) return "In questo momento il programma non puo' compiere nessuna azione per te: sono tutte spente in Setup. Puoi solo parlare, e dirlo se il Ghost chiede qualcosa che richiederebbe un'azione.";
+  return `Cose che il PROGRAMMA sa fare (non le fai tu, e non devi chiederle in nessun modo speciale — a deciderlo e' un passaggio separato, dopo la tua risposta):
+${attive.map((a) => `- ${a.etichetta}: ${a.descrizione}`).join("\n")}
+Non scrivere MAI codici, sigle, parentesi quadre o formati tecnici per attivarle: non servono e il Ghost li leggerebbe. Parla e basta. Se non e' chiaro a cosa il Ghost si riferisce, chiedi.`;
 }
-// Estrae la proposta dal testo del modello. Deliberatamente rigida: una forma sola, riconoscibile,
-// e se non corrisponde non succede niente. Un parser permissivo qui significa azioni eseguite per
-// caso su un testo che le nominava soltanto.
-const AZIONE_RE = /\[AZIONE:\s*([a-z_]+)\s*\|\s*([^\]]+)\]/i;
-function estraiProposta(testo) {
-  const m = String(testo || "").match(AZIONE_RE);
-  if (!m) return null;
-  const azione = AZIONI_CONVERSAZIONALI.find((a) => a.id === m[1].toLowerCase());
-  if (!azione) return null; // il modello ha nominato un'azione che non esiste: si ignora
-  return { azioneId: azione.id, parametro: m[2].trim(), testoPulito: String(testo).replace(AZIONE_RE, "").trim() };
+// Rete di sicurezza, indipendente dal prompt: qualunque cosa somigli a un tag d'azione viene tolta
+// dal testo mostrato al Ghost, SEMPRE. Qui essere permissivi e' giusto, al contrario di quando si
+// trattava di ESEGUIRE: togliere di piu' fa al massimo sparire una parentesi quadra innocua,
+// mentre lasciarne passare una mostra al Ghost la ferraglia interna del sistema.
+// Ogni rimozione viene registrata nel log di debug: se il modello ricomincia a produrre tag, si
+// vede li' invece di scoprirlo da uno screenshot.
+const TAG_AZIONE_RE = /\[\s*azione\s*:[^\]]*\]/gi;
+function ripulisciTagAzione(testo) {
+  const originale = String(testo || "");
+  const rimossi = originale.match(TAG_AZIONE_RE) || [];
+  if (!rimossi.length) return { testo: originale, rimossi: [] };
+  return { testo: originale.replace(TAG_AZIONE_RE, "").replace(/\n{3,}/g, "\n\n").trim(), rimossi };
 }
 // Registro delle azioni COMPIUTE (§9): cosa proposto, cosa confermato, cosa eseguito, con orario.
 // E' cio' che rende possibile capire DOPO perche' una cosa e' andata storta. Separato dal registro
@@ -548,7 +559,10 @@ const DEFAULT_SETTINGS = {
   model: "google/gemini-3.1-pro-preview",
   voiceEnabled: true,
   armsDraftsEnabled: false,
-  calendarEnabled: true,
+  // calendarEnabled non esiste piu' (16/08/2026): governava il secondo braccio Calendar, ritirato.
+  // Il valore resta a false per i profili gia' salvati che se lo portano dietro, cosi' nessun
+  // vecchio salvataggio puo' riaccendere una strada che non c'e' piu'.
+  calendarEnabled: false,
 };
 
 const MODEL_OPTIONS = [
@@ -1589,7 +1603,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Percorsi: competenze o percorsi identitari tracciati per pilastro (BIO/AIR/VIDYA), con nodi, sessioni, quiz di verifica.
 - Semi (solo AIR): un'idea grezza non ancora sviluppata. Si crea buttandola lì in chat (lo Shell propone di salvarla) o con un pulsante manuale in AIR → Percorsi. Stati possibili: "nuovo/in ricerca" (lo Shell la sta ricercando online e traducendo in strategie), "in attesa di approvazione" (2-3 strategie pronte, il Ghost ne approva una), "in sviluppo" (esecuzione autonoma sorvegliata passo-passo), "bloccato" (un gate di sicurezza ha fermato un passo, richiede conferma esplicita del Ghost). Dal 27/07/2026 lo sviluppo di un Seme non produce più solo prosa che descrive un'azione: sceglie un EFFETTORE reale da un registro (genera un'immagine SVG→PNG, genera un'immagine raster, o crea un prodotto vero nel catalogo Printify) e lo esegue davvero — l'esecuzione produce dati reali (id prodotto Printify, file su Drive), non un riassunto narrativo. Ogni Seme ha anche un pulsante "Avanza ora" manuale in AIR → Percorsi, con il contatore round/tetto visibile sulla card.
 - Agorà Magi: una perturbazione deliberata generata su richiesta (Balthasar→Melchior→Caspar), non una funzione automatica.
-- Calendar: promemoria/eventi che lo Shell propone dalla conversazione, mai salvati senza conferma esplicita.
+- Percorsi: si aprono SOLO toccando il pulsante della loro card, mai dicendo "ok" o "va bene" nel messaggio dopo (cambiato il 16/08/2026). Prima di aprirlo il Ghost vede e può correggere il nome; se dalla conversazione non esce un nome sensato, il sistema lo dichiara e glielo chiede invece di inventarne uno. Un percorso già esistente con un nome illeggibile viene segnalato quando lo si apre, con un pulsante per rinominarlo.
 - Kernel: lo stato di sistema versionato, modificabile dal Ghost.
 - Simbiosi (Adam): il punto di incontro tra i pilastri, sensing su ordine/caos e convergenze identitarie.
 - Vincoli dichiarati (Setup): i vincoli del Ghost (alimentari, di tempo, identità professionale da tenere separata da AIR, ecc.) sono voci rieditabili in ogni momento in Setup → "Vincoli dichiarati"/"Identità professionale" — si possono aggiungere, correggere o rimuovere lì, non solo al primo avvio con l'onboarding.
@@ -1991,26 +2005,22 @@ function isGarbageReading(r) {
   if (/non\s+(ci sono|c'è|ci son|ho trovato|sono presenti)|nessun[ao]?\s+(menzione|dato|attività|informazione|riferimento)/i.test(text)) return true;
   return false;
 }
-// Valida una proposta di evento grezza dal modello: scarta date non parsabili o già passate
-// (un modello può sbagliare il calcolo di "giovedì prossimo") invece di proporre una card rotta
-// o un evento retroattivo. Riusata sia qui sia in futuro se il rilevamento tornasse standalone.
-function validateCalendarProposal(raw, now) {
-  if (!raw?.needed || !raw?.title || !raw?.startISO) return null;
-  const startTime = Date.parse(raw.startISO);
-  if (Number.isNaN(startTime) || startTime < now.getTime() - 5 * 60000) return null; // 5min tolleranza arrotondamento
-  if (raw.endISO && Number.isNaN(Date.parse(raw.endISO))) raw.endISO = null;
-  return raw;
-}
-async function readThroughLenses(recentText, settings, image, calendarEnabled = false) {
-  const now = new Date();
-  // Il blocco Calendar entra nel prompt e nello schema JSON SOLO se abilitato: disattivato, il costo
-  // di questa funzione torna esattamente quello di prima (nessun token speso sul Calendar).
-  const calendarBlock = calendarEnabled
-    ? `\nCALENDAR: se il Ghost chiede di mettere un appuntamento/promemoria/evento (es. "mettimi un promemoria domani alle 15"), estrai data e ora assolute a partire da OGGI (${now.toISOString()}, fuso Europe/Rome), risolvendo espressioni relative in date concrete. Altrimenti "calendar": {"needed": false}.`
-    : "";
-  const calendarSchema = calendarEnabled
-    ? `,"calendar": {"needed": true/false, "title": "titolo breve", "startISO": "2026-07-20T15:00:00", "endISO": "...+1h se non specificato", "allDay": false, "notes": "..."}`
-    : "";
+// BRACCIO CALENDAR VECCHIO — RITIRATO IL 16/08/2026 (sera), dopo la prova reale del Ghost.
+// Era un SECONDO sistema di calendario, parallelo a quello del Blocco 3 e piu' vecchio, e faceva
+// due danni concreti che il Ghost ha visto sul telefono:
+//  · §1.2 — girava dentro readThroughLenses a OGNI turno, rileggendo la conversazione recente e
+//    rigenerando la proposta da capo ogni volta. Una sola richiesta ("Torquato domani") ha prodotto
+//    tre card diverse con tre orari diversi — 17:00, poi 15:00 col titolo cambiato, poi 19:00 —
+//    e il Ghost non poteva piu' sapere quale fosse quella vera.
+//  · era acceso di default (settings.calendarEnabled: true), quindi SCAVALCAVA l'interruttore di
+//    Classe B che avevo consegnato spento. La promessa "consegnate spente" era vera per l'azione
+//    nuova e vuota nei fatti, perche' una strada piu' vecchia era gia' aperta.
+// Ora il calendario ha UNA strada sola: l'azione di Classe B, con la data calcolata dal codice,
+// il gate, la verifica di ritorno e l'idempotenza. Due sistemi per la stessa cosa non sono una
+// ridondanza utile: sono due veriti in disaccordo.
+async function readThroughLenses(recentText, settings, image) {
+  const calendarBlock = "";
+  const calendarSchema = "";
   const data = await askModelJSON(
     `Sei lo Shell del sistema Resonance. Leggi l'intero scambio recente (un dato può arrivare frammentato su più risposte, anche in un'immagine allegata) attraverso TRE lenti indipendenti — BIO, AIR, VIDYA. Un singolo evento può essere valido per più lenti insieme (es. "ho suonato il basso fino alle due" è insieme VIDYA e BIO) — non forzarlo in una sola. La lettura interpretativa resta sempre integrata tra le tre lenti, anche quando l'azione conseguente riguarderà un solo pilastro.
 Per ognuna, chiediti: "c'è una lettura pertinente qui?" Se sì, articolala in modo specifico a quella lente (non ripetere lo stesso testo per pilastri diversi).
@@ -2022,10 +2032,37 @@ Array vuoto se non c'è nulla di pertinente — NON scrivere una lettura per dir
     recentText, 0.3, 900, settings, image
   );
   const readings = (data?.readings || []).filter((r) => !isGarbageReading(r));
-  const calendarProposal = calendarEnabled ? validateCalendarProposal(data?.calendar, now) : null;
-  return { readings, calendarProposal };
+  return { readings };
 }
 // Euristiche istantanee — nessuna chiamata AI dove basta un controllo testuale
+// CORRETTA IL 16/08/2026 (sera) — §2 del brief, il difetto piu' grave dei cinque.
+// Il Ghost aveva in Vidya due percorsi chiamati "Questo?" e "Dedicato su questo? Ti terrei traccia
+// de" — quest'ultimo tagliato a meta' della parola "dei". La causa era qui, ed e' stata riprodotta
+// esattamente prima di toccarla: la cattura era ([^".\n]{4,40}), cioe' UN TAGLIO A QUARANTA
+// CARATTERI ESATTI, senza guardare dove finisse la parola.
+// Perche' conta piu' degli altri quattro difetti: il recupero conversazionale del Blocco 1 —
+// "riprendi quello sul sonno" — cerca fra i TITOLI. Un percorso chiamato "Questo?" e' indicizzato
+// ma irraggiungibile: nessuna frase che il Ghost direbbe davvero potra' mai corrispondergli. E
+// nemmeno lui, guardando l'elenco, puo' sapere di cosa si tratti senza aprirli uno per uno — che
+// e' precisamente il problema che l'inventario doveva risolvere.
+const TITOLO_MAX = 70;
+// Parole che da sole non nominano niente: un titolo fatto solo di queste e' inservibile.
+const PAROLE_NON_TITOLO = /^(questo|questa|quello|quella|questi|queste|ti|te|mi|ci|un|uno|una|il|lo|la|i|gli|le|di|del|della|su|sul|sulla|per|che|e|ed|a|ad|in|con|da|dei|degli|delle|ecco|si|sì|no|tuo|tuoi|tua|tue|mio|miei|mia|mie|terrei|traccia|dedicato|dedicata)$/i;
+// Taglia rispettando la fine delle parole. Se deve tagliare, lo dichiara con i puntini.
+function troncaAConfineDiParola(testo, max = TITOLO_MAX) {
+  const t = String(testo || "").trim();
+  if (t.length <= max) return t;
+  const tagliato = t.slice(0, max);
+  const ultimoSpazio = tagliato.lastIndexOf(" ");
+  return (ultimoSpazio > max * 0.4 ? tagliato.slice(0, ultimoSpazio) : tagliato).replace(/[\s,;:.!?-]+$/, "") + "…";
+}
+// Un titolo e' usabile se contiene almeno due parole che nominano qualcosa. "Questo?" no.
+// "Ti terrei traccia dei progressi" nemmeno: e' un pezzo di frase, non il nome di una cosa.
+function titoloUsabile(titolo) {
+  const parole = String(titolo || "").replace(/[?!.,;:"“”]/g, " ").split(/\s+/).filter(Boolean);
+  const utili = parole.filter((p) => p.length > 2 && !PAROLE_NON_TITOLO.test(p));
+  return utili.length >= 2;
+}
 function detectPercorsoProposalHeuristic(shellReply) {
   const m = /vuoi che apr[ao] un percorso/i.test(shellReply);
   if (!m) return { proposed: false };
@@ -2033,14 +2070,22 @@ function detectPercorsoProposalHeuristic(shellReply) {
   let pillar = "vidya";
   if (/(monetizz|canale|econom|business|vettore)/.test(lower)) pillar = "air";
   else if (/(peso|sonno|terapia|salute|corpo|allenam)/.test(lower)) pillar = "bio";
-  const titleMatch = shellReply.match(/percorso (?:su|dedicato a|per)?\s*["“]?([^".\n]{4,40})["”]?/i);
-  return { proposed: true, pillar, title: titleMatch ? titleMatch[1].trim() : "Nuovo percorso" };
+  // Si ferma alla fine della frase (punto, punto interrogativo, a capo) invece di contare caratteri:
+  // e' la frase a dire dove finisce il nome, non un numero.
+  const titleMatch = shellReply.match(/percorso\s+(?:su|sul|sulla|dedicato a|dedicata a|per|di)\s+["“]?([^"”.?!\n]{3,120})["”]?/i);
+  const grezzo = titleMatch ? titleMatch[1].trim() : "";
+  const titolo = troncaAConfineDiParola(grezzo);
+  const usabile = titoloUsabile(titolo);
+  // Se il titolo non e' usabile NON si inventa "Nuovo percorso" ne' si salva la frase a pezzi:
+  // si dichiara, e la card chiedera' al Ghost di scriverlo. Un gesto, invece di un titolo morto.
+  return { proposed: true, pillar, title: usabile ? titolo : "", titoloUsabile: usabile, titoloScartato: usabile ? "" : titolo };
 }
-function detectConfirmationHeuristic(userMessage) {
-  const t = userMessage.trim().toLowerCase();
-  if (/\b(no|non ora|aspetta|non ancora|magari dopo)\b/.test(t)) return false;
-  return /\b(sì|si|ok|va bene|vai|certo|dai|procedi|fallo|perfetto|d'accordo)\b/.test(t);
-}
+// detectConfirmationHeuristic RIMOSSA il 16/08/2026 (§1.3). Diceva che "ok", "va bene", "dai",
+// "procedi", "certo", "fallo" erano una conferma — di qualunque cosa fosse pendente in quel
+// momento. E' la conferma dedotta dal contesto che il piano vieta, e nella prova reale del Ghost
+// un "Sì, fissalo" riferito a una sola card ha finito per valere per piu' cose insieme.
+// Non l'ho sostituita con una versione piu' furba: l'ho tolta. Ogni conferma ora e' un tocco sul
+// pulsante della cosa specifica, e non esiste piu' nessuna strada per dedurne una dal testo.
 // Braccio "Shell con web search on-demand": euristica istantanea, zero costo — nessuna chiamata AI
 // in più solo per decidere se attivare il tool. Attiva SOLO su richiesta esplicita del Ghost, non
 // su ogni domanda che potrebbe beneficiare di dati freschi (quello resterebbe un giudizio di Shell
@@ -2132,6 +2177,7 @@ ${inventario || "Inventario dei percorsi non disponibile in questo turno — non
 ${formatFuocoBlock(fuoco)}
 ${formatAzioniBlock(azioniAttive())}
 Memoria procedurale accumulata sui tre pilastri (leggila sempre insieme — l'interpretazione resta integrata anche quando l'azione è mirata a un solo pilastro): ${lente}${styleNote}
+REGOLA SUL TEMPO VERBALE, non negoziabile (corretta il 16/08/2026 dopo una prova reale in cui hai scritto "Ho segnato un appuntamento" prima ancora che il Ghost confermasse). TU NON ESEGUI NIENTE. Non salvi, non segni, non aggiungi, non mandi, non fissi: tutto questo lo fa il programma dopo, e solo se il Ghost tocca un pulsante. Quindi non usare MAI il passato per un'azione ("ho segnato", "ho aggiunto", "fatto", "l'ho messo in calendario"), nemmeno se ti sembra naturale, nemmeno se il Ghost ti ha appena detto di sì. Usa il condizionale o il futuro: "te lo segnerei", "vuoi che lo metta?", "posso aggiungerlo". Se una cosa e' stata davvero fatta, e' l'app a scriverlo sotto la tua risposta, con la conferma riletta dalla fonte — non tu. Dire "fatto" per qualcosa che non e' successo e' il modo piu' rapido di rendere inaffidabile tutto il sistema.
 Dialoga in modo diretto e concreto, massimo 110 parole per risposta — TRANNE quando il Ghost chiede esplicitamente un contenuto strutturato intrinsecamente lungo (un piano, un elenco multi-giorno, un documento): in quel caso il limite non si applica, genera il contenuto per intero, completo, senza comprimerlo né riassumerlo per stare corto. NON scrivere mai sintassi tecnica o tag tra parentesi quadre nella risposta. Rispondi solo in linguaggio naturale.${dialecticNote}
 Non hai accesso a diagnosticare te stesso o l'infrastruttura tecnica su cui giri. Se il Ghost te lo chiede, NON inventare mai una spiegazione plausibile — di' semplicemente che non lo sai e che potrebbe essere un limite tecnico, senza dettagli inventati.
 Se ti arriva un'immagine o un documento allegato, descrivi cosa vi leggi in modo concreto (numeri, testo, dettagli visibili) prima di commentare.
@@ -2144,10 +2190,10 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
       () => askModelWithHistory(system, messages, 0.7, 3000, settings, image, false, (raw) => logAiCost(pushDebugLog, "shell", settings.model, raw), ANTI_LOOP_PENALTIES),
       "shell", pushDebugLog
     ), // ricerca già fatta sopra, dati già nel system prompt
-    readThroughLenses(recentText, settings, image, !!settings.calendarEnabled).catch(() => ({ readings: [], calendarProposal: null })),
+    readThroughLenses(recentText, settings, image).catch(() => ({ readings: [] })),
     settings.armsDraftsEnabled ? draftIfNeeded(recentText, settings).catch(() => null) : Promise.resolve(null),
   ]);
-  const { readings, calendarProposal } = lensResult;
+  const { readings } = lensResult;
   const actionsLog = [];
   const alerts = [];
   const accettoreNotes = [];
@@ -2195,7 +2241,7 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
     ? `Scritto in ${actionsLog.join(", ")}. Memoria riorganizzata per accoppiamento continuo.`
     : (accettoreNotes.some((n) => n.includes("BLOCCATO")) ? "Nessuna scrittura: vincolo assoluto violato." : "Nessuna azione in questo turno.");
   const proposal = detectPercorsoProposalHeuristic(reply);
-  return { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, calendarProposal, usedWebSearch: webSearchSucceeded };
+  return { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, usedWebSearch: webSearchSucceeded };
 }
 
 //──────────────────────────────────────────────────────────
@@ -2801,7 +2847,19 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
                 <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => { setTitleDraft(percorso.title || ""); setEditingTitle(false); }}>Annulla</button>
               </div>
             </div>`
-          : html`<div class="r-hub-title" style="color:${color};cursor:pointer" onClick=${() => setEditingTitle(true)} title="Tocca per rinominare">${percorso.title}${percorso.kind === "identitario" ? html` <span class="r-badge" style="border-color:${color};color:${color}">identitario</span>` : ""} <span style="opacity:0.4;font-size:12px">✎</span></div>`}
+          : html`<div>
+              ${/* §2 — la rinomina ESISTEVA gia', ma era una matita al 40% di opacita' con un
+                    suggerimento che su un telefono non compare mai: di fatto non scopribile.
+                    Ora la matita e' leggibile e ha la parola accanto. */ ""}
+              <div class="r-hub-title" style="color:${color};cursor:pointer" onClick=${() => setEditingTitle(true)}>${percorso.title}${percorso.kind === "identitario" ? html` <span class="r-badge" style="border-color:${color};color:${color}">identitario</span>` : ""} <span style="opacity:0.75;font-size:12px;white-space:nowrap">✎ rinomina</span></div>
+              ${/* §2 — i percorsi gia' rotti (creati prima della correzione) non vengono toccati da
+                    nessun batch silenzioso: quando il Ghost ne apre uno, glielo si dice e basta.
+                    Vede, decide, rinomina in un gesto. */ ""}
+              ${!titoloUsabile(percorso.title) && html`<div class="r-error" style="margin-top:8px">
+                Questo percorso non ha un nome leggibile — così non potrai richiamarlo dicendo "riprendi quello su…", e nell'elenco non si capisce di cosa sia.
+                <button class="r-btn r-btn-ghost" style="margin-left:0;margin-top:6px" onClick=${() => setEditingTitle(true)}>Dagli un nome</button>
+              </div>`}
+            </div>`}
         ${percorso.kind === "identitario" && html`<div style="margin-top:8px">
           ${editingGoal
             ? html`<div>
@@ -3329,7 +3387,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     const userText = input.trim() || (attachment?.kind === "image" ? "Guarda questa immagine." : "Guarda questo documento.");
     const currentAttachment = attachment;
     const history = messages.slice(-20).map((m) => ({ role: m.role, content: m.content }));
-    const lastMsg = messages[messages.length - 1];
+    // (lastMsg non serve piu': era l'appiglio della conferma a parole, rimossa il 16/08/2026.)
     stopSpeaking(); setSpeakingId(null);
     // Id univoci per messaggio: voce/copia non dipendono più dall'indice (che sbagliava
     // quando una nota di sistema si inseriva in mezzo alla sequenza).
@@ -3337,18 +3395,13 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     const assistantMsgId = uid();
     setInput(""); setAttachment(null); setSending(true); setError("");
     try {
-      if (lastMsg?.proposal?.proposed && !lastMsg.proposalResolved) {
-        const confirmed = detectConfirmationHeuristic(userText);
-        setMessages((prev) => prev.map((m) => (m === lastMsg ? { ...m, proposalResolved: true } : m)));
-        if (confirmed) {
-          const { pillar, title } = lastMsg.proposal;
-          const labels = await decomposeTopics(pillar, title, settings);
-          const p = { id: uid(), pillar, title, createdAt: new Date().toISOString(), topics: (labels.length ? labels : ["Primo passo"]).map((l) => ({ id: uid(), label: l, status: "non iniziato", lastTouched: null })), sessions: [], competenze: "" };
-          setPercorsi[pillar]([p, ...percorsi[pillar]]);
-          setMessages((prev) => [...prev, { id: uid(), role: "system-note", content: `✓ Percorso "${title}" creato in ${pillar.toUpperCase()}.` }]);
-        }
-      }
-      const { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, calendarProposal, usedWebSearch } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya, updateMemoria }, memory, styleMemory, currentAttachment, dialecticOverride, pushDebugLog, costruisciInventario({ pBio, pAir, pVidya, semi }), leggiFuoco());
+      // §1.3 — RIMOSSA LA CONFERMA A PAROLE (16/08/2026). Qui prima bastava che il Ghost scrivesse
+      // "ok", "va bene", "dai", "procedi" perche' il programma creasse il percorso proposto nel
+      // messaggio precedente. E' esattamente la conferma dedotta dal contesto che il piano vieta:
+      // nella prova reale un "Sì, fissalo" riferito a UNA card ha finito per valere come conferma
+      // di piu' cose insieme. Ora il percorso si crea solo toccando il pulsante della sua card
+      // (vedi la proposta di percorso piu' sotto), come gia' facevano i Semi.
+      const { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, usedWebSearch } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya, updateMemoria }, memory, styleMemory, currentAttachment, dialecticOverride, pushDebugLog, costruisciInventario({ pBio, pAir, pVidya, semi }), leggiFuoco());
       // Canale primario Seme (brief Parte 1.A): euristica a costo zero sul messaggio del Ghost, non
       // sulla risposta dello Shell. Non crea nulla da sola — solo una proposta con un tap di conferma
       // (vedi card sotto), mai il pattern "conferma nel messaggio successivo" già usato per i Percorsi.
@@ -3363,8 +3416,21 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // Il turno parte solo se il messaggio contiene un verbo di comando: una frase di sola
       // conversazione non merita una chiamata in piu', e cosi' il costo segue le richieste vere.
       let azioneProposta = null;
-      const replyPulita = reply;
-      if (meritaTurnoDiSelezione(userText)) {
+      // §1.4 — la rete di sicurezza. Qualunque tag il modello produca non arriva mai agli occhi del
+      // Ghost, e se ne produce uno lo si scopre dal log invece che da uno screenshot suo.
+      const ripulito = ripulisciTagAzione(reply);
+      const replyPulita = ripulito.testo;
+      if (ripulito.rimossi.length) pushDebugLog?.({ type: "tag-azione-rimosso", rimossi: ripulito.rimossi, model: settings.model });
+      // §1.2 — UNA PROPOSTA DI CLASSE B PENDENTE E' UN OGGETTO, NON SI RIGENERA (16/08/2026).
+      // Nella prova reale una sola richiesta ("Torquato domani") ha prodotto tre card di calendario
+      // con tre orari diversi, perche' ogni turno ricostruiva la proposta da capo leggendo la chat.
+      // Finche' una proposta di Classe B e' in attesa di un tocco, non se ne crea una seconda: si
+      // ricorda al Ghost che c'e' gia' quella, e resta lui a confermarla o scartarla.
+      const classeBPendente = messages.find((mm) => mm.azioneProposta && AZIONI_CONVERSAZIONALI.find((a) => a.id === mm.azioneProposta.azioneId)?.classe === "B" && !azioneStatus[mm.id]);
+      if (meritaTurnoDiSelezione(userText) && classeBPendente) {
+        pushDebugLog?.({ type: "classe-b-gia-pendente", azioneId: classeBPendente.azioneProposta.azioneId });
+      }
+      if (meritaTurnoDiSelezione(userText) && !classeBPendente) {
         try {
           const scelta = await scegliAzione(userText, costruisciInventario({ pBio, pAir, pVidya, semi }), leggiFuoco(), azioniAttive(), settingsPerSelezione(settings), pushDebugLog);
           if (scelta) {
@@ -3382,7 +3448,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         }
       }
       setMessages((prev) => {
-        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft, calendarProposal, usedWebSearch, seedSuggestion, azioneProposta }];
+        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft, usedWebSearch, seedSuggestion, azioneProposta }];
         return compactShellChatIfNeeded(next) || next; // Opzione 3: compatta+archivia (Legge 14) se sopra soglia, altrimenti passa
       });
       if (newStyleMemory !== styleMemory) setStyleMemory(newStyleMemory);
@@ -3458,16 +3524,8 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     navigator.clipboard?.writeText(text).then(() => { setCopiedId(mid); setTimeout(() => setCopiedId((c) => (c === mid ? null : c)), 2000); });
   };
   // Calendar: mai scrittura automatica (Legge 8) — il Ghost conferma o scarta ogni proposta.
-  const [calStatus, setCalStatus] = useState({}); // mid -> "saving" | "done" | "error: <msg>"
-  const confirmCalendarEvent = async (mid, proposal) => {
-    setCalStatus((s) => ({ ...s, [mid]: "saving" }));
-    try {
-      await createCalendarEvent(proposal);
-      setCalStatus((s) => ({ ...s, [mid]: "done" }));
-      setMessages((prev) => [...prev, { id: uid(), role: "system-note", content: `✓ "${proposal.title}" aggiunto al Calendar.` }]);
-    } catch (e) { setCalStatus((s) => ({ ...s, [mid]: "error: " + e.message })); }
-  };
-  const dismissCalendarEvent = (mid) => setCalStatus((s) => ({ ...s, [mid]: "dismissed" }));
+  // I gestori del vecchio braccio Calendar (calStatus/confirmCalendarEvent/dismissCalendarEvent)
+  // sono stati rimossi il 16/08/2026 insieme alla loro card: il calendario passa dalla Classe B.
   // Seme: un solo tap crea, nessuna azione se ignorato/rifiutato (nessuna traccia persistente, brief 1.A).
   const [seedStatus, setSeedStatus] = useState({}); // mid -> "added" | "dismissed"
   const confirmSeed = (mid, content) => {
@@ -3476,6 +3534,27 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     setMessages((prev) => [...prev, { id: uid(), role: "system-note", content: `✓ Seme AIR salvato.` }]);
   };
   const dismissSeed = (mid) => setSeedStatus((s) => ({ ...s, [mid]: "dismissed" }));
+  // §1.3 — il percorso proposto si crea SOLO da qui, toccando il pulsante di questa card. Nessuna
+  // parola detta in chat lo crea piu'. Se il titolo che lo Shell ha dedotto e' inservibile, il
+  // campo parte vuoto e il Ghost lo scrive: meglio chiedere una volta che ritrovarsi in Vidya un
+  // percorso chiamato "Questo?" che nessuna richiesta potra' mai riagganciare.
+  const [percorsoStatus, setPercorsoStatus] = useState({}); // mid -> "creato" | "scartato"
+  const [percorsoTitolo, setPercorsoTitolo] = useState({}); // mid -> titolo digitato dal Ghost
+  const confermaPercorso = async (mid, proposta) => {
+    const titolo = (percorsoTitolo[mid] ?? (proposta.titoloUsabile ? proposta.title : "")).trim();
+    if (!titolo) { setPercorsoStatus((s) => ({ ...s, [mid]: "serve-titolo" })); return; }
+    vibra(proposta.pillar);
+    setPercorsoStatus((s) => ({ ...s, [mid]: "creando" }));
+    try {
+      const labels = await decomposeTopics(proposta.pillar, titolo, settings);
+      const p = { id: uid(), pillar: proposta.pillar, title: titolo, createdAt: new Date().toISOString(), topics: (labels.length ? labels : ["Primo passo"]).map((l) => ({ id: uid(), label: l, status: "non iniziato", lastTouched: null })), sessions: [], competenze: "" };
+      setPercorsi[proposta.pillar]([p, ...percorsi[proposta.pillar]]);
+      setPercorsoStatus((s) => ({ ...s, [mid]: "creato" }));
+      setMessages((prev) => [...prev, { id: uid(), role: "system-note", content: `✓ Percorso "${titolo}" creato in ${proposta.pillar.toUpperCase()}.` }]);
+      registraAzione({ fase: "eseguita", azioneId: "crea_percorso", etichetta: titolo, pilastro: proposta.pillar });
+    } catch (e) { setPercorsoStatus((s) => ({ ...s, [mid]: "errore: " + e.message })); }
+  };
+  const scartaPercorso = (mid) => setPercorsoStatus((s) => ({ ...s, [mid]: "scartato" }));
   // BLOCCO 1 §2.3 — l'esecuzione e' del PROGRAMMA, mai del modello. Il modello ha solo proposto;
   // qui si valida (l'identificativo deve esistere davvero, §2.4), si esegue, si registra.
   // Classe A: nessun gate, ma annullamento sempre disponibile nel turno stesso (§5.1).
@@ -3674,16 +3753,11 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
               ${emailSendStatus[mid] === "done" && html`<div class="r-ok" style="margin-top:6px">✓ Inviata.</div>`}
               ${emailSendStatus[mid]?.startsWith?.("error") && html`<div class="r-error" style="margin-top:6px">${emailSendStatus[mid].replace("error: ", "")}</div>`}
             </div>`}
-            ${m.calendarProposal && calStatus[mid] !== "dismissed" && html`<div class="r-draft-card">
-              <div class="r-draft-label">📅 CALENDAR — proposta, non ancora salvata</div>
-              <div class="r-draft-subject">${m.calendarProposal.title}</div>
-              <div class="r-draft-body">${m.calendarProposal.allDay ? m.calendarProposal.startISO.slice(0,10) : new Date(m.calendarProposal.startISO).toLocaleString("it-IT")}${m.calendarProposal.notes ? `\n${m.calendarProposal.notes}` : ""}</div>
-              ${!calStatus[mid] && html`<button class="r-btn r-draft-copy" onClick=${() => confirmCalendarEvent(mid, m.calendarProposal)}>Aggiungi al Calendar</button>
-                <button class="r-btn r-btn-ghost" onClick=${() => dismissCalendarEvent(mid)}>Scarta</button>`}
-              ${calStatus[mid] === "saving" && html`<span class="r-spin">⏳</span> Salvo…`}
-              ${calStatus[mid] === "done" && html`<div class="r-ok">✓ Salvato sul Calendar.</div>`}
-              ${calStatus[mid]?.startsWith?.("error") && html`<div class="r-error">${calStatus[mid].replace("error: ", "")}</div>`}
-            </div>`}
+            ${/* La vecchia card "📅 CALENDAR — proposta, non ancora salvata" e' stata tolta il
+                  16/08/2026: era la faccia visibile del secondo sistema di calendario, quello che
+                  rigenerava una proposta diversa a ogni turno. Il calendario ora passa tutto dalla
+                  card di Classe B qui sotto, che ha la data calcolata dal codice e la rilettura
+                  dalla fonte. */ ""}
             ${/* BLOCCO 1 — la proposta d'azione, sempre visibile PRIMA dell'esecuzione (§7.2d),
                   anche in Classe A dove non c'e' gate: vedere "apro il percorso X" prima che
                   accada e' cio' che consente di fermarlo. Tre casi, tre comportamenti diversi:
@@ -3836,6 +3910,26 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                 ${azioneStatus[mid].perContiguita.map((f) => html`<div class="r-draft-body" key=${f.id} style="opacity:.75">${f.text}</div>`)}
               </div>`}
             </div>`}
+            ${/* §1.3 — la proposta di percorso, con il suo pulsante. Prima non c'era: lo Shell la
+                  proponeva a parole e un "ok" qualsiasi nel messaggio dopo la faceva diventare vera.
+                  Ora e' un oggetto con un gesto suo, e il titolo si legge e si corregge PRIMA. */ ""}
+            ${m.proposal?.proposed && !percorsoStatus[mid] && html`<div class="r-draft-card">
+              <div class="r-draft-label">▸ APRO UN PERCORSO IN ${m.proposal.pillar.toUpperCase()}? — conferma prima che accada</div>
+              ${m.proposal.titoloUsabile === false
+                ? html`<div class="r-hub-detail">Da quello che ho scritto non ricavo un nome sensato per questo percorso${m.proposal.titoloScartato ? ` (mi veniva "${m.proposal.titoloScartato}", che non dice niente)` : ""}. Scrivilo tu: è il nome con cui potrai richiamarlo dicendo "riprendi quello su…".</div>`
+                : html`<div class="r-hub-detail">Controlla il nome: è quello con cui potrai richiamarlo dicendo "riprendi quello su…".</div>`}
+              <input class="r-input" style="margin:6px 0" placeholder="nome del percorso"
+                value=${percorsoTitolo[mid] ?? (m.proposal.titoloUsabile ? m.proposal.title : "")}
+                onInput=${(e) => setPercorsoTitolo((s) => ({ ...s, [mid]: e.target.value }))} />
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="r-btn r-draft-copy" onClick=${() => confermaPercorso(mid, m.proposal)}>Sì, aprilo</button>
+                <button class="r-btn r-btn-ghost" onClick=${() => scartaPercorso(mid)}>No grazie</button>
+              </div>
+            </div>`}
+            ${percorsoStatus[mid] === "creando" && html`<div class="r-hub-detail">… sto preparando i primi passi del percorso</div>`}
+            ${percorsoStatus[mid] === "serve-titolo" && html`<div class="r-error">Dammi un nome per il percorso: senza, non lo ritroveresti più parlando.</div>`}
+            ${percorsoStatus[mid] === "scartato" && html`<div class="r-hub-detail">Va bene — non ho aperto niente.</div>`}
+            ${typeof percorsoStatus[mid] === "string" && percorsoStatus[mid].startsWith("errore") && html`<div class="r-error">${percorsoStatus[mid]}</div>`}
             ${m.seedSuggestion && !seedStatus[mid] && html`<div class="r-draft-card">
               <div class="r-draft-label">🌱 SEME AIR — vuoi salvare questa idea?</div>
               <div class="r-draft-body">${m.seedSuggestion.content}</div>
@@ -4168,11 +4262,10 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
         <div class="r-hub-detail">Lo Shell prepara email/messaggi/script pronti da copiare — non li invia mai da solo</div></div>
         <input type="checkbox" checked=${settings.armsDraftsEnabled} onInput=${(e) => updateSettings({ armsDraftsEnabled: e.target.checked })} /></div>
     </${Card}>
-    <${Card} accent=${C.core}>
-      <div class="r-settings-row"><div><div class="r-hub-title" style="color:#3A4750">Braccio — Calendar</div>
-        <div class="r-hub-detail">Lo Shell riconosce richieste di appuntamenti/promemoria in chat e propone una card da confermare — mai scrittura automatica. Disattivalo per azzerare il costo di questo rilevamento.</div></div>
-        <input type="checkbox" checked=${settings.calendarEnabled} onInput=${(e) => updateSettings({ calendarEnabled: e.target.checked })} /></div>
-    </${Card}>
+    ${/* L'interruttore "Braccio — Calendar" e' stato tolto il 16/08/2026. Era il secondo comando
+          del calendario, acceso di fabbrica, e scavalcava quello di Classe B consegnato spento:
+          due interruttori per la stessa cosa, uno dei quali il Ghost non sapeva di avere acceso.
+          Ne resta uno solo, qui sopra, nell'elenco delle azioni. */ ""}
     <${Card} accent=${C.core}>
       <div class="r-settings-row"><div><div class="r-hub-title" style="color:#3A4750">Lettura vocale dello Shell</div>
         <div class="r-hub-detail">Legge automaticamente ogni risposta (voce del browser, gratuita)</div></div>
