@@ -341,3 +341,18 @@ body {
   margin: 6px 0 10px; padding: 8px 10px; border-radius: 6px;
   background: var(--surface2); border: 1px solid var(--border); max-height: 340px; overflow-y: auto;
 }
+
+/* 17/08/2026 — l'avviso che il codice ha fermato un'affermazione falsa del modello. Deliberatamente
+   vistoso: e' il punto in cui il sistema ammette che il testo sopra mentiva. */
+.r-esito-falso {
+  margin: 6px 0 2px; padding: 8px 10px; border-radius: 6px; font-size: 12.5px; line-height: 1.5;
+  background: rgba(200, 60, 60, .10); border-left: 3px solid #C83C3C;
+}
+/* Il dato tecnico grezzo dell'ultima chiamata esterna: codice HTTP, id, errore. Serve al Ghost per
+   mandarmi un fatto invece di una frase, quindi e' selezionabile e monospaziato. */
+.r-grezzo {
+  margin-top: 6px; padding: 8px 10px; border-radius: 6px; font-size: 11.5px; line-height: 1.45;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap;
+  word-break: break-word; user-select: all;
+  background: var(--surface2); border: 1px dashed var(--border); opacity: .95;
+}
