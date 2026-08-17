@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-17 · calendario-verificato-e-lettura";
+const APP_BUILD = "2026-08-17 · nessuna-conferma-senza-bersaglio";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -536,6 +536,52 @@ function ripulisciAffermazioniDiEsito(testo, azioneVerificata = false) {
   const affermazioni = originale.match(ESITO_COMPIUTO_RE) || [];
   if (!affermazioni.length) return { testo: originale, affermazioni: [] };
   return { testo: originale.replace(ESITO_COMPIUTO_RE, ESITO_SOSTITUZIONE), affermazioni: affermazioni.map((a) => a.trim()) };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// IL VINCOLO GEMELLO: NIENTE DOMANDE DI CONFERMA SENZA BERSAGLIO (17/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Il filtro qui sopra chiude un lato: il modello non puo' piu' dire che una cosa e' fatta.
+// Restava aperto il lato opposto, e il Ghost ci e' cascato dentro la mattina dopo: il modello ha
+// scritto "Vuoi confermare?" — e non e' comparso nessun pulsante, perche' dietro quella domanda non
+// c'era nessuna proposta. Il Ghost ha risposto "Si, confermato" a parole, perche' non aveva altra
+// scelta, ed e' rientrato nello stesso giro.
+// Stessa causa di fondo: il testo del modello non e' legato allo stato reale del sistema.
+// Stessa cura: il codice guarda se la proposta esiste PRIMA di lasciar passare la domanda.
+const DOMANDA_CONFERMA_RE = new RegExp(
+  "(" +
+  `${CONF_S}vuoi\\s+(?:che\\s+(?:lo|la|li|le)\\s+)?(?:confermare|confermarlo|confermarla)${CONF_E}` +
+  `|${CONF_S}vuoi\\s+confermare${CONF_E}` +
+  `|${CONF_S}(?:me\\s+lo\\s+)?confermi${CONF_E}` +
+  `|${CONF_S}confermi\\?` +
+  `|${CONF_S}vuoi\\s+che\\s+(?:lo|la|li|le)\\s+(?:aggiung|mett|salv|fiss|invi|mand|scriv|segn)\\w*${CONF_E}` +
+  `|${CONF_S}(?:posso|devo)\\s+(?:aggiungerl|metterl|salvarl|fissarl|inviarl|mandarl|procedere)\\w*${CONF_E}` +
+  `|${CONF_S}procedo${CONF_E}` +
+  `|${CONF_S}dammi\\s+(?:una\\s+)?conferma${CONF_E}` +
+  ")", "giu");
+function rilevaDomandaDiConferma(testo) {
+  return (String(testo || "").match(DOMANDA_CONFERMA_RE) || []).map((s) => s.trim());
+}
+// ATTENZIONE, distinzione importante: ieri ho RIMOSSO la funzione che deduceva una conferma dal
+// testo, perche' una frase generica non deve MAI far partire un'azione. Questa e' l'uso opposto e
+// sicuro: non serve a confermare qualcosa, serve ad accorgersi che il Ghost sta confermando A VUOTO
+// per poterglielo dire. Non esegue niente e non puo' eseguire niente — non ha accesso a nessun
+// esecutore. Se un giorno qualcuno volesse usarla per confermare, la risposta e' no.
+const CONFERMA_A_PAROLE_RE = /^(s[iì]\W*)?(confermato|conferma|confermo|ok|va bene|procedi|fallo|certo|d'accordo|perfetto|dai|vai)\b/i;
+function sembraUnaConfermaAParole(messaggio) {
+  const t = String(messaggio || "").trim();
+  return t.length <= 40 && CONFERMA_A_PAROLE_RE.test(t);
+}
+// Il blocco che dice al modello cosa e' SPENTO adesso. Serviva: il prompt conteneva insieme
+// l'elenco delle azioni possibili (senza il calendario, perche' spento) e la descrizione delle
+// capacita' dell'app (col calendario descritto per esteso). Due verita' in disaccordo nello stesso
+// respiro — e il modello ha creduto alla seconda.
+function formatCapacitaSpente(tutte, attive) {
+  const spente = tutte.filter((a) => !attive.some((b) => b.id === a.id));
+  if (!spente.length) return "";
+  return `\nATTENZIONE — queste capacita' esistono nell'app ma il Ghost le ha SPENTE in Setup, quindi in questo momento NON si possono fare, e nessun pulsante di conferma comparira' per esse:
+${spente.map((a) => `- ${a.etichetta}`).join("\n")}
+Se il Ghost chiede una di queste cose, NON dire "vuoi confermare?" e NON fare finta di poterla fare: digli che quella capacita' e' spenta e che puo' accenderla in Setup. Promettergli un pulsante che non comparira' e' il modo peggiore di rispondergli.`;
 }
 // Registro delle azioni COMPIUTE (§9): cosa proposto, cosa confermato, cosa eseguito, con orario.
 // E' cio' che rende possibile capire DOPO perche' una cosa e' andata storta. Separato dal registro
@@ -1704,6 +1750,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Piano di controllo conversazionale (dal 16/08/2026): lo Shell sa quali percorsi e Semi esistono davvero — prima non lo sapeva, e per questo non riusciva a riprenderne uno. Se il Ghost dice "riprendi quello sul sonno", lo cerca fra quelli che esistono senza chiedere niente a nessun modello, e se ne trova due chiede quale invece di sceglierne uno. Quando ne apre uno, la chat mostra sempre in alto "stiamo lavorando su: [nome]", che si chiude con un tocco e scade da solo dopo otto ore. Ogni azione viene mostrata PRIMA di essere eseguita e si annulla anche dopo. Le capacita' si accendono e spengono una per una in Setup, e ogni azione proposta, confermata o annullata finisce in un registro con l'orario.
 - Azioni parlando (dal 16/08/2026): oltre a riprendere un percorso, lo Shell puo' ora — sempre chiedendo conferma prima — segnare una voce su un pilastro, salvare un'idea come Seme AIR, cercare davvero nella memoria cosa si era detto su un argomento, e avanzare sul percorso gia' aperto. Ogni azione viene mostrata prima di essere eseguita e si annulla anche dopo. Una sola azione per messaggio. Quando cerca nella memoria dice sempre dove ha guardato, e porta su anche uno o due frammenti nati lo stesso giorno anche se non c'entrano — servono a far venire in mente cose per accostamento, non per somiglianza.
 - Leggere il calendario (dal 17/08/2026, NASCE SPENTA): lo Shell puo' andare a leggere DAVVERO gli impegni sul Calendar del Ghost per un giorno o una settimana. Prima di questa azione lo Shell non sapeva niente del calendario e, se gli si chiedeva "cosa ho domani", rispondeva da cio' che ricordava della chat — inventando impegni. Ora o legge da Google, o dichiara di non esserci riuscito.
+- Capacità spente (dal 17/08/2026): quando il Ghost tiene spenta una capacità in Setup, lo Shell lo SA e glielo dice, invece di proporgliela. Se comunque scappa una domanda del tipo "vuoi confermare?" senza che dietro ci sia una proposta vera, il programma lo intercetta e scrive al Ghost un avviso: nessun pulsante comparirà, e perché. Una conferma scritta a parole non fa mai partire niente — se il Ghost risponde "sì" a vuoto, il sistema glielo dice e chiede di ripetere la richiesta, invece di rientrare nello stesso giro.
 - Ogni chiamata verso Google lascia in chat, sotto la card, un riquadro tecnico grezzo (codice HTTP, identificativo restituito, errore testuale) e lo stesso in Setup. Serve al Ghost per mandare un fatto invece di una frase quando qualcosa non torna.
 - Calendario e mail parlando (dal 16/08/2026, NASCONO SPENTE in Setup): lo Shell sa mettere un evento sul Calendar e inviare una mail da Gmail, ma solo dopo che il Ghost ha acceso quella voce e ha confermato quello specifico invio. Un evento si cancella, una mail no: l'evento chiede una conferma semplice, la mail mostra prima testo integrale e indirizzo per esteso. Le date le ricava il programma dalle parole del Ghost, mai il modello, e le mostra per esteso (giorno, data, ora). Dopo ogni azione rilegge dalla fonte e, se non ci riesce, dichiara fallimento invece di dire "fatto". Un invio senza risposta resta "incerto" e non viene mai rispedito da solo.
 - Tetto di spesa (Setup): al raggiungimento di 5 dollari nel mese si fermano SOLO le cose che partono da sole (Semi che avanzano, Simbiosi). La chat resta utilizzabile: il tetto protegge dalle spese che il Ghost non vede partire, non da quelle che sta decidendo lui in quel momento.
@@ -2385,6 +2432,7 @@ ${APP_CAPABILITIES_CONTEXT}
 ${inventario || "Inventario dei percorsi non disponibile in questo turno — non fare finta di sapere quali esistono: chiedi."}
 ${formatFuocoBlock(fuoco)}
 ${formatAzioniBlock(azioniAttive())}
+${formatCapacitaSpente(AZIONI_CONVERSAZIONALI, azioniAttive())}
 Memoria procedurale accumulata sui tre pilastri (leggila sempre insieme — l'interpretazione resta integrata anche quando l'azione è mirata a un solo pilastro): ${lente}${styleNote}
 REGOLA SUL TEMPO VERBALE, non negoziabile (corretta il 16/08/2026 dopo una prova reale in cui hai scritto "Ho segnato un appuntamento" prima ancora che il Ghost confermasse). TU NON ESEGUI NIENTE. Non salvi, non segni, non aggiungi, non mandi, non fissi: tutto questo lo fa il programma dopo, e solo se il Ghost tocca un pulsante. Quindi non usare MAI il passato per un'azione ("ho segnato", "ho aggiunto", "fatto", "l'ho messo in calendario"), nemmeno se ti sembra naturale, nemmeno se il Ghost ti ha appena detto di sì. Usa il condizionale o il futuro: "te lo segnerei", "vuoi che lo metta?", "posso aggiungerlo". Se una cosa e' stata davvero fatta, e' l'app a scriverlo sotto la tua risposta, con la conferma riletta dalla fonte — non tu. Dire "fatto" per qualcosa che non e' successo e' il modo piu' rapido di rendere inaffidabile tutto il sistema. Questo vale anche al contrario: NON SAI cosa c'e' sul calendario del Ghost. Non lo hai mai letto. Se ti chiede cosa ha in programma, cosa c'e' domani, che impegni ha, NON rispondere con quello che ricordi di aver letto in questa conversazione — una cosa nominata in chat non e' un impegno, e una proposta che non ha confermato non esiste. Di' che vai a guardare, e lascia che sia il programma a leggere davvero dal calendario e a mostrarti il risultato. Il codice controlla ogni tua risposta e toglie le affermazioni di compiuto che non corrispondono a un'azione verificata, avvisando il Ghost che l'hai scritta: non e' un rimprovero, e' un fatto tecnico, e ti conviene saperlo perche' rende inutile scriverle.
 Dialoga in modo diretto e concreto, massimo 110 parole per risposta — TRANNE quando il Ghost chiede esplicitamente un contenuto strutturato intrinsecamente lungo (un piano, un elenco multi-giorno, un documento): in quel caso il limite non si applica, genera il contenuto per intero, completo, senza comprimerlo né riassumerlo per stare corto. NON scrivere mai sintassi tecnica o tag tra parentesi quadre nella risposta. Rispondi solo in linguaggio naturale.${dialecticNote}
@@ -3675,8 +3723,36 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
           pushDebugLog?.({ type: "selezione-azione", error: e.message });
         }
       }
+      // ── IL VINCOLO GEMELLO (17/08/2026 mattina) ──────────────────────────────────
+      // Adesso, e solo adesso, il programma SA se una proposta esiste. Quindi e' qui che si
+      // controlla se il modello ha promesso un pulsante che non comparira'.
+      // Tre casi diversi, tre risposte diverse — perche' "non ho capito" e "e' spento" sono due
+      // problemi diversi e dirgli la frase sbagliata lo manderebbe a cercare nel posto sbagliato.
+      const domandeDiConferma = rilevaDomandaDiConferma(replyPulita);
+      const haChiestoUnaCosaSpenta = meritaTurnoDiSelezione(userText)
+        && AZIONI_CONVERSAZIONALI.some((a) => !azioniAttive().some((b) => b.id === a.id));
+      let confermaSenzaBersaglio = null;
+      if (!azioneProposta && !classeBPendente && domandeDiConferma.length) {
+        confermaSenzaBersaglio = {
+          motivo: haChiestoUnaCosaSpenta ? "forse-spenta" : "nessuna-proposta",
+          spente: AZIONI_CONVERSAZIONALI.filter((a) => !azioniAttive().some((b) => b.id === a.id)).map((a) => a.etichetta),
+          frasi: domandeDiConferma,
+        };
+        pushDebugLog?.({ type: "conferma-senza-bersaglio", frasi: domandeDiConferma, userText: userText.slice(0, 100) });
+      }
+      // E il caso che rompe il giro: il Ghost ha risposto a parole a una domanda a vuoto. Non si
+      // esegue niente (una parola non ha mai confermato niente e non lo fara' mai): si smette di
+      // ripetere lo schema rotto e glielo si dice.
+      if (!azioneProposta && !classeBPendente && !confermaSenzaBersaglio && sembraUnaConfermaAParole(userText)) {
+        confermaSenzaBersaglio = {
+          motivo: "conferma-a-vuoto",
+          spente: AZIONI_CONVERSAZIONALI.filter((a) => !azioniAttive().some((b) => b.id === a.id)).map((a) => a.etichetta),
+          frasi: [],
+        };
+        pushDebugLog?.({ type: "conferma-a-vuoto", userText: userText.slice(0, 100) });
+      }
       setMessages((prev) => {
-        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft, usedWebSearch, seedSuggestion, azioneProposta, esitiFalsi }];
+        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft, usedWebSearch, seedSuggestion, azioneProposta, esitiFalsi, confermaSenzaBersaglio }];
         return compactShellChatIfNeeded(next) || next; // Opzione 3: compatta+archivia (Legge 14) se sopra soglia, altrimenti passa
       });
       if (newStyleMemory !== styleMemory) setStyleMemory(newStyleMemory);
@@ -3982,6 +4058,17 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                   sistema gli sta dicendo "quello che hai appena letto era falso, e l'ho fermato".
                   Questo riquadro lo scrive il programma, non il modello, quindi il modello non
                   puo' ne' evitarlo ne' contraddirlo. */ ""}
+            ${/* 17/08/2026 mattina — il gemello del riquadro qui sotto. Il modello ha chiesto una
+                  conferma senza che dietro ci fosse niente da confermare, e il Ghost si e' trovato
+                  davanti a una domanda a cui non poteva rispondere se non a parole. Questo riquadro
+                  lo scrive il programma, che sa se la proposta esiste. */ ""}
+            ${m.confermaSenzaBersaglio && html`<div class="r-esito-falso">
+              ${m.confermaSenzaBersaglio.motivo === "forse-spenta"
+                ? html`<div><b>Ti ho chiesto una conferma, ma non comparirà nessun pulsante.</b> Quello che hai chiesto richiede una capacità che in questo momento è <b>spenta</b>${m.confermaSenzaBersaglio.spente.length ? html` — spente adesso: ${m.confermaSenzaBersaglio.spente.join(", ")}` : ""}. Le accendi in <b>Setup → Cosa lo Shell può fare parlando</b>. Finché è spenta non posso farlo, e non avrei dovuto chiedertelo.</div>`
+                : m.confermaSenzaBersaglio.motivo === "conferma-a-vuoto"
+                ? html`<div><b>Non ho niente in attesa da confermare.</b> Hai risposto di sì, ma non c'è nessuna proposta pronta: una parola scritta qui non fa partire niente, mai — serve il pulsante di una card. Ripeti la richiesta per intero${m.confermaSenzaBersaglio.spente.length ? html`, e controlla che la capacità che ti serve non sia spenta in Setup (spente adesso: ${m.confermaSenzaBersaglio.spente.join(", ")})` : ""}.</div>`
+                : html`<div><b>Ti ho chiesto una conferma, ma non ho preparato niente da confermare.</b> Non comparirà nessun pulsante: la proposta non è stata creata. Ripeti la richiesta scrivendo per esteso cosa vuoi, con giorno e ora.</div>`}
+            </div>`}
             ${m.esitiFalsi?.length > 0 && html`<div class="r-esito-falso">
               <b>Attenzione.</b> Qui sopra avevo scritto che qualcosa era già stato fatto${m.esitiFalsi.length === 1 ? "" : ` (${m.esitiFalsi.length} volte)`}: <i>${m.esitiFalsi.join(" · ")}</i>. Non era vero e l'ho tolto. Non ho toccato né il calendario né la posta: se c'è un pulsante di conferma qui sotto, l'azione parte solo quando lo tocchi tu.
             </div>`}
