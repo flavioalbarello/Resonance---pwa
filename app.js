@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-20 · lo-stato-degli-interruttori-e-un-dato";
+const APP_BUILD = "2026-08-20 · verifica-per-istanti";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1806,6 +1806,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Piano di controllo conversazionale (dal 16/08/2026): lo Shell sa quali percorsi e Semi esistono davvero — prima non lo sapeva, e per questo non riusciva a riprenderne uno. Se il Ghost dice "riprendi quello sul sonno", lo cerca fra quelli che esistono senza chiedere niente a nessun modello, e se ne trova due chiede quale invece di sceglierne uno. Quando ne apre uno, la chat mostra sempre in alto "stiamo lavorando su: [nome]", che si chiude con un tocco e scade da solo dopo otto ore. Ogni azione viene mostrata PRIMA di essere eseguita e si annulla anche dopo. Le capacita' si accendono e spengono una per una in Setup, e ogni azione proposta, confermata o annullata finisce in un registro con l'orario.
 - Azioni parlando (dal 16/08/2026): oltre a riprendere un percorso, lo Shell puo' ora — sempre chiedendo conferma prima — segnare una voce su un pilastro, salvare un'idea come Seme AIR, cercare davvero nella memoria cosa si era detto su un argomento, e avanzare sul percorso gia' aperto. Ogni azione viene mostrata prima di essere eseguita e si annulla anche dopo. Una sola azione per messaggio. Quando cerca nella memoria dice sempre dove ha guardato, e porta su anche uno o due frammenti nati lo stesso giorno anche se non c'entrano — servono a far venire in mente cose per accostamento, non per somiglianza.
 - Leggere il calendario (dal 17/08/2026, governata da un interruttore in Setup — lo stato VERO di adesso te lo dicono i due blocchi qui sopra, non questa riga): lo Shell puo' andare a leggere DAVVERO gli impegni sul Calendar del Ghost per un giorno o una settimana. Prima di questa azione lo Shell non sapeva niente del calendario e, se gli si chiedeva "cosa ho domani", rispondeva da cio' che ricordava della chat — inventando impegni. Ora o legge da Google, o dichiara di non esserci riuscito.
+- Verifica dopo la scrittura sul calendario (rifatta il 20/08/2026): dopo aver creato un evento il sistema lo rilegge e confronta cio' che ha mandato con cio' che trova. Il confronto e' fra ISTANTI, non fra stringhe — le 19:00 di Roma e le 17:00Z sono lo stesso momento — e il titolo si confronta ignorando maiuscole, accenti e spazi doppi. Tre esiti distinti: verificata (c'e' e corrisponde), non-combacia (c'e' ma e' diverso, e viene detto cosa: atteso X, trovato Y), non-verificabile (la rilettura non e' riuscita — la scrittura pero' era andata, quindi non e' un fallimento).
 - Stato degli interruttori (dal 20/08/2026): lo Shell riceve a ogni turno DUE elenchi ricostruiti dal dato vero — cosa è acceso adesso e cosa è spento adesso. Non c'è nessuna frase fissa che dichiari lo stato: era il difetto per cui, dal 16 al 20 agosto, lo Shell diceva "la capacità è spenta" mentre il Ghost aveva l'interruttore acceso davanti agli occhi. Se lo Shell dichiara comunque spenta una capacità che è accesa, il programma toglie la frase e avvisa il Ghost che gli aveva detto il falso.
 - Capacità spente (dal 17/08/2026): quando il Ghost tiene spenta una capacità in Setup, lo Shell lo SA e glielo dice, invece di proporgliela. Se comunque scappa una domanda del tipo "vuoi confermare?" senza che dietro ci sia una proposta vera, il programma lo intercetta e scrive al Ghost un avviso: nessun pulsante comparirà, e perché. Una conferma scritta a parole non fa mai partire niente — se il Ghost risponde "sì" a vuoto, il sistema glielo dice e chiede di ripetere la richiesta, invece di rientrare nello stesso giro.
 - Ogni chiamata verso Google lascia in chat, sotto la card, un riquadro tecnico grezzo (codice HTTP, identificativo restituito, errore testuale) e lo stesso in Setup. Serve al Ghost per mandare un fatto invece di una frase quando qualcosa non torna.
@@ -2207,6 +2208,69 @@ async function rileggiMailDallaFonte(messageId) {
   return { ok: true, id: d.id, a: h.to || "", oggetto: h.subject || "", quando: h.date || "", inviata: (d.labelIds || []).includes("SENT"), grezza: r.grezza };
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// IL CONFRONTO POST-SCRITTURA (rifatto il 20/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Il 20/08 il primo evento e' finito DAVVERO sul calendario del Ghost — e il sistema gli ha detto
+// "non combacia, controllalo a mano". Falso negativo.
+// La causa, diagnosticata prima di toccare niente: l'orario veniva confrontato COME STRINGA,
+// tagliando i primi 16 caratteri. Ma lo stesso istante — le 19:00 del 20 agosto a Roma — Google
+// puo' restituirlo scritto come "2026-08-20T19:00:00+02:00" oppure "2026-08-20T17:00:00Z": la
+// stessa ora, due stringhe diverse. Due forme su quattro producevano un falso negativo.
+// La stranezza che il Ghost ha visto — il messaggio mostrava l'ora GIUSTA e diceva che non
+// combaciava — viene da qui: la visualizzazione converte al fuso del telefono, il confronto no.
+//
+// Perche' non e' cosmetico: una verifica che grida a ogni scrittura riuscita smette di distinguere
+// il successo dal fallimento, e il Ghost impara a ignorarla. Il giorno in cui gridera' per un
+// motivo vero non sara' creduta.
+//
+// Nota su cosa NON era il difetto: il termine atteso era gia' il payload realmente inviato nel
+// POST, non il testo del modello — eseguiCreaEvento costruisce un solo oggetto e lo passa sia a
+// createCalendarEvent sia al confronto. Su questo il codice era gia' corretto.
+const TOLLERANZA_ISTANTE_MS = 60000; // un minuto: Google puo' arrotondare i secondi
+// Il titolo si confronta normalizzato: maiuscole, accenti e spazi doppi non sono una differenza
+// vera. Se DOPO la normalizzazione differisce ancora, allora e' un non-combacia autentico.
+function titoloNormalizzato(t) { return senzaAccenti(t).replace(/\s+/g, " ").trim(); }
+// Confronta cio' che e' stato mandato con cio' che la fonte restituisce.
+// Tre esiti, e la distinzione conta perche' oggi due casi diversi collassavano in uno:
+//   verificata       — riletto, corrisponde;
+//   non-combacia     — riletto, differisce DAVVERO: si dice cosa, atteso e trovato;
+//   non-verificabile — manca un campo per poter confrontare. Non e' un fallimento della scrittura.
+function confrontaEventoConLaFonte(inviato, letto) {
+  const differenze = [];
+  const titoloInviato = titoloNormalizzato(inviato?.title);
+  const titoloLetto = titoloNormalizzato(letto?.titolo);
+  if (!titoloLetto || !letto?.inizio) {
+    return { esito: "non-verificabile", motivo: "la fonte non ha restituito " + (!titoloLetto ? "il titolo" : "la data") + ", non ho con cosa confrontare" };
+  }
+  if (titoloInviato !== titoloLetto) {
+    differenze.push({ campo: "titolo", atteso: String(inviato?.title || ""), trovato: String(letto?.titolo || "") });
+  }
+  if (inviato?.allDay || letto?.tuttoIlGiorno) {
+    // Evento di un giorno intero: si confrontano le date, non gli istanti — un giorno intero non
+    // ha un'ora, e pretendere che ne abbia una sarebbe inventarsi una differenza.
+    const dataInviata = String(inviato?.startISO || "").slice(0, 10);
+    const dataLetta = String(letto?.inizio || "").slice(0, 10);
+    if (dataInviata !== dataLetta) differenze.push({ campo: "giorno", atteso: dataInviata, trovato: dataLetta });
+  } else {
+    // Evento a un'ora precisa: si confrontano gli ISTANTI, non le stringhe. Date.parse riporta
+    // entrambe le forme allo stesso numero, qualunque fuso ci sia scritto sopra.
+    const istanteInviato = Date.parse(String(inviato?.startISO || ""));
+    const istanteLetto = Date.parse(String(letto?.inizio || ""));
+    if (Number.isNaN(istanteInviato) || Number.isNaN(istanteLetto)) {
+      return { esito: "non-verificabile", motivo: "una delle due date non e' leggibile, non posso confrontarle" };
+    }
+    if (Math.abs(istanteInviato - istanteLetto) > TOLLERANZA_ISTANTE_MS) {
+      differenze.push({
+        campo: "quando",
+        atteso: formatDataPerEsteso(inviato.startISO, false),
+        trovato: formatDataPerEsteso(letto.inizio, false),
+      });
+    }
+  }
+  return differenze.length ? { esito: "non-combacia", differenze } : { esito: "verificata", differenze: [] };
+}
+
 // ── Gli esecutori di Classe B ────────────────────────────
 // confermaEsplicita non e' una formalita': e' il modo di rendere VERIFICABILE §7 dell'architettura
 // ("nessuna azione di Classe B puo' essere eseguita da un processo schedulato"). Solo il gestore del
@@ -2232,14 +2296,19 @@ async function creaEventoConVerifica(evento, chiave, confermaEsplicita) {
   try { v = await rileggiEventoDallaFonte(creato?.id || ""); }
   catch (e) { v = { ok: false, motivo: e.message }; }
   if (!v.ok) {
-    segnaEsecuzione(chiave, { stato: "eseguita-non-verificata", motivoVerifica: v.motivo });
-    return { esito: "non-verificata", idEsterno: creato?.id || null, motivo: v.motivo, grezza: v.grezza || creato?.__grezza || null };
+    // NON VERIFICABILE, non "fallita": la scrittura era riuscita, e' la rilettura a non essere
+    // andata. E' il principio gia' acquisito nel progetto — "incerto" non e' "fallito".
+    segnaEsecuzione(chiave, { stato: "eseguita-non-verificabile", motivoVerifica: v.motivo });
+    return { esito: "non-verificabile", idEsterno: creato?.id || null, motivo: v.motivo, grezza: v.grezza || creato?.__grezza || null };
   }
-  const atteso = evento.allDay ? String(evento.startISO).slice(0, 10) : String(evento.startISO).slice(0, 16);
-  const trovato = v.tuttoIlGiorno ? String(v.inizio).slice(0, 10) : String(v.inizio).slice(0, 16);
-  if (trovato !== atteso || String(v.titolo).trim() !== String(evento.title).trim()) {
-    segnaEsecuzione(chiave, { stato: "eseguita-non-verificata", motivoVerifica: "quello che c'e' sul calendario non combacia con quello che avevi confermato" });
-    return { esito: "non-combacia", idEsterno: v.id, letto: v, atteso, grezza: v.grezza || null };
+  const confronto = confrontaEventoConLaFonte(evento, v);
+  if (confronto.esito === "non-verificabile") {
+    segnaEsecuzione(chiave, { stato: "eseguita-non-verificabile", motivoVerifica: confronto.motivo });
+    return { esito: "non-verificabile", idEsterno: v.id, letto: v, motivo: confronto.motivo, grezza: v.grezza || null };
+  }
+  if (confronto.esito === "non-combacia") {
+    segnaEsecuzione(chiave, { stato: "eseguita-non-verificata", motivoVerifica: confronto.differenze.map((d) => `${d.campo}: atteso ${d.atteso}, trovato ${d.trovato}`).join(" · ") });
+    return { esito: "non-combacia", idEsterno: v.id, letto: v, differenze: confronto.differenze, grezza: v.grezza || null };
   }
   segnaEsecuzione(chiave, { stato: "verificata", idEsterno: v.id });
   return { esito: "verificata", letto: v, grezza: v.grezza || null };
@@ -4352,8 +4421,11 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
             </div>`}
             ${azioneStatus[mid]?.tipo === "esito-calendario" && html`<div>
               ${azioneStatus[mid].esito === "verificata" && html`<div class="r-ok">✓ C'è, l'ho riletto dal calendario: <b>${azioneStatus[mid].letto.titolo}</b> — ${formatDataPerEsteso(azioneStatus[mid].letto.inizio, azioneStatus[mid].letto.tuttoIlGiorno)}.${azioneStatus[mid].letto.link ? html` <a href=${azioneStatus[mid].letto.link} target="_blank" rel="noopener">aprilo</a>` : ""}</div>`}
-              ${azioneStatus[mid].esito === "non-verificata" && html`<div class="r-error">L'ho creato, ma NON sono riuscito a rileggerlo dal calendario (${azioneStatus[mid].motivo}). Non posso dirti che c'è: controlla tu prima di contarci.</div>`}
-              ${azioneStatus[mid].esito === "non-combacia" && html`<div class="r-error">Quello che c'è sul calendario non combacia con quello che avevi confermato: risulta "${azioneStatus[mid].letto.titolo}" il ${formatDataPerEsteso(azioneStatus[mid].letto.inizio, azioneStatus[mid].letto.tuttoIlGiorno)}. Controllalo a mano.</div>`}
+              ${/* 20/08/2026 — tre esiti, tre messaggi diversi. Prima "non sono riuscito a
+                    rileggere" e "l'ho riletto ma e' diverso" finivano nella stessa frase
+                    allarmante, e per giunta partiva anche quando era tutto a posto. */ ""}
+              ${azioneStatus[mid].esito === "non-verificabile" && html`<div class="r-error">L'ho creato — la scrittura è riuscita — ma non sono riuscito a rileggerlo per controllare (${azioneStatus[mid].motivo}). <b>Non vuol dire che non c'è:</b> vuol dire che non posso confermartelo io. Dai un'occhiata al calendario.</div>`}
+              ${azioneStatus[mid].esito === "non-combacia" && html`<div class="r-error">L'ho creato, ma quello che c'è sul calendario è diverso da quello che avevi confermato${azioneStatus[mid].differenze?.length ? html`:<div style="margin-top:4px">${azioneStatus[mid].differenze.map((d) => html`<div key=${d.campo}>· <b>${d.campo}</b> — avevi confermato "${d.atteso}", sul calendario c'è "${d.trovato}"</div>`)}</div>` : "."} Controllalo a mano.</div>`}
               ${azioneStatus[mid].esito === "fallita" && html`<div class="r-error">Non è stato creato: ${azioneStatus[mid].motivo}. Un evento si può ritentare senza rischio — al massimo nasce un doppione e si cancella.</div>`}
               ${azioneStatus[mid].esito === "gia-eseguita" && html`<div class="r-hub-detail">Questo evento risulta già messo (${new Date(azioneStatus[mid].precedente.aggiornata).toLocaleString("it-IT")}). Non lo rifaccio.</div>`}
               ${azioneStatus[mid].esito === "bloccata-dai-vincoli" && html`<div class="r-error">Bloccato dal vincolo sull'identità professionale (${azioneStatus[mid].violazioni.join(", ")}).</div>`}
