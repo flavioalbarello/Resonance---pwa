@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-17 · nessuna-conferma-senza-bersaglio";
+const APP_BUILD = "2026-08-20 · lo-stato-degli-interruttori-e-un-dato";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -561,6 +561,62 @@ const DOMANDA_CONFERMA_RE = new RegExp(
   ")", "giu");
 function rilevaDomandaDiConferma(testo) {
   return (String(testo || "").match(DOMANDA_CONFERMA_RE) || []).map((s) => s.trim());
+}
+// Una proposta non confermata scade. Non e' una comodita': senza scadenza, una card lasciata li'
+// una settimana fa continuerebbe a contare come "in attesa" e a bloccare quelle nuove — che e'
+// esattamente cio' che ha tenuto fermo il Ghost dal 16 al 20 agosto.
+const PROPOSTA_SCADE_DOPO_MINUTI = 20;
+function propostaScaduta(quando, adesso = Date.now()) {
+  const t = Date.parse(String(quando || ""));
+  if (Number.isNaN(t)) return true; // senza orario non si puo' dire che sia recente: si considera morta
+  return (adesso - t) > PROPOSTA_SCADE_DOPO_MINUTI * 60000;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// IL TERZO FILTRO: IL MODELLO NON DICHIARA LO STATO DEGLI INTERRUTTORI (20/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost ha acceso il calendario, ha chiesto un evento, e lo Shell ha risposto che "la capacita'
+// di inviare aggiornamenti al calendario e' attualmente limitata". Alla quarta richiesta ha
+// scritto, testualmente: "anche se la funzione e' attivata, la capacita' ... e' attualmente
+// spenta" — cioe' ha riconosciuto che l'interruttore era acceso e ha rifiutato lo stesso.
+// Stessa famiglia degli altri due filtri: il testo del modello non e' legato allo stato reale.
+// Qui lo stato reale e' un booleano che il programma ha in mano. Non c'e' nessuna ragione per cui
+// il modello debba poterlo contraddire, e quindi non gli si lascia farlo.
+const CAPACITA_SPENTA_RE = new RegExp(
+  "(" +
+  // "la capacità ... è attualmente limitata/spenta/disattivata/non disponibile"
+  `${CONF_S}(?:la\\s+)?(?:capacit[aà]|funzionalit[aà]|funzione|possibilit[aà])[^.!?\\n]{0,80}?(?:e'|è)\\s+(?:attualmente\\s+|al momento\\s+|per ora\\s+)?(?:limitat|spent|disattivat|disabilitat|non\\s+attiv|non\\s+disponibil)\\w*` +
+  // "non posso perché è spenta/limitata/disattivata"
+  `|${CONF_S}non\\s+(?:posso|riesco a)\\s+[^.!?\\n]{0,60}?perch[eé][^.!?\\n]{0,60}?(?:limitat|spent|disattivat|disabilitat|non\\s+attiv)\\w*` +
+  // "l'invio ... è una funzionalità attualmente limitata"
+  `|${CONF_S}(?:e'|è)\\s+una\\s+(?:funzionalit[aà]|capacit[aà])\\s+(?:attualmente\\s+|al momento\\s+)?(?:limitat|spent|disattivat|non\\s+attiv)\\w*` +
+  ")", "giu");
+function rilevaDichiarazioneCapacitaSpenta(testo) {
+  return (String(testo || "").match(CAPACITA_SPENTA_RE) || []).map((s) => s.trim());
+}
+// Confronta cio' che il modello ha detto con il DATO. Restituisce le affermazioni che contraddicono
+// lo stato reale, cioe' quelle da neutralizzare. Se davvero tutto e' spento, il modello ha ragione
+// e il testo passa intatto: la frase e' sbagliata solo quando e' falsa.
+function smentisciCapacitaSpenta(testo, attive) {
+  const dichiarazioni = rilevaDichiarazioneCapacitaSpenta(testo);
+  if (!dichiarazioni.length) return { testo: String(testo || ""), smentite: [], accese: [] };
+  const acceseDiClasseB = (attive || []).filter((a) => a.classe === "B");
+  if (!acceseDiClasseB.length) return { testo: String(testo || ""), smentite: [], accese: [] };
+  return {
+    testo: String(testo).replace(CAPACITA_SPENTA_RE, "[non è vero: quella capacità è accesa]"),
+    smentite: dichiarazioni,
+    accese: acceseDiClasseB.map((a) => a.etichetta),
+  };
+}
+// Il blocco che dice al modello cosa e' ACCESO in questo momento. Il gemello di formatCapacitaSpente,
+// e serve per la stessa ragione: il blocco delle capacita' dell'app conteneva frasi FISSE come
+// "NASCONO SPENTE", scritte il 16/08 quando erano davvero spente per tutti. Erano vere quel giorno,
+// e sono diventate false il giorno in cui il Ghost ne ha accesa una — senza che nessuno le
+// aggiornasse, perche' erano testo, non un dato letto.
+function formatCapacitaAccese(attive) {
+  const b = (attive || []).filter((a) => a.classe === "B");
+  if (!b.length) return "";
+  return `\nQueste capacita' sono ACCESE adesso, e funzionano: ${b.map((a) => a.etichetta).join(", ")}. Se il Ghost te ne chiede una, NON dire che e' spenta, limitata o non disponibile — non e' vero, e lui lo sa perche' l'interruttore ce l'ha davanti. Rispondi normalmente: il programma preparera' la proposta con il pulsante.`;
 }
 // ATTENZIONE, distinzione importante: ieri ho RIMOSSO la funzione che deduceva una conferma dal
 // testo, perche' una frase generica non deve MAI far partire un'azione. Questa e' l'uso opposto e
@@ -1749,10 +1805,11 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Ritorno aptico (dal 15/08/2026): quando il Ghost registra qualcosa su un pilastro il telefono vibra subito, con una firma diversa per pilastro — un colpo per BIO, due per AIR, tre per VIDYA — cosi' si riconosce al tatto su cosa si e' appena scritto. La voce compare e la postura si aggiorna nello stesso istante, senza aspettare nessuna rete.
 - Piano di controllo conversazionale (dal 16/08/2026): lo Shell sa quali percorsi e Semi esistono davvero — prima non lo sapeva, e per questo non riusciva a riprenderne uno. Se il Ghost dice "riprendi quello sul sonno", lo cerca fra quelli che esistono senza chiedere niente a nessun modello, e se ne trova due chiede quale invece di sceglierne uno. Quando ne apre uno, la chat mostra sempre in alto "stiamo lavorando su: [nome]", che si chiude con un tocco e scade da solo dopo otto ore. Ogni azione viene mostrata PRIMA di essere eseguita e si annulla anche dopo. Le capacita' si accendono e spengono una per una in Setup, e ogni azione proposta, confermata o annullata finisce in un registro con l'orario.
 - Azioni parlando (dal 16/08/2026): oltre a riprendere un percorso, lo Shell puo' ora — sempre chiedendo conferma prima — segnare una voce su un pilastro, salvare un'idea come Seme AIR, cercare davvero nella memoria cosa si era detto su un argomento, e avanzare sul percorso gia' aperto. Ogni azione viene mostrata prima di essere eseguita e si annulla anche dopo. Una sola azione per messaggio. Quando cerca nella memoria dice sempre dove ha guardato, e porta su anche uno o due frammenti nati lo stesso giorno anche se non c'entrano — servono a far venire in mente cose per accostamento, non per somiglianza.
-- Leggere il calendario (dal 17/08/2026, NASCE SPENTA): lo Shell puo' andare a leggere DAVVERO gli impegni sul Calendar del Ghost per un giorno o una settimana. Prima di questa azione lo Shell non sapeva niente del calendario e, se gli si chiedeva "cosa ho domani", rispondeva da cio' che ricordava della chat — inventando impegni. Ora o legge da Google, o dichiara di non esserci riuscito.
+- Leggere il calendario (dal 17/08/2026, governata da un interruttore in Setup — lo stato VERO di adesso te lo dicono i due blocchi qui sopra, non questa riga): lo Shell puo' andare a leggere DAVVERO gli impegni sul Calendar del Ghost per un giorno o una settimana. Prima di questa azione lo Shell non sapeva niente del calendario e, se gli si chiedeva "cosa ho domani", rispondeva da cio' che ricordava della chat — inventando impegni. Ora o legge da Google, o dichiara di non esserci riuscito.
+- Stato degli interruttori (dal 20/08/2026): lo Shell riceve a ogni turno DUE elenchi ricostruiti dal dato vero — cosa è acceso adesso e cosa è spento adesso. Non c'è nessuna frase fissa che dichiari lo stato: era il difetto per cui, dal 16 al 20 agosto, lo Shell diceva "la capacità è spenta" mentre il Ghost aveva l'interruttore acceso davanti agli occhi. Se lo Shell dichiara comunque spenta una capacità che è accesa, il programma toglie la frase e avvisa il Ghost che gli aveva detto il falso.
 - Capacità spente (dal 17/08/2026): quando il Ghost tiene spenta una capacità in Setup, lo Shell lo SA e glielo dice, invece di proporgliela. Se comunque scappa una domanda del tipo "vuoi confermare?" senza che dietro ci sia una proposta vera, il programma lo intercetta e scrive al Ghost un avviso: nessun pulsante comparirà, e perché. Una conferma scritta a parole non fa mai partire niente — se il Ghost risponde "sì" a vuoto, il sistema glielo dice e chiede di ripetere la richiesta, invece di rientrare nello stesso giro.
 - Ogni chiamata verso Google lascia in chat, sotto la card, un riquadro tecnico grezzo (codice HTTP, identificativo restituito, errore testuale) e lo stesso in Setup. Serve al Ghost per mandare un fatto invece di una frase quando qualcosa non torna.
-- Calendario e mail parlando (dal 16/08/2026, NASCONO SPENTE in Setup): lo Shell sa mettere un evento sul Calendar e inviare una mail da Gmail, ma solo dopo che il Ghost ha acceso quella voce e ha confermato quello specifico invio. Un evento si cancella, una mail no: l'evento chiede una conferma semplice, la mail mostra prima testo integrale e indirizzo per esteso. Le date le ricava il programma dalle parole del Ghost, mai il modello, e le mostra per esteso (giorno, data, ora). Dopo ogni azione rilegge dalla fonte e, se non ci riesce, dichiara fallimento invece di dire "fatto". Un invio senza risposta resta "incerto" e non viene mai rispedito da solo.
+- Calendario e mail parlando (dal 16/08/2026, ognuna governata dal suo interruttore in Setup — lo stato VERO di adesso te lo dicono i due blocchi qui sopra, non questa riga): lo Shell sa mettere un evento sul Calendar e inviare una mail da Gmail, ma solo dopo che il Ghost ha acceso quella voce e ha confermato quello specifico invio. Un evento si cancella, una mail no: l'evento chiede una conferma semplice, la mail mostra prima testo integrale e indirizzo per esteso. Le date le ricava il programma dalle parole del Ghost, mai il modello, e le mostra per esteso (giorno, data, ora). Dopo ogni azione rilegge dalla fonte e, se non ci riesce, dichiara fallimento invece di dire "fatto". Un invio senza risposta resta "incerto" e non viene mai rispedito da solo.
 - Tetto di spesa (Setup): al raggiungimento di 5 dollari nel mese si fermano SOLO le cose che partono da sole (Semi che avanzano, Simbiosi). La chat resta utilizzabile: il tetto protegge dalle spese che il Ghost non vede partire, non da quelle che sta decidendo lui in quel momento.
 - Backup e ripristino dei dati (Setup): scarica in un unico file tutto lo stato locale (log dei pilastri, percorsi, memoria, semi, kernel, profilo, impostazioni) e sa anche rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo e ricarica l'app, previa conferma.
 Capacità NON disponibili in questa app (elenco a mano, mantenuto qui insieme alle presenti — non generato dinamicamente, per lo stesso motivo per cui il Master Index andava mantenuto a mano: un elenco derivato in un punto diverso dal codice reale si disallinea): notifiche push, promemoria o azioni che si attivano da soli senza che il Ghost apra l'app, invio automatico di messaggi/email/post senza conferma esplicita del Ghost (dal 16/08/2026 lo Shell SA inviare una mail e creare un evento, ma solo se il Ghost ha acceso quella capacità in Setup e solo dopo che ha confermato quello specifico invio guardandone il testo per esteso: nessuna spedizione parte da un processo automatico, da un Seme che avanza o da un "sì" detto in un messaggio precedente), pubblicazione automatica su social o piattaforme esterne, esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost quando il gate lo richiede.`;
@@ -2433,6 +2490,7 @@ ${inventario || "Inventario dei percorsi non disponibile in questo turno — non
 ${formatFuocoBlock(fuoco)}
 ${formatAzioniBlock(azioniAttive())}
 ${formatCapacitaSpente(AZIONI_CONVERSAZIONALI, azioniAttive())}
+${formatCapacitaAccese(azioniAttive())}
 Memoria procedurale accumulata sui tre pilastri (leggila sempre insieme — l'interpretazione resta integrata anche quando l'azione è mirata a un solo pilastro): ${lente}${styleNote}
 REGOLA SUL TEMPO VERBALE, non negoziabile (corretta il 16/08/2026 dopo una prova reale in cui hai scritto "Ho segnato un appuntamento" prima ancora che il Ghost confermasse). TU NON ESEGUI NIENTE. Non salvi, non segni, non aggiungi, non mandi, non fissi: tutto questo lo fa il programma dopo, e solo se il Ghost tocca un pulsante. Quindi non usare MAI il passato per un'azione ("ho segnato", "ho aggiunto", "fatto", "l'ho messo in calendario"), nemmeno se ti sembra naturale, nemmeno se il Ghost ti ha appena detto di sì. Usa il condizionale o il futuro: "te lo segnerei", "vuoi che lo metta?", "posso aggiungerlo". Se una cosa e' stata davvero fatta, e' l'app a scriverlo sotto la tua risposta, con la conferma riletta dalla fonte — non tu. Dire "fatto" per qualcosa che non e' successo e' il modo piu' rapido di rendere inaffidabile tutto il sistema. Questo vale anche al contrario: NON SAI cosa c'e' sul calendario del Ghost. Non lo hai mai letto. Se ti chiede cosa ha in programma, cosa c'e' domani, che impegni ha, NON rispondere con quello che ricordi di aver letto in questa conversazione — una cosa nominata in chat non e' un impegno, e una proposta che non ha confermato non esiste. Di' che vai a guardare, e lascia che sia il programma a leggere davvero dal calendario e a mostrarti il risultato. Il codice controlla ogni tua risposta e toglie le affermazioni di compiuto che non corrispondono a un'azione verificata, avvisando il Ghost che l'hai scritta: non e' un rimprovero, e' un fatto tecnico, e ti conviene saperlo perche' rende inutile scriverle.
 Dialoga in modo diretto e concreto, massimo 110 parole per risposta — TRANNE quando il Ghost chiede esplicitamente un contenuto strutturato intrinsecamente lungo (un piano, un elenco multi-giorno, un documento): in quel caso il limite non si applica, genera il contenuto per intero, completo, senza comprimerlo né riassumerlo per stare corto. NON scrivere mai sintassi tecnica o tag tra parentesi quadre nella risposta. Rispondi solo in linguaggio naturale.${dialecticNote}
@@ -3694,22 +3752,46 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // prima di raggiungere lo schermo. L'unico testo al passato che il Ghost puo' leggere e'
       // quello che scrive il programma sotto la card, dopo aver riletto dalla fonte.
       const senzaEsiti = ripulisciAffermazioniDiEsito(ripulito.testo, false);
-      const replyPulita = senzaEsiti.testo;
+      if (senzaEsiti.affermazioni.length) pushDebugLog?.({ type: "affermazione-di-esito-neutralizzata", affermazioni: senzaEsiti.affermazioni, model: settings.model, userText: userText.slice(0, 100) });
       const esitiFalsi = senzaEsiti.affermazioni;
-      if (esitiFalsi.length) pushDebugLog?.({ type: "affermazione-di-esito-neutralizzata", affermazioni: esitiFalsi, model: settings.model, userText: userText.slice(0, 100) });
-      // §1.2 — UNA PROPOSTA DI CLASSE B PENDENTE E' UN OGGETTO, NON SI RIGENERA (16/08/2026).
-      // Nella prova reale una sola richiesta ("Torquato domani") ha prodotto tre card di calendario
-      // con tre orari diversi, perche' ogni turno ricostruiva la proposta da capo leggendo la chat.
-      // Finche' una proposta di Classe B e' in attesa di un tocco, non se ne crea una seconda: si
-      // ricorda al Ghost che c'e' gia' quella, e resta lui a confermarla o scartarla.
-      const classeBPendente = messages.find((mm) => mm.azioneProposta && AZIONI_CONVERSAZIONALI.find((a) => a.id === mm.azioneProposta.azioneId)?.classe === "B" && !azioneStatus[mm.id]);
-      if (meritaTurnoDiSelezione(userText) && classeBPendente) {
-        pushDebugLog?.({ type: "classe-b-gia-pendente", azioneId: classeBPendente.azioneProposta.azioneId });
-      }
-      if (meritaTurnoDiSelezione(userText) && !classeBPendente) {
+      // 20/08/2026 — IL TERZO FILTRO. Lo stato degli interruttori e' un dato che il programma ha in
+      // mano: se il modello dice "quella capacita' e' spenta" e il dato dice che e' accesa, non e'
+      // un'opinione, e' una frase falsa. Si toglie prima che il Ghost la legga.
+      const senzaSmentite = smentisciCapacitaSpenta(senzaEsiti.testo, azioniAttive());
+      const replyPulita = senzaSmentite.testo;
+      const capacitaSmentite = senzaSmentite.smentite;
+      const capacitaAccese = senzaSmentite.accese;
+      if (capacitaSmentite.length) pushDebugLog?.({ type: "capacita-dichiarata-spenta-ma-accesa", frasi: capacitaSmentite, accese: capacitaAccese, userText: userText.slice(0, 100) });
+      // §1.2 — UNA PROPOSTA DI CLASSE B PENDENTE NON SI RIGENERA (16/08/2026), RIFATTA IL 20/08.
+      // La versione del 16/08 aveva un difetto peggiore di quello che curava, e ha tenuto il Ghost
+      // fermo per quattro giorni: la condizione guardava `azioneStatus`, che e' stato di componente
+      // (`useState({})`, si azzera a ogni riapertura dell'app), mentre `messages` e' PERSISTITO in
+      // localStorage. Quindi qualunque vecchia proposta di Classe B mai confermata tornava
+      // "pendente" a ogni ricarica, per sempre — e la stessa riga bloccava il turno di selezione
+      // per TUTTE le azioni, non solo per la Classe B. Risultato: nessuna voce "proposta" nel
+      // registro, nessuna card, e il Ghost che leggeva frasi invece di vedere pulsanti.
+      // Tre cose cambiano, e ognuna chiude un pezzo del difetto:
+      //  1. la risoluzione si scrive DENTRO il messaggio (azioneRisolta), che e' persistito come i
+      //     messaggi stessi: una ricarica non resuscita piu' niente;
+      //  2. una proposta ha una scadenza. Una proposta di ieri non e' "in attesa": e' morta;
+      //  3. il controllo si sposta DOPO la selezione, dove finalmente si sa di che classe e'
+      //     l'azione richiesta — cosi' una proposta di calendario in sospeso non puo' piu' impedire
+      //     di aprire un percorso o di scrivere su un pilastro.
+      const proposteClasseBPendenti = messages.filter((mm) =>
+        mm.azioneProposta
+        && AZIONI_CONVERSAZIONALI.find((a) => a.id === mm.azioneProposta.azioneId)?.classe === "B"
+        && !mm.azioneRisolta && !azioneStatus[mm.id]
+        && !propostaScaduta(mm.time));
+      const classeBPendente = proposteClasseBPendenti[0] || null;
+      if (meritaTurnoDiSelezione(userText)) {
         try {
           const scelta = await scegliAzione(userText, costruisciInventario({ pBio, pAir, pVidya, semi }), leggiFuoco(), azioniAttive(), settingsPerSelezione(settings), pushDebugLog, history);
-          if (scelta) {
+          const classeScelta = scelta ? AZIONI_CONVERSAZIONALI.find((a) => a.id === scelta.azioneId)?.classe : null;
+          if (scelta && classeScelta === "B" && classeBPendente) {
+            // Solo QUESTO caso va fermato: una seconda proposta di Classe B mentre la prima aspetta
+            // ancora un tocco. Tutto il resto passa.
+            pushDebugLog?.({ type: "classe-b-gia-pendente", azioneId: classeBPendente.azioneProposta.azioneId, scartata: scelta.azioneId });
+          } else if (scelta) {
             // Solo le azioni che puntano a un oggetto esistente passano dal recupero: scrivere una
             // voce o creare un Seme non si riferiscono a niente di gia' presente.
             const cercaOggetto = scelta.azioneId === "apri_percorso";
@@ -3752,7 +3834,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         pushDebugLog?.({ type: "conferma-a-vuoto", userText: userText.slice(0, 100) });
       }
       setMessages((prev) => {
-        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft, usedWebSearch, seedSuggestion, azioneProposta, esitiFalsi, confermaSenzaBersaglio }];
+        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft, usedWebSearch, seedSuggestion, azioneProposta, esitiFalsi, confermaSenzaBersaglio, capacitaSmentite, capacitaAccese }];
         return compactShellChatIfNeeded(next) || next; // Opzione 3: compatta+archivia (Legge 14) se sopra soglia, altrimenti passa
       });
       if (newStyleMemory !== styleMemory) setStyleMemory(newStyleMemory);
@@ -3863,6 +3945,12 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   // qui si valida (l'identificativo deve esistere davvero, §2.4), si esegue, si registra.
   // Classe A: nessun gate, ma annullamento sempre disponibile nel turno stesso (§5.1).
   const [azioneStatus, setAzioneStatus] = useState({});
+  // 20/08/2026 — la risoluzione di una proposta va scritta DENTRO il messaggio, che e' persistito,
+  // non solo in azioneStatus, che si azzera a ogni riapertura dell'app. Senza questo, una proposta
+  // confermata ieri torna "in attesa" domani e blocca quelle nuove: e' il difetto che ha tenuto il
+  // Ghost fermo quattro giorni.
+  const segnaPropostaRisolta = (mid) => setMessages((prev) => prev.map((mm) => (mm.id === mid ? { ...mm, azioneRisolta: true } : mm)));
+  const aggiornaAzione = (mid, stato) => { segnaPropostaRisolta(mid); setAzioneStatus((s) => ({ ...s, [mid]: stato })); };
   // BLOCCO 2 — esecutori delle azioni di Classe A. Uno per azione, tutti nel PROGRAMMA: il modello
   // ha solo proposto. Tutti reversibili, tutti con annullamento nel turno stesso.
   //
@@ -3879,7 +3967,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     const pil = String(grezzo || "").trim().toLowerCase();
     const testo = resto.join("|").trim();
     if (!PILASTRI_VALIDI[pil] || !testo) {
-      setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "rifiutato", motivo: !PILASTRI_VALIDI[pil] ? `"${pil}" non è uno dei tre pilastri` : "il testo della voce è vuoto" } }));
+      aggiornaAzione(mid, { tipo: "rifiutato", motivo: !PILASTRI_VALIDI[pil] ? `"${pil}" non è uno dei tre pilastri` : "il testo della voce è vuoto" });
       registraAzione({ fase: "rifiutata", azioneId: "scrivi_su_pilastro", motivo: "parametro non valido", parametro });
       return;
     }
@@ -3888,15 +3976,15 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       : pil === "air" ? { id: uid(), date: todayISO(), title: testo.slice(0, 60), status: "idea", notes: testo }
       : { id: uid(), date: todayISO(), title: testo.slice(0, 60), notes: testo };
     PILASTRI_VALIDI[pil](voce);
-    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "scritto", pilastro: pil, testo, voceId: voce.id } }));
+    aggiornaAzione(mid, { tipo: "scritto", pilastro: pil, testo, voceId: voce.id });
     registraAzione({ fase: "eseguita", azioneId: "scrivi_su_pilastro", pilastro: pil, voceId: voce.id, testo: testo.slice(0, 120) });
   };
   const eseguiCreaSeme = (mid, parametro) => {
     const testo = String(parametro || "").trim();
-    if (!testo) { setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "rifiutato", motivo: "l'idea è vuota" } })); return; }
+    if (!testo) { aggiornaAzione(mid, { tipo: "rifiutato", motivo: "l'idea è vuota" }); return; }
     vibra("air"); // i Semi sono solo di AIR
     addSeed(testo, "conversazione");
-    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "seme", testo } }));
+    aggiornaAzione(mid, { tipo: "seme", testo });
     registraAzione({ fase: "eseguita", azioneId: "crea_seme", testo: testo.slice(0, 120) });
   };
   // Interrogare la memoria e' l'unica delle quattro che LEGGE invece di scrivere: non modifica
@@ -3905,18 +3993,18 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   const eseguiInterrogaMemoria = (mid, parametro) => {
     vibra("conferma");
     const esito = cercaNellaMemoria(parametro, memory);
-    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "memoria", argomento: parametro, ...esito } }));
+    aggiornaAzione(mid, { tipo: "memoria", argomento: parametro, ...esito });
     registraAzione({ fase: "eseguita", azioneId: "interroga_memoria", argomento: parametro, trovati: esito.frammenti.length });
   };
   const eseguiAvanzaPercorso = (mid) => {
     const f = leggiFuoco();
     if (f.tipo === "nessuno") {
-      setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "rifiutato", motivo: "non c'è nessun percorso aperto: dimmi quale prima" } }));
+      aggiornaAzione(mid, { tipo: "rifiutato", motivo: "non c'è nessun percorso aperto: dimmi quale prima" });
       registraAzione({ fase: "rifiutata", azioneId: "avanza_percorso", motivo: "nessun fuoco aperto" });
       return;
     }
     vibra("conferma");
-    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "avanza", etichetta: f.etichetta, id: f.id } }));
+    aggiornaAzione(mid, { tipo: "avanza", etichetta: f.etichetta, id: f.id });
     registraAzione({ fase: "eseguita", azioneId: "avanza_percorso", id: f.id, etichetta: f.etichetta });
   };
   // ── BLOCCO 3 — esecutori di Classe B ──────────────────────────────────────────────
@@ -3928,15 +4016,15 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   const eseguiCreaEvento = async (mid, proposta) => {
     const ev = proposta.evento;
     if (!ev?.ok || !ev.titolo) {
-      setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "rifiutato", motivo: ev?.motivo || "manca il titolo dell'evento" } }));
+      aggiornaAzione(mid, { tipo: "rifiutato", motivo: ev?.motivo || "manca il titolo dell'evento" });
       registraAzione({ fase: "rifiutata", azioneId: "crea_evento_calendario", motivo: ev?.motivo || "titolo mancante" });
       return;
     }
     vibra("conferma");
-    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "in-corso", cosa: "sto scrivendo sul calendario e poi lo rileggo" } }));
+    aggiornaAzione(mid, { tipo: "in-corso", cosa: "sto scrivendo sul calendario e poi lo rileggo" });
     const evento = { title: ev.titolo, notes: "", startISO: ev.inizioISO, endISO: ev.fineISO, allDay: ev.tuttoIlGiorno };
     const r = await creaEventoConVerifica(evento, proposta.chiaveBase, true);
-    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "esito-calendario", ...r, evento: ev } }));
+    aggiornaAzione(mid, { tipo: "esito-calendario", ...r, evento: ev });
     registraAzione({ fase: r.esito === "verificata" ? "eseguita-e-verificata" : "esito-" + r.esito, azioneId: "crea_evento_calendario", etichetta: ev.titolo, motivo: r.motivo || "" });
   };
   // La LETTURA del calendario. Regola non negoziabile, ed e' il motivo per cui questa azione
@@ -3946,27 +4034,27 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   const eseguiLeggiCalendario = async (mid, proposta) => {
     const l = proposta.lettura;
     if (!l?.ok) {
-      setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "rifiutato", motivo: l?.motivo || "non ho capito che periodo guardare" } }));
+      aggiornaAzione(mid, { tipo: "rifiutato", motivo: l?.motivo || "non ho capito che periodo guardare" });
       registraAzione({ fase: "rifiutata", azioneId: "leggi_calendario", motivo: l?.motivo || "periodo non capito" });
       return;
     }
     vibra("conferma");
-    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "in-corso", cosa: "sto guardando sul calendario" } }));
+    aggiornaAzione(mid, { tipo: "in-corso", cosa: "sto guardando sul calendario" });
     const r = await leggiEventiDalCalendario(l.inizioISO, l.fineISO).catch((e) => ({ ok: false, motivo: e.message }));
-    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "esito-lettura", ...r, etichetta: l.etichetta } }));
+    aggiornaAzione(mid, { tipo: "esito-lettura", ...r, etichetta: l.etichetta });
     registraAzione({ fase: r.ok ? "eseguita-e-verificata" : "esito-fallita", azioneId: "leggi_calendario", etichetta: l.etichetta, motivo: r.motivo || "", trovati: r.eventi?.length ?? 0 });
   };
   const eseguiInviaMail = async (mid, proposta, forza = false) => {
     const ml = proposta.mail;
     const a = (indirizzoMail[mid] ?? ml?.a ?? "").trim();
     if (!EMAIL_VALIDA_RE.test(a)) {
-      setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "rifiutato", motivo: a ? `"${a}" non e' un indirizzo valido` : "manca l'indirizzo: scrivilo tu, non lo invento" } }));
+      aggiornaAzione(mid, { tipo: "rifiutato", motivo: a ? `"${a}" non e' un indirizzo valido` : "manca l'indirizzo: scrivilo tu, non lo invento" });
       return;
     }
     vibra("conferma");
-    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "in-corso", cosa: "sto inviando e poi rileggo da Gmail" } }));
+    aggiornaAzione(mid, { tipo: "in-corso", cosa: "sto inviando e poi rileggo da Gmail" });
     const r = await inviaMailConVerifica({ a, oggetto: ml.oggetto, corpo: ml.corpo, chiave: chiaveConDestinatario(proposta.chiaveBase, a), confermaEsplicita: true, forza });
-    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "esito-mail", ...r, a, oggetto: ml.oggetto, proposta } }));
+    aggiornaAzione(mid, { tipo: "esito-mail", ...r, a, oggetto: ml.oggetto, proposta });
     registraAzione({ fase: r.esito === "verificata" ? "eseguita-e-verificata" : "esito-" + r.esito, azioneId: "invia_mail", etichetta: `${a} — ${ml.oggetto}`, motivo: r.motivo || "" });
   };
   const confermaAzione = (mid, candidato) => {
@@ -3974,25 +4062,25 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     // Validazione: l'oggetto deve esistere ANCORA adesso, non solo quando fu proposto.
     const esisteOra = [...(pBio || []), ...(pAir || []), ...(pVidya || []), ...(semi || [])].some((o) => o.id === candidato.id);
     if (!esisteOra) {
-      setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "annullato" } }));
+      aggiornaAzione(mid, { tipo: "annullato" });
       registraAzione({ fase: "rifiutata", azioneId: "apri_percorso", motivo: "identificativo non piu' esistente", id: candidato.id });
       return;
     }
     const nuovo = apriFuoco(candidato.tipo, candidato.id, candidato.etichetta);
     cambiaFuoco(nuovo);
-    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "aperto", etichetta: candidato.etichetta, id: candidato.id } }));
+    aggiornaAzione(mid, { tipo: "aperto", etichetta: candidato.etichetta, id: candidato.id });
     registraAzione({ fase: "eseguita", azioneId: "apri_percorso", id: candidato.id, etichetta: candidato.etichetta, tipo: candidato.tipo });
   };
   const annullaAzione = (mid) => {
     vibra("conferma");
-    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "annullato" } }));
+    aggiornaAzione(mid, { tipo: "annullato" });
     registraAzione({ fase: "annullata-prima-di-eseguire", azioneId: "apri_percorso" });
   };
   // Annullamento DOPO l'esecuzione: e' quello che rende l'azione davvero reversibile (C.14).
   const annullaApertura = (mid) => {
     vibra("conferma");
     cambiaFuoco(chiudiFuoco());
-    setAzioneStatus((s) => ({ ...s, [mid]: { tipo: "annullato" } }));
+    aggiornaAzione(mid, { tipo: "annullato" });
     registraAzione({ fase: "annullata-dopo-esecuzione", azioneId: "apri_percorso" });
   };
   // Email da bozza Arms: stesso principio del Calendar, mai scrittura/invio automatico (Legge 8).
@@ -4068,6 +4156,12 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                 : m.confermaSenzaBersaglio.motivo === "conferma-a-vuoto"
                 ? html`<div><b>Non ho niente in attesa da confermare.</b> Hai risposto di sì, ma non c'è nessuna proposta pronta: una parola scritta qui non fa partire niente, mai — serve il pulsante di una card. Ripeti la richiesta per intero${m.confermaSenzaBersaglio.spente.length ? html`, e controlla che la capacità che ti serve non sia spenta in Setup (spente adesso: ${m.confermaSenzaBersaglio.spente.join(", ")})` : ""}.</div>`
                 : html`<div><b>Ti ho chiesto una conferma, ma non ho preparato niente da confermare.</b> Non comparirà nessun pulsante: la proposta non è stata creata. Ripeti la richiesta scrivendo per esteso cosa vuoi, con giorno e ora.</div>`}
+            </div>`}
+            ${/* 20/08/2026 — il terzo riquadro. Il Ghost aveva l'interruttore acceso davanti agli
+                  occhi e lo Shell gli diceva che era spento. Qui il programma, che il dato ce
+                  l'ha, lo smentisce a voce alta invece di lasciarlo credere. */ ""}
+            ${m.capacitaSmentite?.length > 0 && html`<div class="r-esito-falso">
+              <b>Attenzione: qui sopra ti ho detto una cosa falsa.</b> Ho scritto che una capacità è spenta o limitata, ma non è vero — <b>${m.capacitaAccese.join(", ")}</b> ${m.capacitaAccese.length === 1 ? "è accesa" : "sono accese"} in questo momento. L'ho tolto dal testo. Se non è comparso nessun pulsante il motivo è un altro, e lo trovi nel Registro delle azioni in Setup: mandamelo.
             </div>`}
             ${m.esitiFalsi?.length > 0 && html`<div class="r-esito-falso">
               <b>Attenzione.</b> Qui sopra avevo scritto che qualcosa era già stato fatto${m.esitiFalsi.length === 1 ? "" : ` (${m.esitiFalsi.length} volte)`}: <i>${m.esitiFalsi.join(" · ")}</i>. Non era vero e l'ho tolto. Non ho toccato né il calendario né la posta: se c'è un pulsante di conferma qui sotto, l'azione parte solo quando lo tocchi tu.
