@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-20 · filtro-che-legge-il-contesto";
+const APP_BUILD = "2026-08-22 · nessun-impegno-senza-lettura";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -678,7 +678,11 @@ function formatCapacitaAccese(attive) {
 // sicuro: non serve a confermare qualcosa, serve ad accorgersi che il Ghost sta confermando A VUOTO
 // per poterglielo dire. Non esegue niente e non puo' eseguire niente — non ha accesso a nessun
 // esecutore. Se un giorno qualcuno volesse usarla per confermare, la risposta e' no.
-const CONFERMA_A_PAROLE_RE = /^(s[iì]\W*)?(confermato|conferma|confermo|ok|va bene|procedi|fallo|certo|d'accordo|perfetto|dai|vai)\b/i;
+// 22/08/2026 — allargata dopo aver visto come il Ghost risponde davvero alle card. "Dimmelo" e un
+// "Sì" da solo non erano riconosciuti: cadevano fuori da ogni ramo e producevano il silenzio. Sono
+// aggiunte solo forme che non possono aprire una richiesta nuova ("dimmelo" si', "dimmi" no: "dimmi
+// cosa c'e' sul calendario" e' una richiesta vera e non va scambiata per una conferma).
+const CONFERMA_A_PAROLE_RE = /^(?:s[iì]\W*)?(?:confermato|conferma|confermo|ok|okay|va bene|vabb?[eè]|procedi|prosegui|avanti|fallo|falla|dimmelo|certo|d'accordo|perfetto|dai|vai)\b|^s[iì]\s*[.!]?\s*$/i;
 function sembraUnaConfermaAParole(messaggio) {
   const t = String(messaggio || "").trim();
   return t.length <= 40 && CONFERMA_A_PAROLE_RE.test(t);
@@ -694,6 +698,134 @@ function formatCapacitaSpente(tutte, attive) {
 ${spente.map((a) => `- ${a.etichetta}`).join("\n")}
 Se il Ghost chiede una di queste cose, NON dire "vuoi confermare?" e NON fare finta di poterla fare: digli che quella capacita' e' spenta e che puo' accenderla in Setup. Promettergli un pulsante che non comparira' e' il modo peggiore di rispondergli.`;
 }
+// ══════════════════════════════════════════════════════════════════════════════
+// IL QUARTO FILTRO: NESSUN CONTENUTO DI CALENDARIO SENZA UNA LETTURA VERIFICATA (22/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// I tre filtri sopra cercano dichiarazioni di AZIONE COMPIUTA — "l'ho messo", "e' sul calendario",
+// "quella capacita' e' spenta". Il 22/08 il Ghost ha incontrato una cosa che nessuno dei tre poteva
+// vedere, perche' non e' una dichiarazione di azione: il modello ha ESPOSTO CONTENUTI.
+//   "domani alle 13 c'e' un appuntamento con Carlo, e domani alle 16:00 uno con Giuseppo.
+//    Non ci sono altri appuntamenti nei prossimi 7 giorni."
+// Carlo non esiste. Giuseppo era il giorno prima. Petronio, che esisteva davvero, non e' nominato.
+// E il riquadro delle chiamate grezze dice zero chiamate quel giorno: nessuna richiesta e' uscita
+// dal telefono. Il modello ha riletto la chat di due giorni prima e l'ha presentata come lettura.
+//
+// Perche' e' la classe peggiore: un'azione dichiarata a vuoto si smaschera guardando il calendario,
+// un CONTENUTO inventato il Ghost lo crede — e' esattamente cio' che ha chiesto e arriva nella forma
+// che si aspettava. Su quella risposta avrebbe saltato Petronio e sarebbe andato a un appuntamento
+// che non esiste.
+//
+// Il fatto strutturale che rende il difetto inevitabile senza questo filtro: nel turno di risposta
+// il modello NON RICEVE MAI il calendario. La risposta si genera in runShellTurn; la selezione
+// dell'azione avviene dopo; la lettura vera avviene dopo ancora, solo se il Ghost tocca "Guarda",
+// e il suo esito finisce in una card, non nella conversazione. Quindi ogni contenuto di calendario
+// che compare nel testo del modello e' — sempre, senza eccezione — ricostruito a memoria.
+// Misurato il 22/08 su otto giri identici con la rete vera: 3 volte su 8 ha prodotto un
+// appuntamento con nome e orario, 2 volte ha aggiunto "non ci sono altri impegni", una volta ha
+// scritto "(verificato)" accanto a un evento mai letto. Il prompt contiene gia' dal 16/08
+// l'istruzione esplicita "NON SAI cosa c'e' sul calendario del Ghost, non lo hai mai letto":
+// e' la quinta volta che un'istruzione nel prompt non regge su questa classe di problema.
+//
+// Quindi il criterio e' IL FATTO, non la parola: se in quel turno non esiste una lettura eseguita e
+// verificata, nessun contenuto di calendario puo' comparire, comunque sia formulato. Il testo si
+// guarda solo DOPO, e solo per sapere quali frasi togliere.
+const CAL_SOSTITUZIONE = "[tolto: la lettura del calendario non è avvenuta, questo non viene da Google]";
+// Un orario: "alle 16", "alle 16:00", "13:30", "9.45".
+const CAL_ORARIO_RE = new RegExp(`(${CONF_S}alle\\s+(?:[01]?\\d|2[0-3])(?:[:.]\\d{2})?${CONF_E}|${CONF_S}(?:[01]?\\d|2[0-3])[:.]\\d{2}${CONF_E})`, "iu");
+// Un sostantivo che nomina la roba che sta sul calendario.
+const CAL_IMPEGNO_RE = new RegExp(`${CONF_S}(?:appuntament\\w*|impegn\\w*|event\\w*|riunion\\w*|incontr\\w*|visit\\w*|convocazion\\w*|promemoria|agenda|calendario)${CONF_E}`, "iu");
+// Un riferimento a un giorno: basta questo piu' un orario per essere un appuntamento riferito.
+const CAL_GIORNO_RE = new RegExp(`${CONF_S}(?:oggi|domani|dopodomani|stasera|stamattina|luned[iì]|marted[iì]|mercoled[iì]|gioved[iì]|venerd[iì]|sabato|domenica|weekend|fine\\s+settimana)${CONF_E}`, "iu");
+// L'affermazione che NON c'e' niente. E' un contenuto di calendario esattamente come un elenco, ed
+// e' altrettanto falsa se nessuno ha letto: e' il caso che un filtro ingenuo si perde.
+const CAL_ASSENZA_RE = new RegExp(`(${CONF_S}non\\s+(?:ci\\s+sono|ce\\s+ne\\s+sono|hai|ne\\s+hai|risultano|risulta|c'[eè]|compare|compaiono|trovo|ho\\s+trovato)${CONF_E}|${CONF_S}(?:nessun\\w*|niente|nulla)${CONF_E}|${CONF_S}(?:liber\\w*|vuot\\w*|sgombr\\w*|scaric\\w*)${CONF_E})`, "iu");
+// Il verbo che lega un giorno e un'ora a QUALCOSA CHE STA SUL CALENDARIO. Senza di questo, "domani
+// alle 16" non e' un contenuto di calendario: e' un'ora in una frase qualsiasi. La prima versione di
+// questo filtro non lo distingueva e cancellava "domani alle 16 dovresti dormire di piu'", che non
+// c'entra niente col calendario — un filtro che toglie frasi vere e' un difetto, non una cautela.
+const CAL_ESISTENZIALE_RE = new RegExp(`${CONF_S}(?:c'[eè]|ci\\s+sono|hai|ne\\s+hai|risulta|risultano|trovo|ho\\s+trovato|previst\\w*|in\\s+programma|segnat\\w*|fissat\\w*|in\\s+agenda)${CONF_E}`, "iu");
+// La frase che DICHIARA di aver letto ("ecco cosa ho trovato", "leggo dal calendario", "Risultato:").
+// Non espone contenuti, ma afferma che la lettura e' avvenuta — ed e' falso quanto l'elenco che
+// introduce. Vale solo dentro una risposta che parla di calendario, altrimenti "Risultato:" in un
+// conto o in un piano verrebbe tolto senza motivo.
+const CAL_DICHIARA_LETTO_RE = new RegExp(`(${CONF_S}ecco\\s+cosa\\s+ho\\s+trovato|${CONF_S}leggo\\s+dal\\s+calendario|${CONF_S}dal\\s+calendario\\s+risulta|${CONF_S}risultat\\w*[^.!?\\n]{0,24}:|${CONF_S}(?:lo\\s+)?sto\\s+(?:leggendo|guardando|controllando|verificando)|${CONF_S}ho\\s+(?:letto|controllato|guardato|verificato)[^.!?\\n]{0,30}(?:calendario|agenda|impegni|appuntamenti))`, "iu");
+// Le tre esenzioni. Non sono cortesie: sono frasi che NON espongono contenuti, e toglierle
+// peggiorerebbe la risposta invece di renderla piu' vera.
+//  1. la frase dichiara che la lettura non e' avvenuta, o che sta per avvenire — cioe' dice il vero;
+const CAL_DICHIARA_NON_LETTO_RE = new RegExp(`${CONF_S}(?:vado\\s+a\\s+(?:guardare|leggere|vedere|controllare)|devo\\s+(?:prima\\s+)?(?:guardare|leggere|andare|controllare)|non\\s+(?:ho|sono)\\s+(?:letto|riuscito|ancora)|non\\s+(?:posso|so)\\s+dirti|non\\s+ho\\s+(?:accesso|guardato|controllato)|non\\s+l['’]ho\\s+(?:letto|guardato)|guardo\\s+(?:io\\s+)?(?:sul|il|nel))${CONF_E}`, "iu");
+//  2. la frase e' una PROPOSTA DI SCRITTURA ("te lo metto in calendario per domani alle 16"): non
+//     riferisce cosa c'e', dice cosa il programma fara' se il Ghost conferma. E' la forma che il
+//     brief del 17/08 ha chiesto espressamente, e romperla romperebbe la creazione di eventi;
+const CAL_INTENTO_SCRITTURA_RE = new RegExp(`${CONF_S}(?:te\\s+l[oa]\\s+)?(?:metto|segno|aggiungo|fisso|inserisco|creo|scrivo|salvo|piazzo|mando|invio|spedisco)${CONF_E}`, "iu");
+//  3. la frase e' una domanda: chiedere non e' riferire.
+function frasiDiUnTesto(testo) {
+  // Si spezza su fine-frase e su a-capo, tenendo i pezzi con i loro delimitatori, cosi' un elenco
+  // puntato ("- Domani alle 16:00, Giuseppo") conta come una frase per conto suo.
+  const out = [];
+  let inizio = 0;
+  const s = String(testo || "");
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "\n" || ((s[i] === "." || s[i] === "!" || s[i] === "?") && !/\d/.test(s[i + 1] || ""))) {
+      out.push({ inizio, fine: i + 1, testo: s.slice(inizio, i + 1) });
+      inizio = i + 1;
+    }
+  }
+  if (inizio < s.length) out.push({ inizio, fine: s.length, testo: s.slice(inizio) });
+  return out;
+}
+// Dice se UNA frase espone contenuti di calendario, e perche'. Restituisce null se non li espone.
+// `inDiscorsoDiCalendario` dice se la risposta NEL SUO INSIEME parla di calendario: serve solo per
+// la terza regola, quella sulle frasi che dichiarano di aver letto.
+function contenutoDiCalendario(frase, inDiscorsoDiCalendario = true) {
+  const f = String(frase || "");
+  if (!f.trim()) return null;
+  if (CAL_DICHIARA_NON_LETTO_RE.test(f)) return null;      // dice il vero: non l'ha letto
+  if (CAL_INTENTO_SCRITTURA_RE.test(f)) return null;       // e' una proposta di scrittura
+  if (/\?\s*$/.test(f.trim())) return null;                // e' una domanda
+  const haImpegno = CAL_IMPEGNO_RE.test(f);
+  const haOrario = CAL_ORARIO_RE.test(f);
+  const haGiorno = CAL_GIORNO_RE.test(f);
+  // Un sostantivo d'agenda con un'ora: "appuntamento con Giuseppo alle 16".
+  if (haImpegno && haOrario) return "riferisce un appuntamento con un orario";
+  // Oppure un giorno e un'ora legati da un verbo che ne afferma l'esistenza: "domani alle 13 c'e'
+  // Carlo". Senza quel verbo, giorno e ora non bastano.
+  if (haGiorno && haOrario && CAL_ESISTENZIALE_RE.test(f)) return "riferisce un appuntamento con un orario";
+  if (haImpegno && CAL_ASSENZA_RE.test(f)) return "afferma che non ci sono impegni";
+  if (inDiscorsoDiCalendario && CAL_DICHIARA_LETTO_RE.test(f)) return "dichiara di aver letto il calendario";
+  return null;
+}
+// Il filtro vero e proprio. `letturaVerificata` e' un FATTO che il programma ha in mano, non una
+// valutazione del testo: e' vero solo se in questo turno una lettura del calendario e' stata
+// eseguita e ha risposto. Se e' vero, il testo passa intatto — il modello sta riferendo qualcosa
+// che qualcuno ha davvero letto, e un falso allarme qui sarebbe un danno.
+function ripulisciContenutiDiCalendario(testo, letturaVerificata = false) {
+  const originale = String(testo || "");
+  if (letturaVerificata || !originale.trim()) return { testo: originale, contenuti: [] };
+  const parlaDiCalendario = CAL_IMPEGNO_RE.test(originale);
+  const frasi = frasiDiUnTesto(originale);
+  const daTogliere = frasi.map((fr) => ({ ...fr, motivo: contenutoDiCalendario(fr.testo, parlaDiCalendario) })).filter((fr) => fr.motivo);
+  if (!daTogliere.length) return { testo: originale, contenuti: [] };
+  let out = originale;
+  for (let i = daTogliere.length - 1; i >= 0; i--) {
+    const fr = daTogliere[i];
+    out = out.slice(0, fr.inizio) + out.slice(fr.fine);
+  }
+  // Togliendo frasi restano dei detriti di punteggiatura ("giorni....." dove c'era una sospensione
+  // e poi la frase tolta). Si ripuliscono solo qui, cioe' solo quando qualcosa e' stato davvero
+  // rimosso: un testo intatto non viene mai riscritto.
+  out = out
+    .replace(/\.{2,}/g, ".")            // i puntini rimasti orfani
+    .replace(/\s+([.,;:!?])/g, "$1")    // spazio prima della punteggiatura
+    .replace(/([.,;:!?])\1+/g, "$1")    // punteggiatura doppiata dalla giunzione
+    .replace(/^[\s.,;:—–-]+/gm, (m) => (m.includes("\n") ? "\n" : ""))
+    .replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  // Il testo sostitutivo dice cosa e' successo davvero. Non "non sono sicuro", non un vuoto.
+  return {
+    testo: (out ? out + "\n\n" : "") + CAL_SOSTITUZIONE,
+    contenuti: daTogliere.map((fr) => ({ frase: fr.testo.trim(), motivo: fr.motivo })),
+  };
+}
+
 // Registro delle azioni COMPIUTE (§9): cosa proposto, cosa confermato, cosa eseguito, con orario.
 // E' cio' che rende possibile capire DOPO perche' una cosa e' andata storta. Separato dal registro
 // di debug perche' risponde a una domanda diversa e non deve essere spinto fuori dal suo tetto.
@@ -1880,6 +2012,9 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Forma delle risposte (dal 20/08/2026): lo Shell scrive molto breve — frasi corte, punti separati, niente preamboli. Questa regola vive nel PROFILO del Ghost, non nel prompt comune: un altro Ghost con un profilo diverso non la riceve. Il taglio e' sulla forma, mai sul contenuto: un vincolo, un rischio o un'incertezza non si omettono mai per stare corti.
 - Cancellare o spostare un evento del calendario NON si puo' fare: le azioni sono due, creare e leggere. Se il Ghost chiede di cancellare, lo Shell lo dice e basta — non offre di spostare o modificare, che e' un'altra cosa che non sa fare.
 - Verifica dopo la scrittura sul calendario (rifatta il 20/08/2026): dopo aver creato un evento il sistema lo rilegge e confronta cio' che ha mandato con cio' che trova. Il confronto e' fra ISTANTI, non fra stringhe — le 19:00 di Roma e le 17:00Z sono lo stesso momento — e il titolo si confronta ignorando maiuscole, accenti e spazi doppi. Tre esiti distinti: verificata (c'e' e corrisponde), non-combacia (c'e' ma e' diverso, e viene detto cosa: atteso X, trovato Y), non-verificabile (la rilettura non e' riuscita — la scrittura pero' era andata, quindi non e' un fallimento).
+- Contenuti di calendario nel testo dello Shell (dal 22/08/2026): il programma toglie dalla risposta dello Shell qualunque appuntamento, orario o affermazione del tipo "non hai altri impegni" quando in quel turno NON e' stata eseguita una lettura verificata del calendario — e in un turno di chat non lo e' mai, perche' la risposta si genera prima che l'azione venga scelta e molto prima che qualcuno legga da Google. Al posto del contenuto tolto compare una riga che dice che la lettura non e' avvenuta, e sotto la risposta un riquadro elenca per esteso cosa e' stato tolto. Serve perche' il 22/08 lo Shell ha elencato due appuntamenti con nome e ora — uno con una persona inesistente, l'altro del giorno prima — omettendo l'unico vero, senza che nessuna richiesta fosse uscita dal telefono. Se il Ghost nomina questa cosa, parla di questo filtro: e' una funzionalita' dell'app, non un fatto della sua vita.
+- Periodi di calendario in parole (dal 22/08/2026): "prossimi 7 giorni", "nei prossimi tre giorni", "questo weekend", "questa settimana" vengono risolti dal programma a partire da oggi, e il numero di giorni detto vale davvero. Prima "prossimi 7 giorni" non veniva capito e la card chiedeva al Ghost di dire un giorno preciso — cioe' gli chiedeva un'informazione che aveva gia' dato — e senza pulsante la lettura non poteva partire.
+- Proposte che nessuno puo' toccare (dal 22/08/2026): una card che non ha un pulsante che esegue (periodo non capito, data non ricavabile, vincolo che blocca una mail) non conta piu' come "proposta in attesa", quindi non impedisce alle richieste successive di calendario o posta di produrre la loro card. Prima ne bloccava ogni altra per venti minuti, in silenzio. E se il Ghost risponde a una card scrivendo in chat ("Dimmelo", "Fallo", "Va bene") invece di premere il pulsante, il programma glielo dice indicando la card: non esegue — una parola non conferma mai niente — ma non resta piu' zitto.
 - Stato degli interruttori (dal 20/08/2026): lo Shell riceve a ogni turno DUE elenchi ricostruiti dal dato vero — cosa è acceso adesso e cosa è spento adesso. Non c'è nessuna frase fissa che dichiari lo stato: era il difetto per cui, dal 16 al 20 agosto, lo Shell diceva "la capacità è spenta" mentre il Ghost aveva l'interruttore acceso davanti agli occhi. Se lo Shell dichiara comunque spenta una capacità che è accesa, il programma toglie la frase e avvisa il Ghost che gli aveva detto il falso.
 - Capacità spente (dal 17/08/2026): quando il Ghost tiene spenta una capacità in Setup, lo Shell lo SA e glielo dice, invece di proporgliela. Se comunque scappa una domanda del tipo "vuoi confermare?" senza che dietro ci sia una proposta vera, il programma lo intercetta e scrive al Ghost un avviso: nessun pulsante comparirà, e perché. Una conferma scritta a parole non fa mai partire niente — se il Ghost risponde "sì" a vuoto, il sistema glielo dice e chiede di ripetere la richiesta, invece di rientrare nello stesso giro.
 - Ogni chiamata verso Google lascia in chat, sotto la card, un riquadro tecnico grezzo (codice HTTP, identificativo restituito, errore testuale) e lo stesso in Setup. Serve al Ghost per mandare un fatto invece di una frase quando qualcosa non torna.
@@ -2172,6 +2307,8 @@ function normalizzaData(espressione, adesso = new Date()) {
 // L'intervallo da guardare sul calendario. Separato da normalizzaData di proposito: quella rifiuta
 // le date passate, giustamente, perche' serve a CREARE eventi. Per LEGGERE invece "oggi" comincia a
 // mezzanotte, che a mezzogiorno e' gia' passata — e rifiutarlo sarebbe assurdo.
+// I numeri scritti in lettere, perche' il Ghost dice "nei prossimi tre giorni" quanto "3 giorni".
+const NUMERI_IT_GIORNI = { un: 1, uno: 1, due: 2, tre: 3, quattro: 4, cinque: 5, sei: 6, sette: 7, otto: 8, nove: 9, dieci: 10, undici: 11, dodici: 12, quindici: 15, venti: 20, trenta: 30 };
 function intervalloCalendario(espressione, adesso = new Date()) {
   const t = senzaAccenti(espressione);
   const base = new Date(adesso.getFullYear(), adesso.getMonth(), adesso.getDate());
@@ -2184,7 +2321,27 @@ function intervalloCalendario(espressione, adesso = new Date()) {
   if (!t.trim() || /\boggi\b|\bin giornata\b|\bstasera\b|\bstamattina\b/.test(t)) return giornoIntero(base);
   if (/\bdopodomani\b/.test(t)) return giornoIntero(new Date(base.getTime() + 2 * 86400000));
   if (/\bdomani\b/.test(t)) return giornoIntero(new Date(base.getTime() + 86400000));
-  if (/settimana|prossimi giorni|nei prossimi/.test(t)) return giornoIntero(base, 7);
+  // "prossimi 7 giorni" — il caso che il 22/08 ha bloccato il Ghost. La riga qui sotto chiedeva
+  // "settimana", "prossimi giorni" o "nei prossimi": nessuna delle tre e' dentro "prossimi 7
+  // giorni", perche' il numero spezza "prossimi giorni". Risultato: la lettura non era proponibile,
+  // la card diceva "dimmelo con un giorno" — cioe' chiedeva un'informazione che il Ghost aveva gia'
+  // dato, visto che il punto di partenza e' oggi — e senza pulsante l'azione non poteva partire.
+  // Adesso il numero si legge, in cifre o in lettere, e vale davvero: "nei prossimi tre giorni"
+  // guarda tre giorni, non sette come faceva prima ignorando la parola.
+  const quantiGiorni = t.match(/(\d{1,2}|un|uno|due|tre|quattro|cinque|sei|sette|otto|nove|dieci|undici|dodici|quindici|venti|trenta)\s+giorn[oi]/);
+  if (quantiGiorni) {
+    const n = NUMERI_IT_GIORNI[quantiGiorni[1]] ?? parseInt(quantiGiorni[1], 10);
+    if (Number.isFinite(n) && n >= 1 && n <= 90) return giornoIntero(base, n);
+  }
+  if (/settimana|prossimi giorni|nei prossimi|prossim[ie] giorni/.test(t)) return giornoIntero(base, 7);
+  // "questo weekend": da sabato a domenica. Se oggi e' gia' sabato o domenica, si parte da oggi.
+  if (/weekend|week-end|fine settimana/.test(t)) {
+    const dow = base.getDay(); // 0 = domenica, 6 = sabato
+    if (dow === 6) return giornoIntero(base, 2);
+    if (dow === 0) return giornoIntero(base, 1);
+    const aSabato = 6 - dow;
+    return giornoIntero(new Date(base.getTime() + aSabato * 86400000), 2);
+  }
   if (/\bmese\b/.test(t)) return giornoIntero(base, 31);
   // Un giorno della settimana o una data esplicita: si riusa il calcolo gia' provato, chiedendogli
   // la prima ricorrenza futura, e poi si prende il giorno intero.
@@ -2451,6 +2608,25 @@ function preparaClasseB(azioneId, parametro, adesso = new Date()) {
     return { mail: { a, oggetto, corpo, vincoli }, chiaveBase: chiaveIdempotenza("mail", [oggetto, corpo]) };
   }
   return {};
+}
+// Una proposta di Classe B e' ESEGUIBILE solo se la card che ne esce ha davvero un pulsante che
+// esegue. Quando la data non si ricava, quando il periodo non si capisce, quando i vincoli bloccano
+// la mail, la card mostra un solo pulsante — "Va bene" — che annulla e basta.
+// Perche' questa distinzione e' necessaria (22/08/2026): il programma considerava "in attesa"
+// qualunque proposta non ancora risolta, e finche' una proposta di Classe B e' in attesa scarta
+// silenziosamente ogni altra proposta di Classe B. Una proposta senza pulsante non puo' MAI essere
+// risolta dal Ghost, quindi restava in attesa per tutti i 20 minuti della scadenza — e per venti
+// minuti nessuna richiesta di calendario o di posta poteva piu' produrre una card, senza nemmeno
+// una riga nel registro che dicesse perche'. E' esattamente cio' che il Ghost ha visto il 22/08:
+// una proposta alle 12:11:28 senza esito, e poi il silenzio.
+// Una proposta che il Ghost non puo' toccare non e' in attesa di niente: e' morta appena nata.
+function propostaEseguibile(azioneProposta) {
+  if (!azioneProposta) return false;
+  const { azioneId } = azioneProposta;
+  if (azioneId === "leggi_calendario") return !!azioneProposta.lettura?.ok;
+  if (azioneId === "crea_evento_calendario") return !!azioneProposta.evento?.ok && azioneProposta.evento?.vincoli?.ok !== false;
+  if (azioneId === "invia_mail") return azioneProposta.mail?.vincoli?.ok !== false;
+  return true;
 }
 // Filtro difensivo: i modelli a volte scrivono "non-letture" ("Nessuna menzione di...") nonostante il prompt.
 function isGarbageReading(r) {
@@ -3901,10 +4077,23 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // mano: se il modello dice "quella capacita' e' spenta" e il dato dice che e' accesa, non e'
       // un'opinione, e' una frase falsa. Si toglie prima che il Ghost la legga.
       const senzaSmentite = smentisciCapacitaSpenta(senzaEsiti.testo, azioniAttive());
-      const replyPulita = senzaSmentite.testo;
       const capacitaSmentite = senzaSmentite.smentite;
       const capacitaAccese = senzaSmentite.accese;
       if (capacitaSmentite.length) pushDebugLog?.({ type: "capacita-dichiarata-spenta-ma-accesa", frasi: capacitaSmentite, accese: capacitaAccese, userText: userText.slice(0, 100) });
+      // 22/08/2026 — IL QUARTO FILTRO. Il secondo argomento e' un FATTO, e in questo punto del
+      // programma quel fatto e' sempre lo stesso: FALSO. La risposta del modello si genera dentro
+      // runShellTurn, prima che l'azione venga scelta e molto prima che qualcuno vada a leggere il
+      // calendario; l'esito di una lettura vera finisce in una card, non nella conversazione. Non
+      // esiste nessun percorso per cui il modello, mentre scrive QUESTA risposta, abbia in mano il
+      // calendario del Ghost. Quindi ogni appuntamento che comparisse qui sarebbe ricostruito a
+      // memoria, sempre — e a memoria, il 22/08, ha prodotto un appuntamento con una persona che
+      // non esiste. L'argomento resta esplicito e non cablato per una ragione precisa: il giorno in
+      // cui l'esito della lettura verra' rimesso nella conversazione, il filtro dovra' tacere, e
+      // deve bastare passargli il dato vero invece di riscriverlo.
+      const senzaCalendario = ripulisciContenutiDiCalendario(senzaSmentite.testo, false);
+      const replyPulita = senzaCalendario.testo;
+      const contenutiCalendarioInventati = senzaCalendario.contenuti;
+      if (contenutiCalendarioInventati.length) pushDebugLog?.({ type: "contenuto-calendario-senza-lettura", frasi: contenutiCalendarioInventati, userText: userText.slice(0, 100), model: settings.model });
       // §1.2 — UNA PROPOSTA DI CLASSE B PENDENTE NON SI RIGENERA (16/08/2026), RIFATTA IL 20/08.
       // La versione del 16/08 aveva un difetto peggiore di quello che curava, e ha tenuto il Ghost
       // fermo per quattro giorni: la condizione guardava `azioneStatus`, che e' stato di componente
@@ -3924,7 +4113,10 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         mm.azioneProposta
         && AZIONI_CONVERSAZIONALI.find((a) => a.id === mm.azioneProposta.azioneId)?.classe === "B"
         && !mm.azioneRisolta && !azioneStatus[mm.id]
-        && !propostaScaduta(mm.time));
+        && !propostaScaduta(mm.time)
+        // 22/08/2026 — e, quarta condizione, deve esistere un pulsante che la esegua. Vedi
+        // propostaEseguibile: una card senza pulsante non e' in attesa del Ghost, e' morta.
+        && propostaEseguibile(mm.azioneProposta));
       const classeBPendente = proposteClasseBPendenti[0] || null;
       if (meritaTurnoDiSelezione(userText)) {
         try {
@@ -3976,8 +4168,24 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         };
         pushDebugLog?.({ type: "conferma-a-vuoto", userText: userText.slice(0, 100) });
       }
+      // 22/08/2026 — IL CASO OPPOSTO, ED E' QUELLO CHE HA LASCIATO IL GHOST NEL SILENZIO.
+      // La proposta esiste, ha il suo pulsante, e il Ghost ha risposto a parole ("Dimmelo",
+      // "Fallo", "Va bene") invece di toccarlo — che e' come risponde davvero, l'ho visto nelle
+      // schermate. Fin qui non succedeva NIENTE: nessuna azione (giusto, una parola non conferma
+      // mai niente), ma nemmeno una riga che glielo dicesse. Restava a fissare una card che
+      // sembrava ignorarlo. Adesso non si esegue lo stesso, ma glielo si dice, indicando la card.
+      if (!azioneProposta && classeBPendente && !confermaSenzaBersaglio && sembraUnaConfermaAParole(userText)) {
+        const inAttesa = AZIONI_CONVERSAZIONALI.find((a) => a.id === classeBPendente.azioneProposta.azioneId);
+        confermaSenzaBersaglio = {
+          motivo: "tocca-il-pulsante",
+          etichettaInAttesa: inAttesa?.etichetta || "quella proposta",
+          spente: [],
+          frasi: [],
+        };
+        pushDebugLog?.({ type: "conferma-a-parole-con-proposta-viva", azioneId: classeBPendente.azioneProposta.azioneId, userText: userText.slice(0, 100) });
+      }
       setMessages((prev) => {
-        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft, usedWebSearch, seedSuggestion, azioneProposta, esitiFalsi, confermaSenzaBersaglio, capacitaSmentite, capacitaAccese }];
+        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft, usedWebSearch, seedSuggestion, azioneProposta, esitiFalsi, confermaSenzaBersaglio, capacitaSmentite, capacitaAccese, contenutiCalendarioInventati }];
         return compactShellChatIfNeeded(next) || next; // Opzione 3: compatta+archivia (Legge 14) se sopra soglia, altrimenti passa
       });
       if (newStyleMemory !== styleMemory) setStyleMemory(newStyleMemory);
@@ -4296,6 +4504,8 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
             ${m.confermaSenzaBersaglio && html`<div class="r-esito-falso">
               ${m.confermaSenzaBersaglio.motivo === "forse-spenta"
                 ? html`<div><b>Ti ho chiesto una conferma, ma non comparirà nessun pulsante.</b> Quello che hai chiesto richiede una capacità che in questo momento è <b>spenta</b>${m.confermaSenzaBersaglio.spente.length ? html` — spente adesso: ${m.confermaSenzaBersaglio.spente.join(", ")}` : ""}. Le accendi in <b>Setup → Cosa lo Shell può fare parlando</b>. Finché è spenta non posso farlo, e non avrei dovuto chiedertelo.</div>`
+                : m.confermaSenzaBersaglio.motivo === "tocca-il-pulsante"
+                ? html`<div><b>C'è una proposta in attesa, ma il pulsante non l'hai toccato.</b> Hai risposto a parole, e una parola scritta qui non fa partire niente — mai, per nessuna azione: è una regola, non una svista. La card di <b>${m.confermaSenzaBersaglio.etichettaInAttesa}</b> è qui sopra: tocca il suo pulsante e parte.</div>`
                 : m.confermaSenzaBersaglio.motivo === "conferma-a-vuoto"
                 ? html`<div><b>Non ho niente in attesa da confermare.</b> Hai risposto di sì, ma non c'è nessuna proposta pronta: una parola scritta qui non fa partire niente, mai — serve il pulsante di una card. Ripeti la richiesta per intero${m.confermaSenzaBersaglio.spente.length ? html`, e controlla che la capacità che ti serve non sia spenta in Setup (spente adesso: ${m.confermaSenzaBersaglio.spente.join(", ")})` : ""}.</div>`
                 : html`<div><b>Ti ho chiesto una conferma, ma non ho preparato niente da confermare.</b> Non comparirà nessun pulsante: la proposta non è stata creata. Ripeti la richiesta scrivendo per esteso cosa vuoi, con giorno e ora.</div>`}
@@ -4305,6 +4515,15 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                   l'ha, lo smentisce a voce alta invece di lasciarlo credere. */ ""}
             ${m.capacitaSmentite?.length > 0 && html`<div class="r-esito-falso">
               <b>Attenzione: qui sopra ti ho detto una cosa falsa.</b> Ho scritto che una capacità è spenta o limitata, ma non è vero — <b>${m.capacitaAccese.join(", ")}</b> ${m.capacitaAccese.length === 1 ? "è accesa" : "sono accese"} in questo momento. L'ho tolto dal testo. Se non è comparso nessun pulsante il motivo è un altro, e lo trovi nel Registro delle azioni in Setup: mandamelo.
+            </div>`}
+            ${/* 22/08/2026 — il quarto riquadro, ed e' il piu' importante dei quattro. Gli altri
+                  tre avvisano che una FRASE era falsa. Questo avvisa che un CONTENUTO era falso —
+                  appuntamenti con nome, giorno e ora, che il Ghost non aveva nessun modo di
+                  distinguere da quelli veri, perche' erano esattamente cio' che aveva chiesto e
+                  nella forma che si aspettava. Il riquadro elenca cosa e' stato tolto: cosi' non
+                  deve fidarsi che il filtro abbia funzionato, lo vede. */ ""}
+            ${m.contenutiCalendarioInventati?.length > 0 && html`<div class="r-esito-falso">
+              <b>Attenzione: qui sopra ti avevo elencato degli impegni che nessuno ha letto.</b> La lettura del calendario <b>non è avvenuta</b> in questo turno: non è partita nessuna richiesta verso Google, quindi quegli appuntamenti erano ricostruiti a memoria dalla nostra conversazione, non presi dalla tua agenda. Li ho tolti. Ecco cosa ho tolto, per esteso: <i>${m.contenutiCalendarioInventati.map((c) => c.frase).join(" · ")}</i>. Per sapere davvero cosa hai in programma serve la card <b>«Vado a guardare sul calendario»</b> e il suo pulsante: solo quello legge da Google.
             </div>`}
             ${m.esitiFalsi?.length > 0 && html`<div class="r-esito-falso">
               <b>Attenzione.</b> Qui sopra avevo scritto che qualcosa era già stato fatto${m.esitiFalsi.length === 1 ? "" : ` (${m.esitiFalsi.length} volte)`}: <i>${m.esitiFalsi.join(" · ")}</i>. Non era vero e l'ho tolto. Non ho toccato né il calendario né la posta: se c'è un pulsante di conferma qui sotto, l'azione parte solo quando lo tocchi tu.
