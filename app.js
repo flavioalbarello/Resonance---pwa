@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-22 · gli-impegni-li-compone-il-codice";
+const APP_BUILD = "2026-08-22 · la-risposta-non-aspetta-il-resto";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1285,7 +1285,14 @@ const DEFAULT_SETTINGS = {
   driveSyncEnabled: false,
   provider: "openrouter",
   apiKey: "",
-  model: "google/gemini-3.1-pro-preview",
+  // 22/08/2026 — era "google/gemini-3.1-pro-preview" mentre il file di progetto dichiara Llama 3.3
+  // 70B come modello di produzione. Uno scarto fra cio' che il progetto dice e cio' che il codice fa,
+  // della stessa famiglia di `reversibile` e `costoStimato`: allineato al vero.
+  // ATTENZIONE a cosa questa riga NON fa: updateSettings salva l'INTERO oggetto impostazioni, quindi
+  // chiunque abbia gia' toccato una qualsiasi voce in Setup (anche solo per incollare la chiave) ha
+  // gia' `model` scritto in localStorage, e resta dov'e'. Questo predefinito vale solo per chi apre
+  // l'app per la prima volta. Chi c'e' gia' si sposta soltanto scegliendo il modello a mano.
+  model: "meta-llama/llama-3.3-70b-instruct",
   voiceEnabled: true,
   armsDraftsEnabled: false,
   // calendarEnabled non esiste piu' (16/08/2026): governava il secondo braccio Calendar, ritirato.
@@ -2344,40 +2351,71 @@ Se nessuna delle 4 condizioni scatta, via libera. Rispondi SOLO "VIA LIBERA" opp
 // Iniettato nel system prompt di Shell nello stesso punto di PILLAR_CTX (vedi runShellTurn sotto).
 // PROMEMORIA PER FUTURE SESSIONI DI SVILUPPO: aggiorna questo blocco ad ogni nuova feature spedita
 // — è parte della checklist di consegna (vedi CLAUDE.md).
-const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nominare in conversazione (per distinguere "sto parlando di una funzionalità di Resonance" da "sto parlando della mia vita/lavoro reale"):
-- Percorsi: competenze o percorsi identitari tracciati per pilastro (BIO/AIR/VIDYA), con nodi, sessioni, quiz di verifica.
-- Semi (solo AIR): un'idea grezza non ancora sviluppata. Si crea buttandola lì in chat (lo Shell propone di salvarla) o con un pulsante manuale in AIR → Percorsi. Stati possibili: "nuovo/in ricerca" (lo Shell la sta ricercando online e traducendo in strategie), "in attesa di approvazione" (2-3 strategie pronte, il Ghost ne approva una), "in sviluppo" (esecuzione autonoma sorvegliata passo-passo), "bloccato" (un gate di sicurezza ha fermato un passo, richiede conferma esplicita del Ghost). Dal 27/07/2026 lo sviluppo di un Seme non produce più solo prosa che descrive un'azione: sceglie un EFFETTORE reale da un registro (genera un'immagine SVG→PNG, genera un'immagine raster, o crea un prodotto vero nel catalogo Printify) e lo esegue davvero — l'esecuzione produce dati reali (id prodotto Printify, file su Drive), non un riassunto narrativo. Ogni Seme ha anche un pulsante "Avanza ora" manuale in AIR → Percorsi, con il contatore round/tetto visibile sulla card.
-- Agorà Magi: una perturbazione deliberata generata su richiesta (Balthasar→Melchior→Caspar), non una funzione automatica.
-- Percorsi: si aprono SOLO toccando il pulsante della loro card, mai dicendo "ok" o "va bene" nel messaggio dopo (cambiato il 16/08/2026). Prima di aprirlo il Ghost vede e può correggere il nome; se dalla conversazione non esce un nome sensato, il sistema lo dichiara e glielo chiede invece di inventarne uno. Un percorso già esistente con un nome illeggibile viene segnalato quando lo si apre, con un pulsante per rinominarlo.
-- Kernel: lo stato di sistema versionato, modificabile dal Ghost.
-- Simbiosi (Adam): il punto di incontro tra i pilastri, sensing su ordine/caos e convergenze identitarie.
-- Vincoli dichiarati (Setup): i vincoli del Ghost (alimentari, di tempo, identità professionale da tenere separata da AIR, ecc.) sono voci rieditabili in ogni momento in Setup → "Vincoli dichiarati"/"Identità professionale" — si possono aggiungere, correggere o rimuovere lì, non solo al primo avvio con l'onboarding.
-- Catena Printify→Etsy (solo AIR, dal 14/08/2026): un Seme può ora arrivare a un prodotto vero in vendita. Tre effettori in fila — cercare nel catalogo Printify il tipo di prodotto e i suoi id concreti, creare il prodotto, pubblicarlo sul negozio Etsy collegato. La pubblicazione è l'unico passo irreversibile e passa SEMPRE dal gate: il sistema si ferma e mostra al Ghost cosa sta per uscire, e lui conferma. Etsy non viene toccato direttamente: il collegamento passa da Printify, che è anche il partner di produzione che Etsy obbliga a dichiarare. Le chiavi vivono solo su Vercel, mai nell'app.
-- Prova a vuoto (Setup): un interruttore che fa percorrere ai Semi l'intera catena degli effettori senza che parta nessuna chiamata reale — al posto del risultato viene mostrato per intero cosa sarebbe partito. Serve a verificare il giro a costo zero prima di far uscire qualcosa nel mondo. Quando è accesa, nulla di reale viene creato o pubblicato, nemmeno confermando un'azione bloccata dal gate.
-- Postura e respiro (schermata iniziale, dal 15/08/2026): tre barre, una per pilastro, che mostrano a colpo d'occhio quanto di recente ciascuno si e' mosso. Si calcolano solo da dati gia' sul dispositivo, senza chiedere niente a nessuno, e compaiono prima di qualunque rete. Respirano lentamente, e il ritmo del respiro dipende dallo stato reale: piu' corto quando qualcosa e' fermo da troppo, piu' lungo quando le cose scorrono. Se il telefono e' impostato per ridurre le animazioni, il respiro non parte. E' una lettura di stato, mai un giudizio.
-- Ritorno aptico (dal 15/08/2026): quando il Ghost registra qualcosa su un pilastro il telefono vibra subito, con una firma diversa per pilastro — un colpo per BIO, due per AIR, tre per VIDYA — cosi' si riconosce al tatto su cosa si e' appena scritto. La voce compare e la postura si aggiorna nello stesso istante, senza aspettare nessuna rete.
-- Piano di controllo conversazionale (dal 16/08/2026): lo Shell sa quali percorsi e Semi esistono davvero — prima non lo sapeva, e per questo non riusciva a riprenderne uno. Se il Ghost dice "riprendi quello sul sonno", lo cerca fra quelli che esistono senza chiedere niente a nessun modello, e se ne trova due chiede quale invece di sceglierne uno. Quando ne apre uno, la chat mostra sempre in alto "stiamo lavorando su: [nome]", che si chiude con un tocco e scade da solo dopo otto ore. Ogni azione viene mostrata PRIMA di essere eseguita e si annulla anche dopo. Le capacita' si accendono e spengono una per una in Setup, e ogni azione proposta, confermata o annullata finisce in un registro con l'orario.
-- Azioni parlando (dal 16/08/2026): oltre a riprendere un percorso, lo Shell puo' ora — sempre chiedendo conferma prima — segnare una voce su un pilastro, salvare un'idea come Seme AIR, cercare davvero nella memoria cosa si era detto su un argomento, e avanzare sul percorso gia' aperto. Ogni azione viene mostrata prima di essere eseguita e si annulla anche dopo. Una sola azione per messaggio. Quando cerca nella memoria dice sempre dove ha guardato, e porta su anche uno o due frammenti nati lo stesso giorno anche se non c'entrano — servono a far venire in mente cose per accostamento, non per somiglianza.
-- Leggere il calendario (dal 17/08/2026, governata da un interruttore in Setup — lo stato VERO di adesso te lo dicono i due blocchi qui sopra, non questa riga): lo Shell puo' andare a leggere DAVVERO gli impegni sul Calendar del Ghost per un giorno o una settimana. Prima di questa azione lo Shell non sapeva niente del calendario e, se gli si chiedeva "cosa ho domani", rispondeva da cio' che ricordava della chat — inventando impegni. Ora o legge da Google, o dichiara di non esserci riuscito.
-- Forma delle risposte (dal 20/08/2026): lo Shell scrive molto breve — frasi corte, punti separati, niente preamboli. Questa regola vive nel PROFILO del Ghost, non nel prompt comune: un altro Ghost con un profilo diverso non la riceve. Il taglio e' sulla forma, mai sul contenuto: un vincolo, un rischio o un'incertezza non si omettono mai per stare corti.
-- Cancellare un evento del calendario (dal 22/08/2026, su richiesta esplicita del Ghost): si puo'. Il Ghost dice quale a parole, il PROGRAMMA va a cercarlo davvero sul calendario, e mostra su una card l'evento che ha trovato — giorno, ora, titolo, letti da Google — con un pulsante. Se ne trova piu' d'uno li mostra tutti e chiede quale; se non ne trova nessuno lo dice e non cancella niente. Dopo la cancellazione rilegge per verificare che sia sparito davvero. Cancellare non si disfa, quindi il pulsante serve sempre.
-- MODIFICARE o SPOSTARE un evento esistente NON si puo' fare, e non e' una sfumatura: le azioni sul calendario sono tre — leggere, creare, cancellare. Se il Ghost chiede di spostare qualcosa, lo Shell NON deve offrirlo, e non deve nemmeno offrirlo come alternativa a qualcos'altro. Cio' che puo' dire e' che si puo' cancellare quello vecchio e crearne uno nuovo, che sono due azioni che esistono davvero.
-- Verifica dopo la scrittura sul calendario (rifatta il 20/08/2026): dopo aver creato un evento il sistema lo rilegge e confronta cio' che ha mandato con cio' che trova. Il confronto e' fra ISTANTI, non fra stringhe — le 19:00 di Roma e le 17:00Z sono lo stesso momento — e il titolo si confronta ignorando maiuscole, accenti e spazi doppi. Tre esiti distinti: verificata (c'e' e corrisponde), non-combacia (c'e' ma e' diverso, e viene detto cosa: atteso X, trovato Y), non-verificabile (la rilettura non e' riuscita — la scrittura pero' era andata, quindi non e' un fallimento).
-- L'elenco degli impegni lo compone il PROGRAMMA (dal 22/08/2026, terzo giro): quando in un turno c'e' stata una lettura del calendario, l'elenco degli impegni che compare nel messaggio non lo scrive lo Shell — lo scrive il codice, dagli eventi letti da Google, e lo mette sotto la risposta. Allo Shell resta la cornice: introdurre, collegare, commentare. Non e' un filtro in piu': e' che il modello non sta piu' sul percorso di quell'informazione. Un evento che non e' nella lettura non puo' comparire, e un evento che c'e' non puo' mancare.
-- L'ora si ricava due volte (dal 22/08/2026): il programma la calcola dal testo del Ghost, e il modello la riporta per conto suo nella stessa chiamata in cui sceglie l'azione. Se le due coincidono l'evento si puo' creare; se divergono la card non ha nessun pulsante e non si scrive niente. Serve perche' il 22/08 un appuntamento chiesto per le 16:30 e' finito alle 16:00 e la verifica ha detto "c'e'": confrontava il payload con la rilettura, cioe' il sistema con se stesso.
-- Le forme parlate dell'ora (dal 22/08/2026): "16 e 30", "le quattro e mezza del pomeriggio", "le otto meno un quarto", "a mezzogiorno e mezzo", "alle sette e trenta" vengono capite. Prima ne venivano capite 10 su 23, e tre finivano a mezzanotte in silenzio.
-- Lettura del calendario senza conferma (dal 22/08/2026, secondo giro della stessa giornata): chiedere cosa c'e' in agenda NON apre piu' una card di conferma. Il programma sceglie l'azione, va a leggere da Google, e SOLO DOPO genera la risposta — cosi' lo Shell riceve gli impegni veri e ne parla, invece di annunciare che andra' a guardare. L'unico gate rimasto e' l'interruttore in Setup: se e' spento non parte niente e lo Shell dichiara il perche'. Se la lettura fallisce, il fallimento arriva allo Shell come dato e lo dichiara invece di indovinare. L'esito resta mostrato nella card "LETTO DAL CALENDARIO", che ora vive dentro il messaggio e sopravvive alla riapertura dell'app. Creare eventi e mandare mail NON cambiano: card e pulsante come prima.
-- Le etichette del registro azioni vengono lette davvero (dal 22/08/2026): ogni azione dichiara che effetto ha (lettura o scrittura), se richiede un gate e se e' reversibile, e adesso il programma legge davvero quei tre campi — prima erano commenti. Una scrittura chiede sempre conferma, qualunque cosa dica richiedeGate; una lettura puo' non chiederla. Se il Ghost nomina questa cosa, parla di come e' fatto il programma, non della sua vita.
-- Contenuti di calendario nel testo dello Shell (dal 22/08/2026): il programma toglie dalla risposta dello Shell qualunque appuntamento, orario o affermazione del tipo "non hai altri impegni" quando in quel turno NON e' stata eseguita una lettura verificata del calendario — e in un turno di chat non lo e' mai, perche' la risposta si genera prima che l'azione venga scelta e molto prima che qualcuno legga da Google. Al posto del contenuto tolto compare una riga che dice che la lettura non e' avvenuta, e sotto la risposta un riquadro elenca per esteso cosa e' stato tolto. Serve perche' il 22/08 lo Shell ha elencato due appuntamenti con nome e ora — uno con una persona inesistente, l'altro del giorno prima — omettendo l'unico vero, senza che nessuna richiesta fosse uscita dal telefono. Se il Ghost nomina questa cosa, parla di questo filtro: e' una funzionalita' dell'app, non un fatto della sua vita.
-- Periodi di calendario in parole (dal 22/08/2026): "prossimi 7 giorni", "nei prossimi tre giorni", "questo weekend", "questa settimana" vengono risolti dal programma a partire da oggi, e il numero di giorni detto vale davvero. Prima "prossimi 7 giorni" non veniva capito e la card chiedeva al Ghost di dire un giorno preciso — cioe' gli chiedeva un'informazione che aveva gia' dato — e senza pulsante la lettura non poteva partire.
-- Proposte che nessuno puo' toccare (dal 22/08/2026): una card che non ha un pulsante che esegue (periodo non capito, data non ricavabile, vincolo che blocca una mail) non conta piu' come "proposta in attesa", quindi non impedisce alle richieste successive di calendario o posta di produrre la loro card. Prima ne bloccava ogni altra per venti minuti, in silenzio. E se il Ghost risponde a una card scrivendo in chat ("Dimmelo", "Fallo", "Va bene") invece di premere il pulsante, il programma glielo dice indicando la card: non esegue — una parola non conferma mai niente — ma non resta piu' zitto.
-- Stato degli interruttori (dal 20/08/2026): lo Shell riceve a ogni turno DUE elenchi ricostruiti dal dato vero — cosa è acceso adesso e cosa è spento adesso. Non c'è nessuna frase fissa che dichiari lo stato: era il difetto per cui, dal 16 al 20 agosto, lo Shell diceva "la capacità è spenta" mentre il Ghost aveva l'interruttore acceso davanti agli occhi. Se lo Shell dichiara comunque spenta una capacità che è accesa, il programma toglie la frase e avvisa il Ghost che gli aveva detto il falso.
-- Capacità spente (dal 17/08/2026): quando il Ghost tiene spenta una capacità in Setup, lo Shell lo SA e glielo dice, invece di proporgliela. Se comunque scappa una domanda del tipo "vuoi confermare?" senza che dietro ci sia una proposta vera, il programma lo intercetta e scrive al Ghost un avviso: nessun pulsante comparirà, e perché. Una conferma scritta a parole non fa mai partire niente — se il Ghost risponde "sì" a vuoto, il sistema glielo dice e chiede di ripetere la richiesta, invece di rientrare nello stesso giro.
-- Ogni chiamata verso Google lascia in chat, sotto la card, un riquadro tecnico grezzo (codice HTTP, identificativo restituito, errore testuale) e lo stesso in Setup. Serve al Ghost per mandare un fatto invece di una frase quando qualcosa non torna.
-- Calendario e mail parlando (dal 16/08/2026, ognuna governata dal suo interruttore in Setup — lo stato VERO di adesso te lo dicono i due blocchi qui sopra, non questa riga): lo Shell sa mettere un evento sul Calendar e inviare una mail da Gmail, ma solo dopo che il Ghost ha acceso quella voce e ha confermato quello specifico invio. Un evento si cancella, una mail no: l'evento chiede una conferma semplice, la mail mostra prima testo integrale e indirizzo per esteso. Le date le ricava il programma dalle parole del Ghost, mai il modello, e le mostra per esteso (giorno, data, ora). Dopo ogni azione rilegge dalla fonte e, se non ci riesce, dichiara fallimento invece di dire "fatto". Un invio senza risposta resta "incerto" e non viene mai rispedito da solo.
-- Tetto di spesa (Setup): al raggiungimento di 5 dollari nel mese si fermano SOLO le cose che partono da sole (Semi che avanzano, Simbiosi). La chat resta utilizzabile: il tetto protegge dalle spese che il Ghost non vede partire, non da quelle che sta decidendo lui in quel momento.
-- Backup e ripristino dei dati (Setup): scarica in un unico file tutto lo stato locale (log dei pilastri, percorsi, memoria, semi, kernel, profilo, impostazioni) e sa anche rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo e ricarica l'app, previa conferma.
-Capacità NON disponibili in questa app (elenco a mano, mantenuto qui insieme alle presenti — non generato dinamicamente, per lo stesso motivo per cui il Master Index andava mantenuto a mano: un elenco derivato in un punto diverso dal codice reale si disallinea): notifiche push, promemoria o azioni che si attivano da soli senza che il Ghost apra l'app, invio automatico di messaggi/email/post senza conferma esplicita del Ghost (dal 16/08/2026 lo Shell SA inviare una mail e creare un evento, ma solo se il Ghost ha acceso quella capacità in Setup e solo dopo che ha confermato quello specifico invio guardandone il testo per esteso: nessuna spedizione parte da un processo automatico, da un Seme che avanza o da un "sì" detto in un messaggio precedente), MODIFICARE o SPOSTARE un evento esistente (non esiste: lo Shell sa LEGGERE, CREARE e CANCELLARE eventi, e nient'altro — non offrire mai di spostare o modificare, nemmeno come alternativa a qualcos'altro, sarebbe promettere una cosa che non c'e'; se serve, si cancella il vecchio e se ne crea uno nuovo), pubblicazione automatica su social o piattaforme esterne, esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost quando il gate lo richiede.`;
+// ══════════════════════════════════════════════════════════════════════════════
+// IL BLOCCO DELLE CAPACITÀ — ALLEGGERITO IL 22/08/2026 DOPO L'AUDIT
+// ══════════════════════════════════════════════════════════════════════════════
+// Questo blocco parte a OGNI turno dentro il prompt di sistema. Misurato prima di toccarlo:
+// il 90% dei token dell'app sta in una sola chiamata (la risposta dello Shell), il 72% di quella
+// chiamata e' questo blocco, e il 39% di questo blocco era la CRONACA dei difetti che le feature
+// hanno chiuso — date, numeri di versione, "serve perche' il 22/08 lo Shell ha elencato due
+// appuntamenti...". Circa un quarto di tutti i token consumati dall'app, a ogni turno, per sempre.
+//
+// La cronaca non e' stata buttata: e' stata spostata QUI SOTTO e nei commenti accanto a ogni
+// funzione, dove serve a chi legge il codice e non costa un token. Il blocco resta alla specifica
+// che il file di progetto chiede: cos'e', come si attiva, cosa significano i suoi stati.
+//
+// LA STORIA, per chi legge il codice e si chiede perche' certe cose esistono:
+//  · 26/07/2026 — il Ghost scrisse "sto testando i Semi nel pilastro AIR" e lo Shell rispose come se
+//    parlasse della vecchia strategia contenuti, ignaro che "Semi" fosse una feature. E' il difetto
+//    che ha fatto nascere questo blocco, ed e' il motivo per cui ogni feature nuova va aggiunta qui.
+//  · 16/08/2026 — lo Shell scriveva "Ho segnato un appuntamento" prima che il Ghost confermasse:
+//    da li' la regola sul tempo verbale e il primo filtro.
+//  · 17/08/2026 — chiedeva "vuoi confermare?" senza che dietro ci fosse nessuna proposta.
+//  · 20/08/2026 — dichiarava spenta una capacita' che il Ghost aveva accesa davanti agli occhi;
+//    e la verifica post-scrittura confrontava gli orari come stringhe invece che come istanti.
+//  · 22/08/2026, mattina — elenco' due appuntamenti con nome e ora, uno con una persona inesistente
+//    e uno del giorno prima, omettendo l'unico vero, senza che nessuna richiesta uscisse dal
+//    telefono: da li' il quarto filtro.
+//  · 22/08/2026, pomeriggio — un appuntamento chiesto per le 16:30 fini' sul calendario alle 16:00
+//    e la verifica disse "c'e'", perche' confrontava il payload con la rilettura, cioe' il sistema
+//    con se stesso: da li' i due percorsi indipendenti sull'ora.
+//  · 22/08/2026, sera — "prossimi 7 giorni" non veniva capito e la card chiedeva un giorno preciso,
+//    cioe' un'informazione gia' data; e una card senza pulsante bloccava per venti minuti ogni
+//    altra richiesta di calendario, in silenzio.
+const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nominare in conversazione. Servono a distinguere "sto parlando di una funzionalità di Resonance" da "sto parlando della mia vita o del mio lavoro". Se il Ghost nomina una di queste parole, parla dell'app.
+- Percorsi: competenze o percorsi identitari tracciati per pilastro (BIO/AIR/VIDYA), con nodi, sessioni e quiz di verifica. Si aprono da un pilastro o dicendo "apri un percorso su X".
+- Semi (solo AIR): un'idea grezza non ancora sviluppata. Si crea buttandola lì in chat, oppure con un pulsante in AIR → Percorsi. Stati: "nuovo/in ricerca" (lo Shell la sta ricercando e traducendo in strategie), "in attesa di approvazione" (2-3 strategie pronte, il Ghost ne sceglie una), "in sviluppo" (esecuzione sorvegliata passo per passo), "bloccato" (un gate di sicurezza ha fermato un passo e serve la conferma del Ghost). Un passo di sviluppo sceglie un effettore reale da un registro — genera un'immagine, crea un prodotto nel catalogo Printify — e lo esegue davvero, producendo dati veri: identificativi di prodotto, file su Drive. Ogni Seme ha un pulsante "Avanza ora" e mostra il contatore round/tetto.
+- Agorà Magi: una perturbazione deliberata generata su richiesta, in tre stadi (Balthasar → Melchior → Caspar) più una sintesi. Si avvia dalla sua schermata, si sceglie pilastro e intensità.
+- Kernel: il documento di stato del sistema, versionato. Ogni salvataggio crea una versione nuova e conserva la precedente nello storico.
+- Simbiosi: la valutazione periodica di quanto l'app e il Ghost siano allineati. Vive nella sua schermata.
+- Vincoli dichiarati: i vincoli che il Ghost ha dichiarato in Onboarding, uno per riga, rieditabili. Quello sull'identità professionale è un hard-stop e vale su tutto ciò che riguarda AIR.
+- Il vincolo AIR chiede, non decide: quando una lettura destinata ad AIR sembra legare l'identità professionale del Ghost al pilastro, il programma non la scrive e non la butta. Compare una card che mostra il dato, dice quale dei due rilevatori ha segnalato — il codice, deterministico sui termini dichiarati; il modello, come seconda opinione — e perché. Due pulsanti: "Va bene, procedi" scrive il dato, "No, lascialo fuori" lo lascia fuori. La risposta resta scritta nel messaggio, quindi la domanda non ricompare domani.
+- Catena Printify → Etsy: uno dei modi in cui un Seme AIR può produrre qualcosa nel mondo. Va dal disegno all'anteprima del prodotto.
+- Postura e respiro: gli esercizi brevi che l'app propone, con il loro ritorno aptico.
+- Piano di controllo conversazionale: l'impianto per cui il Ghost chiede una cosa a parole e il programma la esegue. Il modello sceglie l'azione, il programma la compie. Ha tre parti: il fuoco conversazionale, l'inventario, il registro delle azioni.
+- Fuoco conversazionale: il percorso o il Seme su cui si sta lavorando adesso. Compare in una barra sopra la chat, sopravvive a ricarica e riapertura, e scade da solo dopo otto ore. Si chiude con un gesto.
+- Inventario: l'elenco di percorsi e Semi che lo Shell riceve a ogni turno, così sa cosa esiste davvero senza doverlo indovinare.
+- Registro delle azioni: ogni proposta, conferma, esecuzione ed esito, con l'orario. Si legge in Setup. È il posto dove si scopre dopo perché una cosa è andata storta.
+- Azioni parlando: nove azioni che il Ghost può far partire dicendole. Cinque interne (aprire un percorso, scrivere su un pilastro, creare un Seme, interrogare la memoria, avanzare un percorso) e quattro che toccano il mondo fuori (creare un evento, leggere il calendario, cancellare un evento, inviare una mail). Le quattro esterne nascono spente e si accendono in Setup, una per una.
+- Interruttori: gli accendi-e-spegni delle capacità che toccano il mondo fuori, in Setup. Lo Shell riceve a ogni turno l'elenco vero di cosa è acceso e cosa è spento adesso, quindi non deve indovinarlo. Se dichiara spenta una capacità che è accesa, il programma toglie la frase e avvisa il Ghost.
+- Leggere il calendario: lo Shell va a leggere davvero gli impegni dal Calendar del Ghost. Non chiede conferma — leggere non cambia niente — e l'unico gate è l'interruttore. Il programma sceglie l'azione, legge, e solo dopo genera la risposta, così parla di impegni che ha in mano. Se la lettura fallisce lo dichiara con il motivo tecnico invece di indovinare.
+- L'elenco degli impegni lo compone il programma: quando c'è stata una lettura, l'elenco che compare nel messaggio lo scrive il codice dagli eventi letti, non lo Shell. Allo Shell resta la cornice: introdurre, collegare, commentare. Un evento che non è nella lettura non può comparire; uno che c'è non può mancare.
+- Contenuti di calendario senza lettura: se in un turno non c'è stata una lettura, il programma toglie dalla risposta qualunque appuntamento, orario o affermazione del tipo "non hai altri impegni", e un riquadro elenca cosa ha tolto. Se una lettura c'è stata, toglie solo ciò che non proviene da quella lettura.
+- Periodi in parole: "prossimi 7 giorni", "nei prossimi tre giorni", "questo weekend", "questa settimana" vengono risolti a partire da oggi, e il numero di giorni detto vale.
+- Creare un evento sul calendario: si conferma con un pulsante prima che accada. La data la calcola il programma dalle parole del Ghost, e la mostra per esteso.
+- L'ora si ricava due volte: il programma la calcola dal testo, il modello la riporta per conto suo. Se coincidono l'evento si può creare; se divergono la card non ha nessun pulsante e non si scrive niente. Le forme parlate sono capite: "16 e 30", "le quattro e mezza del pomeriggio", "le otto meno un quarto", "a mezzogiorno e mezzo".
+- Verifica dopo la scrittura: creato un evento, il sistema lo rilegge e confronta ciò che ha mandato con ciò che trova. Il confronto è fra istanti, non fra stringhe. Tre esiti: verificata, non-combacia (e viene detto cosa: atteso X, trovato Y), non-verificabile.
+- Cancellare un evento: il Ghost dice quale a parole, il programma lo cerca sul calendario e mostra su una card l'evento trovato con giorno, ora e titolo letti da Google, più un pulsante. Se ne trova più d'uno chiede quale; se non ne trova nessuno lo dice. Dopo, rilegge per verificare che sia sparito. Cancellare non si disfa, quindi il pulsante serve sempre.
+- MODIFICARE o SPOSTARE un evento non si può fare. Le azioni sul calendario sono tre: leggere, creare, cancellare. Se il Ghost chiede di spostare qualcosa, non offrirlo e non offrirlo come alternativa a qualcos'altro: si può cancellare quello vecchio e crearne uno nuovo, che sono due azioni che esistono.
+- Inviare una mail: si conferma dopo aver visto il testo integrale e l'indirizzo per esteso. Una mail inviata non torna indietro. Un invio senza risposta resta "incerto" e non viene mai rispedito da solo.
+- Proposte senza pulsante: una card che non ha un pulsante che esegue non conta come proposta in attesa, quindi non impedisce alle richieste successive di produrre la loro card. Se il Ghost risponde a una card scrivendo in chat invece di premere, il programma glielo dice indicando la card: una parola scritta non fa partire niente, mai.
+- Il registro delle azioni dichiara per ogni azione che effetto ha (lettura o scrittura), se richiede un gate e se è reversibile, e il programma legge davvero quei tre campi. Una scrittura chiede sempre conferma; una lettura può non chiederla.
+- Riquadro tecnico grezzo: sotto ogni card che tocca Google compare il codice HTTP, l'identificativo restituito e l'eventuale errore. Lo stesso in Setup. Serve al Ghost per mandare un fatto invece di un'impressione.
+- Forma delle risposte: la lunghezza e il registro vengono dal profilo cognitivo del Ghost, non da una regola generale del sistema.
+- Memoria procedurale: la nota che ogni pilastro accumula sugli scambi, riscritta per intero a ogni aggiornamento e non aggiunta in coda. Ha un sedimento storico e delle parole chiave per ritrovarla.
+- Tetto di spesa (Setup): raggiunti 5 dollari nel mese si fermano solo le cose che partono da sole — Semi che avanzano, Simbiosi. La chat resta utilizzabile.
+- Backup e ripristino (Setup): scarica in un unico file tutto lo stato locale e sa rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo previa conferma.
+Capacità NON disponibili in questa app: notifiche push; promemoria o azioni che si attivano da soli senza che il Ghost apra l'app; invio automatico di messaggi, mail o post senza la sua conferma esplicita su quello specifico invio; MODIFICARE o SPOSTARE un evento del calendario; pubblicazione automatica su social o piattaforme esterne; esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost.`;
 
 //──────────────────────────────────────────────────────────
 // SHELL — ciclo di percezione-azione (Manifesto V3 §3: accoppiamento continuo, non predici-e-verifica)
@@ -3281,6 +3319,48 @@ Array vuoto se non c'è nulla di pertinente — NON scrivere una lettura per dir
   const readings = (data?.readings || []).filter((r) => !isGarbageReading(r));
   return { readings };
 }
+// ══════════════════════════════════════════════════════════════════════════════
+// UNA PORTA DI CODICE DAVANTI ALLA LETTURA MULTI-LENTE (22/08/2026, audit)
+// ══════════════════════════════════════════════════════════════════════════════
+// Misurato su dieci turni realistici: la lettura multi-lente parte a OGNI turno, e cinque volte su
+// dieci e' tornata a mani vuote — su messaggi come "Ok.", "Si, ha senso.", "Che ne pensi?". Una
+// volta ha fatto di peggio: alla domanda "Spiegami come funziona la memoria procedurale in questa
+// app" ha estratto una lettura e l'ha scritta in un pilastro. Non era un dato della vita del Ghost,
+// era una domanda sull'app.
+// Questa porta e' della stessa famiglia di meritaTurnoDiSelezione e meritaBozza: un controllo
+// testuale a costo zero davanti a una chiamata che costa.
+// LA REGOLA DI TARATURA, e viene prima dell'efficienza: meglio lasciar passare che tagliare. Una
+// chiamata sprecata costa un decimo di centesimo; un dato di vita perso non si recupera. Quindi la
+// porta si chiude SOLO su cio' che e' riconoscibilmente privo di contenuto, e in tutti i casi
+// dubbi lascia passare.
+// E niente soglie di sola lunghezza: "Ho ricominciato a fumare" e' corto e conta moltissimo.
+// Le sole risposte di servizio: assensi, dinieghi, ringraziamenti, interiezioni. Un elenco chiuso,
+// non un'euristica: cio' che non e' in elenco passa.
+const SOLO_CORTESIA_RE = /^(?:(?:s[iì]|no|ok|okay|va bene|vabb?[eè]|certo|d'accordo|perfetto|esatto|giusto|capito|chiaro|bene|benissimo|grazie|prego|ciao|ecco|appunto|infatti|gi[aà]|magari|boh|mah|forse|dai|vai|fallo|falla|procedi|prosegui|avanti|dimmelo|aspetta|un attimo|ah|eh|oh|mm+|hm+|ahah|haha)(?![\p{L}'’])[\s.!?,;:…]*){1,3}$/iu;
+// Una domanda RIVOLTA ALLO SHELL su come funziona qualcosa non porta un dato di vita: e' la classe
+// che ha prodotto la lettura spuria. Deve pero' essere davvero una domanda sul funzionamento, non
+// una domanda sulla vita del Ghost ("come sto messo con il sonno?" porta eccome un contesto).
+const DOMANDA_SULL_APP_RE = /^\s*(?:spiegami|spiega|dimmi|mi spieghi|puoi spiegar\w*|come funziona|come si (?:usa|fa|attiva)|cos'?(?:e|è)|che cos'?(?:e|è)|a cosa serve|perch[eé] (?:non )?funziona)(?![\p{L}])[^?]{0,120}(?<![\p{L}])(?:app|sistema|funzione|funzionalit[aà]|shell|resonance|kernel|pilastr\w+|semi|percors\w+|memoria procedurale|simbiosi|magi|fuoco conversazionale|inventario|registro delle azioni|accettore|interruttor\w+|gate|backup|calendario|filtro|card|pulsante)(?![\p{L}])/iu;
+// Le marche di un dato che riguarda la vita del Ghost. Se ce n'e' anche una sola, la porta si apre
+// comunque — anche dentro una frase che sembrerebbe di servizio.
+const PORTA_UN_DATO_RE = /(?<![\p{L}'’])(?:ho|sono|mi|mio|mia|miei|mie|stanotte|stamattina|ieri|oggi|stasera|dormit\w*|dorm\w*|mangiat\w*|peso|chili|kg|kcal|allenat\w*|corso|corsa|male|dolor\w*|stanc\w*|energia|suonat\w*|provat\w*|scritt\w*|letto|studiat\w*|lavorat\w*|guadagn\w*|vendut\w*|pubblicat\w*|girat\w*|registrat\w*|fumat\w*|bevut\w*|svegli\w*|apnee|cpap)(?![\p{L}'’])/iu;
+// Vero se vale la pena spendere una chiamata per leggere questo turno attraverso le tre lenti.
+function meritaLetturaMultiLente(messaggio, conAllegato = false) {
+  const t = String(messaggio || "").trim();
+  if (!t) return false;
+  // Un allegato porta quasi sempre un dato (una foto della bilancia, un referto, uno spartito):
+  // davanti a un allegato la porta e' sempre aperta, qualunque cosa dica il testo.
+  if (conAllegato) return true;
+  // Se c'e' una marca di vita, si passa — anche se la frase e' cortissima o sembra di servizio.
+  if (PORTA_UN_DATO_RE.test(t)) return true;
+  // Sola cortesia, e nient'altro nella frase: non c'e' niente da leggere.
+  if (SOLO_CORTESIA_RE.test(t)) return false;
+  // Domanda su come funziona l'app: e' la classe che ha prodotto la lettura spuria.
+  if (DOMANDA_SULL_APP_RE.test(t)) return false;
+  // In tutti gli altri casi si passa. La porta esiste per togliere il rumore evidente, non per
+  // decidere cosa sia importante nella vita del Ghost: quella non e' una decisione del codice.
+  return true;
+}
 // Euristiche istantanee — nessuna chiamata AI dove basta un controllo testuale
 // CORRETTA IL 16/08/2026 (sera) — §2 del brief, il difetto piu' grave dei cinque.
 // Il Ghost aveva in Vidya due percorsi chiamati "Questo?" e "Dedicato su questo? Ti terrei traccia
@@ -3343,15 +3423,111 @@ function detectWebSearchIntent(userMessage) {
 }
 // Stadio 3 — Accettore: SOLO il vincolo AIR è hard-stop (Legge 18 riscritta).
 // Per BIO/VIDYA nessun verdetto vero/falso: solo la lettura, dichiaratamente rivedibile.
+// ══════════════════════════════════════════════════════════════════════════════
+// IL VINCOLO AIR: IL CODICE VEDE, IL GHOST DECIDE (22/08/2026, dopo l'audit)
+// ══════════════════════════════════════════════════════════════════════════════
+// Com'era, e perche' non andava. Il vincolo che il progetto chiama "assoluto, hard-stop, mai
+// negoziabile" era presidiato da UNA CHIAMATA A UN MODELLO a cui si chiedeva "VIA LIBERA" o
+// "BLOCCATO", e se diceva BLOCCATO il dato veniva scartato in silenzio. Misurato su otto casi:
+// il modello riconosceva 4 esposizioni su 5, ma dava 2 FALSI ALLARMI su 3 — ha bloccato "poster
+// stampabili su Etsy" e "newsletter a pagamento", due idee AIR che con la professione del Ghost non
+// c'entrano niente. Quei dati sparivano senza che lui lo sapesse.
+// Un giudizio probabilistico che decide da solo su un vincolo dichiarato non negoziabile e' la cosa
+// storta; il costo in token era il meno.
+//
+// Com'e' adesso, per decisione del Ghost: NON BLOCCA. Segnala e chiede.
+// Due rilevatori indipendenti, e la loro somma va al Ghost, non a una decisione automatica:
+//   1. il CODICE, deterministico, sui termini che il profilo dichiara — compresi quelli minuscoli;
+//   2. il MODELLO, che ora puo' essere tarato piu' largo, perche' segnalare costa una domanda e non
+//      piu' un dato perso.
+// La conseguenza vale la pena di essere detta: un falso allarme prima costava un dato vero buttato,
+// adesso costa un attimo del Ghost. Questo permette di essere piu' sensibili proprio sul caso che
+// prima sfuggiva a entrambi — "sfruttare la mia competenza clinica quotidiana con i pazienti":
+// nessun marchio, nessuna parola vietata, ma e' esattamente cio' che il vincolo esiste per vedere.
+//
+// IL TETTO, che e' il vero limite: nessuna soluzione che funzioni perche' il Ghost controlla ogni
+// cosa e' accettabile. Sensibili si', ma la frequenza va misurata: se si ferma su una fetta grossa
+// dei turni AIR, la taratura e' sbagliata anche se ogni singola domanda e' difendibile.
+
+// I termini dell'identita' professionale COSI' COME IL PROFILO LI DICHIARA. Il campo `identita`
+// vale, nel profilo del Ghost, "fisioterapista, PhysioAlba": due termini, uno minuscolo e uno con
+// la maiuscola interna. redactProfessionalIdentity tiene solo il secondo — di proposito, per non
+// redigere ogni occorrenza innocua di una parola comune in tutta l'app. Qui invece, e SOLO dentro
+// AIR, valgono tutti e due: e' l'incoerenza fra cio' che il profilo dichiara e cio' che il codice
+// guarda, la stessa famiglia di `reversibile` e `costoStimato`.
+function terminiIdentitaDichiarati(profile = CURRENT_GHOST_PROFILE) {
+  const p = normalizeGhostProfile(profile);
+  if (!p?.hasProfessionalConstraint) return [];
+  const dal = String(p.professionalIdentity || "").split(/[,;]/).map((t) => t.trim()).filter((t) => t.length >= 4);
+  const dalNome = String(p.name || "").replace(/\([^)]*\)/g, "").split(/\s+/).map((t) => t.trim()).filter((t) => t.length >= 3);
+  return [...new Set([...dal, ...dalNome])];
+}
+// Le parole che nominano il mestiere senza nominarlo: il campo semantico attorno ai termini
+// dichiarati. Servono per la forma obliqua, quella che non usa nessuna parola vietata.
+const CAMPO_PROFESSIONALE_RE = /(?<![\p{L}'’])(pazient\w*|client\w*\s+dello\s+studio|studio\s+(?:mio|professional\w*)|ambulatori\w*|clinic\w*|riabilitazion\w*|fisioterap\w*|terapi\w*\s+manual\w*|sedut\w*|anamnes\w*|referto|refert\w*|diagnos\w*|competenz\w*\s+clinic\w*|professione|mestiere|lavoro\s+(?:da|come)\s+\w+|albo\s+professional\w*|partita\s+iva)(?![\p{L}'’])/iu;
+// Il rilevatore deterministico. Vale SOLO in contesto AIR: fuori da AIR queste parole restano
+// libere ovunque, e non cambia niente per nessuno.
+function segnalaIdentitaInAir(testo, profile = CURRENT_GHOST_PROFILE) {
+  const t = String(testo || "");
+  if (!t.trim()) return null;
+  const termini = terminiIdentitaDichiarati(profile);
+  if (!termini.length) return null;
+  const trovati = [];
+  for (const termine of termini) {
+    const esc = senzaAccenti(termine).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`(?<![\\p{L}'’])${esc}`, "iu").test(senzaAccenti(t))) trovati.push(termine);
+  }
+  const campo = t.match(CAMPO_PROFESSIONALE_RE);
+  if (!trovati.length && !campo) return null;
+  return {
+    da: "codice",
+    termini: trovati,
+    campo: campo ? campo[0] : null,
+    motivo: trovati.length
+      ? `nomina ${trovati.length === 1 ? "il termine" : "i termini"} che hai dichiarato come identità professionale: ${trovati.join(", ")}`
+      : `usa un'espressione del campo professionale: "${campo[0]}"`,
+  };
+}
+// L'Accettore. Non blocca piu' niente: guarda, e se vede qualcosa lo consegna al Ghost.
 async function runAccettore(reading, settings) {
-  if (reading.pillar !== "air") return { blocked: false, note: null };
-  if (!CURRENT_GHOST_PROFILE.hasProfessionalConstraint) return { blocked: false, note: "Nessun vincolo di identità professionale dichiarato per questo Ghost." };
-  const text = await askModel(
-    `Verifica SOLO i due vincoli assoluti e non negoziabili per il pilastro AIR: 1) non deve esporre l'identità professionale del Ghost (${CURRENT_GHOST_PROFILE.professionalIdentity}); 2) non deve richiedere dilatazione del suo tempo lineare di lavoro. Se uno dei due è violato, blocca. Altrimenti via libera. Rispondi SOLO "VIA LIBERA" oppure "BLOCCATO: <motivo max 20 parole>".`,
-    `Dato proposto: ${JSON.stringify(reading)}`, 0.2, 300, settings
-  );
-  const blocked = /BLOCCATO/i.test(text);
-  return { blocked, note: text.replace(/^(VIA LIBERA|BLOCCATO):?\s*/i, "") };
+  if (reading.pillar !== "air") return { segnala: false, segnalazioni: [] };
+  if (!CURRENT_GHOST_PROFILE.hasProfessionalConstraint) return { segnala: false, segnalazioni: [] };
+  const testo = [reading.title, reading.notes, reading.status].filter(Boolean).join(" ");
+  const segnalazioni = [];
+  // 1. Il codice, sempre, deterministico, a costo zero.
+  const dalCodice = segnalaIdentitaInAir(testo);
+  if (dalCodice) segnalazioni.push(dalCodice);
+  // 2. Il modello, come seconda opinione.
+  // ATTENZIONE A COME E' SCRITTO QUESTO PROMPT — la prima versione ha fatto esattamente il danno
+  // che il brief vietava. Misurato sulla rete vera, 22/08/2026: su 20 letture AIR chiedeva 18 volte
+  // (90%), e su 15 letture che col mestiere non c'entravano niente chiedeva 13 volte. Il motivo,
+  // leggendo le sue risposte: gli passavo il dato come JSON, dentro c'era `"pillar":"air"`, e lui
+  // rispondeva "menzione diretta di air come pilastro". Stava segnalando che il dato era in AIR —
+  // cioe' l'unica cosa che in AIR e' sempre vera. Il vincolo non era in discussione: era la domanda
+  // a essere posta male. Due correzioni: gli si passa SOLO IL TESTO, senza il campo `pillar`; e gli
+  // si dice esplicitamente che stare in AIR non e' il problema, e che deve citare le PAROLE del
+  // testo che legano il dato al mestiere — se non riesce a citarne nessuna, non c'e' niente.
+  try {
+    const text = await askModel(
+      `Il Ghost fa un mestiere (${CURRENT_GHOST_PROFILE.professionalIdentity}) che ha deciso di tenere separato da come si guadagna da vivere in proprio. Ti passo il testo di un'idea o di un dato economico: il tuo unico compito e' dirmi se QUEL TESTO lo lega a quel mestiere — nominandolo, nominando il suo marchio, o parlando delle persone che segue, del suo studio, della competenza che usa al lavoro.\nNON e' un problema che si parli di soldi, di vendere, di guadagnare, di un canale, di un prodotto o di un progetto: e' esattamente cio' di cui deve parlare, ed e' sempre cosi'. Segnala SOLO se ci sono parole nel testo che riportano al mestiere.\nSe segnali devi CITARE quelle parole. Se non riesci a citarne nessuna, allora non c'e' niente da segnalare.\nRispondi SOLO "PULITO" oppure "GUARDA: <le parole del testo che lo legano al mestiere, max 20 parole>".`,
+      `Testo: "${testo}"`, 0.2, 300, settings
+    );
+    if (/GUARDA/i.test(text)) {
+      segnalazioni.push({ da: "modello", motivo: text.replace(/^[\s\S]*?GUARDA:?\s*/i, "").trim() || "il modello ha visto un legame con la tua attività professionale" });
+    }
+  } catch { /* il modello non risponde: resta il rilevatore del codice, che non dipende dalla rete */ }
+  return { segnala: segnalazioni.length > 0, segnalazioni };
+}
+// La forma con cui una lettura diventa una voce di pilastro. Estratta qui perche' adesso ha DUE
+// chiamanti: il turno (quando nessuno ha segnalato) e il gesto del Ghost sulla card (quando qualcuno
+// ha segnalato e lui ha detto "procedi"). Se restasse scritta in un posto solo, i due percorsi
+// finirebbero prima o poi a scrivere due cose diverse — e la differenza si scoprirebbe mesi dopo.
+function payloadDaLettura(reading) {
+  const payload = { id: uid(), date: todayISO() };
+  if (reading.pillar === "bio") Object.assign(payload, { weight: reading.weight || "", sleep: reading.sleep || "", notes: reading.notes || "" });
+  if (reading.pillar === "air") Object.assign(payload, { title: reading.title || "", status: reading.status || "idea", notes: reading.notes || "" });
+  if (reading.pillar === "vidya") Object.assign(payload, { title: reading.title || "", notes: reading.notes || "" });
+  return payload;
 }
 // Stadio 5 — memoria procedurale continua: UNA chiamata che riscrive tutti i pilastri toccati
 async function reflectMemoriaBatch(acceptedReadings, memory, settings) {
@@ -3394,8 +3570,8 @@ async function reflectStyle(styleMemory, userMessage, shellReply, settings) {
 }
 // BLOCCO 1 (16/08/2026) — inventario e fuoco arrivano ESPLICITAMENTE nella firma, non per assunzione
 // e non letti da dentro: e' la stessa regola che ha chiuso le quattro funzioni generative il 14/08.
-async function runShellTurn(history, userMessage, settings, handlers, memory, styleMemory, attachment, dialecticOverride = null, pushDebugLog = null, inventario = null, fuoco = null, letturaCalendario = null, bersaglioCancellazione = null) {
-  const attachmentNote = attachment?.kind === "text" ? `\n\n[Allegato: ${attachment.name}]\n${attachment.content.slice(0, 6000)}` : "";
+async function runShellTurn(history, userMessage, settings, handlers, memory, styleMemory, attachment, dialecticOverride = null, pushDebugLog = null, inventario = null, fuoco = null, letturaCalendario = null, bersaglioCancellazione = null, onRispostaPronta = null) {
+  const attachmentNote =attachment?.kind === "text" ? `\n\n[Allegato: ${attachment.name}]\n${attachment.content.slice(0, 6000)}` : "";
   const effectiveMessage = userMessage + attachmentNote;
   const image = attachment?.kind === "image" ? attachment : null;
   const windowMsgs = [...history.slice(-6), { role: "user", content: effectiveMessage + (image ? "\n[Immagine allegata]" : "") }];
@@ -3442,7 +3618,11 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
       () => askModelWithHistory(system, messages, 0.7, 3000, settings, image, false, (raw) => logAiCost(pushDebugLog, "shell", settings.model, raw), ANTI_LOOP_PENALTIES),
       "shell", pushDebugLog
     ), // ricerca già fatta sopra, dati già nel system prompt
-    readThroughLenses(recentText, settings, image).catch(() => ({ readings: [] })),
+    // 22/08/2026 — la porta di codice. Vedi meritaLetturaMultiLente: davanti a un turno che non
+    // porta niente da leggere, la chiamata non parte nemmeno.
+    meritaLetturaMultiLente(userMessage, !!attachment)
+      ? readThroughLenses(recentText, settings, image).catch(() => ({ readings: [] }))
+      : Promise.resolve({ readings: [], saltata: true }),
     // "Un turno, un'azione" vale anche qui (§4 del brief del 17/08): se il Ghost sta chiedendo un
     // promemoria per se', non gli si mette accanto una bozza di messaggio per un terzo che non ha
     // chiesto. La porta e' a costo zero, quindi in quel caso la chiamata non parte nemmeno.
@@ -3453,30 +3633,57 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
   const alerts = [];
   const accettoreNotes = [];
   anochin.decisione = readings.length ? `${readings.length} lettura/e: ${readings.map((r) => r.pillar.toUpperCase()).join(", ")}.` : "Nessuna lettura pertinente in questo scambio.";
+  const proposal = detectPercorsoProposalHeuristic(reply);
+  // ── 22/08/2026 — LA RISPOSTA E' PRONTA QUI, E DA QUI IN POI NIENTE LA CAMBIA PIU'. ────────────
+  // Misurato prima di toccare niente: la risposta era pronta a 7.073 ms su un'attesa media di
+  // 13.579 ms. Il 48% del tempo in cui il Ghost guardava i tre puntini non serviva alla risposta:
+  // serviva alla memoria procedurale, alla memoria di stile e all'Accettore, che non ne cambiano
+  // una virgola. Adesso il chiamante puo' mostrarla adesso, con questa richiamata, e ricevere il
+  // resto quando arriva.
+  // Cosa NON si perde: niente. Il ritorno finale porta esattamente gli stessi campi di prima.
+  // Il pezzo difficile e' che, mentre lo sfondo lavora, il Ghost puo' scrivere di nuovo. Vedi sotto.
+  onRispostaPronta?.({ reply, proposal, draft, usedWebSearch: webSearchSucceeded, anochin });
+  // ── LA CODA. ─────────────────────────────────────────────────────────────────────────────────
+  // Due turni possono avere lo sfondo in volo insieme. Le scritture sui pilastri sono al sicuro da
+  // sole (passano da setState funzionale, che parte sempre dal valore corrente), ma la memoria
+  // procedurale e quella di stile NO: si riscrivono per intero a partire da una base. Se il turno A
+  // finisse dopo il turno B partendo da una base piu' vecchia, riscriverebbe sopra cio' che B ha
+  // appena scritto, e la nota di B sparirebbe senza che nessuno se ne accorga.
+  // Due presidi, insieme: gli sfondi si mettono IN FILA (attendiCoda), e ognuno legge la memoria
+  // NEL MOMENTO in cui tocca a lui (memoriaOra/stileOra) invece della fotografia presa a inizio
+  // turno. Chi non passa le due funzioni — le prove offline — si comporta esattamente come prima.
+  if (handlers.attendiCoda) { try { await handlers.attendiCoda(); } catch { /* chi ci precede e' fallito: non e' un motivo per fermarsi */ } }
+  const memoriaOra = handlers.memoriaOra ? handlers.memoriaOra() : memory;
+  const stileOra = handlers.stileOra ? handlers.stileOra() : styleMemory;
   const accResults = await Promise.all(readings.map((r) => runAccettore(r, settings)));
   const accepted = [];
+  // 22/08/2026 — le letture su cui qualcuno ha segnalato NON spariscono piu' e NON entrano da sole:
+  // restano qui, in attesa, e vanno al Ghost sotto forma di domanda con un pulsante solo.
+  const dubbiIdentita = [];
   readings.forEach((reading, i) => {
     const acc = accResults[i];
-    if (acc.blocked) { accettoreNotes.push(`${reading.pillar.toUpperCase()}: BLOCCATO — ${acc.note}`); return; }
+    if (acc.segnala) {
+      const chi = acc.segnalazioni.map((s) => (s.da === "codice" ? "il codice" : "il modello")).join(" e ");
+      accettoreNotes.push(`${reading.pillar.toUpperCase()}: segnalata — ${chi}: ${acc.segnalazioni.map((s) => s.motivo).join(" · ")}. In attesa della tua parola.`);
+      dubbiIdentita.push({ id: uid(), reading, segnalazioni: acc.segnalazioni });
+      return;
+    }
     accettoreNotes.push(`${reading.pillar.toUpperCase()}: lettura accolta (rivedibile, non un verdetto).`);
     accepted.push(reading);
   });
   for (const reading of accepted) {
-    const payload = { id: uid(), date: todayISO() };
-    if (reading.pillar === "bio") Object.assign(payload, { weight: reading.weight || "", sleep: reading.sleep || "", notes: reading.notes || "" });
-    if (reading.pillar === "air") Object.assign(payload, { title: reading.title || "", status: reading.status || "idea", notes: reading.notes || "" });
-    if (reading.pillar === "vidya") Object.assign(payload, { title: reading.title || "", notes: reading.notes || "" });
+    const payload = payloadDaLettura(reading);
     if (reading.pillar === "bio") handlers.addBio(payload);
     else if (reading.pillar === "air") handlers.addAir(payload);
     else if (reading.pillar === "vidya") handlers.addVidya(payload);
     actionsLog.push(reading.pillar.toUpperCase());
     if (reading.alert) alerts.push({ pillar: reading.pillar, note: reading.alertNote || "Segnale da non ignorare." });
   }
-  let newStyleMemory = styleMemory;
+  let newStyleMemory = stileOra;
   try {
     const [memoriaAggiornata, style] = await Promise.all([
-      reflectMemoriaBatch(accepted, memory, settings),
-      reflectStyle(styleMemory, userMessage, reply, settings),
+      reflectMemoriaBatch(accepted, memoriaOra, settings),
+      reflectStyle(stileOra, userMessage, reply, settings),
     ]);
     // BLOCCO 5 — il risultato ora porta memoria E chiavi. estraiMemoriaEChiavi tollera anche la
     // forma vecchia (sola stringa), che i modelli economici restituiscono con regolarita'.
@@ -3494,9 +3701,8 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
   ].filter(Boolean).join(" ") || "—";
   anochin.azione = actionsLog.length
     ? `Scritto in ${actionsLog.join(", ")}. Memoria riorganizzata per accoppiamento continuo.`
-    : (accettoreNotes.some((n) => n.includes("BLOCCATO")) ? "Nessuna scrittura: vincolo assoluto violato." : "Nessuna azione in questo turno.");
-  const proposal = detectPercorsoProposalHeuristic(reply);
-  return { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, usedWebSearch: webSearchSucceeded };
+    : (dubbiIdentita.length ? `Nessuna scrittura ancora: ${dubbiIdentita.length === 1 ? "una lettura è" : `${dubbiIdentita.length} letture sono`} in attesa della tua parola.` : "Nessuna azione in questo turno.");
+  return { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, usedWebSearch: webSearchSucceeded, dubbiIdentita };
 }
 
 //──────────────────────────────────────────────────────────
@@ -4631,6 +4837,17 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   const [docMsg, setDocMsg] = useState("");
   const bottomRef = useRef(null);
   const fileInputRef = useRef(null);
+  // 22/08/2026 — l'impianto che regge "la risposta compare appena e' pronta".
+  // codaSfondo: la fila dei lavori di sfondo. Uno alla volta, in ordine di partenza. Serve perche'
+  //   memoria procedurale e memoria di stile si riscrivono per intero: due turni che ci lavorano
+  //   insieme si cancellerebbero a vicenda.
+  // memoriaRef / stileRef: la finestra sul presente. Uno sfondo che parte adesso deve riscrivere a
+  //   partire da cio' che c'e' ADESSO, non da cio' che c'era quando il suo turno e' cominciato.
+  const codaSfondo = useRef(Promise.resolve());
+  const memoriaRef = useRef(memory);
+  const stileRef = useRef(styleMemory);
+  useEffect(() => { memoriaRef.current = memory; }, [memory]);
+  useEffect(() => { stileRef.current = styleMemory; }, [styleMemory]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
   const toggleSpeak = (id, text) => {
     if (speakingId === id) { stopSpeaking(); setSpeakingId(null); return; }
@@ -4720,7 +4937,14 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
           registraAzione({ fase: "ricerca-bersaglio", azioneId: "cancella_evento_calendario", parametro: sceltaAnticipata.parametro, esitoRicerca: bersaglioCancellazione.esito, candidati: (bersaglioCancellazione.candidati || []).map((c) => ({ id: c.id, etichetta: c.titolo })) });
         }
       }
-      const { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, usedWebSearch } = await runShellTurn(history, userText, settings, { addBio, addAir, addVidya, updateMemoria }, memory, styleMemory, currentAttachment, dialecticOverride, pushDebugLog, inventarioOra, leggiFuoco(), letturaCalendario, bersaglioCancellazione);
+      // 22/08/2026 — la risposta compare appena e' pronta. Tutto cio' che sta dentro `mostra` e'
+      // deterministico e a costo zero: filtri, composizione dell'elenco impegni, card della
+      // proposta. Nessuna chiamata a modello. Quindi puo' girare nell'istante in cui il testo
+      // arriva, senza aspettare Accettore, memoria procedurale e memoria di stile — che non
+      // cambiano una virgola di quel testo e continuano dietro.
+      let mostrato = false;
+      const mostra = ({ reply, proposal, draft, usedWebSearch, anochin }) => {
+      if (mostrato) return; mostrato = true;
       // Canale primario Seme (brief Parte 1.A): euristica a costo zero sul messaggio del Ghost, non
       // sulla risposta dello Shell. Non crea nulla da sola — solo una proposta con un tap di conferma
       // (vedi card sotto), mai il pattern "conferma nel messaggio successivo" già usato per i Percorsi.
@@ -4893,15 +5117,49 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         pushDebugLog?.({ type: "conferma-a-parole-con-proposta-viva", azioneId: classeBPendente.azioneProposta.azioneId, userText: userText.slice(0, 100) });
       }
       setMessages((prev) => {
-        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: actionsLog, anochin, proposal, alerts, draft, usedWebSearch, seedSuggestion, azioneProposta, esitiFalsi, confermaSenzaBersaglio, capacitaSmentite, capacitaAccese, contenutiCalendarioInventati, letturaCalendario, offerteInesistenti }];
+        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: [], anochin, proposal, alerts: [], draft, usedWebSearch, seedSuggestion, azioneProposta, esitiFalsi, confermaSenzaBersaglio, capacitaSmentite, capacitaAccese, contenutiCalendarioInventati, letturaCalendario, offerteInesistenti, dubbiIdentita: [] }];
         return compactShellChatIfNeeded(next) || next; // Opzione 3: compatta+archivia (Legge 14) se sopra soglia, altrimenti passa
       });
-      if (newStyleMemory !== styleMemory) setStyleMemory(newStyleMemory);
+      // I tre puntini si fermano QUI, non alla fine dello sfondo: il Ghost puo' gia' scrivere.
+      setSending(false);
       // L'auto-play parte dopo un await e può perdere lo status di "gesto utente" su Chrome mobile;
       // in quel caso il 🔊 manuale funziona sempre (chiamata sincrona dentro il tap).
       if (settings.voiceEnabled) toggleSpeak(assistantMsgId, replyPulita);
-      pushDebugLog?.({ type: "shell-turn", userText: userText.slice(0, 100), model: settings.model, provider: settings.provider, attachment: currentAttachment ? currentAttachment.kind : null, replyLength: reply.length, actionsLog, alertsCount: alerts?.length || 0, hasDraft: !!draft, anochinDecisione: anochin?.decisione, anochinAccettore: anochin?.accettore, error: null });
+      };
+      // Lo sfondo di questo turno si mette in fila dietro quello del turno precedente, e riceve due
+      // finestre sul presente invece di una fotografia: vedi il commento sulla coda dentro
+      // runShellTurn. Senza la fila, due turni ravvicinati si sovrascrivono la memoria a vicenda.
+      const codaPrecedente = codaSfondo.current;
+      let sbloccaLaCoda;
+      codaSfondo.current = new Promise((r) => { sbloccaLaCoda = r; });
+      try {
+        const esito = await runShellTurn(history, userText, settings, {
+          addBio, addAir, addVidya, updateMemoria,
+          attendiCoda: () => codaPrecedente,
+          memoriaOra: () => memoriaRef.current,
+          stileOra: () => stileRef.current,
+        }, memory, styleMemory, currentAttachment, dialecticOverride, pushDebugLog, inventarioOra, leggiFuoco(), letturaCalendario, bersaglioCancellazione, mostra);
+        // Rete di sicurezza: se per qualunque ragione la richiamata non fosse partita, il messaggio
+        // compare comunque adesso. `mostrato` impedisce che compaia due volte.
+        mostra(esito);
+        // Lo sfondo ha finito. Si aggiorna SOLO il messaggio di QUESTO turno, per identificativo:
+        // un secondo turno partito nel frattempo ha il suo, e non viene toccato.
+        setMessages((prev) => prev.map((mm) => (mm.id === assistantMsgId
+          ? { ...mm, actions: esito.actionsLog, anochin: esito.anochin, alerts: esito.alerts, dubbiIdentita: esito.dubbiIdentita }
+          : mm)));
+        // stileRef.current, non styleMemory: la fotografia di inizio turno qui sarebbe vecchia.
+        if (esito.newStyleMemory && esito.newStyleMemory !== stileRef.current) setStyleMemory(esito.newStyleMemory);
+        pushDebugLog?.({ type: "shell-turn", userText: userText.slice(0, 100), model: settings.model, provider: settings.provider, attachment: currentAttachment ? currentAttachment.kind : null, replyLength: esito.reply.length, actionsLog: esito.actionsLog, alertsCount: esito.alerts?.length || 0, hasDraft: !!esito.draft, anochinDecisione: esito.anochin?.decisione, anochinAccettore: esito.anochin?.accettore, error: null });
+      } catch (e) {
+        // Se la risposta era gia' comparsa, resta valida: e' fallito solo cio' che veniva dopo, e
+        // quel fallimento va nel log invece che addosso al Ghost.
+        if (mostrato) pushDebugLog?.({ type: "sfondo-turno-fallito", userText: userText.slice(0, 100), error: e.message });
+        else setError(e.message);
+        pushDebugLog?.({ type: "shell-turn", userText: userText.slice(0, 100), model: settings.model, provider: settings.provider, attachment: currentAttachment ? currentAttachment.kind : null, error: e.message });
+      } finally { sbloccaLaCoda(); setSending(false); }
     } catch (e) {
+      // Qui arriva solo cio' che e' fallito PRIMA del turno: la selezione anticipata, la lettura
+      // del calendario, la ricerca del bersaglio. Il turno vero ha il suo catch, qui sopra.
       setError(e.message);
       pushDebugLog?.({ type: "shell-turn", userText: userText.slice(0, 100), model: settings.model, provider: settings.provider, attachment: currentAttachment ? currentAttachment.kind : null, error: e.message });
     } finally { setSending(false); }
@@ -5000,6 +5258,26 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     } catch (e) { setPercorsoStatus((s) => ({ ...s, [mid]: "errore: " + e.message })); }
   };
   const scartaPercorso = (mid) => setPercorsoStatus((s) => ({ ...s, [mid]: "scartato" }));
+  // 22/08/2026 — IL VINCOLO AIR CHIEDE, NON DECIDE.
+  // Quando uno dei due rilevatori (il codice deterministico, il modello come seconda opinione) vede
+  // qualcosa che lega l'identita' professionale del Ghost al pilastro AIR, la lettura NON viene
+  // scritta e NON viene buttata: resta qui, e il Ghost decide con un gesto solo.
+  // La risoluzione si scrive DENTRO il messaggio, non in uno stato di sessione: e' la stessa lezione
+  // di `azioneRisolta` (20/08) — uno stato che vive solo in memoria fa ricomparire domani una
+  // domanda a cui il Ghost ha gia' risposto oggi.
+  const risolviDubbio = (mid, dubbio, scelta) => {
+    if (scelta === "procedi") {
+      const payload = payloadDaLettura(dubbio.reading);
+      if (dubbio.reading.pillar === "bio") addBio(payload);
+      else if (dubbio.reading.pillar === "air") addAir(payload);
+      else if (dubbio.reading.pillar === "vidya") addVidya(payload);
+      vibra(dubbio.reading.pillar);
+      registraAzione({ fase: "eseguita", azioneId: "scrivi_su_pilastro", pilastro: dubbio.reading.pillar, etichetta: dubbio.reading.title || dubbio.reading.notes || "", nota: "sbloccata dal Ghost dopo una segnalazione del vincolo AIR" });
+    } else {
+      registraAzione({ fase: "annullata", azioneId: "scrivi_su_pilastro", pilastro: dubbio.reading.pillar, nota: "il Ghost ha lasciato fuori una lettura segnalata dal vincolo AIR" });
+    }
+    setMessages((prev) => prev.map((mm) => (mm.id === mid ? { ...mm, dubbiRisolti: { ...(mm.dubbiRisolti || {}), [dubbio.id]: scelta } } : mm)));
+  };
   // BLOCCO 1 §2.3 — l'esecuzione e' del PROGRAMMA, mai del modello. Il modello ha solo proposto;
   // qui si valida (l'identificativo deve esistere davvero, §2.4), si esegue, si registra.
   // Classe A: nessun gate, ma annullamento sempre disponibile nel turno stesso (§5.1).
@@ -5277,6 +5555,19 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
             </div>`}
             ${m.attachmentName && html`<div class="r-shell-attach-badge">${m.attachmentKind === "image" ? "🖼" : "📄"} ${m.attachmentName}</div>`}
             ${m.alerts && m.alerts.length > 0 && m.alerts.map((a) => html`<div class="r-shell-alert"><div class="r-shell-alert-label">⚠ ALLERTA — ${a.pillar.toUpperCase()}</div><div>${a.note}</div></div>`)}
+            ${(m.dubbiIdentita || []).filter((d) => !(m.dubbiRisolti || {})[d.id]).map((d) => html`<div class="r-draft-card">
+              <div class="r-draft-label">▸ QUESTO LO SCRIVO SU ${d.reading.pillar.toUpperCase()}? — guarda prima tu</div>
+              <div class="r-hub-detail">Il tuo vincolo dice che la tua identità professionale non deve legarsi ad AIR. Qui qualcosa l'ha fatto scattare. Non decido io: non l'ho scritto, non l'ho buttato via.</div>
+              <div class="r-draft-body">${[d.reading.title, d.reading.notes, d.reading.status].filter(Boolean).join(" — ")}</div>
+              ${d.segnalazioni.map((s) => html`<div class="r-hub-detail">${s.da === "codice" ? "Ha segnalato il codice" : "Ha segnalato il modello"}: ${s.motivo}</div>`)}
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="r-btn r-draft-copy" onClick=${() => risolviDubbio(mid, d, "procedi")}>Va bene, procedi</button>
+                <button class="r-btn r-btn-ghost" onClick=${() => risolviDubbio(mid, d, "lascia")}>No, lascialo fuori</button>
+              </div>
+            </div>`)}
+            ${(m.dubbiIdentita || []).filter((d) => (m.dubbiRisolti || {})[d.id]).map((d) => html`<div class="r-draft-card">
+              <div class="r-draft-label">${(m.dubbiRisolti || {})[d.id] === "procedi" ? `✓ SCRITTO SU ${d.reading.pillar.toUpperCase()} — l'hai sbloccato tu` : "✕ LASCIATO FUORI — l'hai deciso tu"}</div>
+            </div>`)}
             ${m.draft && html`<div class="r-draft-card">
               <div class="r-draft-label">📝 BOZZA — ${m.draft.type.toUpperCase()}${m.draft.recipient ? ` · per: ${m.draft.recipient}` : ""}</div>
               ${m.draft.subject && html`<div class="r-draft-subject">Oggetto: ${m.draft.subject}</div>`}
