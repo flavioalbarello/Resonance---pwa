@@ -3336,11 +3336,11 @@ Array vuoto se non c'è nulla di pertinente — NON scrivere una lettura per dir
 // E niente soglie di sola lunghezza: "Ho ricominciato a fumare" e' corto e conta moltissimo.
 // Le sole risposte di servizio: assensi, dinieghi, ringraziamenti, interiezioni. Un elenco chiuso,
 // non un'euristica: cio' che non e' in elenco passa.
-const SOLO_CORTESIA_RE = /^(?:s[iì]|no|ok|okay|va bene|vabb?[eè]|certo|d'accordo|perfetto|esatto|giusto|capito|chiaro|bene|benissimo|grazie|prego|ciao|ecco|appunto|infatti|gi[aà]|magari|boh|mah|forse|dai|vai|fallo|falla|procedi|prosegui|avanti|dimmelo|aspetta|un attimo|ah|eh|oh|mm+|hm+|ahah|haha)(?![\p{L}'’])[\s.!?,;:…]*$/iu;
+const SOLO_CORTESIA_RE = /^(?:(?:s[iì]|no|ok|okay|va bene|vabb?[eè]|certo|d'accordo|perfetto|esatto|giusto|capito|chiaro|bene|benissimo|grazie|prego|ciao|ecco|appunto|infatti|gi[aà]|magari|boh|mah|forse|dai|vai|fallo|falla|procedi|prosegui|avanti|dimmelo|aspetta|un attimo|ah|eh|oh|mm+|hm+|ahah|haha)(?![\p{L}'’])[\s.!?,;:…]*){1,3}$/iu;
 // Una domanda RIVOLTA ALLO SHELL su come funziona qualcosa non porta un dato di vita: e' la classe
 // che ha prodotto la lettura spuria. Deve pero' essere davvero una domanda sul funzionamento, non
 // una domanda sulla vita del Ghost ("come sto messo con il sonno?" porta eccome un contesto).
-const DOMANDA_SULL_APP_RE = /^\s*(?:spiegami|spiega|dimmi|mi spieghi|puoi spiegar\w*|come funziona|come si (?:usa|fa|attiva)|cos'?(?:e|è)|che cos'?(?:e|è)|a cosa serve|perch[eé] (?:non )?funziona)(?![\p{L}])[^?]{0,120}(?<![\p{L}])(?:app|sistema|funzione|funzionalit[aà]|shell|resonance|kernel|pilastr\w+|semi|percors\w+|memoria procedurale|simbiosi|magi|interruttor\w+|gate|backup|calendario|filtro|card|pulsante)(?![\p{L}])/iu;
+const DOMANDA_SULL_APP_RE = /^\s*(?:spiegami|spiega|dimmi|mi spieghi|puoi spiegar\w*|come funziona|come si (?:usa|fa|attiva)|cos'?(?:e|è)|che cos'?(?:e|è)|a cosa serve|perch[eé] (?:non )?funziona)(?![\p{L}])[^?]{0,120}(?<![\p{L}])(?:app|sistema|funzione|funzionalit[aà]|shell|resonance|kernel|pilastr\w+|semi|percors\w+|memoria procedurale|simbiosi|magi|fuoco conversazionale|inventario|registro delle azioni|accettore|interruttor\w+|gate|backup|calendario|filtro|card|pulsante)(?![\p{L}])/iu;
 // Le marche di un dato che riguarda la vita del Ghost. Se ce n'e' anche una sola, la porta si apre
 // comunque — anche dentro una frase che sembrerebbe di servizio.
 const PORTA_UN_DATO_RE = /(?<![\p{L}'’])(?:ho|sono|mi|mio|mia|miei|mie|stanotte|stamattina|ieri|oggi|stasera|dormit\w*|dorm\w*|mangiat\w*|peso|chili|kg|kcal|allenat\w*|corso|corsa|male|dolor\w*|stanc\w*|energia|suonat\w*|provat\w*|scritt\w*|letto|studiat\w*|lavorat\w*|guadagn\w*|vendut\w*|pubblicat\w*|girat\w*|registrat\w*|fumat\w*|bevut\w*|svegli\w*|apnee|cpap)(?![\p{L}'’])/iu;
