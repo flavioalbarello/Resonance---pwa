@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-20 · verifica-per-istanti";
+const APP_BUILD = "2026-08-20 · filtro-che-legge-il-contesto";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -508,8 +508,14 @@ function ripulisciTagAzione(testo) {
 // I confini di parola sono UNICODE, non \b. Imparato sbagliando due volte in questo file: \b in
 // JavaScript ragiona sull'alfabeto inglese, quindi "\be" davanti a "è" non aggancia niente e la
 // frase esatta che il Ghost ha letto — "è stato aggiornato" — sarebbe passata indisturbata.
-const CONF_S = "(?<!\\p{L})";  // inizio di parola, accenti compresi
-const CONF_E = "(?!\\p{L})";   // fine di parola, accenti compresi
+// CORRETTI IL 20/08/2026 (sera). Prima erano (?<!\p{L}) e (?!\p{L}) — "non deve esserci una
+// LETTERA prima". Ma in «c'è» il carattere prima di «è» e' un apostrofo, che non e' una lettera:
+// il confine passava, e il filtro agganciava «è sul calendario» partendo da DENTRO la parola,
+// lasciando «c'» orfano. Il Ghost ha letto: «non so cosa c'[non ancora — serve la tua conferma]».
+// Stessa forma di errore dei titoli tagliati a 40 caratteri il 16/08: un confine che non conosce
+// il pezzo di lingua che sta tagliando.
+const CONF_S = "(?<![\\p{L}'’])";  // inizio di parola: ne' lettera ne' apostrofo prima
+const CONF_E = "(?![\\p{L}'’])";   // fine di parola, accenti ed elisioni comprese
 const PARTICIPI = "aggiornat|aggiunt|salvat|creat|inviat|fissat|inserit|impostat|registrat|segnat|mess|spedit|mandat";
 const ESITO_COMPIUTO_RE = new RegExp(
   "(" +
@@ -530,12 +536,61 @@ const ESITO_SOSTITUZIONE = "[non ancora — serve la tua conferma]";
 // azioneVerificata: true SOLO quando in questo turno c'e' stata un'azione esterna riletta dalla
 // fonte. In ogni altro caso — nessuna azione, azione proposta ma non confermata, azione fallita —
 // nessuna affermazione di compiuto puo' sopravvivere.
+// ── IL GUARDIANO DEL CONTESTO (20/08/2026, sera) ──────────────────────────────
+// Il difetto piu' grave del filtro non era l'apostrofo: era che non distingueva un'AFFERMAZIONE
+// da una domanda, una negazione o un'ipotesi. «non so cosa c'è sul calendario» e «vuoi che guardi
+// cosa c'è sul calendario?» non dichiarano niente come fatto, e venivano tagliate lo stesso.
+//
+// COME LO RISOLVO, detto in chiaro perche' il brief lo chiede.
+// Per ogni corrispondenza si guarda la frase che la contiene e, dentro quella frase, il pezzo che
+// viene PRIMA della corrispondenza — la rincorsa. Se la frase e' una domanda, o se nella rincorsa
+// c'e' una negazione, un'ipotesi o un verbo che apre una subordinata ("so cosa…", "guardi cosa…"),
+// la corrispondenza si lascia stare.
+//
+// COSA QUESTO METODO NON E'. Non e' analisi grammaticale: e' un riconoscimento di forme di
+// superficie dell'italiano. Sbagliera' ancora, ma sbagliera' quasi sempre IN DIFETTO — lasciando
+// passare qualche affermazione falsa invece di rompere una frase buona. E' la direzione giusta in
+// cui sbagliare: un'affermazione falsa che passa resta un problema visibile e correggibile, un
+// riquadro rosso che compare quando non serve insegna al Ghost a ignorare il riquadro rosso, e a
+// quel punto il filtro non protegge piu' niente.
+const NEGAZIONE_RE = /(?<![\p{L}'’])(non|ne|né|nè|nessun\w*|niente|nulla|mai|senza)(?![\p{L}'’])/iu;
+const IPOTETICO_RE = /(?<![\p{L}'’])(se|qualora|quando|appena|vuoi|vorresti|vorrei|posso|potrei|potresti|devo|dovrei|magari|forse|probabilmente|sarebbe|sarà|dimmi|fammi|conferma|confermi|oppure)(?![\p{L}'’])/iu;
+const SUBORDINATA_RE = /(?<![\p{L}'’])(cosa|quello|ciò|so|sappia|sapere|sai|guardi|guardare|guardo|controlli|controllare|controllo|vedere|veda|vedo|verificare|verifichi|chiedi|chiedere|capire|capisco)(?![\p{L}'’])/iu;
+// Restituisce il motivo per cui una corrispondenza NON e' un'affermazione, oppure null.
+function contestoNonAffermativo(testo, indice) {
+  const prima = testo.slice(0, indice);
+  const inizioFrase = Math.max(prima.lastIndexOf("."), prima.lastIndexOf("!"), prima.lastIndexOf("?"), prima.lastIndexOf("\n"), prima.lastIndexOf(";"), -1) + 1;
+  const daQui = testo.slice(indice);
+  const scarto = daQui.search(/[.!?\n]/);
+  const frase = testo.slice(inizioFrase, scarto < 0 ? testo.length : indice + scarto + 1).trim();
+  const rincorsa = testo.slice(inizioFrase, indice);
+  if (/\?$/.test(frase)) return "è una domanda";
+  if (NEGAZIONE_RE.test(rincorsa)) return "è una negazione";
+  if (IPOTETICO_RE.test(rincorsa)) return "è un'ipotesi o una domanda";
+  if (SUBORDINATA_RE.test(rincorsa)) return "è una subordinata, non un'affermazione";
+  return null;
+}
 function ripulisciAffermazioniDiEsito(testo, azioneVerificata = false) {
   const originale = String(testo || "");
   if (azioneVerificata) return { testo: originale, affermazioni: [] };
-  const affermazioni = originale.match(ESITO_COMPIUTO_RE) || [];
-  if (!affermazioni.length) return { testo: originale, affermazioni: [] };
-  return { testo: originale.replace(ESITO_COMPIUTO_RE, ESITO_SOSTITUZIONE), affermazioni: affermazioni.map((a) => a.trim()) };
+  // Si raccolgono le corrispondenze CON LA LORO POSIZIONE, perche' il guardiano ha bisogno di
+  // sapere cosa c'e' intorno. La sostituzione avviene poi dall'ultima alla prima, cosi' gli indici
+  // di quelle precedenti restano validi.
+  const trovate = [...originale.matchAll(ESITO_COMPIUTO_RE)];
+  if (!trovate.length) return { testo: originale, affermazioni: [] };
+  const daTogliere = [], risparmiate = [];
+  for (const m of trovate) {
+    const motivo = contestoNonAffermativo(originale, m.index);
+    if (motivo) risparmiate.push({ frase: m[0].trim(), motivo });
+    else daTogliere.push(m);
+  }
+  if (!daTogliere.length) return { testo: originale, affermazioni: [], risparmiate };
+  let out = originale;
+  for (let i = daTogliere.length - 1; i >= 0; i--) {
+    const m = daTogliere[i];
+    out = out.slice(0, m.index) + ESITO_SOSTITUZIONE + out.slice(m.index + m[0].length);
+  }
+  return { testo: out, affermazioni: daTogliere.map((m) => m[0].trim()), risparmiate };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -793,6 +848,15 @@ const DEFAULT_GHOST_PROFILE = {
     dialectic: true,
     dialecticOverride: null, // per-sessione, mai persistente
     reasoningStyle: "saltellante", // emisfero destro dominante, elaborazione configurazionale non lineare
+    // AGGIUNTO IL 20/08/2026 — la forma delle risposte vive QUI, nel profilo, non nel prompt comune.
+    // Ragione architetturale, non stilistica: sul ramo `stable` c'e' un secondo Ghost con un profilo
+    // cognitivo diverso, e una regola di stile scritta nel prompt di sistema condiviso lo vestirebbe
+    // con la configurazione del primo — esattamente cio' che la Parte B della Costituzione esiste per
+    // impedire. Un profilo che non ha questo campo non riceve nessuna riga in piu': il blocco sparisce.
+    // Perche' proprio per questo Ghost: canale uditivo-cinestesico e pensiero configurazionale, gia'
+    // dichiarati qui sopra. Un muro di testo su uno schermo di telefono, per lui, e' informazione che
+    // non arriva.
+    responseFormat: "Risposte molto BREVI. Attenzione: qui sopra il profilo dice 'densita\' densa' e 'linguaggio denso'. Denso NON vuol dire lungo — vuol dire ad alta densita' di informazione, cioe' CORTO E PIENO. Se ti trovi a scrivere un paragrafo dove basta una riga, stai facendo il contrario di quello che questo Ghost ha chiesto. Frasi corte, punti separati. Nessun preambolo, nessuna ripetizione di cio' che e' gia' stato detto, nessun esempio ridondante. La prima riga va dritta al punto. Grassetto solo sulle parole che portano informazione. TAGLIARE PAROLE, MAI CONTENUTO: se devi scegliere, di' la cosa vera in meno parole — mai dire meno cose. Un vincolo, un rischio o un'incertezza non si omettono mai per stare corti: una risposta breve che nasconde un limite e' peggio di una lunga. Risposte lunghe solo se il Ghost le chiede esplicitamente.",
     notes: "Profilo cognitivo emisfero-destro dominante, elaborazione configurazionale non lineare; canale uditivo-cinestesico prioritario e, come secondo canale, riferimenti culturali concreti come ponte verso intuizioni astratte — privilegia esercizi pratici/all'orecchio rispetto alla teoria scritta pura. Linguaggio denso ma sempre traducibile in azione concreta.",
   },
   freeform: {
@@ -836,7 +900,14 @@ function buildPillarCtx(profile) {
   // chiamate reali (freeform vicino al confine identitario, non esplicito): il gate intercetta
   // correttamente prima di ogni esecuzione — vedi REPORT_BLOCCO1 per il dettaglio.
   const freeformNotes = strengthNote + motivationNote + contextNote + requestNote;
+  // La forma delle risposte esce come voce SEPARATA, non dentro il contesto di un pilastro: vale per
+  // tutto cio' che lo Shell scrive, non solo per VIDYA. Se il profilo non ha il campo, e' stringa
+  // vuota e nel prompt non compare niente.
+  const formatoNote = cs.responseFormat
+    ? `FORMA DELLE RISPOSTE, richiesta da QUESTO Ghost e derivata dal suo profilo cognitivo (non e' una regola generale del sistema): ${cs.responseFormat}`
+    : "";
   return {
+    formato: formatoNote,
     vidya: cogText + freeformNotes,
     bio: bioList.join("; ") + " Ogni lettura BIO è una stance interpretativa rivedibile dal Ghost, mai un verdetto medico oggettivo." + freeformNotes,
     air: air + freeformNotes,
@@ -1806,6 +1877,8 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Piano di controllo conversazionale (dal 16/08/2026): lo Shell sa quali percorsi e Semi esistono davvero — prima non lo sapeva, e per questo non riusciva a riprenderne uno. Se il Ghost dice "riprendi quello sul sonno", lo cerca fra quelli che esistono senza chiedere niente a nessun modello, e se ne trova due chiede quale invece di sceglierne uno. Quando ne apre uno, la chat mostra sempre in alto "stiamo lavorando su: [nome]", che si chiude con un tocco e scade da solo dopo otto ore. Ogni azione viene mostrata PRIMA di essere eseguita e si annulla anche dopo. Le capacita' si accendono e spengono una per una in Setup, e ogni azione proposta, confermata o annullata finisce in un registro con l'orario.
 - Azioni parlando (dal 16/08/2026): oltre a riprendere un percorso, lo Shell puo' ora — sempre chiedendo conferma prima — segnare una voce su un pilastro, salvare un'idea come Seme AIR, cercare davvero nella memoria cosa si era detto su un argomento, e avanzare sul percorso gia' aperto. Ogni azione viene mostrata prima di essere eseguita e si annulla anche dopo. Una sola azione per messaggio. Quando cerca nella memoria dice sempre dove ha guardato, e porta su anche uno o due frammenti nati lo stesso giorno anche se non c'entrano — servono a far venire in mente cose per accostamento, non per somiglianza.
 - Leggere il calendario (dal 17/08/2026, governata da un interruttore in Setup — lo stato VERO di adesso te lo dicono i due blocchi qui sopra, non questa riga): lo Shell puo' andare a leggere DAVVERO gli impegni sul Calendar del Ghost per un giorno o una settimana. Prima di questa azione lo Shell non sapeva niente del calendario e, se gli si chiedeva "cosa ho domani", rispondeva da cio' che ricordava della chat — inventando impegni. Ora o legge da Google, o dichiara di non esserci riuscito.
+- Forma delle risposte (dal 20/08/2026): lo Shell scrive molto breve — frasi corte, punti separati, niente preamboli. Questa regola vive nel PROFILO del Ghost, non nel prompt comune: un altro Ghost con un profilo diverso non la riceve. Il taglio e' sulla forma, mai sul contenuto: un vincolo, un rischio o un'incertezza non si omettono mai per stare corti.
+- Cancellare o spostare un evento del calendario NON si puo' fare: le azioni sono due, creare e leggere. Se il Ghost chiede di cancellare, lo Shell lo dice e basta — non offre di spostare o modificare, che e' un'altra cosa che non sa fare.
 - Verifica dopo la scrittura sul calendario (rifatta il 20/08/2026): dopo aver creato un evento il sistema lo rilegge e confronta cio' che ha mandato con cio' che trova. Il confronto e' fra ISTANTI, non fra stringhe — le 19:00 di Roma e le 17:00Z sono lo stesso momento — e il titolo si confronta ignorando maiuscole, accenti e spazi doppi. Tre esiti distinti: verificata (c'e' e corrisponde), non-combacia (c'e' ma e' diverso, e viene detto cosa: atteso X, trovato Y), non-verificabile (la rilettura non e' riuscita — la scrittura pero' era andata, quindi non e' un fallimento).
 - Stato degli interruttori (dal 20/08/2026): lo Shell riceve a ogni turno DUE elenchi ricostruiti dal dato vero — cosa è acceso adesso e cosa è spento adesso. Non c'è nessuna frase fissa che dichiari lo stato: era il difetto per cui, dal 16 al 20 agosto, lo Shell diceva "la capacità è spenta" mentre il Ghost aveva l'interruttore acceso davanti agli occhi. Se lo Shell dichiara comunque spenta una capacità che è accesa, il programma toglie la frase e avvisa il Ghost che gli aveva detto il falso.
 - Capacità spente (dal 17/08/2026): quando il Ghost tiene spenta una capacità in Setup, lo Shell lo SA e glielo dice, invece di proporgliela. Se comunque scappa una domanda del tipo "vuoi confermare?" senza che dietro ci sia una proposta vera, il programma lo intercetta e scrive al Ghost un avviso: nessun pulsante comparirà, e perché. Una conferma scritta a parole non fa mai partire niente — se il Ghost risponde "sì" a vuoto, il sistema glielo dice e chiede di ripetere la richiesta, invece di rientrare nello stesso giro.
@@ -1813,7 +1886,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Calendario e mail parlando (dal 16/08/2026, ognuna governata dal suo interruttore in Setup — lo stato VERO di adesso te lo dicono i due blocchi qui sopra, non questa riga): lo Shell sa mettere un evento sul Calendar e inviare una mail da Gmail, ma solo dopo che il Ghost ha acceso quella voce e ha confermato quello specifico invio. Un evento si cancella, una mail no: l'evento chiede una conferma semplice, la mail mostra prima testo integrale e indirizzo per esteso. Le date le ricava il programma dalle parole del Ghost, mai il modello, e le mostra per esteso (giorno, data, ora). Dopo ogni azione rilegge dalla fonte e, se non ci riesce, dichiara fallimento invece di dire "fatto". Un invio senza risposta resta "incerto" e non viene mai rispedito da solo.
 - Tetto di spesa (Setup): al raggiungimento di 5 dollari nel mese si fermano SOLO le cose che partono da sole (Semi che avanzano, Simbiosi). La chat resta utilizzabile: il tetto protegge dalle spese che il Ghost non vede partire, non da quelle che sta decidendo lui in quel momento.
 - Backup e ripristino dei dati (Setup): scarica in un unico file tutto lo stato locale (log dei pilastri, percorsi, memoria, semi, kernel, profilo, impostazioni) e sa anche rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo e ricarica l'app, previa conferma.
-Capacità NON disponibili in questa app (elenco a mano, mantenuto qui insieme alle presenti — non generato dinamicamente, per lo stesso motivo per cui il Master Index andava mantenuto a mano: un elenco derivato in un punto diverso dal codice reale si disallinea): notifiche push, promemoria o azioni che si attivano da soli senza che il Ghost apra l'app, invio automatico di messaggi/email/post senza conferma esplicita del Ghost (dal 16/08/2026 lo Shell SA inviare una mail e creare un evento, ma solo se il Ghost ha acceso quella capacità in Setup e solo dopo che ha confermato quello specifico invio guardandone il testo per esteso: nessuna spedizione parte da un processo automatico, da un Seme che avanza o da un "sì" detto in un messaggio precedente), pubblicazione automatica su social o piattaforme esterne, esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost quando il gate lo richiede.`;
+Capacità NON disponibili in questa app (elenco a mano, mantenuto qui insieme alle presenti — non generato dinamicamente, per lo stesso motivo per cui il Master Index andava mantenuto a mano: un elenco derivato in un punto diverso dal codice reale si disallinea): notifiche push, promemoria o azioni che si attivano da soli senza che il Ghost apra l'app, invio automatico di messaggi/email/post senza conferma esplicita del Ghost (dal 16/08/2026 lo Shell SA inviare una mail e creare un evento, ma solo se il Ghost ha acceso quella capacità in Setup e solo dopo che ha confermato quello specifico invio guardandone il testo per esteso: nessuna spedizione parte da un processo automatico, da un Seme che avanza o da un "sì" detto in un messaggio precedente), CANCELLARE un evento dal calendario (non esiste: lo Shell sa solo CREARE e LEGGERE eventi), MODIFICARE o SPOSTARE un evento esistente (non esiste nemmeno questo — non offrirlo mai come alternativa alla cancellazione, sarebbe promettere una seconda cosa che non c'e'), pubblicazione automatica su social o piattaforme esterne, esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost quando il gate lo richiede.`;
 
 //──────────────────────────────────────────────────────────
 // SHELL — ciclo di percezione-azione (Manifesto V3 §3: accoppiamento continuo, non predici-e-verifica)
@@ -2554,6 +2627,7 @@ async function runShellTurn(history, userMessage, settings, handlers, memory, st
     : " In questo turno il Ghost preferisce conferme dirette: evita di generare attrito cognitivo non richiesto, resta di supporto.";
   const system = `${nowContext()} Sei lo Shell del sistema Resonance: estensione esecutiva digitale del Ghost (Flavio), in accoppiamento strutturale continuo con lui — non hai coscienza né volontà propria, non sei un partner autonomo. Ogni messaggio del Ghost non ti istruisce, ti perturba: è la tua struttura interna (memoria procedurale) a determinare come ti riorganizzi.
 ${PILLAR_CTX.bio} ${PILLAR_CTX.air} ${PILLAR_CTX.vidya}
+${PILLAR_CTX.formato}
 ${APP_CAPABILITIES_CONTEXT}
 ${inventario || "Inventario dei percorsi non disponibile in questo turno — non fare finta di sapere quali esistono: chiedi."}
 ${formatFuocoBlock(fuoco)}
@@ -2561,7 +2635,7 @@ ${formatAzioniBlock(azioniAttive())}
 ${formatCapacitaSpente(AZIONI_CONVERSAZIONALI, azioniAttive())}
 ${formatCapacitaAccese(azioniAttive())}
 Memoria procedurale accumulata sui tre pilastri (leggila sempre insieme — l'interpretazione resta integrata anche quando l'azione è mirata a un solo pilastro): ${lente}${styleNote}
-REGOLA SUL TEMPO VERBALE, non negoziabile (corretta il 16/08/2026 dopo una prova reale in cui hai scritto "Ho segnato un appuntamento" prima ancora che il Ghost confermasse). TU NON ESEGUI NIENTE. Non salvi, non segni, non aggiungi, non mandi, non fissi: tutto questo lo fa il programma dopo, e solo se il Ghost tocca un pulsante. Quindi non usare MAI il passato per un'azione ("ho segnato", "ho aggiunto", "fatto", "l'ho messo in calendario"), nemmeno se ti sembra naturale, nemmeno se il Ghost ti ha appena detto di sì. Usa il condizionale o il futuro: "te lo segnerei", "vuoi che lo metta?", "posso aggiungerlo". Se una cosa e' stata davvero fatta, e' l'app a scriverlo sotto la tua risposta, con la conferma riletta dalla fonte — non tu. Dire "fatto" per qualcosa che non e' successo e' il modo piu' rapido di rendere inaffidabile tutto il sistema. Questo vale anche al contrario: NON SAI cosa c'e' sul calendario del Ghost. Non lo hai mai letto. Se ti chiede cosa ha in programma, cosa c'e' domani, che impegni ha, NON rispondere con quello che ricordi di aver letto in questa conversazione — una cosa nominata in chat non e' un impegno, e una proposta che non ha confermato non esiste. Di' che vai a guardare, e lascia che sia il programma a leggere davvero dal calendario e a mostrarti il risultato. Il codice controlla ogni tua risposta e toglie le affermazioni di compiuto che non corrispondono a un'azione verificata, avvisando il Ghost che l'hai scritta: non e' un rimprovero, e' un fatto tecnico, e ti conviene saperlo perche' rende inutile scriverle.
+REGOLA SUL TEMPO VERBALE, non negoziabile (corretta il 16/08/2026 dopo una prova reale in cui hai scritto "Ho segnato un appuntamento" prima ancora che il Ghost confermasse). TU NON ESEGUI NIENTE. Non salvi, non segni, non aggiungi, non mandi, non fissi: tutto questo lo fa il programma dopo, e solo se il Ghost tocca un pulsante. Quindi non usare MAI il passato per un'azione ("ho segnato", "ho aggiunto", "fatto", "l'ho messo in calendario"), nemmeno se ti sembra naturale, nemmeno se il Ghost ti ha appena detto di sì. Usa l'INDICATIVO con la conferma ancora pendente, non il condizionale servile: "te lo segno", "te lo metto in calendario", "te la mando" — poi lascia che sia il pulsante a chiedere la conferma. "Te lo segnerei" suona falso e non serve a niente: che l'azione non sia ancora avvenuta lo dice gia' il pulsante, non il modo verbale. Cio' che resta vietato e' il PASSATO ("ho segnato", "e' stato aggiunto", "fatto"): quello dichiara compiuto qualcosa che non lo e'. Se una cosa e' stata davvero fatta, e' l'app a scriverlo sotto la tua risposta, con la conferma riletta dalla fonte — non tu. Dire "fatto" per qualcosa che non e' successo e' il modo piu' rapido di rendere inaffidabile tutto il sistema. Questo vale anche al contrario: NON SAI cosa c'e' sul calendario del Ghost. Non lo hai mai letto. Se ti chiede cosa ha in programma, cosa c'e' domani, che impegni ha, NON rispondere con quello che ricordi di aver letto in questa conversazione — una cosa nominata in chat non e' un impegno, e una proposta che non ha confermato non esiste. Di' che vai a guardare, e lascia che sia il programma a leggere davvero dal calendario e a mostrarti il risultato. Il codice controlla ogni tua risposta e toglie le affermazioni di compiuto che non corrispondono a un'azione verificata, avvisando il Ghost che l'hai scritta: non e' un rimprovero, e' un fatto tecnico, e ti conviene saperlo perche' rende inutile scriverle.
 Dialoga in modo diretto e concreto, massimo 110 parole per risposta — TRANNE quando il Ghost chiede esplicitamente un contenuto strutturato intrinsecamente lungo (un piano, un elenco multi-giorno, un documento): in quel caso il limite non si applica, genera il contenuto per intero, completo, senza comprimerlo né riassumerlo per stare corto. NON scrivere mai sintassi tecnica o tag tra parentesi quadre nella risposta. Rispondi solo in linguaggio naturale.${dialecticNote}
 Non hai accesso a diagnosticare te stesso o l'infrastruttura tecnica su cui giri. Se il Ghost te lo chiede, NON inventare mai una spiegazione plausibile — di' semplicemente che non lo sai e che potrebbe essere un limite tecnico, senza dettagli inventati.
 Se ti arriva un'immagine o un documento allegato, descrivi cosa vi leggi in modo concreto (numeri, testo, dettagli visibili) prima di commentare.
