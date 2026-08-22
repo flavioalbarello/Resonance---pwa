@@ -13,6 +13,15 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
+  <!-- GESTO A.1 (brief esoscheletro 15/08/2026): i caratteri arrivano in modo asincrono.
+       preload + onload li chiede senza bloccare il disegno; il tag noscript copre il caso in cui
+       JavaScript sia spento. L'URL ha gia' display=swap, quindi il testo compare subito con il
+       carattere di ripiego e passa a quello definitivo appena arriva: nessun testo invisibile. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+        onload="this.onload=null;this.rel='stylesheet'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" /></noscript>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
