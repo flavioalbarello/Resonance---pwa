@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-22 · la-risposta-non-aspetta-il-resto";
+const APP_BUILD = "2026-08-23 · il-riquadro-dice-la-verita";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1033,7 +1033,17 @@ function vocabolarioDellaLettura(lettura) {
 // esteso che il quarto filtro usa quando una lettura c'e' stata: non "niente contenuti", ma
 // "niente contenuti che non vengano dalla lettura".
 function nominaQualcosaFuoriDallaLettura(frase, vocab) {
-  const f = String(frase || "");
+  // 23/08/2026 — IL `trim()` NON E' COSMETICO, E' LA CORREZIONE DI UN DIFETTO VERO.
+  // Osservato sullo schermo del Ghost alle 03:41: la lettura era riuscita (HTTP 200, due eventi in
+  // mano), e il filtro ha tolto la frase innocua "Ecco cosa ho trovato." scrivendo «"Ecco" non e'
+  // in quello che ho letto». Il motivo: frasiDiUnTesto restituisce le frasi CON lo spazio che le
+  // separa, quindi la frase arrivava qui come " Ecco cosa ho trovato." — e le due guardie che
+  // dovevano proteggere la prima parola (`(?<!^)` e `(?<![.!?]\s)`) non scattavano piu', perche' la
+  // "E" non era piu' in posizione 0 e prima dello spazio non c'era nessun punto. Cosi' la maiuscola
+  // di inizio frase veniva scambiata per un nome proprio.
+  // La regola sotto e' quella giusta e vale sempre: la maiuscola della PRIMA parola di una frase non
+  // e' mai una prova che sia un nome proprio — lo e' solo una maiuscola in mezzo.
+  const f = String(frase || "").trim();
   // Un orario che nella lettura non esiste.
   for (const m of f.matchAll(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/g)) {
     if (!vocab.orari.has(`${Number(m[1])}:${m[2]}`)) return `l'orario ${m[1]}:${m[2]} non è in quello che ho letto`;
@@ -4999,14 +5009,32 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       const letturaPerIlFiltro = letturaRiuscita
         ? letturaCalendario
         : (bersaglioCancellazione?.eventi ? { ok: true, eventi: bersaglioCancellazione.eventi } : false);
-      const senzaCalendario = ripulisciContenutiDiCalendario(senzaSmentite.testo, letturaPerIlFiltro);
+      // 23/08/2026 — L'ORDINE FRA QUESTI DUE FILTRI E' STATO INVERTITO, E NON E' UN DETTAGLIO.
+      // Osservato sullo schermo del Ghost alle 03:42. Alla richiesta di cancellare, il modello ha
+      // risposto "Posso solo aiutarti a creare un nuovo appuntamento o a SPOSTARE un evento
+      // esistente, ma non posso cancellare nulla." La frase e' sbagliata per un motivo preciso e
+      // dicibile: spostare un evento non si puo' fare, non esiste. Ma il filtro del calendario
+      // arrivava prima, la toglieva perche' conteneva "non posso cancellare nulla" (la scambiava
+      // per un'affermazione di assenza di impegni) e ci scriveva sopra "la lettura del calendario
+      // non e' avvenuta, questo non viene da Google" — una spiegazione che col difetto vero non
+      // c'entra niente e che manda il Ghost a cercare nel posto sbagliato.
+      // Ora chi ha la spiegazione giusta parla per primo: togliOfferteInesistenti toglie la frase e
+      // ci mette la riga onesta ("spostare un evento non lo so fare"), e al filtro del calendario
+      // arriva un testo in cui quella frase non c'e' piu'.
+      const offertePrima = togliOfferteInesistenti(senzaSmentite.testo);
+      if (offertePrima.offerte.length) pushDebugLog?.({ type: "offerta-di-capacita-inesistente", frasi: offertePrima.offerte, model: settings.model });
+      const senzaCalendario = ripulisciContenutiDiCalendario(offertePrima.testo, letturaPerIlFiltro);
       // E il gemello: se la lettura e' fallita e il modello non l'ha detto, lo dice il programma.
       const conFallimento = dichiaraFallimentoLettura(senzaCalendario.testo, letturaCalendario);
       if (conFallimento.aggiunta) pushDebugLog?.({ type: "fallimento-lettura-dichiarato-dal-programma", aggiunta: conFallimento.aggiunta, model: settings.model });
-      // 22/08/2026 — e via le offerte di fare cose che non esistono. Vedi togliOfferteInesistenti.
+      // Secondo passaggio sulle offerte inesistenti: il primo (sopra) guarda il testo del modello,
+      // questo guarda cio' che i filtri hanno lasciato, comprese le righe che il programma ha
+      // aggiunto. Passare due volte non toglie mai niente in piu' di sbagliato — la funzione e'
+      // idempotente, la sua riga onesta non contiene nessuna offerta — e chiude il caso in cui una
+      // frase diventa un'offerta solo dopo che le e' stata tolta la parte davanti.
       const senzaOfferte = togliOfferteInesistenti(conFallimento.testo);
-      const offerteInesistenti = senzaOfferte.offerte;
-      if (offerteInesistenti.length) pushDebugLog?.({ type: "offerta-di-capacita-inesistente", frasi: offerteInesistenti, model: settings.model });
+      const offerteInesistenti = [...offertePrima.offerte, ...senzaOfferte.offerte];
+      if (senzaOfferte.offerte.length) pushDebugLog?.({ type: "offerta-di-capacita-inesistente", frasi: senzaOfferte.offerte, model: settings.model });
       // E via le righe del prompt che il modello si e' ritrovato a ricopiare. Vedi togliEchiDelPrompt.
       const senzaEchi = togliEchiDelPrompt(senzaOfferte.testo);
       if (senzaEchi.echi.length) pushDebugLog?.({ type: "eco-del-prompt-rimossa", righe: senzaEchi.echi, model: settings.model });
@@ -5525,8 +5553,18 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                   distinguere da quelli veri, perche' erano esattamente cio' che aveva chiesto e
                   nella forma che si aspettava. Il riquadro elenca cosa e' stato tolto: cosi' non
                   deve fidarsi che il filtro abbia funzionato, lo vede. */ ""}
+            ${/* 23/08/2026 — IL RIQUADRO DEVE DIRE LA VERITA' DEL CASO IN CUI SI TROVA.
+                  Fino a ieri ne aveva UNA sola, scritta per il caso "nessuna lettura": «la lettura
+                  del calendario non è avvenuta in questo turno». Osservato sullo schermo del Ghost
+                  alle 03:41: la lettura ERA avvenuta — HTTP 200, due eventi, la card con l'elenco
+                  proprio sotto il riquadro — e il riquadro gli diceva che non era avvenuta.
+                  E' esattamente il difetto che questo riquadro esiste per curare, commesso dal
+                  riquadro stesso: un testo del programma che contraddice un fatto che il programma
+                  ha in mano. I due casi sono diversi e ora hanno due testi diversi. */ ""}
             ${m.contenutiCalendarioInventati?.length > 0 && html`<div class="r-esito-falso">
-              <b>Attenzione: qui sopra ti avevo elencato degli impegni che nessuno ha letto.</b> La lettura del calendario <b>non è avvenuta</b> in questo turno: non è partita nessuna richiesta verso Google, quindi quegli appuntamenti erano ricostruiti a memoria dalla nostra conversazione, non presi dalla tua agenda. Li ho tolti. Ecco cosa ho tolto, per esteso: <i>${m.contenutiCalendarioInventati.map((c) => c.frase).join(" · ")}</i>. Per sapere davvero cosa hai in programma serve la card <b>«Vado a guardare sul calendario»</b> e il suo pulsante: solo quello legge da Google.
+              ${(m.letturaCalendario && !m.letturaCalendario.saltata && m.letturaCalendario.ok)
+                ? html`<div><b>Attenzione: qui sopra avevo scritto qualcosa che non viene da quello che ho letto.</b> Il calendario l'ho letto davvero in questo turno — l'elenco vero è nella card qui sotto — ma in quella frase c'era qualcosa che in quella lettura non c'era, quindi l'ho tolta invece di lasciartela leggere come se fosse tua agenda. Ecco cosa ho tolto, per esteso: <i>${m.contenutiCalendarioInventati.map((c) => `«${c.frase}» — ${c.motivo}`).join(" · ")}</i>. L'elenco della card qui sotto lo scrive il programma dagli eventi letti, non io: quello è esatto.</div>`
+                : html`<div><b>Attenzione: qui sopra ti avevo elencato degli impegni che nessuno ha letto.</b> La lettura del calendario <b>non è avvenuta</b> in questo turno: non è partita nessuna richiesta verso Google, quindi quegli appuntamenti erano ricostruiti a memoria dalla nostra conversazione, non presi dalla tua agenda. Li ho tolti. Ecco cosa ho tolto, per esteso: <i>${m.contenutiCalendarioInventati.map((c) => c.frase).join(" · ")}</i>. Per sapere davvero cosa hai in programma serve la card <b>«Vado a guardare sul calendario»</b> e il suo pulsante: solo quello legge da Google.</div>`}
             </div>`}
             ${/* 22/08/2026 — l'esito della lettura, che ora avviene da sola in cima al turno.
                   Vive DENTRO il messaggio invece che in azioneStatus: azioneStatus e' stato di
