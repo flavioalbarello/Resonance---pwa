@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-22 · la-risposta-non-aspetta-il-resto";
+const APP_BUILD = "2026-08-23 · nessun-turno-senza-fine";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1033,7 +1033,17 @@ function vocabolarioDellaLettura(lettura) {
 // esteso che il quarto filtro usa quando una lettura c'e' stata: non "niente contenuti", ma
 // "niente contenuti che non vengano dalla lettura".
 function nominaQualcosaFuoriDallaLettura(frase, vocab) {
-  const f = String(frase || "");
+  // 23/08/2026 — IL `trim()` NON E' COSMETICO, E' LA CORREZIONE DI UN DIFETTO VERO.
+  // Osservato sullo schermo del Ghost alle 03:41: la lettura era riuscita (HTTP 200, due eventi in
+  // mano), e il filtro ha tolto la frase innocua "Ecco cosa ho trovato." scrivendo «"Ecco" non e'
+  // in quello che ho letto». Il motivo: frasiDiUnTesto restituisce le frasi CON lo spazio che le
+  // separa, quindi la frase arrivava qui come " Ecco cosa ho trovato." — e le due guardie che
+  // dovevano proteggere la prima parola (`(?<!^)` e `(?<![.!?]\s)`) non scattavano piu', perche' la
+  // "E" non era piu' in posizione 0 e prima dello spazio non c'era nessun punto. Cosi' la maiuscola
+  // di inizio frase veniva scambiata per un nome proprio.
+  // La regola sotto e' quella giusta e vale sempre: la maiuscola della PRIMA parola di una frase non
+  // e' mai una prova che sia un nome proprio — lo e' solo una maiuscola in mezzo.
+  const f = String(frase || "").trim();
   // Un orario che nella lettura non esiste.
   for (const m of f.matchAll(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/g)) {
     if (!vocab.orari.has(`${Number(m[1])}:${m[2]}`)) return `l'orario ${m[1]}:${m[2]} non è in quello che ho letto`;
@@ -1614,6 +1624,30 @@ function restoreFullBackup(backup) {
 //──────────────────────────────────────────────────────────
 // AI ENGINES
 //──────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// NESSUNA CHIAMATA PUO' RESTARE APPESA PER SEMPRE (23/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Fino a oggi in tutta l'app non esisteva UN SOLO timeout: zero AbortController, zero limiti.
+// Conseguenza, riprodotta: se la connessione si pianta a meta' di una richiesta — cosa normale su
+// rete mobile — la promessa non si risolve mai. Il turno non finisce mai, i tre puntini restano a
+// schermo per sempre, e la guardia in cima a send() butta via in silenzio ogni messaggio successivo.
+// Non serve nemmeno un guasto raro: bastava che il telefono cambiasse cella.
+// Il tetto e' generoso di proposito. Una generazione da 3000 token su Llama 3.3 70B puo' prendersi
+// piu' di un minuto in modo del tutto legittimo, e tagliarla sarebbe peggio del male: il tetto serve
+// a distinguere "lento" da "morto", non a mettere fretta al modello.
+const TIMEOUT_MODELLO_MS = 150000; // due minuti e mezzo
+async function fetchConTetto(url, opzioni, tetto = TIMEOUT_MODELLO_MS) {
+  // AbortSignal.timeout non c'e' su tutti i browser in cui gira questa PWA: il controller esplicito
+  // funziona ovunque, e il clearTimeout evita di lasciare un timer vivo a ogni chiamata riuscita.
+  const controller = new AbortController();
+  const tagliaOra = setTimeout(() => controller.abort(), tetto);
+  try {
+    return await fetch(url, { ...opzioni, signal: controller.signal });
+  } catch (e) {
+    if (e?.name === "AbortError") throw new Error(`La risposta non è arrivata entro ${Math.round(tetto / 1000)} secondi. Non è un errore tuo: la richiesta è rimasta appesa e l'ho interrotta invece di lasciarti aspettare per sempre. Riprova.`);
+    throw e;
+  } finally { clearTimeout(tagliaOra); }
+}
 function buildOpenRouterContent(text, image) {
   if (!image) return text;
   return [{ type: "text", text }, { type: "image_url", image_url: { url: `data:${image.mediaType};base64,${image.base64}` } }];
@@ -1623,7 +1657,7 @@ function buildClaudeContent(text, image) {
   return [{ type: "image", source: { type: "base64", media_type: image.mediaType, data: image.base64 } }, { type: "text", text }];
 }
 async function askClaudeDirect(system, userText, temperature, maxTokens, apiKey, image) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetchConTetto("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
     body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, temperature: Math.min(temperature, 1), system, messages: [{ role: "user", content: buildClaudeContent(userText, image) }] }),
@@ -1682,7 +1716,7 @@ async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, m
     body.repetition_penalty = penalties.repetition_penalty ?? 1.15;
     body.frequency_penalty = penalties.frequency_penalty ?? 0.4;
   }
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const res = await fetchConTetto("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` }, body: JSON.stringify(body),
   });
   const data = await res.json();
@@ -1720,7 +1754,7 @@ async function askModelWithHistory(system, messages, temperature, maxTokens, set
     body.repetition_penalty = penalties.repetition_penalty ?? 1.15;
     body.frequency_penalty = penalties.frequency_penalty ?? 0.4;
   }
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const res = await fetchConTetto("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.apiKey}` },
     body: JSON.stringify(body),
@@ -1890,18 +1924,44 @@ const ANTI_LOOP_PENALTIES = { repetition_penalty: 1.05, frequency_penalty: 0.1 }
 // "il") poche volte per 40 parole (verificato a mano su testi legittimi del progetto: mai oltre 3-4
 // occorrenze) — 8 è un margine ampio sopra quel rumore naturale e ben sotto le centinaia di ripetizioni
 // del bug reale osservato ("of 10 of 20 of 12..."). Non configurabile ora (richiesta esplicita del brief).
+// ══════════════════════════════════════════════════════════════════════════════
+// 23/08/2026 — LA SOGLIA DI 8 ERA LA CAUSA DEL BLOCCO TOTALE DELL'APP.
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost ha chiesto un piano alimentare di 14 giorni CON LE DOSI. Un piano con le dosi contiene
+// per forza righe come "40 g di pane, 10 g di olio, 120 g di pollo, 80 g di riso": la parola "di"
+// compare 9 volte in 40 parole. Nove e' sopra otto, quindi il programma ha dichiarato degenerata
+// una risposta perfettamente buona, l'ha buttata, ne ha rigenerata un'altra identica per forma —
+// altri 3000 token, un altro minuto abbondante — e alla seconda si e' arreso con un errore.
+// Per tutto quel tempo i tre puntini restavano a schermo e OGNI messaggio che il Ghost scriveva
+// veniva buttato via senza dirglielo (vedi la guardia in cima a send). Da fuori: l'app si e'
+// bloccata. Ha dovuto chiuderla a forza.
+// La verifica originale ("mai oltre 3-4 occorrenze") era stata fatta su PROSA. Un elenco strutturato
+// — un piano alimentare, una scheda di allenamento, una lista della spesa — ripete le preposizioni
+// e le unita' di misura per costruzione, non per difetto. La soglia stava esattamente sopra il
+// rumore della prosa e sotto quello di un elenco: cioe' nel punto peggiore possibile.
+//
+// I DUE CRITERI NUOVI, misurati sui casi veri di entrambi i tipi:
+//   · il bug vero per cui questo rilevatore e' nato ("of 10 of 20 of 12...") ha "of" 20 volte su 40,
+//     cioe' meta' del testo e' un token solo; la variante a parola singola ne ha 40 su 40.
+//   · il piano alimentare con le dosi si ferma a 8 su 40, la scheda di allenamento a 7, la prosa a 3.
+// Fra 8 e 20 c'e' spazio per una soglia che non tocca nessun testo legittimo: 16 su 40, cioe' il 40%
+// della finestra occupato da una parola sola. Il piano sta a meta' di quella soglia.
+// Il secondo criterio prende il caso che il primo potrebbe mancare — una risposta che gira su
+// pochissime parole senza che nessuna sfondi il 40%: se in 40 parole ce ne sono al massimo 8 diverse,
+// non e' un testo. I testi legittimi misurati stanno fra 19 e 33 parole diverse su 40.
 const DEGENERATE_OUTPUT_WINDOW = 40;
-const DEGENERATE_OUTPUT_THRESHOLD = 8;
+const DEGENERATE_OUTPUT_THRESHOLD = 16;      // era 8: tagliava i piani alimentari con le dosi
+const DEGENERATE_MIN_VOCABOLARIO = 8;        // parole diverse minime in una finestra perche' sia un testo
 function isDegenerateOutput(text) {
   if (!text) return false;
   const words = text.trim().toLowerCase().split(/\s+/).map((w) => w.replace(/[.,!?;:"'()«»]/g, "")).filter(Boolean);
   if (words.length < DEGENERATE_OUTPUT_WINDOW) return false; // troppo corto per giudicare: evita falsi positivi su risposte brevi legittime
   for (let i = 0; i + DEGENERATE_OUTPUT_WINDOW <= words.length; i += 10) {
     const counts = {};
-    for (const w of words.slice(i, i + DEGENERATE_OUTPUT_WINDOW)) {
-      counts[w] = (counts[w] || 0) + 1;
-      if (counts[w] >= DEGENERATE_OUTPUT_THRESHOLD) return true;
-    }
+    for (const w of words.slice(i, i + DEGENERATE_OUTPUT_WINDOW)) counts[w] = (counts[w] || 0) + 1;
+    const massimo = Math.max(...Object.values(counts));
+    if (massimo >= DEGENERATE_OUTPUT_THRESHOLD) return true;
+    if (Object.keys(counts).length <= DEGENERATE_MIN_VOCABOLARIO) return true;
   }
   return false;
 }
@@ -3613,9 +3673,19 @@ Ogni interpretazione che offri è una lettura tua, mai un verdetto oggettivo —
 Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non un dato isolato), PROPONI a parole di aprire un percorso dedicato ("Vuoi che apra un percorso su questo?"). Non crearlo tu.${webSearchNote}`;
   const messages = [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: effectiveMessage }];
   // Risposta (+ web search on-demand, se richiesto), lettura multi-lente (+ Calendar fuso, se abilitato) e bozza: indipendenti, partono insieme
+  // 23/08/2026 — IL TRONCAMENTO SMETTE DI ESSERE INVISIBILE.
+  // OpenRouter dice in ogni risposta perche' ha smesso di scrivere: "stop" se ha finito il discorso,
+  // "length" se ha sbattuto contro il tetto di token. Fino a oggi quel campo non veniva letto da
+  // nessuna parte nell'app (zero occorrenze di finish_reason nel file), quindi una risposta tagliata
+  // a meta' arrivava al Ghost identica a una finita — e infatti stanotte il piano si e' fermato su
+  // "* Colazione:" senza che niente glielo dicesse. Adesso lo si legge e glielo si dice.
+  let rispostaTroncata = false;
   const [reply, lensResult, draft] = await Promise.all([
     askWithDegenerateGuard(
-      () => askModelWithHistory(system, messages, 0.7, 3000, settings, image, false, (raw) => logAiCost(pushDebugLog, "shell", settings.model, raw), ANTI_LOOP_PENALTIES),
+      () => askModelWithHistory(system, messages, 0.7, 3000, settings, image, false, (raw) => {
+        logAiCost(pushDebugLog, "shell", settings.model, raw);
+        rispostaTroncata = raw?.choices?.[0]?.finish_reason === "length";
+      }, ANTI_LOOP_PENALTIES),
       "shell", pushDebugLog
     ), // ricerca già fatta sopra, dati già nel system prompt
     // 22/08/2026 — la porta di codice. Vedi meritaLetturaMultiLente: davanti a un turno che non
@@ -3642,7 +3712,7 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
   // resto quando arriva.
   // Cosa NON si perde: niente. Il ritorno finale porta esattamente gli stessi campi di prima.
   // Il pezzo difficile e' che, mentre lo sfondo lavora, il Ghost puo' scrivere di nuovo. Vedi sotto.
-  onRispostaPronta?.({ reply, proposal, draft, usedWebSearch: webSearchSucceeded, anochin });
+  onRispostaPronta?.({ reply, proposal, draft, usedWebSearch: webSearchSucceeded, anochin, rispostaTroncata });
   // ── LA CODA. ─────────────────────────────────────────────────────────────────────────────────
   // Due turni possono avere lo sfondo in volo insieme. Le scritture sui pilastri sono al sicuro da
   // sole (passano da setState funzionale, che parte sempre dal valore corrente), ma la memoria
@@ -3702,7 +3772,7 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
   anochin.azione = actionsLog.length
     ? `Scritto in ${actionsLog.join(", ")}. Memoria riorganizzata per accoppiamento continuo.`
     : (dubbiIdentita.length ? `Nessuna scrittura ancora: ${dubbiIdentita.length === 1 ? "una lettura è" : `${dubbiIdentita.length} letture sono`} in attesa della tua parola.` : "Nessuna azione in questo turno.");
-  return { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, usedWebSearch: webSearchSucceeded, dubbiIdentita };
+  return { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, usedWebSearch: webSearchSucceeded, dubbiIdentita, rispostaTroncata };
 }
 
 //──────────────────────────────────────────────────────────
@@ -4862,9 +4932,26 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     try { setAttachment(await processAttachment(file)); }
     catch (err) { setError(err.message); } finally { setAttaching(false); }
   };
-  const send = async () => {
-    if ((!input.trim() && !attachment) || sending || attaching) return;
-    const userText = input.trim() || (attachment?.kind === "image" ? "Guarda questa immagine." : "Guarda questo documento.");
+  // 23/08/2026 — IL GESTO DEL GHOST NON SI BUTTA MAI VIA IN SILENZIO.
+  // Questa riga di guardia esisteva da sempre e sembrava innocua: "se sto gia' rispondendo, non
+  // partire". Il difetto e' in quel `return` nudo. Stanotte, mentre un turno rigenerava per la
+  // seconda volta un piano da 3000 token, il Ghost ha scritto tre messaggi — "Il resto del piano?",
+  // "Hai troncato la risposta", "Ci sei?" — e tutti e tre sono stati scartati qui, senza comparire
+  // in chat, senza una riga, senza niente. Da fuori quello non e' "sto elaborando": e' un'app rotta.
+  // Adesso, se un turno e' ancora in volo, glielo si dice, e il testo che ha scritto resta nella
+  // casella invece di sparire: non deve riscriverlo.
+  // Il parametro serve al pulsante "Continua da dove ti sei fermato". Si controlla che sia una
+  // STRINGA perche' questa funzione e' agganciata anche a onClick, che passa l'evento del tocco:
+  // senza il controllo, un tocco su "Invia" manderebbe allo Shell un oggetto evento.
+  const send = async (testoEsplicito = null) => {
+    const esplicito = typeof testoEsplicito === "string" && testoEsplicito.trim() ? testoEsplicito.trim() : null;
+    if (!esplicito && !input.trim() && !attachment) return;
+    if (attaching) { setError("Sto ancora leggendo l'allegato. Un attimo e puoi mandare."); return; }
+    if (sending) {
+      setError("La risposta di prima sta ancora arrivando. Non ho buttato via quello che hai scritto — è rimasto qui sotto, e parte appena questa finisce. Se ci mette troppo, dopo due minuti e mezzo mi fermo da solo e te lo dico.");
+      return;
+    }
+    const userText = esplicito || input.trim() || (attachment?.kind === "image" ? "Guarda questa immagine." : "Guarda questo documento.");
     const currentAttachment = attachment;
     const history = messages.slice(-20).map((m) => ({ role: m.role, content: marcaPropostaNelloStorico(m) }));
     // (lastMsg non serve piu': era l'appiglio della conferma a parole, rimossa il 16/08/2026.)
@@ -4873,7 +4960,10 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     // quando una nota di sistema si inseriva in mezzo alla sequenza).
     setMessages((prev) => [...prev, { id: uid(), role: "user", content: userText, time: new Date().toISOString(), attachmentName: currentAttachment ? (currentAttachment.name || "immagine") : null, attachmentKind: currentAttachment?.kind }]);
     const assistantMsgId = uid();
-    setInput(""); setAttachment(null); setSending(true); setError("");
+    // Con il testo esplicito la casella non si tocca: se il Ghost ci aveva scritto dentro qualcosa
+    // mentre aspettava, chiedere il seguito non deve cancellarglielo.
+    if (!esplicito) { setInput(""); setAttachment(null); }
+    setSending(true); setError("");
     try {
       // §1.3 — RIMOSSA LA CONFERMA A PAROLE (16/08/2026). Qui prima bastava che il Ghost scrivesse
       // "ok", "va bene", "dai", "procedi" perche' il programma creasse il percorso proposto nel
@@ -4943,8 +5033,23 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // arriva, senza aspettare Accettore, memoria procedurale e memoria di stile — che non
       // cambiano una virgola di quel testo e continuano dietro.
       let mostrato = false;
-      const mostra = ({ reply, proposal, draft, usedWebSearch, anochin }) => {
+      const mostra = ({ reply, proposal, draft, usedWebSearch, anochin, rispostaTroncata }) => {
       if (mostrato) return; mostrato = true;
+      // 23/08/2026 — UNA BOLLA VUOTA NON E' UNA RISPOSTA.
+      // Stanotte il Ghost ha ricevuto due bolle senza una parola dentro e nessuna spiegazione.
+      // Succede quando il provider restituisce una scelta senza contenuto — per un rifiuto, per un
+      // limite di contesto sfondato dalla storia (venti messaggi che contengono ognuno un piano
+      // alimentare intero sono decine di migliaia di token), o per un errore che non arriva come
+      // errore. Il codice faceva `content || ""` e mostrava quel vuoto come se fosse una risposta.
+      // Adesso il vuoto viene chiamato col suo nome, e il turno non lascia niente a schermo che
+      // sembri una risposta e non lo sia.
+      if (!String(reply || "").trim()) {
+        setMessages((prev) => [...prev, { id: assistantMsgId, role: "system-note", time: new Date().toISOString(),
+          content: "Non è arrivato niente. Il modello ha chiuso la risposta senza scrivere una parola: non è che non avesse niente da dire, è che la risposta non è arrivata. Può succedere quando la conversazione è diventata molto lunga. Riprova, e se ricapita apri una chat nuova." }]);
+        setSending(false);
+        pushDebugLog?.({ type: "risposta-vuota-dal-modello", userText: userText.slice(0, 100), model: settings.model });
+        return;
+      }
       // Canale primario Seme (brief Parte 1.A): euristica a costo zero sul messaggio del Ghost, non
       // sulla risposta dello Shell. Non crea nulla da sola — solo una proposta con un tap di conferma
       // (vedi card sotto), mai il pattern "conferma nel messaggio successivo" già usato per i Percorsi.
@@ -4999,14 +5104,32 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       const letturaPerIlFiltro = letturaRiuscita
         ? letturaCalendario
         : (bersaglioCancellazione?.eventi ? { ok: true, eventi: bersaglioCancellazione.eventi } : false);
-      const senzaCalendario = ripulisciContenutiDiCalendario(senzaSmentite.testo, letturaPerIlFiltro);
+      // 23/08/2026 — L'ORDINE FRA QUESTI DUE FILTRI E' STATO INVERTITO, E NON E' UN DETTAGLIO.
+      // Osservato sullo schermo del Ghost alle 03:42. Alla richiesta di cancellare, il modello ha
+      // risposto "Posso solo aiutarti a creare un nuovo appuntamento o a SPOSTARE un evento
+      // esistente, ma non posso cancellare nulla." La frase e' sbagliata per un motivo preciso e
+      // dicibile: spostare un evento non si puo' fare, non esiste. Ma il filtro del calendario
+      // arrivava prima, la toglieva perche' conteneva "non posso cancellare nulla" (la scambiava
+      // per un'affermazione di assenza di impegni) e ci scriveva sopra "la lettura del calendario
+      // non e' avvenuta, questo non viene da Google" — una spiegazione che col difetto vero non
+      // c'entra niente e che manda il Ghost a cercare nel posto sbagliato.
+      // Ora chi ha la spiegazione giusta parla per primo: togliOfferteInesistenti toglie la frase e
+      // ci mette la riga onesta ("spostare un evento non lo so fare"), e al filtro del calendario
+      // arriva un testo in cui quella frase non c'e' piu'.
+      const offertePrima = togliOfferteInesistenti(senzaSmentite.testo);
+      if (offertePrima.offerte.length) pushDebugLog?.({ type: "offerta-di-capacita-inesistente", frasi: offertePrima.offerte, model: settings.model });
+      const senzaCalendario = ripulisciContenutiDiCalendario(offertePrima.testo, letturaPerIlFiltro);
       // E il gemello: se la lettura e' fallita e il modello non l'ha detto, lo dice il programma.
       const conFallimento = dichiaraFallimentoLettura(senzaCalendario.testo, letturaCalendario);
       if (conFallimento.aggiunta) pushDebugLog?.({ type: "fallimento-lettura-dichiarato-dal-programma", aggiunta: conFallimento.aggiunta, model: settings.model });
-      // 22/08/2026 — e via le offerte di fare cose che non esistono. Vedi togliOfferteInesistenti.
+      // Secondo passaggio sulle offerte inesistenti: il primo (sopra) guarda il testo del modello,
+      // questo guarda cio' che i filtri hanno lasciato, comprese le righe che il programma ha
+      // aggiunto. Passare due volte non toglie mai niente in piu' di sbagliato — la funzione e'
+      // idempotente, la sua riga onesta non contiene nessuna offerta — e chiude il caso in cui una
+      // frase diventa un'offerta solo dopo che le e' stata tolta la parte davanti.
       const senzaOfferte = togliOfferteInesistenti(conFallimento.testo);
-      const offerteInesistenti = senzaOfferte.offerte;
-      if (offerteInesistenti.length) pushDebugLog?.({ type: "offerta-di-capacita-inesistente", frasi: offerteInesistenti, model: settings.model });
+      const offerteInesistenti = [...offertePrima.offerte, ...senzaOfferte.offerte];
+      if (senzaOfferte.offerte.length) pushDebugLog?.({ type: "offerta-di-capacita-inesistente", frasi: senzaOfferte.offerte, model: settings.model });
       // E via le righe del prompt che il modello si e' ritrovato a ricopiare. Vedi togliEchiDelPrompt.
       const senzaEchi = togliEchiDelPrompt(senzaOfferte.testo);
       if (senzaEchi.echi.length) pushDebugLog?.({ type: "eco-del-prompt-rimossa", righe: senzaEchi.echi, model: settings.model });
@@ -5117,7 +5240,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         pushDebugLog?.({ type: "conferma-a-parole-con-proposta-viva", azioneId: classeBPendente.azioneProposta.azioneId, userText: userText.slice(0, 100) });
       }
       setMessages((prev) => {
-        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: [], anochin, proposal, alerts: [], draft, usedWebSearch, seedSuggestion, azioneProposta, esitiFalsi, confermaSenzaBersaglio, capacitaSmentite, capacitaAccese, contenutiCalendarioInventati, letturaCalendario, offerteInesistenti, dubbiIdentita: [] }];
+        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: [], anochin, proposal, alerts: [], draft, usedWebSearch, seedSuggestion, azioneProposta, esitiFalsi, confermaSenzaBersaglio, capacitaSmentite, capacitaAccese, contenutiCalendarioInventati, letturaCalendario, offerteInesistenti, dubbiIdentita: [], rispostaTroncata }];
         return compactShellChatIfNeeded(next) || next; // Opzione 3: compatta+archivia (Legge 14) se sopra soglia, altrimenti passa
       });
       // I tre puntini si fermano QUI, non alla fine dello sfondo: il Ghost puo' gia' scrivere.
@@ -5237,6 +5360,10 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     setMessages((prev) => [...prev, { id: uid(), role: "system-note", content: `✓ Seme AIR salvato.` }]);
   };
   const dismissSeed = (mid) => setSeedStatus((s) => ({ ...s, [mid]: "dismissed" }));
+  // Il seguito di una risposta tagliata. Passa dalla stessa strada di ogni altro messaggio — nessun
+  // percorso parallelo, nessuna eccezione: il modello ha la risposta tronca nella storia e riprende
+  // da li'. Se il seguito viene tagliato a sua volta, ricompare la stessa card e si puo' rifare.
+  const chiediIlSeguito = () => send("Continua esattamente da dove ti sei fermato, senza ricominciare da capo e senza ripetere quello che hai già scritto.");
   // §1.3 — il percorso proposto si crea SOLO da qui, toccando il pulsante di questa card. Nessuna
   // parola detta in chat lo crea piu'. Se il titolo che lo Shell ha dedotto e' inservibile, il
   // campo parte vuoto e il Ghost lo scrive: meglio chiedere una volta che ritrovarsi in Vidya un
@@ -5525,8 +5652,30 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                   distinguere da quelli veri, perche' erano esattamente cio' che aveva chiesto e
                   nella forma che si aspettava. Il riquadro elenca cosa e' stato tolto: cosi' non
                   deve fidarsi che il filtro abbia funzionato, lo vede. */ ""}
+<<<<<<< HEAD
+            ${/* 23/08/2026 — LA RISPOSTA TAGLIATA A META' LO DICE, E SI PUO' CHIEDERE IL SEGUITO.
+                  Stanotte il piano alimentare si e' fermato su "* Colazione:" e il Ghost ha dovuto
+                  indovinare da solo che fosse tronco, scrivendo "Hai troncato la risposta". Il
+                  programma lo sapeva — OpenRouter lo dice in ogni risposta — e non glielo diceva. */ ""}
+            ${m.rispostaTroncata && html`<div class="r-draft-card">
+              <div class="r-draft-label">▸ QUESTA RISPOSTA È TAGLIATA A METÀ</div>
+              <div class="r-hub-detail">Ho raggiunto il tetto di lunghezza di una singola risposta e mi sono fermato dov'ero, non perché avessi finito. Quello che c'è scritto sopra è valido: manca il seguito.</div>
+              <button class="r-btn r-draft-copy" onClick=${() => chiediIlSeguito()}>Continua da dove ti sei fermato</button>
+            </div>`}
+=======
+            ${/* 23/08/2026 — IL RIQUADRO DEVE DIRE LA VERITA' DEL CASO IN CUI SI TROVA.
+                  Fino a ieri ne aveva UNA sola, scritta per il caso "nessuna lettura": «la lettura
+                  del calendario non è avvenuta in questo turno». Osservato sullo schermo del Ghost
+                  alle 03:41: la lettura ERA avvenuta — HTTP 200, due eventi, la card con l'elenco
+                  proprio sotto il riquadro — e il riquadro gli diceva che non era avvenuta.
+                  E' esattamente il difetto che questo riquadro esiste per curare, commesso dal
+                  riquadro stesso: un testo del programma che contraddice un fatto che il programma
+                  ha in mano. I due casi sono diversi e ora hanno due testi diversi. */ ""}
+>>>>>>> c11870e (Tre difetti visti sullo schermo alle 03:41: il filtro toglieva il vero e il riquadro diceva il falso)
             ${m.contenutiCalendarioInventati?.length > 0 && html`<div class="r-esito-falso">
-              <b>Attenzione: qui sopra ti avevo elencato degli impegni che nessuno ha letto.</b> La lettura del calendario <b>non è avvenuta</b> in questo turno: non è partita nessuna richiesta verso Google, quindi quegli appuntamenti erano ricostruiti a memoria dalla nostra conversazione, non presi dalla tua agenda. Li ho tolti. Ecco cosa ho tolto, per esteso: <i>${m.contenutiCalendarioInventati.map((c) => c.frase).join(" · ")}</i>. Per sapere davvero cosa hai in programma serve la card <b>«Vado a guardare sul calendario»</b> e il suo pulsante: solo quello legge da Google.
+              ${(m.letturaCalendario && !m.letturaCalendario.saltata && m.letturaCalendario.ok)
+                ? html`<div><b>Attenzione: qui sopra avevo scritto qualcosa che non viene da quello che ho letto.</b> Il calendario l'ho letto davvero in questo turno — l'elenco vero è nella card qui sotto — ma in quella frase c'era qualcosa che in quella lettura non c'era, quindi l'ho tolta invece di lasciartela leggere come se fosse tua agenda. Ecco cosa ho tolto, per esteso: <i>${m.contenutiCalendarioInventati.map((c) => `«${c.frase}» — ${c.motivo}`).join(" · ")}</i>. L'elenco della card qui sotto lo scrive il programma dagli eventi letti, non io: quello è esatto.</div>`
+                : html`<div><b>Attenzione: qui sopra ti avevo elencato degli impegni che nessuno ha letto.</b> La lettura del calendario <b>non è avvenuta</b> in questo turno: non è partita nessuna richiesta verso Google, quindi quegli appuntamenti erano ricostruiti a memoria dalla nostra conversazione, non presi dalla tua agenda. Li ho tolti. Ecco cosa ho tolto, per esteso: <i>${m.contenutiCalendarioInventati.map((c) => c.frase).join(" · ")}</i>. Per sapere davvero cosa hai in programma serve la card <b>«Vado a guardare sul calendario»</b> e il suo pulsante: solo quello legge da Google.</div>`}
             </div>`}
             ${/* 22/08/2026 — l'esito della lettura, che ora avviene da sola in cima al turno.
                   Vive DENTRO il messaggio invece che in azioneStatus: azioneStatus e' stato di
