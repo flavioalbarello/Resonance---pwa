@@ -1,0 +1,41 @@
+# Due controlli, trenta secondi, su ogni proposta di modifica.
+#
+# Perché esiste: il 23/08/2026 una risoluzione di conflitto incompleta ha lasciato dentro app.js i
+# marcatori che git scrive quando due modifiche si toccano (<<<<<<<, =======, >>>>>>>). Quei
+# marcatori finiscono dentro il testo di una schermata, quindi il file resta valido per il
+# controllo di sintassi e l'errore compare solo quando il browser prova a DISEGNARE quella
+# schermata: la scheda Shell si apriva su una pagina bianca, e le altre funzionavano.
+# Il costo per accorgersene è stato una mattina. Il costo per impedirlo è questo file.
+#
+# Se qui compare una X rossa su una pull request, NON unirla: il file è rotto.
+
+name: Controllo minimo
+
+on:
+  pull_request:
+  push:
+    branches: [main, stable]
+
+jobs:
+  controllo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Nessun marcatore di conflitto rimasto nei file
+        run: |
+          if grep -rInE '^(<{7}|={7}|>{7})( |$)' --include='*.js' --include='*.mjs' --include='*.html' --include='*.css' --include='*.json' .; then
+            echo ""
+            echo "TROVATI MARCATORI DI CONFLITTO nelle righe qui sopra."
+            echo "Vuol dire che una fusione fra due modifiche e' rimasta a meta'."
+            echo "Il file e' rotto: non unire questa pull request."
+            exit 1
+          fi
+          echo "Nessun marcatore di conflitto. Bene."
+
+      - name: app.js si carica come modulo
+        run: |
+          # ATTENZIONE: `node --check app.js` NON funziona su questo file, perche' comincia con
+          # `import` e Node lo tratta come script. La forma corretta e' questa.
+          node --input-type=module --check < app.js
+          echo "La sintassi di app.js e' valida."
