@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-23 · un-messaggio-rotto-non-cancella-la-chat";
+const APP_BUILD = "2026-08-23 · niente-rimedi-che-non-esistono";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -5068,9 +5068,28 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // errore. Il codice faceva `content || ""` e mostrava quel vuoto come se fosse una risposta.
       // Adesso il vuoto viene chiamato col suo nome, e il turno non lascia niente a schermo che
       // sembri una risposta e non lo sia.
+      // 23/08/2026, poche ore dopo — E QUESTO MESSAGGIO NON DEVE OFFRIRE COSE CHE NON ESISTONO.
+      // La prima versione, scritta stanotte di corsa per chiudere il blocco totale, finiva con
+      // "se ricapita apri una chat nuova". In questa app una chat nuova NON SI PUO' APRIRE: la
+      // conversazione di ogni pilastro e' un flusso unico, non c'e' nessun pulsante e nessun
+      // percorso per iniziarne un'altra. Il Ghost l'ha cercata e non l'ha trovata.
+      // E' la stessa famiglia di "posso aiutarti a spostare un evento esistente" del calendario:
+      // un rimedio ineseguibile e' peggio di nessun rimedio, perche' si spende tempo a cercarlo
+      // prima di scoprire che si deve fare comunque a meno.
+      // Cio' che il Ghost puo' fare davvero, oggi, in questa app, e' esattamente una cosa:
+      // rimandare lo stesso messaggio. Quindi il messaggio dice quella, e non promette altro.
+      //
+      // E VIA ANCHE LA CAUSA, perche' non l'ho mai dimostrata. Stanotte avevo scritto "puo'
+      // succedere quando la conversazione e' diventata molto lunga" come se fosse un fatto. Misurato
+      // oggi sulla rete vera: al tetto assoluto di quello che questa app puo' mandare — 52.733 token,
+      // venti messaggi tutti pieni di piani alimentari interi — il modello ha risposto bene quattro
+      // volte su quattro, e la sua finestra dichiarata (131.072) e' il doppio di quel tetto. Quindi
+      // la lunghezza da sola NON spiega il vuoto. Attribuire una causa che non si e' verificata e'
+      // lo stesso difetto di offrire un rimedio che non esiste: manda il Ghost a risolvere un
+      // problema che non ha. Finche' non so, il messaggio dice che non so.
       if (!String(reply || "").trim()) {
         setMessages((prev) => [...prev, { id: assistantMsgId, role: "system-note", time: new Date().toISOString(),
-          content: "Non è arrivato niente. Il modello ha chiuso la risposta senza scrivere una parola: non è che non avesse niente da dire, è che la risposta non è arrivata. Può succedere quando la conversazione è diventata molto lunga. Riprova, e se ricapita apri una chat nuova." }]);
+          content: "Non è arrivato niente. Il modello ha chiuso la risposta senza scrivere una parola: non è che non avesse niente da dire, è che la risposta non è arrivata. Capita di rado e non ho ancora capito perché — non è la lunghezza della conversazione, quella l'ho provata fino al massimo che questa app può mandare e regge. Rimanda lo stesso messaggio: quasi sempre al secondo tentativo passa. Se invece ricapita più volte di seguito, non c'è nient'altro che tu debba provare da solo: segnalamelo col pulsante «Segnala» qui in alto, e lo cerco con un caso vero in mano." }]);
         setSending(false);
         pushDebugLog?.({ type: "risposta-vuota-dal-modello", userText: userText.slice(0, 100), model: settings.model });
         return;
