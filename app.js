@@ -7,14 +7,14 @@
 // cambiata), e il service worker puo' finalmente metterli in cache come tutto il resto.
 // Non e' un passo di build: sono tre file copiati.
 import { h, render } from "./vendor/preact.mjs";
-import { useState, useEffect, useCallback, useRef } from "./vendor/preact-hooks.mjs";
+import { useState, useEffect, useCallback, useRef, useErrorBoundary } from "./vendor/preact-hooks.mjs";
 import htm from "./vendor/htm.mjs";
 import { CONFIG } from "./config.js";
 
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-23 · nessun-turno-senza-fine";
+const APP_BUILD = "2026-08-23 · un-messaggio-rotto-non-cancella-la-chat";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -4873,6 +4873,31 @@ function AnochinTrace({ trace }) {
     </div>`}
   </div>`;
 }
+// ══════════════════════════════════════════════════════════════════════════════
+// IL CONFINE ATTORNO A OGNI SINGOLO MESSAGGIO (23/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Stamattina la scheda Shell si apriva su una pagina bianca. Le altre schede funzionavano, quella
+// no, sempre, anche a freddo dopo un riavvio — perche' il difetto non era in un turno in corso ma
+// nel disegnare la conversazione salvata. Un solo elemento che va in errore mentre si disegna, e
+// tutta la chat sparisce: i messaggi di ieri, quelli di una settimana fa, tutto.
+// Questo e' sproporzionato. Il principio del progetto e' che il sistema si ferma e MOSTRA, mai che
+// sparisce nel nulla — e all'ultimo livello, quello della semplice visualizzazione, mancava.
+//
+// Come funziona: `MessaggioProtetto` e' il confine, `CorpoMessaggio` e' cio' che sta dentro. La
+// separazione in due non e' un vezzo: un confine non intercetta gli errori del proprio disegno, solo
+// quelli dei figli, quindi il disegno vero deve stare un gradino piu' sotto. Il messaggio arriva
+// come una funzione da chiamare (`disegna`) invece che gia' disegnato, altrimenti verrebbe costruito
+// nel componente padre — fuori dal confine — e l'errore scapperebbe di nuovo.
+// Sono definiti QUI, fuori da ShellView, e non dentro: un componente ridefinito a ogni disegno viene
+// trattato come un componente nuovo, e Preact butterebbe e ricostruirebbe tutta la lista ogni volta.
+function CorpoMessaggio({ disegna }) { return disegna(); }
+function MessaggioProtetto({ disegna, avvisa }) {
+  const [errore] = useErrorBoundary((e) => { try { avvisa?.(e); } catch { /* il registro non deve mai far cadere il disegno */ } });
+  if (errore) {
+    return html`<div class="r-shell-system-note">— Questo messaggio non sono riuscito a mostrarlo${errore?.message ? ` (${String(errore.message).slice(0, 120)})` : ""}. Il resto della conversazione è tutto qui sopra e qui sotto: non è andato perso niente. —</div>`;
+  }
+  return html`<${CorpoMessaggio} disegna=${disegna} />`;
+}
 function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory, bio, air, vidya, pushDebugLog, addSeed, advanceSeedIfDue, shellDraft, consumeShellDraft, pBio, pAir, pVidya, semi }) {
   // BLOCCO 1 — il fuoco vive qui perche' e' della conversazione, non dell'app intera.
   const [fuoco, setFuocoState] = useState(() => leggiFuoco());
@@ -5616,7 +5641,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     </div>
     <div class="r-shell-log">
       ${messages.length === 0 && html`<div class="r-empty">Scrivi qualcosa. Lo Shell ricorda lo scambio e registra da solo ciò che riguarda BIO/AIR/VIDYA.</div>`}
-      ${messages.map((m, i) => { const mid = m.id || i; return m.role === "system-note"
+      ${messages.map((m, i) => { const mid = m.id || i; return html`<${MessaggioProtetto} key=${mid} avvisa=${(e) => pushDebugLog?.({ type: "messaggio-non-disegnabile", messaggioId: mid, ruolo: m.role, error: String(e?.message || e) })} disegna=${() => m.role === "system-note"
         ? html`<div key=${mid} class="r-shell-system-note">${m.content}</div>`
         : m.role === "balthasar-margin"
         ? html`<div key=${mid} class="r-balthasar-margin-card"><div class="r-balthasar-margin-label">🜃 BALTHASAR — a margine${m.pillar ? ` · ${m.pillar.toUpperCase()}` : ""}</div><div class="r-balthasar-margin-text">${m.note}</div></div>`
@@ -5652,7 +5677,6 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                   distinguere da quelli veri, perche' erano esattamente cio' che aveva chiesto e
                   nella forma che si aspettava. Il riquadro elenca cosa e' stato tolto: cosi' non
                   deve fidarsi che il filtro abbia funzionato, lo vede. */ ""}
-<<<<<<< HEAD
             ${/* 23/08/2026 — LA RISPOSTA TAGLIATA A META' LO DICE, E SI PUO' CHIEDERE IL SEGUITO.
                   Stanotte il piano alimentare si e' fermato su "* Colazione:" e il Ghost ha dovuto
                   indovinare da solo che fosse tronco, scrivendo "Hai troncato la risposta". Il
@@ -5662,7 +5686,6 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
               <div class="r-hub-detail">Ho raggiunto il tetto di lunghezza di una singola risposta e mi sono fermato dov'ero, non perché avessi finito. Quello che c'è scritto sopra è valido: manca il seguito.</div>
               <button class="r-btn r-draft-copy" onClick=${() => chiediIlSeguito()}>Continua da dove ti sei fermato</button>
             </div>`}
-=======
             ${/* 23/08/2026 — IL RIQUADRO DEVE DIRE LA VERITA' DEL CASO IN CUI SI TROVA.
                   Fino a ieri ne aveva UNA sola, scritta per il caso "nessuna lettura": «la lettura
                   del calendario non è avvenuta in questo turno». Osservato sullo schermo del Ghost
@@ -5671,7 +5694,6 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                   E' esattamente il difetto che questo riquadro esiste per curare, commesso dal
                   riquadro stesso: un testo del programma che contraddice un fatto che il programma
                   ha in mano. I due casi sono diversi e ora hanno due testi diversi. */ ""}
->>>>>>> c11870e (Tre difetti visti sullo schermo alle 03:41: il filtro toglieva il vero e il riquadro diceva il falso)
             ${m.contenutiCalendarioInventati?.length > 0 && html`<div class="r-esito-falso">
               ${(m.letturaCalendario && !m.letturaCalendario.saltata && m.letturaCalendario.ok)
                 ? html`<div><b>Attenzione: qui sopra avevo scritto qualcosa che non viene da quello che ho letto.</b> Il calendario l'ho letto davvero in questo turno — l'elenco vero è nella card qui sotto — ma in quella frase c'era qualcosa che in quella lettura non c'era, quindi l'ho tolta invece di lasciartela leggere come se fosse tua agenda. Ecco cosa ho tolto, per esteso: <i>${m.contenutiCalendarioInventati.map((c) => `«${c.frase}» — ${c.motivo}`).join(" · ")}</i>. L'elenco della card qui sotto lo scrive il programma dagli eventi letti, non io: quello è esatto.</div>`
@@ -6023,7 +6045,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
               ${m.role === "assistant" && html`<button class="r-shell-speak-btn" onClick=${() => toggleSpeak(mid, m.content)} title=${speakingId === mid ? "Interrompi" : "Riascolta"}>${speakingId === mid ? "⏹" : "🔊"}</button>`}
             </div>
             ${m.anochin && html`<${AnochinTrace} trace=${m.anochin} />`}
-          </div>`; })}
+          </div>`} />`; })}
       ${sending && html`<div class="r-shell-row assistant"><div class="r-shell-listening"><span class="r-listening-dot"></span><span class="r-listening-dot"></span><span class="r-listening-dot"></span> <span class="r-listening-text">sto leggendo tra le righe…</span></div></div>`}
       <div ref=${bottomRef}></div>
     </div>
