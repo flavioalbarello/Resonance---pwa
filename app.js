@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-23 · un-avviso-solo-dove-serve";
+const APP_BUILD = "2026-08-23 · il-piano-lo-controlla-il-codice";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1119,6 +1119,239 @@ function togliOfferteInesistenti(testo) {
     testo: (out ? out + " " : "") + OFFERTA_SOSTITUZIONE,
     offerte: colpevoli.map((fr) => fr.testo.trim()),
   };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// IL PIANO ALIMENTARE: IL CODICE NON SA COMPORLO, MA SA CONTROLLARLO (23/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost ha elencato cinque difetti di un piano generato, e aveva ragione su tutti e cinque:
+// il salmone che aveva escluso compariva lo stesso; le colazioni erano dolci invece che salate;
+// mancavano le dosi, chieste due volte; il piano si dichiarava "bisettimanale, 14 giorni diversi" e
+// ripeteva uno schema piu' corto; e il pollo compariva a pranzo e a cena lo stesso giorno.
+//
+// La diagnosi, misurata sul prompt vero. Le esclusioni che il Ghost dichiara PARLANDO vivono solo
+// dentro la conversazione: nel prompt di sistema non c'e' una parola di "pesce", "crostacei",
+// "colazioni salate". E la conversazione che rientra e' tagliata agli ultimi venti messaggi —
+// misurato: dopo dieci scambi di contorno l'esclusione del pesce E' USCITA, e il modello smette
+// semplicemente di vederla. Non e' che la ignora: non ce l'ha piu' davanti.
+//
+// Per il calendario la cura e' stata "l'elenco lo compone il codice". Qui non si puo': un menu il
+// codice non sa inventarlo, e non deve. Ma l'altra meta' della cura vale identica — IL CODICE
+// CONTROLLA DOPO, E DICE COSA NON TORNA. Un piano con un errore resta utile; un piano con un errore
+// che nessuno segnala costa al Ghost il lavoro di rileggerselo riga per riga, che e' esattamente
+// quello che ha dovuto fare.
+// Il piano NON viene mai cancellato ne' riscritto: si aggiunge un riquadro che elenca gli scarti.
+
+// ── PRIMA DEL CONTROLLO, IL POSTO DOVE UN VINCOLO VIVE. ──────────────────────────────────────
+// Il controllo qui sotto funziona solo se sa cosa il Ghost ha escluso. E li' c'era il buco vero:
+// un'esclusione detta parlando ("escludi il pesce che non sia crostacei") vive SOLO dentro la
+// conversazione, e la conversazione che rientra nel prompt e' tagliata agli ultimi venti messaggi.
+// Misurato: dopo dieci scambi di contorno quella frase e' fuori, e il modello smette di vederla —
+// non la ignora, non ce l'ha piu'. Un posto durevole esiste gia' ed e' l'elenco dei vincoli
+// dichiarati (hardConstraints con pilastro "bio"), che finisce nel prompt di sistema a ogni turno,
+// per sempre. Quello che mancava era un modo per arrivarci senza cambiare schermata e riscrivere
+// tutto a mano.
+// Questo rilevatore e' deterministico e costa zero: riconosce le forme in cui una regola alimentare
+// si dichiara. Non salva niente da solo — propone, e decide il Ghost con un gesto, come per i Semi
+// e per il vincolo AIR. Un vincolo dedotto e salvato in silenzio sarebbe la stessa cosa storta di
+// una conferma dedotta dal contesto.
+// Due forme, e la differenza fra loro conta. I VERBI di esclusione hanno senso solo all'inizio di
+// una proposizione — "non mangio latticini" e' un vincolo, "so che non mangio volentieri" no — e
+// quindi vogliono un separatore davanti. Le altre due forme si riconoscono da sole ovunque stiano
+// nella frase, perche' sono gia' complete: "colazioni salate", "1600 kcal".
+const VINCOLO_CON_VERBO_RE = /(?:^|[.;,]\s*|\b(?:con|da|ma|e)\s+)((?:esclud|niente\s|non\s+(?:mangio|voglio|bevo)|evit|togli\s|elimin|no\s+(?:al|ai|alla|alle|il|la|i|gli|le)\s|sono\s+(?:intollerante|allergic)|mai\s+)[^.;!?\n]{3,90})/gi;
+const VINCOLO_AUTONOMO_RE = /((?:le\s+)?colazion\w*[^.;!?\n]{0,40}(?:salat|dolc)\w*|\d{3,4}\s*kcal(?:\s+al\s+giorno)?)/gi;
+function proponiVincoliAlimentari(messaggio) {
+  const t = String(messaggio || "");
+  if (!t.trim()) return [];
+  const fuori = [];
+  for (const m of [...t.matchAll(VINCOLO_CON_VERBO_RE), ...t.matchAll(VINCOLO_AUTONOMO_RE)]) {
+    const frase = m[1].trim().replace(/[,;\s]+$/, "");
+    // Una frase troppo corta non dice niente di utile, e una troppo lunga non e' un vincolo: e' un
+    // discorso. Il tetto tiene fuori i periodi interi che nominano un'esclusione di passaggio.
+    if (frase.length >= 7 && frase.length <= 90) fuori.push(frase);
+  }
+  return [...new Set(fuori)].slice(0, 4);
+}
+// La tassonomia serve a una cosa sola e precisa: il Ghost ha escluso "il pesce", e nel piano e'
+// comparso "il salmone". Nessuna corrispondenza di parole puo' collegarli — "salmone" non e' scritto
+// da nessuna parte nella sua esclusione. Serve sapere che il salmone e' un pesce.
+// E' volutamente corta e volutamente incompleta: copre le categorie che una persona esclude davvero.
+// Ogni voce non coperta e' un controllo che non scatta, mai un falso allarme.
+const CATEGORIE_ALIMENTARI = {
+  pesce: ["salmone", "orata", "branzino", "spigola", "merluzzo", "baccalà", "baccala", "nasello", "sgombro", "sardine", "sarde", "alici", "acciughe", "tonno", "pesce spada", "platessa", "sogliola", "trota", "cernia", "dentice", "ricciola", "halibut", "aringa", "salmerino", "persico", "rombo"],
+  crostacei: ["gamberi", "gamberetti", "scampi", "astice", "aragosta", "granchio", "mazzancolle"],
+  molluschi: ["cozze", "vongole", "calamari", "seppie", "polpo", "moscardini", "capesante", "totani"],
+  "carne rossa": ["manzo", "vitello", "vitellone", "bovino", "bistecca", "hamburger", "agnello", "montone", "cavallo"],
+  maiale: ["maiale", "prosciutto", "speck", "pancetta", "guanciale", "salame", "salsiccia", "mortadella", "bresaola", "wurstel", "lardo", "coppa", "capocollo"],
+  "carne bianca": ["pollo", "tacchino", "coniglio", "gallina", "petto di pollo"],
+  latticini: ["latte", "formaggio", "formaggi", "yogurt", "ricotta", "mozzarella", "stracchino", "grana", "parmigiano", "pecorino", "burro", "panna", "mascarpone", "philadelphia", "caciotta", "scamorza", "provola", "feta"],
+  glutine: ["pane", "pasta", "farro", "orzo", "cous cous", "couscous", "seitan", "biscotti", "cracker", "grissini", "piadina", "focaccia", "brioche", "cornetto"],
+  legumi: ["ceci", "lenticchie", "fagioli", "piselli", "fave", "soia", "edamame", "cannellini", "borlotti", "lupini"],
+  uova: ["uova", "uovo", "frittata", "omelette", "albume", "tuorlo"],
+  "frutta secca": ["mandorle", "noci", "nocciole", "pistacchi", "anacardi", "arachidi", "pinoli", "noci pecan"],
+  zucchero: ["zucchero", "miele", "marmellata", "confettura", "nutella", "cioccolato", "sciroppo", "dolcificante"],
+};
+// Gli alimenti che rendono una colazione DOLCE. Serve al vincolo "le colazioni le voglio salate",
+// che il Ghost ha dichiarato e che e' stato disatteso: e' un controllo sulla riga della colazione,
+// non su tutto il piano.
+const MARCATORI_DOLCE = ["marmellata", "confettura", "miele", "nutella", "cioccolato", "biscotti", "brioche", "cornetto", "fette biscottate", "cereali", "muesli", "granola", "yogurt alla frutta", "zucchero", "crostata", "torta", "pancake", "porridge"];
+// Un vincolo dichiarato e' un'ESCLUSIONE? E, se lo e', cosa esclude e cosa risparmia?
+// "Escludi il pesce che non sia crostacei, molluschi o tonno in scatola" ha tutte e tre le parti:
+// il verbo che esclude, la categoria esclusa, e le eccezioni dopo "che non sia".
+const ESCLUDE_RE = /(?:^|[.;,]\s*)(?:esclud\w*|niente|non\s+(?:mangio|voglio|metter\w*|usare)|evit\w*|togli\w*|elimin\w*|senza|no)\s+(?:il\s+|lo\s+|la\s+|i\s+|gli\s+|le\s+|l')?([^.;!?\n]{2,80})/gi;
+const ECCEZIONE_RE = /\b(?:che\s+non\s+sia|tranne|eccetto|a\s+parte|salvo|ad\s+eccezione\s+di|escluso\s+il|fuorché|fuorche)\b([^.;!?\n]{2,120})/i;
+function analizzaVincoloAlimentare(testo) {
+  const t = String(testo || "");
+  const esclusi = new Set(), risparmiati = new Set();
+  const ecc = t.match(ECCEZIONE_RE);
+  if (ecc) for (const parola of ecc[1].toLowerCase().split(/[,;]|\bo\b|\be\b/)) {
+    const p = parola.trim().replace(/^(il|lo|la|i|gli|le|l')\s*/, "");
+    if (p.length >= 3) risparmiati.add(p);
+  }
+  // La parte prima dell'eccezione: e' li' che sta la cosa esclusa.
+  const primaDellEccezione = ecc ? t.slice(0, t.indexOf(ecc[0])) : t;
+  for (const m of primaDellEccezione.matchAll(ESCLUDE_RE)) {
+    for (const parola of m[1].toLowerCase().split(/[,;]|\bo\b|\be\b/)) {
+      const p = parola.trim().replace(/^(il|lo|la|i|gli|le|l')\s*/, "").replace(/\s+$/, "");
+      if (p.length >= 3) esclusi.add(p);
+    }
+  }
+  return { esclusi: [...esclusi], risparmiati: [...risparmiati] };
+}
+// Da una cosa esclusa alla lista concreta di alimenti da cercare nel piano.
+// "pesce" diventa l'elenco dei pesci; "salmone" resta se stesso. Le eccezioni vengono tolte.
+function alimentiDaCercare(escluso, risparmiati = []) {
+  const e = String(escluso || "").toLowerCase().trim();
+  const salvo = new Set(risparmiati.map((r) => String(r).toLowerCase().trim()));
+  let lista = [];
+  for (const [categoria, membri] of Object.entries(CATEGORIE_ALIMENTARI)) {
+    if (e === categoria || e.startsWith(categoria) || categoria.startsWith(e)) lista.push(...membri);
+  }
+  if (!lista.length) lista = [e]; // non e' una categoria nota: si cerca la parola cosi' com'e'
+  // Un'eccezione toglie sia se stessa sia la categoria che nomina.
+  const daTogliere = new Set();
+  for (const r of salvo) {
+    daTogliere.add(r);
+    for (const [categoria, membri] of Object.entries(CATEGORIE_ALIMENTARI)) {
+      if (r === categoria || r.startsWith(categoria) || categoria.startsWith(r)) membri.forEach((x) => daTogliere.add(x));
+    }
+    // "tonno in scatola" salva "tonno".
+    for (const parola of r.split(/\s+/)) if (parola.length >= 4) daTogliere.add(parola);
+  }
+  return [...new Set(lista)].filter((x) => !daTogliere.has(x));
+}
+// Spezza un piano nei suoi giorni. Riconosce "Giorno 3", "**Giorno 3**", "GIORNO 3", "Lunedì".
+const GIORNO_RE = /^[\s*#_]*(?:\*\*)?\s*(giorno\s+\d+|lunedì|luned[iì]|marted[iì]|mercoled[iì]|gioved[iì]|venerd[iì]|sabato|domenica)\b[^\n]*$/gim;
+function giorniDelPiano(testo) {
+  const t = String(testo || "");
+  const tagli = [...t.matchAll(GIORNO_RE)];
+  if (!tagli.length) return [];
+  return tagli.map((m, i) => ({
+    etichetta: m[1].trim(),
+    corpo: t.slice(m.index + m[0].length, i + 1 < tagli.length ? tagli[i + 1].index : t.length).trim(),
+  }));
+}
+// La riga di un pasto dentro un giorno.
+const PASTO_RE = /^[\s*\-•·]*(colazione|spuntino|pranzo|merenda|cena|snack)\s*:?\s*(.+)$/gim;
+function pastiDelGiorno(corpo) {
+  const out = {};
+  for (const m of String(corpo || "").matchAll(PASTO_RE)) {
+    const nome = m[1].toLowerCase();
+    out[nome] = (out[nome] ? out[nome] + " " : "") + m[2].trim();
+  }
+  return out;
+}
+// Un'unita' di misura dentro una riga: e' cosi' che si vede se le dosi ci sono davvero.
+const DOSE_RE = /\b\d+\s*(?:g|gr|grammi|ml|kg|l\b|cucchia\w+|fette?|cucchiaini?|porzion\w+|pezzi?|tazze?|bicchier\w+)\b|\b\d+\s*(?:uova|uovo)\b/i;
+// "petto di pollo" e "pollo" sono la stessa cosa trovata due volte: elencarle entrambe fa sembrare
+// due difetti quello che ne e' uno. Si tiene solo il nome piu' lungo che contiene gli altri.
+function senzaDoppioni(nomi) {
+  const unici = [...new Set(nomi)];
+  return unici.filter((a) => !unici.some((b) => b !== a && b.includes(a)));
+}
+// ── IL CONTROLLO. Tutto quello che qui viene segnalato e' un FATTO verificabile riga per riga:
+// nessun giudizio sul gusto, nessuna opinione su cosa sia un buon piano.
+function controllaPianoAlimentare(testo, vincoliBio = [], richiestaDelGhost = "") {
+  const t = String(testo || "");
+  const giorni = giorniDelPiano(t);
+  if (giorni.length < 2) return null; // non e' un piano: non c'e' niente da controllare
+  const scarti = [];
+
+  // 1. LE ESCLUSIONI DICHIARATE. E' il caso del salmone.
+  for (const vincolo of vincoliBio) {
+    const { esclusi, risparmiati } = analizzaVincoloAlimentare(vincolo);
+    for (const escluso of esclusi) {
+      const daCercare = alimentiDaCercare(escluso, risparmiati);
+      const trovati = [];
+      for (const g of giorni) {
+        for (const alimento of daCercare) {
+          const re = new RegExp(`(?<![\\p{L}])${alimento.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "iu");
+          if (re.test(g.corpo)) trovati.push({ giorno: g.etichetta, alimento });
+        }
+      }
+      if (trovati.length) scarti.push({
+        tipo: "esclusione",
+        vincolo,
+        cosa: `hai escluso ${escluso}, e nel piano compare ${senzaDoppioni(trovati.map((x) => x.alimento)).join(", ")}`,
+        dove: [...new Set(trovati.map((x) => x.giorno))],
+      });
+    }
+  }
+
+  // 2. I GIORNI DICHIARATI CONTRO QUELLI DAVVERO DIVERSI. E' il "bisettimanale" che ripete.
+  const dichiarati = t.match(/\b(\d{1,2})\s*giorni\b/i);
+  const nDichiarati = dichiarati ? Number(dichiarati[1]) : (/bisettimanal\w*/i.test(t) ? 14 : 0);
+  if (nDichiarati && giorni.length < nDichiarati) {
+    scarti.push({ tipo: "giorni-mancanti", cosa: `il piano dice ${nDichiarati} giorni ma ne ho contati ${giorni.length}`, dove: [] });
+  }
+  const impronte = new Map();
+  for (const g of giorni) {
+    const impronta = g.corpo.toLowerCase().replace(/[^\p{L}\s]/gu, " ").replace(/\s+/g, " ").trim();
+    if (!impronta) continue;
+    if (impronte.has(impronta)) scarti.push({ tipo: "giorno-ripetuto", cosa: `${g.etichetta} è identico a ${impronte.get(impronta)}`, dove: [g.etichetta] });
+    else impronte.set(impronta, g.etichetta);
+  }
+
+  // 3. LO STESSO ALIMENTO A PRANZO E A CENA. E' il pollo due volte.
+  for (const g of giorni) {
+    const p = pastiDelGiorno(g.corpo);
+    if (!p.pranzo || !p.cena) continue;
+    const tuttiGliAlimenti = Object.values(CATEGORIE_ALIMENTARI).flat();
+    const ripetuti = tuttiGliAlimenti.filter((a) => {
+      const re = new RegExp(`(?<![\\p{L}])${a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "iu");
+      return re.test(p.pranzo) && re.test(p.cena);
+    });
+    // Il pane e i condimenti si ripetono per forza: si guardano solo le fonti proteiche.
+    const proteine = ripetuti.filter((a) => [...CATEGORIE_ALIMENTARI.pesce, ...CATEGORIE_ALIMENTARI["carne bianca"], ...CATEGORIE_ALIMENTARI["carne rossa"], ...CATEGORIE_ALIMENTARI.maiale, ...CATEGORIE_ALIMENTARI.uova, ...CATEGORIE_ALIMENTARI.legumi].includes(a));
+    if (proteine.length) scarti.push({ tipo: "ripetuto-nel-giorno", cosa: `${g.etichetta}: ${senzaDoppioni(proteine).join(", ")} sia a pranzo che a cena`, dove: [g.etichetta] });
+  }
+
+  // 4. LE DOSI, se il Ghost le ha chieste o se il piano dichiara di averle.
+  const doseRichiesta = /\b(?:dos\w+|grammatur\w+|quantit\w+|grammi|porzion\w+)\b/i.test(String(richiestaDelGhost) + " " + t);
+  if (doseRichiesta) {
+    const senzaDose = giorni.filter((g) => !DOSE_RE.test(g.corpo)).map((g) => g.etichetta);
+    if (senzaDose.length) scarti.push({ tipo: "dosi-mancanti", cosa: `hai chiesto le dosi e ${senzaDose.length === giorni.length ? "non ce ne sono da nessuna parte" : `mancano in ${senzaDose.length} giorni su ${giorni.length}`}`, dove: senzaDose });
+  }
+
+  // 5. LE COLAZIONI SALATE, se dichiarate.
+  const vuoleSalato = vincoliBio.some((v) => /colazion\w*[^.]{0,40}salat\w*|salat\w*[^.]{0,40}colazion\w*/i.test(String(v)));
+  if (vuoleSalato) {
+    const dolci = [];
+    for (const g of giorni) {
+      const p = pastiDelGiorno(g.corpo);
+      if (!p.colazione) continue;
+      const marcatori = MARCATORI_DOLCE.filter((d) => new RegExp(`(?<![\\p{L}])${d}`, "iu").test(p.colazione));
+      if (marcatori.length) dolci.push({ giorno: g.etichetta, marcatori });
+    }
+    if (dolci.length) scarti.push({
+      tipo: "colazione-dolce",
+      cosa: `hai chiesto colazioni salate, e in ${dolci.length} ${dolci.length === 1 ? "giorno" : "giorni"} sono dolci (${[...new Set(dolci.flatMap((d) => d.marcatori))].join(", ")})`,
+      dove: dolci.map((d) => d.giorno),
+    });
+  }
+
+  return scarti.length ? { giorni: giorni.length, scarti } : null;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -2449,6 +2682,8 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Kernel: il documento di stato del sistema, versionato. Ogni salvataggio crea una versione nuova e conserva la precedente nello storico.
 - Simbiosi: la valutazione periodica di quanto l'app e il Ghost siano allineati. Vive nella sua schermata.
 - Vincoli dichiarati: i vincoli che il Ghost ha dichiarato in Onboarding, uno per riga, rieditabili. Quello sull'identità professionale è un hard-stop e vale su tutto ciò che riguarda AIR.
+- Vincoli alimentari dichiarati parlando: quando il Ghost dice una regola alimentare in chat («escludi il pesce che non sia crostacei», «le colazioni le voglio salate», «1600 kcal»), compare una card «Questo lo tengo come regola fissa?» con due pulsanti. Tenuto, il vincolo entra nell'elenco dei Vincoli dichiarati di BIO e da lì nel prompt di ogni turno, per sempre; lasciato, vale solo per la conversazione in corso. Serve perché la conversazione che lo Shell rivede è tagliata agli ultimi venti messaggi: una regola detta e non tenuta sparisce dopo una decina di scambi.
+- Controllo del piano alimentare: quando lo Shell genera un piano con più giorni, il programma lo rilegge e confronta con i vincoli dichiarati. Segnala in un riquadro, senza toccare il piano: alimenti esclusi che compaiono lo stesso (sa che il salmone è un pesce), giorni dichiarati che non ci sono, giorni identici fra loro, la stessa fonte proteica a pranzo e a cena, dosi assenti quando erano state chieste, colazioni dolci quando erano state chieste salate. Non giudica il piano: elenca fatti verificabili, con il giorno preciso.
 - Il vincolo AIR chiede, non decide: quando una lettura destinata ad AIR sembra legare l'identità professionale del Ghost al pilastro, il programma non la scrive e non la butta. Compare una card che mostra il dato, dice quale dei due rilevatori ha segnalato — il codice, deterministico sui termini dichiarati; il modello, come seconda opinione — e perché. Due pulsanti: "Va bene, procedi" scrive il dato, "No, lascialo fuori" lo lascia fuori. La risposta resta scritta nel messaggio, quindi la domanda non ricompare domani.
 - Catena Printify → Etsy: uno dei modi in cui un Seme AIR può produrre qualcosa nel mondo. Va dal disegno all'anteprima del prodotto.
 - Postura e respiro: gli esercizi brevi che l'app propone, con il loro ritorno aptico.
@@ -4898,7 +5133,7 @@ function MessaggioProtetto({ disegna, avvisa }) {
   }
   return html`<${CorpoMessaggio} disegna=${disegna} />`;
 }
-function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory, bio, air, vidya, pushDebugLog, addSeed, advanceSeedIfDue, shellDraft, consumeShellDraft, pBio, pAir, pVidya, semi }) {
+function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory, bio, air, vidya, pushDebugLog, addSeed, advanceSeedIfDue, shellDraft, consumeShellDraft, pBio, pAir, pVidya, semi, ghostProfile, saveGhostProfile }) {
   // BLOCCO 1 — il fuoco vive qui perche' e' della conversazione, non dell'app intera.
   const [fuoco, setFuocoState] = useState(() => leggiFuoco());
   const cambiaFuoco = (f) => setFuocoState(f);
@@ -5098,6 +5333,13 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // sulla risposta dello Shell. Non crea nulla da sola — solo una proposta con un tap di conferma
       // (vedi card sotto), mai il pattern "conferma nel messaggio successivo" già usato per i Percorsi.
       const seedSuggestion = detectSeedWorthyIntent(userText) ? { content: userText } : null;
+      // 23/08/2026 — i vincoli alimentari che il Ghost dichiara PARLANDO. Vedi proponiVincoliAlimentari.
+      // Si propongono soltanto quelli che non sono gia' nell'elenco: riproporre una cosa gia' tenuta
+      // sarebbe rumore, e il Ghost imparerebbe in fretta a ignorare la card.
+      const giaDichiarati = (Array.isArray(ghostProfile?.hardConstraints) ? ghostProfile.hardConstraints : [])
+        .filter((c) => c?.pilastro === "bio").map((c) => String(c.testo || "").toLowerCase().trim());
+      const vincoliProposti = proponiVincoliAlimentari(userText)
+        .filter((v) => !giaDichiarati.some((g) => g === v.toLowerCase().trim() || g.includes(v.toLowerCase().trim())));
       // BLOCCO 1 — il modello ha PROPOSTO un'azione? La proposta viene tolta dal testo e resa un
       // oggetto separato: cosi' il Ghost la vede come proposta (§7.2d, sempre visibile prima
       // dell'esecuzione) invece che come una riga di sintassi in mezzo alla risposta.
@@ -5185,6 +5427,14 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       const replyPulita = elencoDalCodice ? `${senzaEchi.testo.trim()}\n\n${elencoDalCodice}`.trim() : senzaEchi.testo;
       const contenutiCalendarioInventati = senzaCalendario.contenuti;
       if (contenutiCalendarioInventati.length) pushDebugLog?.({ type: "contenuto-calendario-senza-lettura", frasi: contenutiCalendarioInventati, userText: userText.slice(0, 100), model: settings.model });
+      // 23/08/2026 — IL CONTROLLO DEL PIANO ALIMENTARE. Vedi controllaPianoAlimentare.
+      // Non tocca il testo: il piano resta intero e leggibile, esattamente come il modello l'ha
+      // scritto. Aggiunge solo l'elenco di cio' che non torna, perche' rileggersi quattordici giorni
+      // riga per riga per scoprire che al Giorno 2 c'e' il salmone e' un lavoro che tocca al codice.
+      const vincoliBioDichiarati = (Array.isArray(ghostProfile?.hardConstraints) ? ghostProfile.hardConstraints : [])
+        .filter((c) => c?.pilastro === "bio").map((c) => c.testo).filter(Boolean);
+      const scartiDelPiano = controllaPianoAlimentare(replyPulita, vincoliBioDichiarati, userText);
+      if (scartiDelPiano) pushDebugLog?.({ type: "scarti-nel-piano-alimentare", quanti: scartiDelPiano.scarti.length, tipi: scartiDelPiano.scarti.map((s) => s.tipo), userText: userText.slice(0, 100) });
       // §1.2 — UNA PROPOSTA DI CLASSE B PENDENTE NON SI RIGENERA (16/08/2026), RIFATTA IL 20/08.
       // La versione del 16/08 aveva un difetto peggiore di quello che curava, e ha tenuto il Ghost
       // fermo per quattro giorni: la condizione guardava `azioneStatus`, che e' stato di componente
@@ -5311,7 +5561,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         pushDebugLog?.({ type: "conferma-a-parole-con-proposta-viva", azioneId: classeBPendente.azioneProposta.azioneId, userText: userText.slice(0, 100) });
       }
       setMessages((prev) => {
-        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: [], anochin, proposal, alerts: [], draft, usedWebSearch, seedSuggestion, azioneProposta, esitiFalsi, confermaSenzaBersaglio, capacitaSmentite, capacitaAccese, contenutiCalendarioInventati, letturaCalendario, offerteInesistenti, dubbiIdentita: [], rispostaTroncata }];
+        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: [], anochin, proposal, alerts: [], draft, usedWebSearch, seedSuggestion, azioneProposta, esitiFalsi, confermaSenzaBersaglio, capacitaSmentite, capacitaAccese, contenutiCalendarioInventati, letturaCalendario, offerteInesistenti, dubbiIdentita: [], rispostaTroncata, scartiDelPiano, vincoliProposti }];
         return compactShellChatIfNeeded(next) || next; // Opzione 3: compatta+archivia (Legge 14) se sopra soglia, altrimenti passa
       });
       // I tre puntini si fermano QUI, non alla fine dello sfondo: il Ghost puo' gia' scrivere.
@@ -5435,6 +5685,23 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   // percorso parallelo, nessuna eccezione: il modello ha la risposta tronca nella storia e riprende
   // da li'. Se il seguito viene tagliato a sua volta, ricompare la stessa card e si puo' rifare.
   const chiediIlSeguito = () => send("Continua esattamente da dove ti sei fermato, senza ricominciare da capo e senza ripetere quello che hai già scritto.");
+  // 23/08/2026 — TENERE UN VINCOLO ALIMENTARE, CON UN GESTO SOLO.
+  // Un vincolo detto parlando vive quanto la conversazione, cioe' dieci scambi. Tenuto, entra
+  // nell'elenco dei vincoli dichiarati e da li' nel prompt di sistema di ogni turno, per sempre —
+  // e diventa anche il metro con cui il codice controlla i piani generati.
+  // La risoluzione si scrive DENTRO il messaggio, come per ogni altra card: uno stato di sessione
+  // farebbe ricomparire domani una domanda a cui il Ghost ha risposto oggi.
+  const [vincoloStatus, setVincoloStatus] = useState({});
+  const tieniVincolo = (mid, testo) => {
+    const attuali = Array.isArray(ghostProfile?.hardConstraints) ? ghostProfile.hardConstraints : [];
+    saveGhostProfile?.({ ...ghostProfile, hardConstraints: [...attuali, { id: uid(), testo, pilastro: "bio", dataDichiarazione: todayISO() }] });
+    vibra("bio");
+    setVincoloStatus((s) => ({ ...s, [`${mid}|${testo}`]: "tenuto" }));
+    setMessages((prev) => [...prev, { id: uid(), role: "system-note", time: new Date().toISOString(),
+      content: `✓ «${testo}» è ora un vincolo dichiarato di BIO. Da adesso lo Shell lo riceve a ogni turno, anche fra un mese, e io controllo che i piani lo rispettino. Lo trovi e lo modifichi in Setup → Vincoli dichiarati.` }]);
+    registraAzione({ fase: "eseguita", azioneId: "scrivi_su_pilastro", pilastro: "bio", etichetta: testo, nota: "vincolo alimentare dichiarato dalla chat" });
+  };
+  const lasciaVincolo = (mid, testo) => setVincoloStatus((s) => ({ ...s, [`${mid}|${testo}`]: "lasciato" }));
   // §1.3 — il percorso proposto si crea SOLO da qui, toccando il pulsante di questa card. Nessuna
   // parola detta in chat lo crea piu'. Se il titolo che lo Shell ha dedotto e' inservibile, il
   // campo parte vuoto e il Ghost lo scrive: meglio chiedere una volta che ritrovarsi in Vidya un
@@ -5727,6 +5994,27 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                   Stanotte il piano alimentare si e' fermato su "* Colazione:" e il Ghost ha dovuto
                   indovinare da solo che fosse tronco, scrivendo "Hai troncato la risposta". Il
                   programma lo sapeva — OpenRouter lo dice in ogni risposta — e non glielo diceva. */ ""}
+            ${/* 23/08/2026 — GLI SCARTI DEL PIANO ALIMENTARE. Vedi controllaPianoAlimentare.
+                  Questo riquadro non toglie niente e non riscrive niente: il piano qui sopra resta
+                  intero. Elenca solo cio' che non torna, con il giorno preciso, perche' rileggersi
+                  quattordici giorni per scoprire che al Giorno 2 c'e' il salmone che avevi escluso
+                  e' un lavoro che tocca al codice, non al Ghost. */ ""}
+            ${(m.vincoliProposti || []).filter((v) => !vincoloStatus[`${mid}|${v}`]).map((v) => html`<div class="r-draft-card" key=${v}>
+              <div class="r-draft-label">▸ QUESTO LO TENGO COME REGOLA FISSA?</div>
+              <div class="r-draft-body">${v}</div>
+              <div class="r-hub-detail">Se lo tengo, lo Shell lo riceve a ogni turno da qui in avanti — anche fra un mese, anche quando questa conversazione sarà lontana — e io controllo che i piani che genera lo rispettino. Se lo lascio, vale solo per adesso.</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="r-btn r-draft-copy" onClick=${() => tieniVincolo(mid, v)}>Tienilo</button>
+                <button class="r-btn r-btn-ghost" onClick=${() => lasciaVincolo(mid, v)}>Solo per adesso</button>
+              </div>
+            </div>`)}
+            ${m.scartiDelPiano?.scarti?.length > 0 && html`<div class="r-esito-falso">
+              <b>Ho controllato il piano qui sopra: ${m.scartiDelPiano.scarti.length === 1 ? "una cosa non torna" : `${m.scartiDelPiano.scarti.length} cose non tornano`}.</b>
+              <div class="r-hub-detail">Il piano resta com'è — non l'ho toccato. Questi sono i punti da farti rifare, se ti interessano.</div>
+              ${m.scartiDelPiano.scarti.map((s, i) => html`<div class="r-draft-body" key=${i} style="margin-top:6px">
+                · ${s.cosa}${s.dove?.length ? html` <i>(${s.dove.join(", ")})</i>` : ""}
+              </div>`)}
+            </div>`}
             ${m.rispostaTroncata && html`<div class="r-draft-card">
               <div class="r-draft-label">▸ QUESTA RISPOSTA È TAGLIATA A METÀ</div>
               <div class="r-hub-detail">Ho raggiunto il tetto di lunghezza di una singola risposta e mi sono fermato dov'ero, non perché avessi finito. Quello che c'è scritto sopra è valido: manca il seguito.</div>
@@ -7379,7 +7667,8 @@ function App() {
       percorsi=${{ bio: pBio, air: pAir, vidya: pVidya }} setPercorsi=${{ bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }}
       memory=${memory} updateMemoria=${updateMemoria} styleMemory=${styleMemory} setStyleMemory=${setStyleMemory} bio=${bio} air=${air} vidya=${vidya} pushDebugLog=${pushDebugLog}
       addSeed=${addSeed} advanceSeedIfDue=${advanceSeedIfDue} shellDraft=${shellDraft} consumeShellDraft=${() => setShellDraft("")}
-      pBio=${pBio} pAir=${pAir} pVidya=${pVidya} semi=${semi} />`}
+      pBio=${pBio} pAir=${pAir} pVidya=${pVidya} semi=${semi}
+      ghostProfile=${ghostProfile} saveGhostProfile=${saveGhostProfile} />`}
     ${view === "bio" && html`<${BioView} entries=${bio} onAdd=${addBio} onDelete=${delBio} percorsi=${pBio} setPercorsi=${setPBioSync} settings=${settings} digest=${digestBio} memory=${memory} />`}
     ${view === "air" && html`<${AirView} entries=${air} onAdd=${addAir} onDelete=${delAir} percorsi=${pAir} setPercorsi=${setPAirSync} settings=${settings} digest=${digestAir} memory=${memory}
       semi=${semi} onAddSeed=${(content) => addSeed(content, "manual")} onApproveSeedStrategy=${approveSeedStrategy} onUnlockGatedSeed=${unlockGatedSeed} onDiscussInShell=${discussSeedInShell} pushDebugLog=${pushDebugLog} advanceSeedIfDue=${advanceSeedIfDue} onArchiveSeed=${archiveSeed} />`}
