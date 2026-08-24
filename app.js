@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-23 · un-messaggio-rotto-non-cancella-la-chat";
+const APP_BUILD = "2026-08-23 · un-avviso-solo-dove-serve";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -5068,9 +5068,28 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // errore. Il codice faceva `content || ""` e mostrava quel vuoto come se fosse una risposta.
       // Adesso il vuoto viene chiamato col suo nome, e il turno non lascia niente a schermo che
       // sembri una risposta e non lo sia.
+      // 23/08/2026, poche ore dopo — E QUESTO MESSAGGIO NON DEVE OFFRIRE COSE CHE NON ESISTONO.
+      // La prima versione, scritta stanotte di corsa per chiudere il blocco totale, finiva con
+      // "se ricapita apri una chat nuova". In questa app una chat nuova NON SI PUO' APRIRE: la
+      // conversazione di ogni pilastro e' un flusso unico, non c'e' nessun pulsante e nessun
+      // percorso per iniziarne un'altra. Il Ghost l'ha cercata e non l'ha trovata.
+      // E' la stessa famiglia di "posso aiutarti a spostare un evento esistente" del calendario:
+      // un rimedio ineseguibile e' peggio di nessun rimedio, perche' si spende tempo a cercarlo
+      // prima di scoprire che si deve fare comunque a meno.
+      // Cio' che il Ghost puo' fare davvero, oggi, in questa app, e' esattamente una cosa:
+      // rimandare lo stesso messaggio. Quindi il messaggio dice quella, e non promette altro.
+      //
+      // E VIA ANCHE LA CAUSA, perche' non l'ho mai dimostrata. Stanotte avevo scritto "puo'
+      // succedere quando la conversazione e' diventata molto lunga" come se fosse un fatto. Misurato
+      // oggi sulla rete vera: al tetto assoluto di quello che questa app puo' mandare — 52.733 token,
+      // venti messaggi tutti pieni di piani alimentari interi — il modello ha risposto bene quattro
+      // volte su quattro, e la sua finestra dichiarata (131.072) e' il doppio di quel tetto. Quindi
+      // la lunghezza da sola NON spiega il vuoto. Attribuire una causa che non si e' verificata e'
+      // lo stesso difetto di offrire un rimedio che non esiste: manda il Ghost a risolvere un
+      // problema che non ha. Finche' non so, il messaggio dice che non so.
       if (!String(reply || "").trim()) {
         setMessages((prev) => [...prev, { id: assistantMsgId, role: "system-note", time: new Date().toISOString(),
-          content: "Non è arrivato niente. Il modello ha chiuso la risposta senza scrivere una parola: non è che non avesse niente da dire, è che la risposta non è arrivata. Può succedere quando la conversazione è diventata molto lunga. Riprova, e se ricapita apri una chat nuova." }]);
+          content: "Non è arrivato niente. Il modello ha chiuso la risposta senza scrivere una parola: non è che non avesse niente da dire, è che la risposta non è arrivata. Capita di rado e non ho ancora capito perché — non è la lunghezza della conversazione, quella l'ho provata fino al massimo che questa app può mandare e regge. Rimanda lo stesso messaggio: quasi sempre al secondo tentativo passa. Se invece ricapita più volte di seguito, non c'è nient'altro che tu debba provare da solo: segnalamelo col pulsante «Segnala» qui in alto, e lo cerco con un caso vero in mano." }]);
         setSending(false);
         pushDebugLog?.({ type: "risposta-vuota-dal-modello", userText: userText.slice(0, 100), model: settings.model });
         return;
@@ -5226,14 +5245,41 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // Tre casi diversi, tre risposte diverse — perche' "non ho capito" e "e' spento" sono due
       // problemi diversi e dirgli la frase sbagliata lo manderebbe a cercare nel posto sbagliato.
       const domandeDiConferma = rilevaDomandaDiConferma(replyPulita);
-      const haChiestoUnaCosaSpenta = meritaTurnoDiSelezione(userText)
+      // 23/08/2026 — E QUI MANCAVA LA META' DELLA CONDIZIONE, CHE E' LA PIU' IMPORTANTE.
+      // Fin qui bastava che la RISPOSTA contenesse una parola tipo "confermi" perche' l'avviso
+      // scattasse. Ma "confermi" e' una parola italiana comune, e in una domanda di chiarimento non
+      // promette nessun pulsante: promette una risposta a voce.
+      // Osservato alle 08:31, conversazione BIO sul piano alimentare. Lo Shell aveva fatto esattamente
+      // cio' che il Ghost gli aveva chiesto — quattro domande di chiarimento — e la quarta era
+      // "4. Confermi pasta di legumi, pane di segale e Wasa come carboidrati base per l'IG?".
+      // Il rilevatore ha visto "Confermi", e il Ghost si e' ritrovato un riquadro rosso che gli
+      // parlava di pulsanti che non sarebbero comparsi e gli chiedeva di ripetere la richiesta
+      // "con giorno e ora", in mezzo a una conversazione sul cibo. Misurato: su sette domande di
+      // chiarimento innocue nei tre pilastri, scattava sette volte su sette.
+      // E' la solita famiglia — un rilevatore che cerca una PAROLA invece di guardare un FATTO.
+      //
+      // Il fatto da guardare c'era gia', e non lo si guardava: IL GHOST AVEVA CHIESTO UN'AZIONE?
+      // L'avviso dice "non comparira' nessun pulsante". Quella frase ha senso solo se un pulsante
+      // era atteso, cioe' se il messaggio del Ghost chiedeva qualcosa che l'app SA FARE. Se ha
+      // chiesto un piano alimentare, nessun pulsante era in arrivo e non c'e' niente da avvisare.
+      // meritaTurnoDiSelezione e' esattamente quel fatto: e' la stessa porta che decide se far
+      // partire la scelta dell'azione, ed e' gia' usata due righe piu' sotto per lo stesso scopo.
+      // Il caso per cui questo avviso e' nato — il Ghost chiede un appuntamento, il modello dice
+      // "vuoi confermare?", e nessuna card nasce — passa da quella porta e continua a scattare.
+      const chiedevaUnAzione = meritaTurnoDiSelezione(userText);
+      const haChiestoUnaCosaSpenta = chiedevaUnAzione
         && AZIONI_CONVERSAZIONALI.some((a) => !azioniAttive().some((b) => b.id === a.id));
       let confermaSenzaBersaglio = null;
-      if (!azioneProposta && !classeBPendente && domandeDiConferma.length) {
+      if (chiedevaUnAzione && !azioneProposta && !classeBPendente && domandeDiConferma.length) {
         confermaSenzaBersaglio = {
           motivo: haChiestoUnaCosaSpenta ? "forse-spenta" : "nessuna-proposta",
           spente: AZIONI_CONVERSAZIONALI.filter((a) => !azioniAttive().some((b) => b.id === a.id)).map((a) => a.etichetta),
           frasi: domandeDiConferma,
+          // 23/08/2026 (voce 2.2 del brief) — il testo dell'avviso diceva sempre "con giorno e ora",
+          // che e' la lingua del calendario. Anche quando l'avviso scatta a ragione, l'azione in
+          // gioco puo' essere aprire un percorso o salvare un Seme, dove giorno e ora non
+          // significano niente. Ora il riquadro lo chiede solo se la richiesta parlava di agenda.
+          diCalendario: /(?:calendario|appuntament|impegn|agenda|promemoria|evento|event[oi]|riunion|ore\s+\d)/i.test(userText),
         };
         pushDebugLog?.({ type: "conferma-senza-bersaglio", frasi: domandeDiConferma, userText: userText.slice(0, 100) });
       }
@@ -5663,7 +5709,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                 ? html`<div><b>C'è una proposta in attesa, ma il pulsante non l'hai toccato.</b> Hai risposto a parole, e una parola scritta qui non fa partire niente — mai, per nessuna azione: è una regola, non una svista. La card di <b>${m.confermaSenzaBersaglio.etichettaInAttesa}</b> è qui sopra: tocca il suo pulsante e parte.</div>`
                 : m.confermaSenzaBersaglio.motivo === "conferma-a-vuoto"
                 ? html`<div><b>Non ho niente in attesa da confermare.</b> Hai risposto di sì, ma non c'è nessuna proposta pronta: una parola scritta qui non fa partire niente, mai — serve il pulsante di una card. Ripeti la richiesta per intero${m.confermaSenzaBersaglio.spente.length ? html`, e controlla che la capacità che ti serve non sia spenta in Setup (spente adesso: ${m.confermaSenzaBersaglio.spente.join(", ")})` : ""}.</div>`
-                : html`<div><b>Ti ho chiesto una conferma, ma non ho preparato niente da confermare.</b> Non comparirà nessun pulsante: la proposta non è stata creata. Ripeti la richiesta scrivendo per esteso cosa vuoi, con giorno e ora.</div>`}
+                : html`<div><b>Ti ho chiesto una conferma, ma non ho preparato niente da confermare.</b> Non comparirà nessun pulsante: la proposta non è stata creata. Ripeti la richiesta scrivendo per esteso cosa vuoi che faccia${m.confermaSenzaBersaglio.diCalendario ? ", con giorno e ora" : ""}.</div>`}
             </div>`}
             ${/* 20/08/2026 — il terzo riquadro. Il Ghost aveva l'interruttore acceso davanti agli
                   occhi e lo Shell gli diceva che era spento. Qui il programma, che il dato ce
