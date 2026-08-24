@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-23 · il-piano-lo-controlla-il-codice";
+const APP_BUILD = "2026-08-23 · una-card-non-sparisce-mentre-chiede";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -2201,11 +2201,32 @@ function isDegenerateOutput(text) {
 // `call` è una funzione zero-argomenti che rifà la richiesta originale (closure sul chiamante) — nessuna
 // duplicazione della costruzione del prompt qui. Se degenerato anche al secondo tentativo, lancia un
 // errore onesto (i chiamanti esistenti lo mostrano già via i loro cicli try/catch — nessuna UI nuova).
+// 23/08/2026 — UNA RISPOSTA VUOTA È UNA NON-RISPOSTA, ED È L'UNICA CHE QUESTA GUARDIA LASCIAVA
+// PASSARE. isDegenerateOutput comincia con `if (!text) return false`: una stringa vuota non e'
+// degenerata, quindi la guardia la restituiva al chiamante come se fosse un'ottima risposta, e il
+// Ghost si ritrovava la nota "non e' arrivato niente" senza che nessuno avesse riprovato.
+// E' esattamente la stessa famiglia per cui questa guardia esiste — il modello che non risponde —
+// solo nella forma piu' estrema. Quindi ora vale la stessa cura: si ritenta UNA volta.
+// Misurato sulla rete vera con il messaggio vero del Ghost: lo stesso identico turno, ripetuto
+// cinque volte, ha prodotto risposte da 3470, 541, 3316, 3401 e 1099 caratteri. La variabilita' e'
+// enorme, e questo e' proprio il caso in cui un ritentativo cambia l'esito.
+function rispostaNonArrivata(testo) { return !String(testo || "").trim(); }
 async function askWithDegenerateGuard(call, functionTag, pushDebugLog = null) {
   const first = await call();
+  if (rispostaNonArrivata(first)) {
+    pushDebugLog?.({ type: "risposta-vuota-ritentata", functionTag, attempt: 1, error: null });
+    const ritenta = await call();
+    if (!rispostaNonArrivata(ritenta) && !isDegenerateOutput(ritenta)) return ritenta;
+    if (rispostaNonArrivata(ritenta)) {
+      pushDebugLog?.({ type: "risposta-vuota-anche-al-secondo-tentativo", functionTag, attempt: 2, error: "il modello ha chiuso due volte senza scrivere" });
+      return ""; // il chiamante lo dice al Ghost: qui non si inventa un testo che non c'e'
+    }
+    return ritenta;
+  }
   if (!isDegenerateOutput(first)) return first;
   pushDebugLog?.({ type: "degenerate-output", functionTag, attempt: 1, degenerateOutputDetected: true, error: null });
   const second = await call();
+  if (rispostaNonArrivata(second)) { pushDebugLog?.({ type: "risposta-vuota-dopo-degenerata", functionTag, attempt: 2, error: null }); return ""; }
   if (!isDegenerateOutput(second)) return second;
   pushDebugLog?.({ type: "degenerate-output", functionTag, attempt: 2, degenerateOutputDetected: true, error: "risposta degenerata anche al secondo tentativo" });
   throw new Error("Risposta non valida, riprova più tardi.");
@@ -3915,11 +3936,32 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
   // a meta' arrivava al Ghost identica a una finita — e infatti stanotte il piano si e' fermato su
   // "* Colazione:" senza che niente glielo dicesse. Adesso lo si legge e glielo si dice.
   let rispostaTroncata = false;
+  // 23/08/2026 — LE PROVE, PERCHE' FINORA HO LAVORATO AL BUIO.
+  // La nota "non e' arrivato niente" e' comparsa al Ghost tre volte in due giorni, e ogni volta
+  // l'unica cosa registrata era il fatto che fosse successo. Nessun fornitore, nessun motivo di
+  // chiusura, nessun conteggio: cinque ipotesi e nessun dato. Provando a riprodurlo ho scoperto che
+  // la risposta contiene campi che l'app non guardava affatto — fra cui `refusal`, che dice se il
+  // modello si e' RIFIUTATO. Un rifiuto e una risposta persa sono due cose diverse e vanno dette in
+  // modo diverso, e finora erano indistinguibili. Adesso l'ultima risposta viene fotografata qui, e
+  // se il turno finisce vuoto la fotografia va nel Registro delle azioni in Setup.
+  let ultimaRisposta = null;
   const [reply, lensResult, draft] = await Promise.all([
     askWithDegenerateGuard(
       () => askModelWithHistory(system, messages, 0.7, 3000, settings, image, false, (raw) => {
         logAiCost(pushDebugLog, "shell", settings.model, raw);
-        rispostaTroncata = raw?.choices?.[0]?.finish_reason === "length";
+        const c = raw?.choices?.[0];
+        rispostaTroncata = c?.finish_reason === "length";
+        ultimaRisposta = {
+          fornitore: raw?.provider || null,
+          motivoDiChiusura: c?.finish_reason || null,
+          motivoDelFornitore: c?.native_finish_reason || null,
+          tokenIn: raw?.usage?.prompt_tokens ?? null,
+          tokenOut: raw?.usage?.completion_tokens ?? null,
+          campiDelMessaggio: c?.message ? Object.keys(c.message) : null,
+          rifiuto: c?.message?.refusal || null,
+          contenutoVuotoMaRagionamentoPieno: !String(c?.message?.content || "").trim() && !!String(c?.message?.reasoning || "").trim(),
+          lunghezzaRagionamento: String(c?.message?.reasoning || "").length,
+        };
       }, ANTI_LOOP_PENALTIES),
       "shell", pushDebugLog
     ), // ricerca già fatta sopra, dati già nel system prompt
@@ -3947,7 +3989,7 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
   // resto quando arriva.
   // Cosa NON si perde: niente. Il ritorno finale porta esattamente gli stessi campi di prima.
   // Il pezzo difficile e' che, mentre lo sfondo lavora, il Ghost puo' scrivere di nuovo. Vedi sotto.
-  onRispostaPronta?.({ reply, proposal, draft, usedWebSearch: webSearchSucceeded, anochin, rispostaTroncata });
+  onRispostaPronta?.({ reply, proposal, draft, usedWebSearch: webSearchSucceeded, anochin, rispostaTroncata, ultimaRisposta });
   // ── LA CODA. ─────────────────────────────────────────────────────────────────────────────────
   // Due turni possono avere lo sfondo in volo insieme. Le scritture sui pilastri sono al sicuro da
   // sole (passano da setState funzionale, che parte sempre dal valore corrente), ma la memoria
@@ -4007,7 +4049,7 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
   anochin.azione = actionsLog.length
     ? `Scritto in ${actionsLog.join(", ")}. Memoria riorganizzata per accoppiamento continuo.`
     : (dubbiIdentita.length ? `Nessuna scrittura ancora: ${dubbiIdentita.length === 1 ? "una lettura è" : `${dubbiIdentita.length} letture sono`} in attesa della tua parola.` : "Nessuna azione in questo turno.");
-  return { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, usedWebSearch: webSearchSucceeded, dubbiIdentita, rispostaTroncata };
+  return { reply, actionsLog, anochin, proposal, alerts, newStyleMemory, draft, usedWebSearch: webSearchSucceeded, dubbiIdentita, rispostaTroncata, ultimaRisposta };
 }
 
 //──────────────────────────────────────────────────────────
@@ -5293,7 +5335,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // arriva, senza aspettare Accettore, memoria procedurale e memoria di stile — che non
       // cambiano una virgola di quel testo e continuano dietro.
       let mostrato = false;
-      const mostra = ({ reply, proposal, draft, usedWebSearch, anochin, rispostaTroncata }) => {
+      const mostra = ({ reply, proposal, draft, usedWebSearch, anochin, rispostaTroncata, ultimaRisposta }) => {
       if (mostrato) return; mostrato = true;
       // 23/08/2026 — UNA BOLLA VUOTA NON E' UNA RISPOSTA.
       // Stanotte il Ghost ha ricevuto due bolle senza una parola dentro e nessuna spiegazione.
@@ -5323,10 +5365,24 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // lo stesso difetto di offrire un rimedio che non esiste: manda il Ghost a risolvere un
       // problema che non ha. Finche' non so, il messaggio dice che non so.
       if (!String(reply || "").trim()) {
-        setMessages((prev) => [...prev, { id: assistantMsgId, role: "system-note", time: new Date().toISOString(),
-          content: "Non è arrivato niente. Il modello ha chiuso la risposta senza scrivere una parola: non è che non avesse niente da dire, è che la risposta non è arrivata. Capita di rado e non ho ancora capito perché — non è la lunghezza della conversazione, quella l'ho provata fino al massimo che questa app può mandare e regge. Rimanda lo stesso messaggio: quasi sempre al secondo tentativo passa. Se invece ricapita più volte di seguito, non c'è nient'altro che tu debba provare da solo: segnalamelo col pulsante «Segnala» qui in alto, e lo cerco con un caso vero in mano." }]);
+        // 23/08/2026 — tre cose cambiano rispetto a ieri, e tutte e tre servono.
+        // 1. Adesso il programma HA GIA' RIPROVATO da solo (vedi askWithDegenerateGuard): dirgli
+        //    "rimanda il messaggio" come prima cosa era chiedergli di fare a mano un lavoro fatto.
+        // 2. Un RIFIUTO del modello e una risposta persa sono due cose diverse. Il campo che lo dice
+        //    arriva in ogni risposta e l'app non lo guardava: adesso, se c'e', lo si legge al Ghost.
+        // 3. Cio' che si sa del turno finisce nel Registro, cosi' la prossima volta c'e' un fatto da
+        //    guardare invece di cinque ipotesi.
+        const rifiuto = ultimaRisposta?.rifiuto;
+        const soloRagionamento = ultimaRisposta?.contenutoVuotoMaRagionamentoPieno;
+        const contenuto = rifiuto
+          ? `Il modello si è rifiutato di rispondere, e ha detto perché: «${String(rifiuto).slice(0, 300)}». Non è un guasto dell'app — è una sua decisione. Se la richiesta ti sembra del tutto innocua, riscrivila con parole diverse: a volte basta.`
+          : soloRagionamento
+          ? "Il modello ha ragionato sulla tua richiesta ma non ha scritto la risposta: ha speso tutto il fiato a pensarci. Ho già riprovato una volta e ha rifatto lo stesso. Prova a chiedere meno cose in una volta — per esempio una settimana invece di due — e dovrebbe uscirne."
+          : "Non è arrivato niente. Il modello ha chiuso la risposta senza scrivere una parola, due volte di seguito: ho già riprovato da solo prima di scriverti, quindi rimandare lo stesso messaggio probabilmente non basta. Se stavi chiedendo una cosa lunga, prova a spezzarla — una settimana invece di due — perché è la richiesta che gli costa di più. Se invece era una domanda breve, mandami una segnalazione col pulsante «Segnala»: da adesso il Registro delle azioni in Setup conserva cosa è successo davvero, e con quello in mano lo trovo.";
+        setMessages((prev) => [...prev, { id: assistantMsgId, role: "system-note", time: new Date().toISOString(), content: contenuto }]);
         setSending(false);
-        pushDebugLog?.({ type: "risposta-vuota-dal-modello", userText: userText.slice(0, 100), model: settings.model });
+        pushDebugLog?.({ type: "risposta-vuota-dal-modello", userText: userText.slice(0, 100), model: settings.model, ...(ultimaRisposta || {}) });
+        registraAzione({ fase: "esito-fallita", azioneId: "risposta_shell", motivo: rifiuto ? "rifiuto del modello" : soloRagionamento ? "solo ragionamento, nessun testo" : "nessun contenuto, due tentativi", ...(ultimaRisposta || {}) });
         return;
       }
       // Canale primario Seme (brief Parte 1.A): euristica a costo zero sul messaggio del Ghost, non
@@ -6348,8 +6404,21 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
             ${/* §1.3 — la proposta di percorso, con il suo pulsante. Prima non c'era: lo Shell la
                   proponeva a parole e un "ok" qualsiasi nel messaggio dopo la faceva diventare vera.
                   Ora e' un oggetto con un gesto suo, e il titolo si legge e si corregge PRIMA. */ ""}
-            ${m.proposal?.proposed && !percorsoStatus[mid] && html`<div class="r-draft-card">
+            ${/* 23/08/2026 — LA CARD NON PUO' SPARIRE MENTRE CHIEDE QUALCOSA.
+                  Osservato alle 18:38. Il Ghost ha toccato «Sì, aprilo» senza aver scritto il nome.
+                  Il programma ha risposto «Dammi un nome per il percorso» — giusto — e nello stesso
+                  istante ha fatto sparire la card, cioe' l'UNICO posto dove quel nome si poteva
+                  scrivere: la condizione qui sotto era `!percorsoStatus[mid]`, e "serve-titolo" e'
+                  uno stato come un altro. Gli restava una riga che chiedeva una cosa e nessun modo
+                  di darla. Ha risposto in chat, perche' non aveva altra scelta.
+                  Vale anche per l'errore: se la creazione fallisce, il Ghost deve poter ritoccare il
+                  pulsante, non restare davanti a un messaggio e basta.
+                  La regola generale: una card che chiede si toglie quando ha avuto risposta, mai
+                  mentre sta ancora aspettando. */ ""}
+            ${m.proposal?.proposed && (!percorsoStatus[mid] || percorsoStatus[mid] === "serve-titolo" || String(percorsoStatus[mid]).startsWith("errore")) && html`<div class="r-draft-card">
               <div class="r-draft-label">▸ APRO UN PERCORSO IN ${m.proposal.pillar.toUpperCase()}? — conferma prima che accada</div>
+              ${percorsoStatus[mid] === "serve-titolo" && html`<div class="r-error">Dammi un nome per il percorso: senza, non lo ritroveresti più parlando. Scrivilo qui sotto e ritocca il pulsante.</div>`}
+              ${String(percorsoStatus[mid] || "").startsWith("errore") && html`<div class="r-error">${percorsoStatus[mid]}. Puoi ritoccare il pulsante.</div>`}
               ${m.proposal.titoloUsabile === false
                 ? html`<div class="r-hub-detail">Da quello che ho scritto non ricavo un nome sensato per questo percorso${m.proposal.titoloScartato ? ` (mi veniva "${m.proposal.titoloScartato}", che non dice niente)` : ""}. Scrivilo tu: è il nome con cui potrai richiamarlo dicendo "riprendi quello su…".</div>`
                 : html`<div class="r-hub-detail">Controlla il nome: è quello con cui potrai richiamarlo dicendo "riprendi quello su…".</div>`}
@@ -6362,9 +6431,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
               </div>
             </div>`}
             ${percorsoStatus[mid] === "creando" && html`<div class="r-hub-detail">… sto preparando i primi passi del percorso</div>`}
-            ${percorsoStatus[mid] === "serve-titolo" && html`<div class="r-error">Dammi un nome per il percorso: senza, non lo ritroveresti più parlando.</div>`}
             ${percorsoStatus[mid] === "scartato" && html`<div class="r-hub-detail">Va bene — non ho aperto niente.</div>`}
-            ${typeof percorsoStatus[mid] === "string" && percorsoStatus[mid].startsWith("errore") && html`<div class="r-error">${percorsoStatus[mid]}</div>`}
             ${m.seedSuggestion && !seedStatus[mid] && html`<div class="r-draft-card">
               <div class="r-draft-label">🌱 SEME AIR — vuoi salvare questa idea?</div>
               <div class="r-draft-body">${m.seedSuggestion.content}</div>
