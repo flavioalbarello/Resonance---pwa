@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-25 · ragionamento-spento-nella-risposta-shell";
+const APP_BUILD = "2026-08-25 · scorciatoia-cerca-trova-senza-quando";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -899,7 +899,14 @@ function capacitaNominata(frase) {
 // spazio, non "quand'" + apostrofo senza spazio — una contrazione comunissima in italiano parlato
 // che semplicemente non avevo previsto. Caduta in questo caso sulla selezione col modello, che ha
 // ripetuto lo stesso difetto di punteggioBersaglio corretto qui sopra (vedi commento lì).
-const TROVA_EVENTO_DIRETTO_RE = /\ba\s+che\s+ora\s+(?:e'|è|ho|abbiamo)(?=[\s.,!?;:]|$)|\bquand(?:o\s+|['’])(?:e'|è|ho|abbiamo)(?=[\s.,!?;:]|$)[^.!?\n]{0,20}?\b(?:appuntament\w*|impegn\w*|visit\w*|riunion\w*)\w*\b/i;
+// 25/08/2026 (notte) — aggiunta la forma "cerca/cercami/trova + [parola di calendario] con X",
+// senza "quando"/"a che ora": il Ghost ha scritto "vorrei che cercassi... il prossimo appuntamento
+// con Marialdo", che non chiede affatto "quando" a parole ma vuole esattamente la stessa cosa —
+// e finiva sulla selezione col modello capace, la cui accuratezza si paga in secondi di
+// ragionamento reale (misurato: 279 token su 316 in quel turno). Richiede "con" subito dopo la
+// parola di calendario apposta per NON scattare su "cerca i miei impegni di domani" (un periodo,
+// non un nome — quella resta a leggi_calendario).
+const TROVA_EVENTO_DIRETTO_RE = /\ba\s+che\s+ora\s+(?:e'|è|ho|abbiamo)(?=[\s.,!?;:]|$)|\bquand(?:o\s+|['’])(?:e'|è|ho|abbiamo)(?=[\s.,!?;:]|$)[^.!?\n]{0,20}?\b(?:appuntament\w*|impegn\w*|visit\w*|riunion\w*)\w*\b|\b(?:cerc\w*|trov\w*)\b[^.!?\n]{0,40}?\b(?:appuntament\w*|impegn\w*|visit\w*|riunion\w*)\w*\s+con\b/i;
 // true solo se la frase e' un candidato sicuro per la scorciatoia. Chi chiama decide ancora se la
 // capacita' e' accesa: qui si guarda solo il testo, non lo stato dell'interruttore.
 function candidataTrovaEventoDiretta(userText) {
@@ -920,7 +927,9 @@ function candidataTrovaEventoDiretta(userText) {
 // di "copiare le parole del Ghost" riferite all'evento, non l'intera frase.
 // "quand" (senza la "o") e' la forma elisa "quand'è"/"quand'ho": l'apostrofo separa il token dal
 // resto, quindi "quando" da solo non la intercetta — vedi il commento su TROVA_EVENTO_DIRETTO_RE.
-const RUMORE_BERSAGLIO_RE = /\b(quando|quand|che|ora|e|è|ho|abbiamo|con|per|del|dell|nel|nello|nella|nei|degli|delle|sul|sull|sulla|calendario|agenda|appuntament\w*|impegn\w*|visit\w*|riunion\w*|cercami|cerca|controlla|controllami|dimmi|sai|prossim\w*|giorni|giorno|questo|questa|il|lo|la|l|un|uno|una)\b/gi;
+// "cerc\w*"/"trov\w*" (non piu' solo "cerca"/"cercami" letterali) coprono anche "cercassi",
+// "cercherei", "trovami" ecc. — la stessa ragione per cui la scorciatoia li riconosce ora.
+const RUMORE_BERSAGLIO_RE = /\b(quando|quand|che|ora|e|è|ho|abbiamo|con|per|del|dell|nel|nello|nella|nei|degli|delle|sul|sull|sulla|calendario|agenda|appuntament\w*|impegn\w*|visit\w*|riunion\w*|cerc\w*|trov\w*|controlla|controllami|dimmi|sai|vorrei|prossim\w*|giorni|giorno|questo|questa|il|lo|la|l|un|uno|una)\b/gi;
 function estraiBersaglioPerRicercaDiretta(userText) {
   const ripulito = String(userText || "").replace(RUMORE_BERSAGLIO_RE, " ").replace(/[?.!,;:'’]/g, " ").replace(/\s+/g, " ").trim();
   // Se dopo la pulizia non resta niente (frase fatta solo di parole del trigger), meglio l'intera
