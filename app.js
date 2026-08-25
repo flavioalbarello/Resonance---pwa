@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-25 · una-promessa-non-mantenuta-si-dichiara";
+const APP_BUILD = "2026-08-25 · una-promessa-non-mantenuta-e-un-percorso-che-si-chiude";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -323,6 +323,23 @@ const AZIONI_CONVERSAZIONALI = [
     reversibile: true,
     accesaDiDefault: true,
   },
+  // 25/08/2026 — il gemello di apri_percorso: il Ghost chiedeva di aprire, chiudere e riprendere i
+  // percorsi dalla chat. Aprire (apri_percorso) e riprendere-per-avanzare (apri_percorso +
+  // avanza_percorso) esistevano gia'. Chiudere no: il fuoco si chiudeva SOLO con un tocco sul
+  // pulsante della barra in alto, mai dicendolo. Non cancella e non archivia niente — il percorso
+  // resta intatto con tutta la sua storia, smette solo di essere "quello su cui si sta lavorando
+  // adesso". Riaprirlo (con apri_percorso, dicendo "riprendi X") lo rimette esattamente li' dov'era.
+  {
+    id: "chiudi_percorso",
+    classe: "A",
+    etichetta: "Chiudere il percorso aperto",
+    descrizione: "Chiude il fuoco della conversazione: smette di segnalare il percorso o il Seme aperto come quello su cui si sta lavorando adesso. Usa questa quando il Ghost dice \"chiudi questo\", \"chiudiamo qui\", \"basta per oggi con questo\", \"fermiamoci\" mentre un percorso e' aperto. Se non c'e' nessun fuoco aperto NON usarla: non c'e' niente da chiudere. Non cancella e non archivia niente: si riprende quando vuole dicendo \"riprendi X\".",
+    parametri: { nota: "string — scrivi 'chiudi' e basta: l'oggetto e' quello gia' aperto, non serve indicarlo" },
+    richiedeGate: true,
+    effetto: "scrittura",
+    reversibile: true,
+    accesaDiDefault: true,
+  },
   // BLOCCO 3 (16/08/2026) — CLASSE B: il mondo digitale gia' autorizzato. Le credenziali ci sono
   // gia' (stesso login Google di Drive). Cio' che cambia rispetto alla Classe A non e' la classe:
   // e' la REVERSIBILITA'. Un evento di calendario si cancella; una mail partita non torna. Per
@@ -449,7 +466,7 @@ function settingsPerSelezione(settings) {
 // messaggio prima.
 // Questa lista e' una porta stretta a costo zero, e va bene che esista — ma se e' troppo stretta
 // il costo non e' zero: e' un'azione che non nasce, e un Ghost che crede sia nata.
-const VERBI_AZIONE = /\b(riprend|ripiglia|apri|aprire|torniamo|torna|continu|avanz|prossim|adesso che|e ora|segna|annota|registra|scrivi|aggiungi|aggiung|metti|nota che|idea|potrei|si potrebbe|vendere|monetizz|ricordi|ricordati|ricordami|cosa avevo|cosa abbiamo|cosa sappiamo|avevo detto|cerca|trova|fissa|fissam|prenota|programma|pianifica|promemoria|appuntamento|impegn|calendario|in agenda|agenda|spost|rimand|anticip|posticip|riprogramm|manda|invia|spedisci|scrivigli|scrivile|mail|email|che ho|cosa ho|cosa c'e'|cosa c'è|che c'e'|che c'è|previsto|in programma|cosa faccio|che giornata|come e' messa|come è messa)\w*/i;
+const VERBI_AZIONE = /\b(riprend|ripiglia|apri|aprire|chiud|torniamo|torna|continu|avanz|avanti|e adesso|prossim|adesso che|e ora|segna|annota|registra|scrivi|aggiungi|aggiung|metti|nota che|idea|potrei|si potrebbe|vendere|monetizz|ricordi|ricordati|ricordami|cosa avevo|cosa abbiamo|cosa sappiamo|avevo detto|cerca|trova|fissa|fissam|prenota|programma|pianifica|promemoria|appuntamento|impegn|calendario|in agenda|agenda|spost|rimand|anticip|posticip|riprogramm|manda|invia|spedisci|scrivigli|scrivile|mail|email|che ho|cosa ho|cosa c'e'|cosa c'è|che c'e'|che c'è|previsto|in programma|cosa faccio|che giornata|come e' messa|come è messa)\w*/i;
 function meritaTurnoDiSelezione(messaggio) { return VERBI_AZIONE.test(String(messaggio || "")); }
 // Il turno di selezione: una chiamata dedicata, brevissima, che decide SOLO quale azione e con
 // quale parametro. Separata dalla conversazione di proposito — mescolarla al turno normale
@@ -2743,10 +2760,11 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Catena Printify → Etsy: uno dei modi in cui un Seme AIR può produrre qualcosa nel mondo. Va dal disegno all'anteprima del prodotto.
 - Postura e respiro: gli esercizi brevi che l'app propone, con il loro ritorno aptico.
 - Piano di controllo conversazionale: l'impianto per cui il Ghost chiede una cosa a parole e il programma la esegue. Il modello sceglie l'azione, il programma la compie. Ha tre parti: il fuoco conversazionale, l'inventario, il registro delle azioni.
-- Fuoco conversazionale: il percorso o il Seme su cui si sta lavorando adesso. Compare in una barra sopra la chat, sopravvive a ricarica e riapertura, e scade da solo dopo otto ore. Si chiude con un gesto.
+- Fuoco conversazionale: il percorso o il Seme su cui si sta lavorando adesso. Compare in una barra sopra la chat, sopravvive a ricarica e riapertura, e scade da solo dopo otto ore. Si chiude con un gesto sulla barra, oppure a parole (vedi chiudi_percorso qui sotto).
 - Inventario: l'elenco di percorsi e Semi che lo Shell riceve a ogni turno, così sa cosa esiste davvero senza doverlo indovinare.
 - Registro delle azioni: ogni proposta, conferma, esecuzione ed esito, con l'orario. Si legge in Setup. È il posto dove si scopre dopo perché una cosa è andata storta.
-- Azioni parlando: dieci azioni che il Ghost può far partire dicendole. Cinque interne (aprire un percorso, scrivere su un pilastro, creare un Seme, interrogare la memoria, avanzare un percorso) e cinque che toccano il mondo fuori (creare un evento, leggere il calendario, cancellare un evento, spostare un evento a un altro giorno o ora, inviare una mail). Le cinque esterne nascono spente e si accendono in Setup, una per una.
+- Azioni parlando: undici azioni che il Ghost può far partire dicendole. Sei interne (aprire o riprendere un percorso, chiudere il percorso aperto, scrivere su un pilastro, creare un Seme, interrogare la memoria, avanzare un percorso) e cinque che toccano il mondo fuori (creare un evento, leggere il calendario, cancellare un evento, spostare un evento a un altro giorno o ora, inviare una mail). Le cinque esterne nascono spente e si accendono in Setup, una per una; le sei interne nascono accese.
+- Aprire, chiudere e riprendere un percorso, tutto a parole: "apri X" o "riprendi X" porta il fuoco su un percorso o un Seme che esiste già (non ne crea uno nuovo); "chiudi questo", "chiudiamo qui", "basta per oggi" chiude il fuoco senza cancellare né archiviare niente — il percorso resta intatto con tutta la sua storia, smette solo di essere quello su cui si sta lavorando adesso; "e adesso?", "andiamo avanti" chiede il prossimo passo su quello aperto. Ogni comando mostra una card di conferma prima di eseguire, con l'etichetta di ciò che è davvero aperto in quel momento.
 - Interruttori: gli accendi-e-spegni delle capacità che toccano il mondo fuori, in Setup. Lo Shell riceve a ogni turno l'elenco vero di cosa è acceso e cosa è spento adesso, quindi non deve indovinarlo. Se dichiara spenta una capacità che è accesa, il programma toglie la frase e avvisa il Ghost.
 - Leggere il calendario: lo Shell va a leggere davvero gli impegni dal Calendar del Ghost. Non chiede conferma — leggere non cambia niente — e l'unico gate è l'interruttore. Il programma sceglie l'azione, legge, e solo dopo genera la risposta, così parla di impegni che ha in mano. Se la lettura fallisce lo dichiara con il motivo tecnico invece di indovinare.
 - L'elenco degli impegni lo compone il programma: quando c'è stata una lettura, l'elenco che compare nel messaggio lo scrive il codice dagli eventi letti, non lo Shell. Allo Shell resta la cornice: introdurre, collegare, commentare. Un evento che non è nella lettura non può comparire; uno che c'è non può mancare.
@@ -6048,6 +6066,22 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     aggiornaAzione(mid, { tipo: "avanza", etichetta: f.etichetta, id: f.id });
     registraAzione({ fase: "eseguita", azioneId: "avanza_percorso", id: f.id, etichetta: f.etichetta });
   };
+  // 25/08/2026 — il gemello di eseguiAvanzaPercorso: valida il fuoco AL MOMENTO DEL TOCCO, non a
+  // quando la card e' nata (il Ghost puo' chiudere o cambiare fuoco fra i due momenti). Non
+  // cancella e non archivia niente: chiude solo il fuoco, che si riapre dicendo "riprendi X".
+  const eseguiChiudiPercorso = (mid) => {
+    const f = leggiFuoco();
+    if (f.tipo === "nessuno") {
+      aggiornaAzione(mid, { tipo: "rifiutato", motivo: "non c'è nessun percorso aperto da chiudere" });
+      registraAzione({ fase: "rifiutata", azioneId: "chiudi_percorso", motivo: "nessun fuoco aperto" });
+      return;
+    }
+    vibra("conferma");
+    const etichetta = f.etichetta;
+    cambiaFuoco(chiudiFuoco());
+    aggiornaAzione(mid, { tipo: "chiuso", etichetta });
+    registraAzione({ fase: "eseguita", azioneId: "chiudi_percorso", etichetta });
+  };
   // ── BLOCCO 3 — esecutori di Classe B ──────────────────────────────────────────────
   // Differenza dalla Classe A: qui si tocca il mondo fuori. Quindi (a) si conferma sempre prima,
   // (b) dopo si RILEGGE dalla fonte, (c) la chiave di idempotenza impedisce il doppio invio.
@@ -6415,6 +6449,18 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                   <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Annulla</button>
                 </div>
               </div>`}
+              ${/* 25/08/2026 — il gemello: chiudere il fuoco. Mostra sempre l'etichetta di cio' che
+                    e' aperto ADESSO (letta al render, non a quando la card e' nata), cosi' se il
+                    Ghost lo ha gia' chiuso o cambiato nel frattempo la card non mente. */ ""}
+              ${m.azioneProposta.esito === "diretto" && m.azioneProposta.azioneId === "chiudi_percorso" && html`<div>
+                <div class="r-draft-label">▸ CHIUDO QUESTO</div>
+                <div class="r-draft-body">${fuoco.tipo !== "nessuno" ? fuoco.etichetta : "non c'è niente di aperto in questo momento"}</div>
+                <div class="r-hub-detail">Non cancello e non archivio niente: resta tutto com'è, smette solo di essere quello su cui stiamo lavorando adesso. Lo riprendi quando vuoi dicendomelo.</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="r-btn r-draft-copy" onClick=${() => eseguiChiudiPercorso(mid)}>Chiudi</button>
+                  <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Annulla</button>
+                </div>
+              </div>`}
               ${/* BLOCCO 3 — GATE LEGGERO (calendario). L'evento si cancella, quindi basta vedere
                     e confermare. Ma la data e' scritta PER ESTESO — giorno della settimana, data,
                     ora — perche' e' li' che l'errore del modello si nasconde, e l'ha ricavata il
@@ -6590,6 +6636,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
             ${azioneStatus[mid]?.tipo === "scritto" && html`<div class="r-ok">✓ Segnato su ${azioneStatus[mid].pilastro.toUpperCase()}: ${azioneStatus[mid].testo}</div>`}
             ${azioneStatus[mid]?.tipo === "seme" && html`<div class="r-ok">✓ Salvato come Seme AIR — lo trovi in AIR → Percorsi.</div>`}
             ${azioneStatus[mid]?.tipo === "avanza" && html`<div class="r-ok">✓ Fuoco su ${azioneStatus[mid].etichetta} — chiedimi pure il prossimo passo.</div>`}
+            ${azioneStatus[mid]?.tipo === "chiuso" && html`<div class="r-ok">✓ Chiuso: ${azioneStatus[mid].etichetta}. Resta tutto com'era — dimmi "riprendi" quando vuoi tornarci.</div>`}
             ${/* BLOCCO 3 §3.1 — la verifica di ritorno mostrata al Ghost. "Verificata" vuol dire
                   una cosa sola: sono tornato a chiedere alla fonte e l'ho visto. Ogni altro esito
                   e' scritto come un fallimento, anche quando l'invio potrebbe essere riuscito —
