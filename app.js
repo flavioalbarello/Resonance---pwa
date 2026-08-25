@@ -323,6 +323,23 @@ const AZIONI_CONVERSAZIONALI = [
     reversibile: true,
     accesaDiDefault: true,
   },
+  // 25/08/2026 — il gemello di apri_percorso: il Ghost chiedeva di aprire, chiudere e riprendere i
+  // percorsi dalla chat. Aprire (apri_percorso) e riprendere-per-avanzare (apri_percorso +
+  // avanza_percorso) esistevano gia'. Chiudere no: il fuoco si chiudeva SOLO con un tocco sul
+  // pulsante della barra in alto, mai dicendolo. Non cancella e non archivia niente — il percorso
+  // resta intatto con tutta la sua storia, smette solo di essere "quello su cui si sta lavorando
+  // adesso". Riaprirlo (con apri_percorso, dicendo "riprendi X") lo rimette esattamente li' dov'era.
+  {
+    id: "chiudi_percorso",
+    classe: "A",
+    etichetta: "Chiudere il percorso aperto",
+    descrizione: "Chiude il fuoco della conversazione: smette di segnalare il percorso o il Seme aperto come quello su cui si sta lavorando adesso. Usa questa quando il Ghost dice \"chiudi questo\", \"chiudiamo qui\", \"basta per oggi con questo\", \"fermiamoci\" mentre un percorso e' aperto. Se non c'e' nessun fuoco aperto NON usarla: non c'e' niente da chiudere. Non cancella e non archivia niente: si riprende quando vuole dicendo \"riprendi X\".",
+    parametri: { nota: "string — scrivi 'chiudi' e basta: l'oggetto e' quello gia' aperto, non serve indicarlo" },
+    richiedeGate: true,
+    effetto: "scrittura",
+    reversibile: true,
+    accesaDiDefault: true,
+  },
   // BLOCCO 3 (16/08/2026) — CLASSE B: il mondo digitale gia' autorizzato. Le credenziali ci sono
   // gia' (stesso login Google di Drive). Cio' che cambia rispetto alla Classe A non e' la classe:
   // e' la REVERSIBILITA'. Un evento di calendario si cancella; una mail partita non torna. Per
