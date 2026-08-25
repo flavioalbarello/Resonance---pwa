@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-25 · cancella-adesso-fa-partire-la-ricerca";
+const APP_BUILD = "2026-08-25 · quando-e-un-appuntamento-adesso-si-cerca";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -405,9 +405,26 @@ const AZIONI_CONVERSAZIONALI = [
     etichetta: "Guardare cosa c'è sul calendario",
     descrizione: "Va a leggere DAVVERO gli impegni sul calendario Google del Ghost per un giorno o un intervallo. Usa questa quando chiede cosa ha in programma, che impegni ha, cosa c'e' domani o in settimana. Non rispondere mai a memoria su cosa c'e' sul suo calendario: non lo sai, lo sa solo il calendario.",
     parametri: { quando: "string — il periodo con le parole del Ghost: \"domani\", \"oggi\", \"giovedi\", \"questa settimana\". Non tradurlo in date." },
-    // 22/08/2026 — L'UNICA azione che non chiede conferma. Non perche' sia comoda: perche'
+    // 22/08/2026 — non chiede conferma. Non perche' sia comoda: perche'
     // non cambia niente fuori, e perche' il suo risultato serve al modello PRIMA che scriva.
     // L'interruttore qui sopra resta l'unico gate, ed e' spento finche' il Ghost non l'accende.
+    richiedeGate: false,
+    effetto: "lettura",
+    reversibile: true,
+    accesaDiDefault: false,
+  },
+  // 25/08/2026 — il gemello mirato di leggi_calendario. "Quando è l'appuntamento con Marzio?"
+  // finiva instradato su leggi_calendario, che legge un PERIODO — passargli "Marzio" come periodo
+  // falliva sempre ("non ho capito che periodo guardare"). Questa cerca UN evento per nome (la
+  // stessa ricerca gia' scritta per cancellare e spostare) e dice solo quando e', senza offrire
+  // di toccarlo. Come leggi_calendario: nessuna scrittura, nessuna conferma, il risultato lo
+  // compone il codice dopo aver letto davvero, non il modello a memoria.
+  {
+    id: "trova_evento_calendario",
+    classe: "B",
+    etichetta: "Trovare quando è un appuntamento",
+    descrizione: "Cerca DAVVERO un evento specifico sul calendario Google del Ghost, per nome o per come l'ha descritto, e dice solo quando e'. Usa questa quando chiede \"quando e' l'appuntamento con X\", \"a che ora e' X\", \"quando ho X\" — cioe' quando nomina UN impegno preciso. NON usarla per \"cosa ho in programma\" o \"cosa ho questa settimana\" (quella e' leggi_calendario, legge un periodo intero) e NON usarla per cancellarlo o spostarlo (quelle sono altre azioni): questa dice solo quando e', non fa nient'altro.",
+    parametri: { descrizione: "string — come il Ghost ha nominato l'evento (un nome, un giorno, o entrambi), copiato dalle sue parole" },
     richiedeGate: false,
     effetto: "lettura",
     reversibile: true,
@@ -475,7 +492,7 @@ function settingsPerSelezione(settings) {
 // stata seguita da niente. Le prove offline sulla cancellazione (prova_cancellazione.mjs) non lo
 // coprivano perché costruiscono sceltaAnticipata a mano, saltando proprio questa porta a monte —
 // lo stesso punto cieco che ha lasciato passare il buco di "fissa" il 17/08.
-const VERBI_AZIONE = /\b(riprend|ripiglia|apri|aprire|chiud|torniamo|torna|continu|avanz|avanti|e adesso|prossim|adesso che|e ora|segna|annota|registra|scrivi|aggiungi|aggiung|metti|nota che|idea|potrei|si potrebbe|vendere|monetizz|ricordi|ricordati|ricordami|cosa avevo|cosa abbiamo|cosa sappiamo|avevo detto|cerca|trova|fissa|fissam|prenota|programma|pianifica|promemoria|appuntamento|impegn|calendario|in agenda|agenda|spost|rimand|anticip|posticip|riprogramm|cancell|elimin|disdic|annull|rimuov|togli|manda|invia|spedisci|scrivigli|scrivile|mail|email|che ho|cosa ho|cosa c'e'|cosa c'è|che c'e'|che c'è|previsto|in programma|cosa faccio|che giornata|come e' messa|come è messa)\w*/i;
+const VERBI_AZIONE = /\b(riprend|ripiglia|apri|aprire|chiud|torniamo|torna|continu|avanz|avanti|e adesso|prossim|adesso che|e ora|segna|annota|registra|scrivi|aggiungi|aggiung|metti|nota che|idea|potrei|si potrebbe|vendere|monetizz|ricordi|ricordati|ricordami|cosa avevo|cosa abbiamo|cosa sappiamo|avevo detto|cerca|trova|che ora|fissa|fissam|prenota|programma|pianifica|promemoria|appuntamento|impegn|calendario|in agenda|agenda|spost|rimand|anticip|posticip|riprogramm|cancell|elimin|disdic|annull|rimuov|togli|manda|invia|spedisci|scrivigli|scrivile|mail|email|che ho|cosa ho|cosa c'e'|cosa c'è|che c'e'|che c'è|previsto|in programma|cosa faccio|che giornata|come e' messa|come è messa)\w*/i;
 function meritaTurnoDiSelezione(messaggio) { return VERBI_AZIONE.test(String(messaggio || "")); }
 // Il turno di selezione: una chiamata dedicata, brevissima, che decide SOLO quale azione e con
 // quale parametro. Separata dalla conversazione di proposito — mescolarla al turno normale
@@ -808,6 +825,9 @@ const PAROLE_DELLE_CAPACITA = {
   // titolo o la descrizione di un evento non e' quello che questa capacita' fa.
   sposta_evento_calendario: /spostar\w*|rimandar\w*|anticipar\w*|posticipar\w*|riprogrammar\w*|cambiar\w*\s+(?:data|ora|giorno)/i,
   invia_mail: /invi\w*|mandar\w*|spedir\w*|mail|email|posta/i,
+  // 25/08/2026 — aggiunta insieme a trova_evento_calendario. Distinta da leggi_calendario: quella
+  // legge un periodo intero, questa cerca UN evento per nome. Le due frasi non si sovrappongono.
+  trova_evento_calendario: /trovar\w*\s+quando|cercar\w*\s+quando|quando\s+(?:e'|è)\s+l['’]?appuntamento|a\s+che\s+ora/i,
 };
 // Quale capacita' nomina questa frase? null se non si capisce.
 function capacitaNominata(frase) {
@@ -2775,10 +2795,11 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Fuoco conversazionale: il percorso o il Seme su cui si sta lavorando adesso. Compare in una barra sopra la chat, sopravvive a ricarica e riapertura, e scade da solo dopo otto ore. Si chiude con un gesto sulla barra, oppure a parole (vedi chiudi_percorso qui sotto).
 - Inventario: l'elenco di percorsi e Semi che lo Shell riceve a ogni turno, così sa cosa esiste davvero senza doverlo indovinare.
 - Registro delle azioni: ogni proposta, conferma, esecuzione ed esito, con l'orario. Si legge in Setup. È il posto dove si scopre dopo perché una cosa è andata storta.
-- Azioni parlando: undici azioni che il Ghost può far partire dicendole. Sei interne (aprire o riprendere un percorso, chiudere il percorso aperto, scrivere su un pilastro, creare un Seme, interrogare la memoria, avanzare un percorso) e cinque che toccano il mondo fuori (creare un evento, leggere il calendario, cancellare un evento, spostare un evento a un altro giorno o ora, inviare una mail). Le cinque esterne nascono spente e si accendono in Setup, una per una; le sei interne nascono accese.
+- Azioni parlando: dodici azioni che il Ghost può far partire dicendole. Sei interne (aprire o riprendere un percorso, chiudere il percorso aperto, scrivere su un pilastro, creare un Seme, interrogare la memoria, avanzare un percorso) e sei che toccano il mondo fuori (creare un evento, leggere il calendario, trovare quando è un appuntamento preciso, cancellare un evento, spostare un evento a un altro giorno o ora, inviare una mail). Le sei esterne nascono spente e si accendono in Setup, una per una; le sei interne nascono accese.
 - Aprire, chiudere e riprendere un percorso, tutto a parole: "apri X" o "riprendi X" porta il fuoco su un percorso o un Seme che esiste già (non ne crea uno nuovo); "chiudi questo", "chiudiamo qui", "basta per oggi" chiude il fuoco senza cancellare né archiviare niente — il percorso resta intatto con tutta la sua storia, smette solo di essere quello su cui si sta lavorando adesso; "e adesso?", "andiamo avanti" chiede il prossimo passo su quello aperto. Ogni comando mostra una card di conferma prima di eseguire, con l'etichetta di ciò che è davvero aperto in quel momento.
 - Interruttori: gli accendi-e-spegni delle capacità che toccano il mondo fuori, in Setup. Lo Shell riceve a ogni turno l'elenco vero di cosa è acceso e cosa è spento adesso, quindi non deve indovinarlo. Se dichiara spenta una capacità che è accesa, il programma toglie la frase e avvisa il Ghost.
 - Leggere il calendario: lo Shell va a leggere davvero gli impegni dal Calendar del Ghost. Non chiede conferma — leggere non cambia niente — e l'unico gate è l'interruttore. Il programma sceglie l'azione, legge, e solo dopo genera la risposta, così parla di impegni che ha in mano. Se la lettura fallisce lo dichiara con il motivo tecnico invece di indovinare.
+- Trovare quando è un appuntamento preciso: diversa da "leggere il calendario" (quella legge un periodo intero). Questa cerca UN evento per nome — stessa ricerca già usata per cancellare e spostare — e dice solo quando è, senza offrire di toccarlo. Se ne trova più d'uno chiede di essere più preciso; se non lo trova lo dice. Anche qui la data la scrive il programma dopo averla letta, non il modello a memoria.
 - L'elenco degli impegni lo compone il programma: quando c'è stata una lettura, l'elenco che compare nel messaggio lo scrive il codice dagli eventi letti, non lo Shell. Allo Shell resta la cornice: introdurre, collegare, commentare. Un evento che non è nella lettura non può comparire; uno che c'è non può mancare.
 - Contenuti di calendario senza lettura: se in un turno non c'è stata una lettura, il programma toglie dalla risposta qualunque appuntamento, orario o affermazione del tipo "non hai altri impegni", e un riquadro elenca cosa ha tolto. Se una lettura c'è stata, toglie solo ciò che non proviene da quella lettura.
 - Periodi in parole: "prossimi 7 giorni", "nei prossimi tre giorni", "questo weekend", "questa settimana" vengono risolti a partire da oggi, e il numero di giorni detto vale.
@@ -2985,6 +3006,41 @@ function formatLetturaCalendario(lettura) {
   return `\nDato interno, per te soltanto: il calendario e' stato letto adesso da Google${quando}, e contiene questi impegni.
 ${elenco}
 Non ripetere questa riga di intestazione e non elencare gli impegni uno per uno: all'elenco ci pensa il programma, che lo scrive sotto la tua risposta prendendolo dagli stessi dati. Tu inquadra e commenta — quanti sono, se cambia qualcosa per il Ghost, cosa si lega a quello di cui state parlando — in una o due frasi. Sono ${lettura.eventi.length === 1 ? "l'unico impegno" : `i ${lettura.eventi.length} impegni`} del periodo, non ce ne sono altri, e non nominarne nessuno che non sia qui sopra. Non dire "vado a guardare": ci sei gia' andato.`;
+}
+// 25/08/2026 — il gemello di formatLetturaCalendario, per trova_evento_calendario: non un
+// periodo intero, UN evento preciso trovato per nome. Stessa regola: il modello inquadra e
+// commenta, la data esatta la scrive il programma sotto, presa dagli stessi dati.
+function formatBersaglioRicerca(r) {
+  if (!r) return "";
+  if (r.esito === "spenta") return `\nIL GHOST HA CHIESTO QUANDO E' UN APPUNTAMENTO PRECISO, ma ${r.motivo}. Diglielo, e digli che puo' accenderla in Setup. Non elencare niente e non inventare un orario.`;
+  if (r.esito === "lettura-fallita") return `\nIL GHOST HA CHIESTO QUANDO E' UN APPUNTAMENTO PRECISO, ma non sono riuscito a leggere il calendario per cercarlo: ${r.motivo}. Dichiaralo cosi' com'e'. Non dire quando sia, perche' non lo sai.`;
+  if (r.esito === "non-trovato") return `\nIL GHOST HA CHIESTO QUANDO E' UN APPUNTAMENTO PRECISO. Ho cercato sul calendario e ${r.motivo}. Diglielo con queste parole: non l'ho trovato. Non inventare un orario e non proporre alternative che non esistono.`;
+  if (r.esito === "ambiguo") {
+    const elenco = r.candidati.map((e) => `- ${formatDataPerEsteso(e.inizio, e.tuttoIlGiorno)} — ${e.titolo}`).join("\n");
+    return `\nDato interno, per te soltanto: il Ghost ha chiesto quando e' un appuntamento preciso, e ne ho trovati piu' d'uno che corrispondono — non elencarli tu, ci pensa il programma:
+${elenco}
+Digli solo che ce n'e' piu' d'uno e che sia piu' preciso su quale intende.`;
+  }
+  const e = r.bersaglio;
+  return `\nDato interno, per te soltanto: il Ghost ha chiesto quando e' un appuntamento preciso, e l'ho cercato e trovato davvero su Google adesso: ${formatDataPerEsteso(e.inizio, e.tuttoIlGiorno)} — ${e.titolo}. Non ripetere questa riga e non scrivere tu la data: il programma la scrive sotto la tua risposta, presa dagli stessi dati. Tu inquadra e commenta in una frase — non dire "vado a cercare" o "sto cercando": l'ho gia' cercato, e' fatto.`;
+}
+// Il gemello di componiElencoImpegni: la risposta che il CODICE compone per trova_evento_calendario,
+// aggiunta sotto la cornice del modello. La data non la scrive mai il modello, sempre il programma.
+function componiRisultatoRicerca(r) {
+  if (!r) return null;
+  // 25/08/2026 — anche "spenta" e "lettura-fallita" scrivono una riga, non solo i tre esiti che
+  // hanno un dato da mostrare. E' lo stesso principio di dichiaraFallimentoLettura: il modello
+  // riceve l'istruzione di dichiararlo da solo, ma non ci si affida solo a quello — il caso
+  // osservato oggi era esattamente "il modello promette di cercare e poi non dice piu' niente".
+  if (r.esito === "spenta") return `[non ho cercato: ${r.motivo}. La accendi in Setup.]`;
+  if (r.esito === "lettura-fallita") return `[non sono riuscito a cercare sul calendario: ${r.motivo}. Quindi non so quando sia, e non te lo dico a indovinare.]`;
+  if (r.esito === "non-trovato") return `Non ho trovato niente che assomigli a quello che cercavi, fra i tuoi impegni dei prossimi ${FINESTRA_RICERCA_BERSAGLIO_GIORNI} giorni.`;
+  if (r.esito === "ambiguo") {
+    const righe = r.candidati.map((e) => `· ${formatDataPerEsteso(e.inizio, e.tuttoIlGiorno)} — ${e.titolo}`);
+    return `Ne ho trovati più d'uno che assomigliano:\n${righe.join("\n")}`;
+  }
+  const e = r.bersaglio;
+  return `Trovato: **${e.titolo}** — ${formatDataPerEsteso(e.inizio, e.tuttoIlGiorno)}.`;
 }
 // ══════════════════════════════════════════════════════════════════════════════
 // TROVARE UN EVENTO GIA' ESISTENTE — CANCELLARLO O SPOSTARLO CONDIVIDONO LA STESSA RICERCA
@@ -4048,7 +4104,7 @@ async function reflectStyle(styleMemory, userMessage, shellReply, settings) {
 }
 // BLOCCO 1 (16/08/2026) — inventario e fuoco arrivano ESPLICITAMENTE nella firma, non per assunzione
 // e non letti da dentro: e' la stessa regola che ha chiuso le quattro funzioni generative il 14/08.
-async function runShellTurn(history, userMessage, settings, handlers, memory, styleMemory, attachment, dialecticOverride = null, pushDebugLog = null, inventario = null, fuoco = null, letturaCalendario = null, bersaglioCancellazione = null, onRispostaPronta = null, bersaglioSpostamento = null) {
+async function runShellTurn(history, userMessage, settings, handlers, memory, styleMemory, attachment, dialecticOverride = null, pushDebugLog = null, inventario = null, fuoco = null, letturaCalendario = null, bersaglioCancellazione = null, onRispostaPronta = null, bersaglioSpostamento = null, ricercaEvento = null) {
   const attachmentNote =attachment?.kind === "text" ? `\n\n[Allegato: ${attachment.name}]\n${attachment.content.slice(0, 6000)}` : "";
   const effectiveMessage = userMessage + attachmentNote;
   const image = attachment?.kind === "image" ? attachment : null;
@@ -4083,6 +4139,7 @@ ${formatCapacitaAccese(azioniAttive())}
 ${formatLetturaCalendario(letturaCalendario)}
 ${formatBersaglioCancellazione(bersaglioCancellazione)}
 ${formatBersaglioSpostamento(bersaglioSpostamento)}
+${formatBersaglioRicerca(ricercaEvento)}
 Memoria procedurale accumulata sui tre pilastri (leggila sempre insieme — l'interpretazione resta integrata anche quando l'azione è mirata a un solo pilastro): ${lente}${styleNote}
 REGOLA SUL TEMPO VERBALE, non negoziabile (corretta il 16/08/2026 dopo una prova reale in cui hai scritto "Ho segnato un appuntamento" prima ancora che il Ghost confermasse). TU NON ESEGUI NIENTE. Non salvi, non segni, non aggiungi, non mandi, non fissi: tutto questo lo fa il programma dopo, e solo se il Ghost tocca un pulsante. Quindi non usare MAI il passato per un'azione ("ho segnato", "ho aggiunto", "fatto", "l'ho messo in calendario"), nemmeno se ti sembra naturale, nemmeno se il Ghost ti ha appena detto di sì. Usa l'INDICATIVO con la conferma ancora pendente, non il condizionale servile: "te lo segno", "te lo metto in calendario", "te la mando" — poi lascia che sia il pulsante a chiedere la conferma. "Te lo segnerei" suona falso e non serve a niente: che l'azione non sia ancora avvenuta lo dice gia' il pulsante, non il modo verbale. Cio' che resta vietato e' il PASSATO ("ho segnato", "e' stato aggiunto", "fatto"): quello dichiara compiuto qualcosa che non lo e'. Se una cosa e' stata davvero fatta, e' l'app a scriverlo sotto la tua risposta, con la conferma riletta dalla fonte — non tu. Dire "fatto" per qualcosa che non e' successo e' il modo piu' rapido di rendere inaffidabile tutto il sistema. Questo vale anche al contrario, e dal 22/08/2026 con una precisazione importante: NON SAI cosa c'e' sul calendario del Ghost, TRANNE quando sopra ti e' stato dato esplicitamente un blocco che dice "IL CALENDARIO E' STATO LETTO DAVVERO ADESSO" con l'elenco degli impegni. Se quel blocco c'e', quelli sono fatti letti da Google in questo turno e ne parli come di cose che sai, senza aggiungerne e senza toglierne. Se quel blocco NON c'e', o se dice che la lettura e' fallita o non e' avvenuta, allora non sai niente: NON rispondere con quello che ricordi di aver letto in questa conversazione — una cosa nominata in chat non e' un impegno, e una proposta che non ha confermato non esiste. In quel caso di' che non l'hai letto, con il motivo che ti e' stato dato. Il codice controlla ogni tua risposta e toglie le affermazioni di compiuto che non corrispondono a un'azione verificata, avvisando il Ghost che l'hai scritta: non e' un rimprovero, e' un fatto tecnico, e ti conviene saperlo perche' rende inutile scriverle.
 Dialoga in modo diretto e concreto, massimo 110 parole per risposta — TRANNE quando il Ghost chiede esplicitamente un contenuto strutturato intrinsecamente lungo (un piano, un elenco multi-giorno, un documento): in quel caso il limite non si applica, genera il contenuto per intero, completo, senza comprimerlo né riassumerlo per stare corto. NON scrivere mai sintassi tecnica o tag tra parentesi quadre nella risposta. Rispondi solo in linguaggio naturale.${dialecticNote}
@@ -5478,6 +5535,20 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
           }
         }
       }
+      // 25/08/2026 — TROVARE UN EVENTO PER NOME, SENZA TOCCARLO. Stessa disciplina di
+      // leggi_calendario: e' una lettura, non chiede conferma, e il risultato deve essere pronto
+      // PRIMA che il modello scriva — cosi' la data che dice non e' la sua memoria, e' quella
+      // appena letta da Google. Riusa la stessa ricerca di cancella/sposta, ma qui non si tocca
+      // niente: si dice solo quando e'.
+      let ricercaEvento = null;
+      if (sceltaAnticipata?.azioneId === "trova_evento_calendario" && eseguibileSubito("trova_evento_calendario")) {
+        if (!azioniAttive().some((a) => a.id === "trova_evento_calendario")) {
+          ricercaEvento = { esito: "spenta", motivo: "il Ghost ha SPENTO in Setup la capacita' di cercare un appuntamento per nome" };
+        } else {
+          ricercaEvento = await trovaEventoBersaglio(sceltaAnticipata.parametro).catch((e) => ({ esito: "lettura-fallita", motivo: e.message }));
+          registraAzione({ fase: ricercaEvento.esito === "trovato" ? "eseguita-e-verificata" : "esito-" + ricercaEvento.esito, azioneId: "trova_evento_calendario", parametro: sceltaAnticipata.parametro, esitoRicerca: ricercaEvento.esito, candidati: (ricercaEvento.candidati || []).map((c) => ({ id: c.id, etichetta: c.titolo })) });
+        }
+      }
       // 22/08/2026 — LA RICERCA DEL BERSAGLIO DA CANCELLARE. Cancellare e' una scrittura e passera'
       // dalla card e dal pulsante, come ogni scrittura. Ma per poter NOMINARE l'evento sulla card
       // bisogna prima averlo letto: quindi la ricerca — che e' una lettura, e non cambia niente —
@@ -5623,7 +5694,8 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       const letturaPerIlFiltro = letturaRiuscita
         ? letturaCalendario
         : (bersaglioCancellazione?.eventi ? { ok: true, eventi: bersaglioCancellazione.eventi }
-        : (bersaglioSpostamento?.eventi ? { ok: true, eventi: bersaglioSpostamento.eventi } : false));
+        : (bersaglioSpostamento?.eventi ? { ok: true, eventi: bersaglioSpostamento.eventi }
+        : (ricercaEvento?.eventi ? { ok: true, eventi: ricercaEvento.eventi } : false)));
       // 23/08/2026 — L'ORDINE FRA QUESTI DUE FILTRI E' STATO INVERTITO, E NON E' UN DETTAGLIO.
       // Osservato sullo schermo del Ghost alle 03:42. Alla richiesta di cancellare, il modello ha
       // risposto "Posso solo aiutarti a creare un nuovo appuntamento o a SPOSTARE un evento
@@ -5658,7 +5730,12 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // modello non li avesse nominati affatto — come il 22/08 alle 14:41, dove ha omesso Petronio —
       // il Ghost li vede lo stesso, esatti.
       const elencoDalCodice = componiElencoImpegni(letturaCalendario);
-      const replyPulita = elencoDalCodice ? `${senzaEchi.testo.trim()}\n\n${elencoDalCodice}`.trim() : senzaEchi.testo;
+      // 25/08/2026 — lo stesso principio per trova_evento_calendario: la data del singolo evento
+      // trovato la scrive il codice, non il modello. Le due composizioni non si sovrappongono mai
+      // nello stesso turno (sono due azioni diverse), quindi si concatenano senza conflitto.
+      const risultatoRicercaDalCodice = componiRisultatoRicerca(ricercaEvento);
+      const elencoOrisultato = [elencoDalCodice, risultatoRicercaDalCodice].filter(Boolean).join("\n\n");
+      const replyPulita = elencoOrisultato ? `${senzaEchi.testo.trim()}\n\n${elencoOrisultato}`.trim() : senzaEchi.testo;
       const contenutiCalendarioInventati = senzaCalendario.contenuti;
       if (contenutiCalendarioInventati.length) pushDebugLog?.({ type: "contenuto-calendario-senza-lettura", frasi: contenutiCalendarioInventati, userText: userText.slice(0, 100), model: settings.model });
       // 23/08/2026 — IL CONTROLLO DEL PIANO ALIMENTARE. Vedi controllaPianoAlimentare.
@@ -5877,7 +5954,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
           attendiCoda: () => codaPrecedente,
           memoriaOra: () => memoriaRef.current,
           stileOra: () => stileRef.current,
-        }, memory, styleMemory, currentAttachment, dialecticOverride, pushDebugLog, inventarioOra, leggiFuoco(), letturaCalendario, bersaglioCancellazione, mostra, bersaglioSpostamento);
+        }, memory, styleMemory, currentAttachment, dialecticOverride, pushDebugLog, inventarioOra, leggiFuoco(), letturaCalendario, bersaglioCancellazione, mostra, bersaglioSpostamento, ricercaEvento);
         // Rete di sicurezza: se per qualunque ragione la richiamata non fosse partita, il messaggio
         // compare comunque adesso. `mostrato` impedisce che compaia due volte.
         mostra(esito);
