@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-25 · un-percorso-si-apre-si-chiude-si-riprende";
+const APP_BUILD = "2026-08-25 · una-promessa-non-mantenuta-e-un-percorso-che-si-chiude";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -733,6 +733,12 @@ const DOMANDA_CONFERMA_RE = new RegExp(
   `|${CONF_S}(?:posso|devo)\\s+(?:aggiungerl|metterl|salvarl|fissarl|inviarl|mandarl|procedere)\\w*${CONF_E}` +
   `|${CONF_S}procedo${CONF_E}` +
   `|${CONF_S}dammi\\s+(?:una\\s+)?conferma${CONF_E}` +
+  // 25/08/2026 — "Conferma sulla card che compare" e' scivolata attraverso tutte le forme sopra:
+  // non e' una domanda ("confermi?"), e' un'istruzione al Ghost su dove trovare il pulsante.
+  // Coperta qui perche' e' la stessa promessa di un pulsante in arrivo, detta in un modo nuovo.
+  // Non e' la cura vera — quella e' il controllo strutturale piu' sotto, che guarda il FATTO
+  // (una proposta e' stata creata o no) invece di indovinare ogni frase possibile.
+  `|${CONF_S}confer(?:ma|mi)\\s+(?:qui\\s+)?(?:sulla|sul|nella|nel|con la)\\s+card\\w*` +
   ")", "giu");
 function rilevaDomandaDiConferma(testo) {
   return (String(testo || "").match(DOMANDA_CONFERMA_RE) || []).map((s) => s.trim());
@@ -5789,6 +5795,28 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         };
         pushDebugLog?.({ type: "conferma-a-parole-con-proposta-viva", azioneId: classeBPendente.azioneProposta.azioneId, userText: userText.slice(0, 100) });
       }
+      // 25/08/2026 — IL CASO TROVATO OGGI, E NESSUNA DELLE FRASI SOPRA LO COPRIVA.
+      // Il Ghost aveva una card di calendario ancora in sospeso (mai toccata). Ha chiesto un
+      // appuntamento NUOVO. Lo Shell — che non sa cosa il codice deciderà di fare, e non puo'
+      // saperlo: quella decisione arriva DOPO che lui ha gia' scritto — ha risposto "Te lo metto
+      // in calendario... conferma sulla card che compare". Ma la seconda proposta di Classe B non
+      // nasce mai finche' la prima aspetta ancora un tocco (vedi classeBPendente sopra): nessuna
+      // card, nessun avviso, il Ghost lasciato a fissare una promessa vuota.
+      // I due casi sopra non lo intercettavano: quello delle 5751 richiede `!classeBPendente`
+      // per costruzione, e quello delle 5787 richiede che IL GHOST stia rispondendo "si'" a
+      // qualcosa — qui invece stava chiedendo una cosa NUOVA. Il fatto che li distingue tutti e
+      // tre non e' una parola nella risposta del modello: e' se il Ghost ha chiesto un'azione,
+      // se ne esiste gia' una in sospeso, e se lui sta parlando a parole o chiedendo altro.
+      if (chiedevaUnAzione && !azioneProposta && classeBPendente && !confermaSenzaBersaglio && !sembraUnaConfermaAParole(userText)) {
+        const inAttesa = AZIONI_CONVERSAZIONALI.find((a) => a.id === classeBPendente.azioneProposta.azioneId);
+        confermaSenzaBersaglio = {
+          motivo: "richiesta-nuova-con-proposta-viva",
+          etichettaInAttesa: inAttesa?.etichetta || "quella proposta",
+          spente: [],
+          frasi: [],
+        };
+        pushDebugLog?.({ type: "richiesta-nuova-con-proposta-viva", azioneId: classeBPendente.azioneProposta.azioneId, richiesta: scelta?.azioneId || null, userText: userText.slice(0, 100) });
+      }
       setMessages((prev) => {
         const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: [], anochin, proposal, alerts: [], draft, usedWebSearch, seedSuggestion, azioneProposta, esitiFalsi, confermaSenzaBersaglio, capacitaSmentite, capacitaAccese, contenutiCalendarioInventati, letturaCalendario, offerteInesistenti, dubbiIdentita: [], rispostaTroncata, scartiDelPiano, vincoliProposti }];
         return compactShellChatIfNeeded(next) || next; // Opzione 3: compatta+archivia (Legge 14) se sopra soglia, altrimenti passa
@@ -6244,6 +6272,8 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                 ? html`<div><b>C'è una proposta in attesa, ma il pulsante non l'hai toccato.</b> Hai risposto a parole, e una parola scritta qui non fa partire niente — mai, per nessuna azione: è una regola, non una svista. La card di <b>${m.confermaSenzaBersaglio.etichettaInAttesa}</b> è qui sopra: tocca il suo pulsante e parte.</div>`
                 : m.confermaSenzaBersaglio.motivo === "conferma-a-vuoto"
                 ? html`<div><b>Non ho niente in attesa da confermare.</b> Hai risposto di sì, ma non c'è nessuna proposta pronta: una parola scritta qui non fa partire niente, mai — serve il pulsante di una card. Ripeti la richiesta per intero${m.confermaSenzaBersaglio.spente.length ? html`, e controlla che la capacità che ti serve non sia spenta in Setup (spente adesso: ${m.confermaSenzaBersaglio.spente.join(", ")})` : ""}.</div>`
+                : m.confermaSenzaBersaglio.motivo === "richiesta-nuova-con-proposta-viva"
+                ? html`<div><b>Quello che hai appena chiesto non è partito.</b> C'è ancora una proposta di prima in sospeso — <b>${m.confermaSenzaBersaglio.etichettaInAttesa}</b> — e finché non tocchi il suo pulsante (o la annulli) il programma non ne prepara una seconda. Lo Shell non lo sapeva mentre scriveva, quindi ti ha risposto come se fosse tutto pronto: non lo era. Chiudi prima quella card, poi ripeti questa richiesta.</div>`
                 : html`<div><b>Ti ho chiesto una conferma, ma non ho preparato niente da confermare.</b> Non comparirà nessun pulsante: la proposta non è stata creata. Ripeti la richiesta scrivendo per esteso cosa vuoi che faccia${m.confermaSenzaBersaglio.diCalendario ? ", con giorno e ora" : ""}.</div>`}
             </div>`}
             ${/* 20/08/2026 — il terzo riquadro. Il Ghost aveva l'interruttore acceso davanti agli
