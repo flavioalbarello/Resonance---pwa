@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-25 · trova-evento-descrizioni-piu-chiare";
+const APP_BUILD = "2026-08-25 · selettore-alleggerito-in-token";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -268,6 +268,7 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "A", // dentro Adam: reversibile, nessun contatto col mondo esterno
     etichetta: "Aprire o riprendere un percorso",
     descrizione: 'Porta il fuoco della conversazione su un percorso o un Seme che ESISTE GIA\' nell\'inventario. Usa questa quando il Ghost dice "riprendi X", "apri X", "torniamo su X", "parliamo di X" riferendosi a qualcosa dell\'elenco. Non crea niente: sposta solo l\'attenzione.',
+    perSelettore: 'riprendere/aprire un percorso o Seme gia\' esistente ("riprendi X", "apri X", "torniamo su X")',
     parametri: { riferimento: "string — le parole con cui il Ghost ha indicato l'oggetto, cosi' come le ha dette (es. \"quello sul sonno\")" },
     // 22/08/2026: era dichiarato false, ma la card con il pulsante c'era lo stesso da sempre.
     // Il campo diceva una cosa e il programma ne faceva un'altra: allineato al vero.
@@ -284,6 +285,7 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "A",
     etichetta: "Scrivere una voce su un pilastro",
     descrizione: "Registra una voce nel diario di un pilastro. Usa questa quando il Ghost racconta un fatto accaduto da annotare: un peso, una sessione di studio, un passo di lavoro. NON usarla per opinioni, domande o pensieri: solo per fatti che lui vuole tenere.",
+    perSelettore: "annotare un fatto accaduto su bio/air/vidya (un peso, una sessione, un passo fatto) — non opinioni o domande",
     parametri: { contenuto: "string — nella forma \"pilastro | testo della voce\", dove pilastro è esattamente bio, air o vidya. Esempio: \"bio | pesato 123,4 stamattina, dormito male\"" },
     richiedeGate: true,
     effetto: "scrittura",
@@ -295,6 +297,7 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "A",
     etichetta: "Creare un Seme AIR",
     descrizione: "Salva un'idea grezza di autonomia economica perche' il sistema la sviluppi dopo. Usa questa quando il Ghost butta li' un'idea di qualcosa da vendere, produrre o monetizzare, anche vaga. NON usarla per idee di studio o di salute: i Semi sono solo di AIR.",
+    perSelettore: "salvare un'idea grezza da vendere/produrre/monetizzare, anche vaga — solo AIR",
     parametri: { contenuto: "string — l'idea come il Ghost l'ha detta, senza riformularla" },
     richiedeGate: true,
     effetto: "scrittura",
@@ -306,6 +309,7 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "A",
     etichetta: "Cercare nella memoria",
     descrizione: "Cerca fra le note e i frammenti accumulati cosa si era detto su un argomento. Usa questa quando il Ghost chiede \"cosa avevo detto su X\", \"ti ricordi di X\", \"cosa sappiamo di X\". Non risponde a memoria: va a cercare davvero.",
+    perSelettore: "cercare cosa si era detto su un argomento (\"cosa avevo detto su X\", \"ti ricordi di X\")",
     parametri: { argomento: "string — l'argomento da cercare, con le parole del Ghost" },
     richiedeGate: true,
     effetto: "lettura",
@@ -317,6 +321,7 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "A",
     etichetta: "Avanzare il percorso aperto",
     descrizione: "Chiede il prossimo passo concreto sul percorso su cui si sta gia' lavorando. Usa questa quando il Ghost dice \"e adesso?\", \"cosa faccio ora\", \"andiamo avanti\" mentre un percorso e' aperto. Se non c'e' nessun percorso aperto NON usarla: chiedi prima quale.",
+    perSelettore: "chiedere il prossimo passo sul percorso gia' aperto (\"e adesso?\", \"andiamo avanti\")",
     parametri: { nota: "string — scrivi 'avanti' e basta: l'oggetto e' quello gia' aperto, non serve indicarlo" },
     richiedeGate: true,
     effetto: "scrittura",
@@ -334,6 +339,7 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "A",
     etichetta: "Chiudere il percorso aperto",
     descrizione: "Chiude il fuoco della conversazione: smette di segnalare il percorso o il Seme aperto come quello su cui si sta lavorando adesso. Usa questa quando il Ghost dice \"chiudi questo\", \"chiudiamo qui\", \"basta per oggi con questo\", \"fermiamoci\" mentre un percorso e' aperto. Se non c'e' nessun fuoco aperto NON usarla: non c'e' niente da chiudere. Non cancella e non archivia niente: si riprende quando vuole dicendo \"riprendi X\".",
+    perSelettore: "chiudere il percorso aperto (\"chiudi questo\", \"basta con questo\", \"fermiamoci\"), solo se uno e' aperto",
     parametri: { nota: "string — scrivi 'chiudi' e basta: l'oggetto e' quello gia' aperto, non serve indicarlo" },
     richiedeGate: true,
     effetto: "scrittura",
@@ -352,6 +358,7 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "B",
     etichetta: "Mettere un evento sul calendario",
     descrizione: "Crea un appuntamento o un promemoria sul calendario Google del Ghost. Usa questa quando chiede di segnarsi qualcosa a una data o a un'ora. NON calcolare tu la data e NON scrivere date in cifre: copia le sue parole cosi' come le ha dette (\"domani alle 15\", \"martedi' prossimo\"), la data la ricava il programma.",
+    perSelettore: "creare un NUOVO appuntamento/promemoria sul calendario, a una data o ora",
     parametri: { contenuto: "string — nella forma \"titolo | quando\". Esempio: \"chiamare il commercialista | domani alle 15\". Nel campo quando copia le parole del Ghost, non tradurle in una data." },
     richiedeGate: true,
     effetto: "scrittura",
@@ -375,6 +382,7 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "B",
     etichetta: "Spostare un appuntamento a un altro giorno o ora",
     descrizione: "Sposta DAVVERO un evento ESISTENTE a un nuovo giorno o ora sul calendario Google del Ghost. Usa questa quando chiede di spostare, cambiare, rimandare, anticipare o riprogrammare un appuntamento che esiste gia'. NON usarla per crearne uno nuovo (quella e' crea_evento_calendario) ne' per cancellarlo (quella e' cancella_evento_calendario). NON calcolare tu la data: copia le parole del Ghost sia per dire QUALE evento sia per il NUOVO quando.",
+    perSelettore: "spostare/rimandare/anticipare un appuntamento ESISTENTE a un nuovo giorno o ora",
     parametri: { contenuto: "string — nella forma \"quale | nuovo quando\". Esempio: \"Petronio | giovedì alle 18\". Nel campo quale metti come il Ghost ha nominato l'evento (un nome, un giorno, o entrambi), copiato dalle sue parole; nel campo nuovo quando il nuovo giorno/ora, anche questo copiato senza tradurlo in una data." },
     richiedeGate: true,
     effetto: "scrittura",
@@ -386,6 +394,7 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "B",
     etichetta: "Inviare una mail",
     descrizione: "Scrive e invia una mail dall'indirizzo Gmail del Ghost. Usa questa SOLO quando chiede esplicitamente di mandare una mail a qualcuno. Se non ha detto l'indirizzo lascialo vuoto: lo scrivera' lui, non inventarlo mai. Il testo scrivilo per intero, pronto da spedire.",
+    perSelettore: "scrivere e inviare una mail, solo se lo chiede esplicitamente",
     parametri: { contenuto: "string — nella forma \"indirizzo | oggetto | testo completo\". Se l'indirizzo non lo ha detto, lascia vuoto prima della prima barra. Esempio: \" | Disdetta di giovedi | Buongiorno, purtroppo devo disdire...\"" },
     richiedeGate: true,
     effetto: "scrittura",
@@ -404,6 +413,7 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "B",
     etichetta: "Guardare cosa c'è sul calendario",
     descrizione: "Va a leggere DAVVERO gli impegni sul calendario Google del Ghost per un giorno o un intervallo. Usa questa quando chiede cosa ha in programma, che impegni ha, cosa c'e' domani o in settimana. Se invece nomina UN appuntamento preciso e vuole solo sapere quando e' (es. \"quando ho l'appuntamento con Marzio\"), quella e' trova_evento_calendario, non questa. Non rispondere mai a memoria su cosa c'e' sul suo calendario: non lo sai, lo sa solo il calendario.",
+    perSelettore: "leggere gli impegni di un PERIODO intero (\"cosa ho domani\", \"che impegni ho questa settimana\") — non un nome preciso",
     parametri: { quando: "string — il periodo con le parole del Ghost: \"domani\", \"oggi\", \"giovedi\", \"questa settimana\". Non tradurlo in date." },
     // 22/08/2026 — non chiede conferma. Non perche' sia comoda: perche'
     // non cambia niente fuori, e perche' il suo risultato serve al modello PRIMA che scriva.
@@ -424,6 +434,7 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "B",
     etichetta: "Trovare quando è un appuntamento",
     descrizione: "Cerca DAVVERO un impegno preciso per nome sul calendario Google del Ghost e dice solo quando e'. Usa questa per \"quando e' l'appuntamento con X\", \"a che ora e' X\", \"quando ho X\", \"ho un appuntamento con X?\" — quando nomina UN impegno preciso. Diversa da leggi_calendario, che legge un periodo intero (\"cosa ho domani\"). Non cancella e non sposta niente: dice solo quando e'.",
+    perSelettore: "trovare quando e' UN appuntamento preciso per nome (\"quando e' l'appuntamento con X\", \"a che ora e' X\", \"quando ho X\") — non un periodo",
     parametri: { descrizione: "string — come il Ghost ha nominato l'evento (un nome, un giorno, o entrambi), copiato dalle sue parole" },
     richiedeGate: false,
     effetto: "lettura",
@@ -444,6 +455,7 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "B",
     etichetta: "Cancellare un appuntamento dal calendario",
     descrizione: "Cancella DAVVERO un evento dal calendario Google del Ghost. Usa questa quando dice di cancellare, togliere, eliminare, annullare o disdire un appuntamento. Nel parametro metti solo come lo ha chiamato lui — un nome, un giorno, o tutti e due — senza tradurlo in date: il programma andra' a cercarlo sul calendario e gli mostrera' cosa ha trovato prima di toccare qualsiasi cosa.",
+    perSelettore: "cancellare/togliere/eliminare/disdire un appuntamento ESISTENTE",
     parametri: { quale: "string — come il Ghost ha nominato l'evento: \"Petronio\", \"l'appuntamento di martedi\", \"quello con Marzio di giovedi\". Con le sue parole." },
     richiedeGate: true,
     effetto: "scrittura",
@@ -517,7 +529,14 @@ ${ultimi.map((m) => `${m.role === "user" ? "GHOST" : "SHELL"}: ${String(m.conten
 }
 async function scegliAzione(messaggio, inventario, fuoco, azioni, settings, pushDebugLog = null, storico = []) {
   if (!azioni.length) return null;
-  const elenco = azioni.map((a) => `- ${a.id}: ${a.descrizione} Parametro: ${Object.values(a.parametri)[0]}`).join("\n");
+  // 25/08/2026 — il selettore usa una frase corta dedicata (perSelettore), non la descrizione
+  // lunga scritta per il blocco che il modello legge in conversazione (formatAzioniBlock). Le due
+  // hanno bisogno di cose diverse: la conversazione ha bisogno di sfumature e casi limite scritti
+  // per esteso, la selezione ha bisogno solo di riconoscere la frase — e le clausole "NON usarla
+  // per..." che aiutano la prima affollano la seconda senza aggiungere segnale, su una scelta che
+  // gia' deve orientarsi fra dodici voci. Il fallback a descrizione resta per sicurezza, se un
+  // giorno un'azione nascesse senza perSelettore.
+  const elenco = azioni.map((a) => `- ${a.id}: ${a.perSelettore || a.descrizione} Parametro: ${Object.values(a.parametri)[0]}`).join("\n");
   const sys = `Sei il selettore di azioni del sistema Resonance. Il tuo unico compito e' decidere se il messaggio del Ghost chiede una delle azioni sotto, e con quale parametro. Non conversare, non spiegare, non salutare.
 
 ${inventario}
