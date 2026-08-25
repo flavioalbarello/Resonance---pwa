@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-25 · una-promessa-non-mantenuta-e-un-percorso-che-si-chiude";
+const APP_BUILD = "2026-08-25 · anche-non-fare-niente-si-dichiara";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -723,6 +723,9 @@ function ripulisciAffermazioniDiEsito(testo, azioneVerificata = false) {
 // scelta, ed e' rientrato nello stesso giro.
 // Stessa causa di fondo: il testo del modello non e' legato allo stato reale del sistema.
 // Stessa cura: il codice guarda se la proposta esiste PRIMA di lasciar passare la domanda.
+// Nominata una volta sola (prima viveva inline, duplicata) perche' la usano due controlli diversi:
+// il testo del riquadro "con giorno e ora" e il caso "calendario spento senza dirlo" del 25/08.
+const PARLA_DI_CALENDARIO_RE = /(?:calendario|appuntament|impegn|agenda|promemoria|evento|event[oi]|riunion|ore\s+\d)/i;
 const DOMANDA_CONFERMA_RE = new RegExp(
   "(" +
   `${CONF_S}vuoi\\s+(?:che\\s+(?:lo|la|li|le)\\s+)?(?:confermare|confermarlo|confermarla)${CONF_E}` +
@@ -5764,7 +5767,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
           // che e' la lingua del calendario. Anche quando l'avviso scatta a ragione, l'azione in
           // gioco puo' essere aprire un percorso o salvare un Seme, dove giorno e ora non
           // significano niente. Ora il riquadro lo chiede solo se la richiesta parlava di agenda.
-          diCalendario: /(?:calendario|appuntament|impegn|agenda|promemoria|evento|event[oi]|riunion|ore\s+\d)/i.test(userText),
+          diCalendario: PARLA_DI_CALENDARIO_RE.test(userText),
         };
         pushDebugLog?.({ type: "conferma-senza-bersaglio", frasi: domandeDiConferma, userText: userText.slice(0, 100) });
       }
@@ -5816,6 +5819,32 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
           frasi: [],
         };
         pushDebugLog?.({ type: "richiesta-nuova-con-proposta-viva", azioneId: classeBPendente.azioneProposta.azioneId, richiesta: scelta?.azioneId || null, userText: userText.slice(0, 100) });
+      }
+      // 25/08/2026 — SECONDO CASO TROVATO OGGI. Il Ghost ha chiesto "quali sono gli appuntamenti
+      // per i prossimi 7 giorni", due volte, con parole diverse. Lo Shell ha risposto "Leggo
+      // subito cosa c'è sul calendario" — poi niente. Nessun elenco, nessuna spiegazione.
+      // Il motivo, verificato leggendo il codice: leggi_calendario e' spenta in Setup, quindi
+      // il turno di selezione non puo' proprio sceglierla (l'elenco che riceve e' quello delle
+      // sole azioni ACCESE — verificato il 20/08 col brief, e' cosi' apposta: vedi GATE 2, non
+      // va toccato). Il modello riceve SOLO l'avviso generico che elenca tutto cio' che e' spento
+      // (formatCapacitaSpente) e dovrebbe dirlo onestamente — ma qui non l'ha fatto: ha scritto
+      // una promessa e basta. Lo stesso difetto di "conferma sulla card che compare" di stanotte,
+      // stavolta senza nemmeno la forma di una promessa di conferma: solo un'azione mai arrivata.
+      // Non si nomina UNA capacita' precisa — potrebbe essere leggere, creare, cancellare o
+      // spostare, il messaggio da solo non lo dice — si elencano quelle di calendario spente
+      // adesso, che e' un fatto verificabile e non un'ipotesi.
+      if (chiedevaUnAzione && PARLA_DI_CALENDARIO_RE.test(userText) && !azioneProposta && !classeBPendente && !confermaSenzaBersaglio && !letturaRiuscita) {
+        const speneCalendario = AZIONI_CONVERSAZIONALI.filter((a) =>
+          ["crea_evento_calendario", "leggi_calendario", "cancella_evento_calendario", "sposta_evento_calendario"].includes(a.id)
+          && !azioniAttive().some((b) => b.id === a.id));
+        if (speneCalendario.length) {
+          confermaSenzaBersaglio = {
+            motivo: "calendario-spento-senza-dirlo",
+            spente: speneCalendario.map((a) => a.etichetta),
+            frasi: [],
+          };
+          pushDebugLog?.({ type: "calendario-spento-senza-dirlo", userText: userText.slice(0, 100), spente: speneCalendario.map((a) => a.id) });
+        }
       }
       setMessages((prev) => {
         const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: [], anochin, proposal, alerts: [], draft, usedWebSearch, seedSuggestion, azioneProposta, esitiFalsi, confermaSenzaBersaglio, capacitaSmentite, capacitaAccese, contenutiCalendarioInventati, letturaCalendario, offerteInesistenti, dubbiIdentita: [], rispostaTroncata, scartiDelPiano, vincoliProposti }];
@@ -6274,6 +6303,8 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                 ? html`<div><b>Non ho niente in attesa da confermare.</b> Hai risposto di sì, ma non c'è nessuna proposta pronta: una parola scritta qui non fa partire niente, mai — serve il pulsante di una card. Ripeti la richiesta per intero${m.confermaSenzaBersaglio.spente.length ? html`, e controlla che la capacità che ti serve non sia spenta in Setup (spente adesso: ${m.confermaSenzaBersaglio.spente.join(", ")})` : ""}.</div>`
                 : m.confermaSenzaBersaglio.motivo === "richiesta-nuova-con-proposta-viva"
                 ? html`<div><b>Quello che hai appena chiesto non è partito.</b> C'è ancora una proposta di prima in sospeso — <b>${m.confermaSenzaBersaglio.etichettaInAttesa}</b> — e finché non tocchi il suo pulsante (o la annulli) il programma non ne prepara una seconda. Lo Shell non lo sapeva mentre scriveva, quindi ti ha risposto come se fosse tutto pronto: non lo era. Chiudi prima quella card, poi ripeti questa richiesta.</div>`
+                : m.confermaSenzaBersaglio.motivo === "calendario-spento-senza-dirlo"
+                ? html`<div><b>Non è successo niente, e lo Shell non te l'ha detto.</b> Hai chiesto qualcosa di calendario, ma almeno una delle capacità che servono è <b>spenta</b> adesso — spente: ${m.confermaSenzaBersaglio.spente.join(", ")}. Le accendi in <b>Setup → Cosa lo Shell può fare parlando</b>. Non so dirti con certezza quale ti serviva: il messaggio da solo non lo distingue.</div>`
                 : html`<div><b>Ti ho chiesto una conferma, ma non ho preparato niente da confermare.</b> Non comparirà nessun pulsante: la proposta non è stata creata. Ripeti la richiesta scrivendo per esteso cosa vuoi che faccia${m.confermaSenzaBersaglio.diCalendario ? ", con giorno e ora" : ""}.</div>`}
             </div>`}
             ${/* 20/08/2026 — il terzo riquadro. Il Ghost aveva l'interruttore acceso davanti agli
