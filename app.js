@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-25 · pulizia-bersaglio-spostata-nel-punteggio";
+const APP_BUILD = "2026-08-25 · log-mostra-i-token-di-ragionamento";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -2266,13 +2266,22 @@ async function askModelJSON(system, userText, temperature, maxTokens, settings, 
 // (richiesta esplicita del brief — un costo inventato che si spaccia per reale sarebbe peggio di
 // nessun dato). Resta un gap dichiarato per la Fase 2 di questo lavoro, da chiudere con una chiave
 // vera alla prima occasione utile — vedi riepilogo di consegna.
+// 25/08/2026 (notte) — GIA' OSSERVATO E MAI REGISTRATO. Sul turno "sous vide" tokensOut era 1998
+// ma la risposta mostrata era lunga ~70-80 token: quasi 1900 token generati (e pagati) senza mai
+// arrivare sullo schermo — la spiegazione piu' plausibile per un minuto di attesa su una domanda
+// che non tocca ne' selezione ne' calendario. Fino a ieri non c'era modo di saperlo DA QUESTO log:
+// ogni voce ai-cost portava solo input/output totali, mai quanto di quell'output fosse ragionamento
+// interno invece di testo mostrato. Aggiunto qui, non altrove, perche' extractUsageForLog e' l'UNICO
+// punto che tutte le chiamate (shell, selezione, Magi, Semi...) attraversano per finire nel log:
+// aggiungerlo qui vale per tutte, non solo per quella di oggi.
 function extractUsageForLog(raw) {
   const u = raw?.usage || {};
   const tokensIn = typeof u.prompt_tokens === "number" ? u.prompt_tokens : null;
   const tokensOut = typeof u.completion_tokens === "number" ? u.completion_tokens : null;
   const tokensTotal = typeof u.total_tokens === "number" ? u.total_tokens : (tokensIn !== null && tokensOut !== null ? tokensIn + tokensOut : null);
   const costUsd = typeof u.cost === "number" ? u.cost : null; // mai stimato — solo se OpenRouter lo fornisce davvero
-  return { tokensIn, tokensOut, tokensTotal, costUsd };
+  const tokensRagionamento = typeof u.completion_tokens_details?.reasoning_tokens === "number" ? u.completion_tokens_details.reasoning_tokens : null;
+  return { tokensIn, tokensOut, tokensTotal, costUsd, tokensRagionamento };
 }
 // PUNTO 2 (BRIEF_fix_parametri_websearch 27/07/2026) — rete di sicurezza indipendente dalla causa
 // specifica risolta al PUNTO 1: rilevatori A POSTERIORI (la chiamata è già stata pagata quando questi
