@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-25 · schermo-acceso-durante-la-richiesta";
+const APP_BUILD = "2026-08-25 · meno-pensiero-interno-nella-risposta-shell";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -2141,7 +2141,18 @@ async function askModelWithHistory(system, messages, temperature, maxTokens, set
   }
   // L'immagine si allega SOLO all'ultimo messaggio (turno corrente), mai alla storia passata
   const msgs = messages.map((m, i) => (i === messages.length - 1 && image ? { role: m.role, content: buildOpenRouterContent(m.content, image) } : m));
-  const body = { model: settings.model, max_tokens: maxTokens, temperature, reasoning: { max_tokens: 300 }, messages: [{ role: "system", content: system }, ...msgs] };
+  // 25/08/2026 — il tetto di "pensiero" interno qui e' 60, non 300 come nel gemello askOpenRouter:
+  // questa e' la SOLA funzione usata per la risposta conversazionale dello Shell (l'unica chiamata
+  // che il Ghost aspetta guardando i tre puntini), e non e' un compito che richiede una vera
+  // deliberazione — parla, non pianifica. Abbassare il tetto non riapre il difetto che l'aveva
+  // introdotto (un ragionamento senza limite che mangiava tutto il budget lasciando zero token per
+  // la risposta vera): un tetto PIU' BASSO lascia PIU' margine al contenuto (max_tokens meno 60
+  // invece di meno 300), quindi va nella direzione piu' sicura, non in quella piu' rischiosa.
+  // Cio' che NON e' verificabile da qui: se il modello usa davvero quel budget per intero prima di
+  // rispondere (nel qual caso questo taglia tempo vero) o se lo usa solo in parte (nel qual caso
+  // l'effetto sulla latenza e' minore di quanto sperato). Nessun accesso a un modello vero in questo
+  // ambiente per misurarlo: e' un'ipotesi motivata, non una prova.
+  const body = { model: settings.model, max_tokens: maxTokens, temperature, reasoning: { max_tokens: 60 }, messages: [{ role: "system", content: system }, ...msgs] };
   // FIX 27/07/2026 (BRIEF_fix_parametri_websearch): stessi parametri e stessa motivazione di askOpenRouter
   // sopra (choke-point gemello) — vedi commento esteso lì per il ragionamento su max_tool_calls/max_uses.
   if (useWebSearch) {
