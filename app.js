@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-25 · log-mostra-i-token-di-ragionamento";
+const APP_BUILD = "2026-08-25 · ragionamento-spento-nella-risposta-shell";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -2148,18 +2148,22 @@ async function askModelWithHistory(system, messages, temperature, maxTokens, set
   }
   // L'immagine si allega SOLO all'ultimo messaggio (turno corrente), mai alla storia passata
   const msgs = messages.map((m, i) => (i === messages.length - 1 && image ? { role: m.role, content: buildOpenRouterContent(m.content, image) } : m));
-  // 25/08/2026 — il tetto di "pensiero" interno qui e' 60, non 300 come nel gemello askOpenRouter:
-  // questa e' la SOLA funzione usata per la risposta conversazionale dello Shell (l'unica chiamata
-  // che il Ghost aspetta guardando i tre puntini), e non e' un compito che richiede una vera
-  // deliberazione — parla, non pianifica. Abbassare il tetto non riapre il difetto che l'aveva
-  // introdotto (un ragionamento senza limite che mangiava tutto il budget lasciando zero token per
-  // la risposta vera): un tetto PIU' BASSO lascia PIU' margine al contenuto (max_tokens meno 60
-  // invece di meno 300), quindi va nella direzione piu' sicura, non in quella piu' rischiosa.
-  // Cio' che NON e' verificabile da qui: se il modello usa davvero quel budget per intero prima di
-  // rispondere (nel qual caso questo taglia tempo vero) o se lo usa solo in parte (nel qual caso
-  // l'effetto sulla latenza e' minore di quanto sperato). Nessun accesso a un modello vero in questo
-  // ambiente per misurarlo: e' un'ipotesi motivata, non una prova.
-  const body = { model: settings.model, max_tokens: maxTokens, temperature, reasoning: { max_tokens: 60 }, messages: [{ role: "system", content: system }, ...msgs] };
+  // 25/08/2026 (notte) — MISURATO, NON PIU' UN'IPOTESI: il tetto numerico di poche righe sopra
+  // (60 token, prima 300) non frenava NIENTE. Log reale del Ghost dopo quel cambiamento: turno
+  // "Sicuro che non sei in grado di creare un percorso da qui?" — tokensOut 975, di cui
+  // tokensRagionamento **889**. Il modello ha ragionato per 889 token nonostante un tetto di 60:
+  // reasoning.max_tokens evidentemente non e' il parametro che questo modello/fornitore rispetta
+  // per limitare il pensiero interno (puo' darsi che Kimi K2.6 su OpenRouter risponda solo a
+  // "enabled"/"effort", non a un budget in token — nessun modo di saperlo con certezza da qui).
+  // Si prova quindi a SPEGNERLO del tutto invece di provare a contenerlo con un numero che si e'
+  // dimostrato ignorato: questa e' una chiamata puramente conversazionale ("parla, non pianifica"),
+  // non ha mai avuto bisogno di un ragionamento interno per rispondere bene.
+  // RISCHIO ACCETTATO, NON ELIMINATO: se "enabled:false" non fosse rispettato allo stesso modo di
+  // "max_tokens", il comportamento resterebbe quello di oggi (ne' meglio ne' peggio) — la rete di
+  // sicurezza contro la risposta vuota (askWithDegenerateGuard, gia' in vigore) resta invariata in
+  // ogni caso. Verificabile SOLO dal prossimo log reale: se tokensRagionamento scende vicino a zero,
+  // ha funzionato; se resta alto, il parametro giusto e' un altro e va cercato ancora.
+  const body = { model: settings.model, max_tokens: maxTokens, temperature, reasoning: { enabled: false }, messages: [{ role: "system", content: system }, ...msgs] };
   // FIX 27/07/2026 (BRIEF_fix_parametri_websearch): stessi parametri e stessa motivazione di askOpenRouter
   // sopra (choke-point gemello) — vedi commento esteso lì per il ragionamento su max_tool_calls/max_uses.
   if (useWebSearch) {
@@ -4044,16 +4048,25 @@ function titoloUsabile(titolo) {
   const utili = parole.filter((p) => p.length > 2 && !PAROLE_NON_TITOLO.test(p));
   return utili.length >= 2;
 }
+// 25/08/2026 (notte) — "vuoi che ne apra uno su X" non veniva riconosciuto. Il regex cercava
+// letteralmente "un percorso" subito dopo "apra/apro", ma il modello ha risposto "Non creo
+// percorsi nuovi: vuoi che NE apra UNO su sous vide?" — il pronome "ne" sostituisce "percorsi",
+// gia' nominato una frase prima: italiano perfettamente naturale, che il pattern rigido non
+// copriva. Nessuna card e' comparsa, e il Ghost non aveva modo di creare il percorso dalla chat.
+// Stessa identica famiglia di difetto vista piu' volte oggi sul lato calendario (un verbo o una
+// forma non previsti): qui tocca la proposta di percorso, non la selezione di un'azione.
 function detectPercorsoProposalHeuristic(shellReply) {
-  const m = /vuoi che apr[ao] un percorso/i.test(shellReply);
+  const m = /vuoi che (?:ne\s+)?apr[ao]\s+(?:un\s+percorso|uno)\b/i.test(shellReply);
   if (!m) return { proposed: false };
   const lower = shellReply.toLowerCase();
   let pillar = "vidya";
   if (/(monetizz|canale|econom|business|vettore)/.test(lower)) pillar = "air";
   else if (/(peso|sonno|terapia|salute|corpo|allenam)/.test(lower)) pillar = "bio";
   // Si ferma alla fine della frase (punto, punto interrogativo, a capo) invece di contare caratteri:
-  // e' la frase a dire dove finisce il nome, non un numero.
-  const titleMatch = shellReply.match(/percorso\s+(?:su|sul|sulla|dedicato a|dedicata a|per|di)\s+["“]?([^"”.?!\n]{3,120})["”]?/i);
+  // e' la frase a dire dove finisce il nome, non un numero. "uno" accanto a "percorso" nelle stesse
+  // preposizioni copre la forma elisa ("uno su X", "uno sulla X"...): quando "percorso" non compare
+  // piu' nella frase, sostituito dal pronome.
+  const titleMatch = shellReply.match(/(?:percorso|uno)\s+(?:su|sul|sulla|dedicato a|dedicata a|per|di)\s+["“]?([^"”.?!\n]{3,120})["”]?/i);
   const grezzo = titleMatch ? titleMatch[1].trim() : "";
   const titolo = troncaAConfineDiParola(grezzo);
   const usabile = titoloUsabile(titolo);
