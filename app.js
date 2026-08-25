@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-25 · meno-pensiero-interno-nella-risposta-shell";
+const APP_BUILD = "2026-08-25 · pulizia-bersaglio-spostata-nel-punteggio";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -894,7 +894,12 @@ function capacitaNominata(frase) {
 // e il gruppo restava silenziosamente rotto per meta' dei casi reali ("Quando È l'appuntamento",
 // "A che ora È"). Sostituito con un lookahead esplicito su spazio/punteggiatura/fine stringa, che
 // funziona identico per "è" e per le parole ASCII.
-const TROVA_EVENTO_DIRETTO_RE = /\ba\s+che\s+ora\s+(?:e'|è|ho|abbiamo)(?=[\s.,!?;:]|$)|\bquando\s+(?:e'|è|ho|abbiamo)(?=[\s.,!?;:]|$)[^.!?\n]{0,20}?\b(?:appuntament\w*|impegn\w*|visit\w*|riunion\w*)\w*\b/i;
+// 25/08/2026 (sera) — aggiunta la forma elisa "quand'è"/"quand'ho": il Ghost ha scritto "Dimmi
+// quand'è l'appuntamento con Luigino" e la scorciatoia non scattava, perche' cercava "quando" +
+// spazio, non "quand'" + apostrofo senza spazio — una contrazione comunissima in italiano parlato
+// che semplicemente non avevo previsto. Caduta in questo caso sulla selezione col modello, che ha
+// ripetuto lo stesso difetto di punteggioBersaglio corretto qui sopra (vedi commento lì).
+const TROVA_EVENTO_DIRETTO_RE = /\ba\s+che\s+ora\s+(?:e'|è|ho|abbiamo)(?=[\s.,!?;:]|$)|\bquand(?:o\s+|['’])(?:e'|è|ho|abbiamo)(?=[\s.,!?;:]|$)[^.!?\n]{0,20}?\b(?:appuntament\w*|impegn\w*|visit\w*|riunion\w*)\w*\b/i;
 // true solo se la frase e' un candidato sicuro per la scorciatoia. Chi chiama decide ancora se la
 // capacita' e' accesa: qui si guarda solo il testo, non lo stato dell'interruttore.
 function candidataTrovaEventoDiretta(userText) {
@@ -913,7 +918,9 @@ function candidataTrovaEventoDiretta(userText) {
 // consegnarla alla ricerca, cosi' che resti solo il nome — la stessa disciplina che il modello,
 // nell'altro percorso (scegliAzione), applica gia' da solo perche' gli e' scritto esplicitamente
 // di "copiare le parole del Ghost" riferite all'evento, non l'intera frase.
-const RUMORE_BERSAGLIO_RE = /\b(quando|che|ora|e|è|ho|abbiamo|con|per|del|dell|nel|nello|nella|nei|degli|delle|sul|sull|sulla|calendario|agenda|appuntament\w*|impegn\w*|visit\w*|riunion\w*|cercami|cerca|controlla|controllami|dimmi|sai|prossim\w*|giorni|giorno|questo|questa|il|lo|la|l|un|uno|una)\b/gi;
+// "quand" (senza la "o") e' la forma elisa "quand'è"/"quand'ho": l'apostrofo separa il token dal
+// resto, quindi "quando" da solo non la intercetta — vedi il commento su TROVA_EVENTO_DIRETTO_RE.
+const RUMORE_BERSAGLIO_RE = /\b(quando|quand|che|ora|e|è|ho|abbiamo|con|per|del|dell|nel|nello|nella|nei|degli|delle|sul|sull|sulla|calendario|agenda|appuntament\w*|impegn\w*|visit\w*|riunion\w*|cercami|cerca|controlla|controllami|dimmi|sai|prossim\w*|giorni|giorno|questo|questa|il|lo|la|l|un|uno|una)\b/gi;
 function estraiBersaglioPerRicercaDiretta(userText) {
   const ripulito = String(userText || "").replace(RUMORE_BERSAGLIO_RE, " ").replace(/[?.!,;:'’]/g, " ").replace(/\s+/g, " ").trim();
   // Se dopo la pulizia non resta niente (frase fatta solo di parole del trigger), meglio l'intera
@@ -3155,7 +3162,16 @@ const FINESTRA_RICERCA_BERSAGLIO_GIORNI = 90;
 // e chi ha piu' riscontri vince. A parita' non si sceglie: si chiede.
 function punteggioBersaglio(descrizione, evento, adesso = new Date()) {
   const d = senzaAccenti(descrizione);
-  const parole = d.split(/[^\p{L}\p{N}]+/u).filter((p) => p.length >= 3);
+  // 25/08/2026 — DIFETTO REALE, osservato due volte (Luigino/Marzio): le parole di RUMORE_BERSAGLIO_RE
+  // ("appuntamento", "con", "calendario"...) sono connettivi di dominio che compaiono in QUALSIASI
+  // richiesta di questo tipo — quindi in qualsiasi titolo che le contenga. Un evento chiamato
+  // "appuntamento con Marzio" vinceva anche quando si cercava "Luigino", perche' quelle due parole
+  // gli davano punti che il bersaglio vero non aveva modo di pareggiare. La prima correzione (PR
+  // #55) puliva la frase SOLO nella scorciatoia diretta — non bastava, perche' la stessa ricerca la
+  // fa anche il percorso col modello (che puo' copiare "l'appuntamento con Luigino" invece del solo
+  // nome) e chi cancella/sposta. Qui e' la sede giusta: la pulizia vale per CHIUNQUE chiami questa
+  // funzione, indipendentemente da chi ha costruito la descrizione.
+  const parole = d.replace(RUMORE_BERSAGLIO_RE, " ").split(/[^\p{L}\p{N}]+/u).filter((p) => p.length >= 3);
   const titolo = senzaAccenti(evento.titolo || "");
   let punti = 0;
   for (const p of parole) if (titolo.includes(p)) punti += 3;
