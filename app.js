@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-25 · scorciatoia-diretta-trova-evento";
+const APP_BUILD = "2026-08-25 · bersaglio-ripulito-dalle-parole-del-trigger";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -899,6 +899,26 @@ const TROVA_EVENTO_DIRETTO_RE = /\ba\s+che\s+ora\s+(?:e'|è|ho|abbiamo)(?=[\s.,!
 // capacita' e' accesa: qui si guarda solo il testo, non lo stato dell'interruttore.
 function candidataTrovaEventoDiretta(userText) {
   return TROVA_EVENTO_DIRETTO_RE.test(String(userText || ""));
+}
+// DIFETTO REALE, osservato dal Ghost il 25/08/2026 la sera: chiesto "Quando è l'appuntamento con
+// Luigino?" (un evento chiamato solo "Luigino"), la scorciatoia rispondeva "Marzio" — un evento
+// DIVERSO, chiamato "appuntamento con Marzio". La causa: la scorciatoia passava a
+// trovaEventoBersaglio l'INTERA frase del Ghost come descrizione da confrontare, comprese le
+// parole "appuntamento" e "con" — che sono proprio le parole del TRIGGER, quindi presenti in OGNI
+// frase che usa questa scorciatoia. punteggioBersaglio conta ogni parola condivisa con il titolo
+// (senza pesare quanto sia specifica): un evento chiamato "appuntamento con Marzio" guadagnava
+// punti da "appuntamento" e "con" anche quando si stava cercando "Luigino", e senza altre parole
+// a fare da contrappeso quei punti bastavano a farlo vincere sul bersaglio vero.
+// La cura: togliere dalla frase le parole del trigger e i connettivi piu' comuni PRIMA di
+// consegnarla alla ricerca, cosi' che resti solo il nome — la stessa disciplina che il modello,
+// nell'altro percorso (scegliAzione), applica gia' da solo perche' gli e' scritto esplicitamente
+// di "copiare le parole del Ghost" riferite all'evento, non l'intera frase.
+const RUMORE_BERSAGLIO_RE = /\b(quando|che|ora|e|è|ho|abbiamo|con|per|del|dell|nel|nello|nella|nei|degli|delle|sul|sull|sulla|calendario|agenda|appuntament\w*|impegn\w*|visit\w*|riunion\w*|cercami|cerca|controlla|controllami|dimmi|sai|prossim\w*|giorni|giorno|questo|questa|il|lo|la|l|un|uno|una)\b/gi;
+function estraiBersaglioPerRicercaDiretta(userText) {
+  const ripulito = String(userText || "").replace(RUMORE_BERSAGLIO_RE, " ").replace(/[?.!,;:'’]/g, " ").replace(/\s+/g, " ").trim();
+  // Se dopo la pulizia non resta niente (frase fatta solo di parole del trigger), meglio l'intera
+  // frase originale che una ricerca vuota: e' un fallback, non il percorso normale.
+  return ripulito || String(userText || "").trim();
 }
 function smentisciCapacitaSpenta(testo, attive) {
   const originale = String(testo || "");
@@ -5577,7 +5597,10 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         // il posto dove oggi si gestisce "il Ghost ha chiesto una cosa spenta".
         const capaceDiTrovare = azioniAttive().some((a) => a.id === "trova_evento_calendario");
         if (capaceDiTrovare && candidataTrovaEventoDiretta(userText)) {
-          sceltaAnticipata = { azioneId: "trova_evento_calendario", parametro: userText.trim(), orarioModello: null };
+          // Il parametro NON e' la frase intera: conterrebbe "appuntamento"/"con", le parole del
+          // trigger stesso, che punteggioBersaglio confonderebbe per punti a favore di QUALSIASI
+          // evento chiamato "appuntamento con qualcuno" — vedi RUMORE_BERSAGLIO_RE per il perche'.
+          sceltaAnticipata = { azioneId: "trova_evento_calendario", parametro: estraiBersaglioPerRicercaDiretta(userText), orarioModello: null };
           pushDebugLog?.({ type: "selezione-diretta", azioneId: "trova_evento_calendario", motivo: "frase riconosciuta dal codice, nessuna chiamata al modello" });
         } else {
           try {
