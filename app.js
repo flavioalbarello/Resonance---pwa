@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-25 · anche-non-fare-niente-si-dichiara";
+const APP_BUILD = "2026-08-25 · cancella-adesso-fa-partire-la-ricerca";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -466,7 +466,16 @@ function settingsPerSelezione(settings) {
 // messaggio prima.
 // Questa lista e' una porta stretta a costo zero, e va bene che esista — ma se e' troppo stretta
 // il costo non e' zero: e' un'azione che non nasce, e un Ghost che crede sia nata.
-const VERBI_AZIONE = /\b(riprend|ripiglia|apri|aprire|chiud|torniamo|torna|continu|avanz|avanti|e adesso|prossim|adesso che|e ora|segna|annota|registra|scrivi|aggiungi|aggiung|metti|nota che|idea|potrei|si potrebbe|vendere|monetizz|ricordi|ricordati|ricordami|cosa avevo|cosa abbiamo|cosa sappiamo|avevo detto|cerca|trova|fissa|fissam|prenota|programma|pianifica|promemoria|appuntamento|impegn|calendario|in agenda|agenda|spost|rimand|anticip|posticip|riprogramm|manda|invia|spedisci|scrivigli|scrivile|mail|email|che ho|cosa ho|cosa c'e'|cosa c'è|che c'e'|che c'è|previsto|in programma|cosa faccio|che giornata|come e' messa|come è messa)\w*/i;
+// 25/08/2026 — ANCORA LA STESSA FAMIGLIA, E STAVOLTA SU UN CASO GIÀ COSTRUITO DA GIORNI.
+// Il Ghost ha scritto "Cancella marzio" e "Cancella Filocornio": due richieste chiarissime,
+// su una capacità che esiste dal 22/08 con la sua ricerca del bersaglio e la sua card. Nessuna
+// delle due ha fatto partire NIENTE — nessun turno di selezione, nessuna ricerca, nessuna card —
+// perché nessuna forma di "cancellare" era in questo elenco. Il modello, senza vincoli, ha
+// improvvisato una promessa ("Cerco l'appuntamento... ti mostro per la conferma") che non è mai
+// stata seguita da niente. Le prove offline sulla cancellazione (prova_cancellazione.mjs) non lo
+// coprivano perché costruiscono sceltaAnticipata a mano, saltando proprio questa porta a monte —
+// lo stesso punto cieco che ha lasciato passare il buco di "fissa" il 17/08.
+const VERBI_AZIONE = /\b(riprend|ripiglia|apri|aprire|chiud|torniamo|torna|continu|avanz|avanti|e adesso|prossim|adesso che|e ora|segna|annota|registra|scrivi|aggiungi|aggiung|metti|nota che|idea|potrei|si potrebbe|vendere|monetizz|ricordi|ricordati|ricordami|cosa avevo|cosa abbiamo|cosa sappiamo|avevo detto|cerca|trova|fissa|fissam|prenota|programma|pianifica|promemoria|appuntamento|impegn|calendario|in agenda|agenda|spost|rimand|anticip|posticip|riprogramm|cancell|elimin|disdic|annull|rimuov|togli|manda|invia|spedisci|scrivigli|scrivile|mail|email|che ho|cosa ho|cosa c'e'|cosa c'è|che c'e'|che c'è|previsto|in programma|cosa faccio|che giornata|come e' messa|come è messa)\w*/i;
 function meritaTurnoDiSelezione(messaggio) { return VERBI_AZIONE.test(String(messaggio || "")); }
 // Il turno di selezione: una chiamata dedicata, brevissima, che decide SOLO quale azione e con
 // quale parametro. Separata dalla conversazione di proposito — mescolarla al turno normale
