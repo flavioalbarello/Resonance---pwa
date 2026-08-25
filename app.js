@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-25 · quando-e-un-appuntamento-adesso-si-cerca";
+const APP_BUILD = "2026-08-25 · trova-evento-descrizioni-piu-chiare";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -403,7 +403,7 @@ const AZIONI_CONVERSAZIONALI = [
     id: "leggi_calendario",
     classe: "B",
     etichetta: "Guardare cosa c'è sul calendario",
-    descrizione: "Va a leggere DAVVERO gli impegni sul calendario Google del Ghost per un giorno o un intervallo. Usa questa quando chiede cosa ha in programma, che impegni ha, cosa c'e' domani o in settimana. Non rispondere mai a memoria su cosa c'e' sul suo calendario: non lo sai, lo sa solo il calendario.",
+    descrizione: "Va a leggere DAVVERO gli impegni sul calendario Google del Ghost per un giorno o un intervallo. Usa questa quando chiede cosa ha in programma, che impegni ha, cosa c'e' domani o in settimana. Se invece nomina UN appuntamento preciso e vuole solo sapere quando e' (es. \"quando ho l'appuntamento con Marzio\"), quella e' trova_evento_calendario, non questa. Non rispondere mai a memoria su cosa c'e' sul suo calendario: non lo sai, lo sa solo il calendario.",
     parametri: { quando: "string — il periodo con le parole del Ghost: \"domani\", \"oggi\", \"giovedi\", \"questa settimana\". Non tradurlo in date." },
     // 22/08/2026 — non chiede conferma. Non perche' sia comoda: perche'
     // non cambia niente fuori, e perche' il suo risultato serve al modello PRIMA che scriva.
@@ -423,7 +423,7 @@ const AZIONI_CONVERSAZIONALI = [
     id: "trova_evento_calendario",
     classe: "B",
     etichetta: "Trovare quando è un appuntamento",
-    descrizione: "Cerca DAVVERO un evento specifico sul calendario Google del Ghost, per nome o per come l'ha descritto, e dice solo quando e'. Usa questa quando chiede \"quando e' l'appuntamento con X\", \"a che ora e' X\", \"quando ho X\" — cioe' quando nomina UN impegno preciso. NON usarla per \"cosa ho in programma\" o \"cosa ho questa settimana\" (quella e' leggi_calendario, legge un periodo intero) e NON usarla per cancellarlo o spostarlo (quelle sono altre azioni): questa dice solo quando e', non fa nient'altro.",
+    descrizione: "Cerca DAVVERO un impegno preciso per nome sul calendario Google del Ghost e dice solo quando e'. Usa questa per \"quando e' l'appuntamento con X\", \"a che ora e' X\", \"quando ho X\", \"ho un appuntamento con X?\" — quando nomina UN impegno preciso. Diversa da leggi_calendario, che legge un periodo intero (\"cosa ho domani\"). Non cancella e non sposta niente: dice solo quando e'.",
     parametri: { descrizione: "string — come il Ghost ha nominato l'evento (un nome, un giorno, o entrambi), copiato dalle sue parole" },
     richiedeGate: false,
     effetto: "lettura",
@@ -528,6 +528,7 @@ ${elenco}
 
 Regole non negoziabili:
 - Se il messaggio NON chiede nessuna di queste azioni, rispondi {"azione": null}. E' l'esito piu' frequente e va bene cosi': la maggior parte dei messaggi e' conversazione, non comando.
+- Attenzione a leggi_calendario vs trova_evento_calendario, che si confondono facilmente: se il Ghost nomina UN appuntamento preciso per sapere quando e' (es. "quando e' l'appuntamento con Marzio", "a che ora e' la visita", "quando ho X"), e' trova_evento_calendario. Solo se chiede un periodo intero (es. "cosa ho domani", "che impegni ho questa settimana") e' leggi_calendario.
 - Se il Ghost sta confermando o completando una richiesta che aveva gia' fatto poco fa (es. dice solo "si, aggiungilo"), RECUPERA dagli ultimi scambi il titolo, la data e l'ora che aveva gia' detto, e mettili nel parametro come li aveva detti lui. Non inventarli: se davvero non ci sono, lascia il parametro incompleto — sara' il programma a fermarsi e a chiedere.
 - Una sola azione per messaggio. Se ne chiede piu' di una, scegli la PRIMA che ha nominato.
 - Non inventare azioni che non sono nell'elenco.
