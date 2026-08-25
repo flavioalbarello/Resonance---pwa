@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-25 · bersaglio-ripulito-dalle-parole-del-trigger";
+const APP_BUILD = "2026-08-25 · schermo-acceso-durante-la-richiesta";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -5570,6 +5570,15 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     // mentre aspettava, chiedere il seguito non deve cancellarglielo.
     if (!esplicito) { setInput(""); setAttachment(null); }
     setSending(true); setError("");
+    // 25/08/2026 — WAKE LOCK. Il Ghost ha riprodotto un blocco di oltre un minuto e mezzo su una
+    // richiesta che in realta' non passava nemmeno dal modello (la scorciatoia diretta del
+    // calendario): il telefono sospendeva la richiesta in corso quando lo schermo si spegneva, e
+    // riprendeva solo tenendo il dito sullo schermo per impedirlo. Questo tiene lo schermo acceso
+    // DA SOLO per la durata del turno — si spegne appena la richiesta finisce, non prima e non
+    // "per sempre". Se il browser non supporta l'API, o la nega, si continua esattamente come
+    // prima: non deve mai bloccare l'invio del messaggio.
+    let wakeLock = null;
+    try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) { /* nessun blocco: si continua senza */ }
     try {
       // §1.3 — RIMOSSA LA CONFERMA A PAROLE (16/08/2026). Qui prima bastava che il Ghost scrivesse
       // "ok", "va bene", "dai", "procedi" perche' il programma creasse il percorso proposto nel
@@ -6077,7 +6086,10 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // del calendario, la ricerca del bersaglio. Il turno vero ha il suo catch, qui sopra.
       setError(e.message);
       pushDebugLog?.({ type: "shell-turn", userText: userText.slice(0, 100), model: settings.model, provider: settings.provider, attachment: currentAttachment ? currentAttachment.kind : null, error: e.message });
-    } finally { setSending(false); }
+    } finally {
+      setSending(false);
+      if (wakeLock) { try { await wakeLock.release(); } catch (e) { /* gia' rilasciato o non piu' valido: non e' un errore da mostrare */ } }
+    }
   };
   // ── Flusso "genera documento da conversazione" (alternativa A) ──
   const CONV_WINDOW = 30; // ultimi N messaggi usati come base per il documento
