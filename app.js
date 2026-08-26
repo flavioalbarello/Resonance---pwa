@@ -7163,10 +7163,11 @@ function CostSummaryPanel({ debugLog }) {
     const map = {};
     entries.forEach((e) => {
       const tag = e.functionTag || "?";
-      const row = map[tag] || (map[tag] = { calls: 0, tokensTotal: 0, costUsd: 0, hasCost: false });
+      const row = map[tag] || (map[tag] = { calls: 0, tokensTotal: 0, costUsd: 0, hasCost: false, tokensRagionamento: 0, hasRagionamento: false });
       row.calls++;
       if (typeof e.tokensTotal === "number") row.tokensTotal += e.tokensTotal;
       if (typeof e.costUsd === "number") { row.costUsd += e.costUsd; row.hasCost = true; }
+      if (typeof e.tokensRagionamento === "number") { row.tokensRagionamento += e.tokensRagionamento; row.hasRagionamento = true; }
     });
     return map;
   };
@@ -7175,6 +7176,13 @@ function CostSummaryPanel({ debugLog }) {
   const weekByTag = byTag(weekEntries);
   const sumTokens = (entries) => entries.reduce((a, e) => a + (typeof e.tokensTotal === "number" ? e.tokensTotal : 0), 0);
   const sumCost = (entries) => entries.reduce((a, e) => a + (typeof e.costUsd === "number" ? e.costUsd : 0), 0);
+  // 26/08/2026 (quick win #3 dell'audit "Motoko") — prima questo campo esisteva solo nel JSON
+  // esportato: per vederlo il Ghost doveva esportare il log e mandarmelo. Il mistero che l'ha fatto
+  // aggiungere (889 token di ragionamento su 975 totali, per una risposta di poche righe) va visto
+  // qui, subito, senza quel giro.
+  const sumRagionamento = (entries) => entries.reduce((a, e) => a + (typeof e.tokensRagionamento === "number" ? e.tokensRagionamento : 0), 0);
+  const anyRagionamentoToday = todayEntries.some((e) => typeof e.tokensRagionamento === "number");
+  const anyRagionamentoWeek = weekEntries.some((e) => typeof e.tokensRagionamento === "number");
   // Spesa del mese in corso e distanza dal tetto. Limite dichiarato apertamente: il registro di
   // debug tiene 50 voci a rotazione, quindi con molto uso il totale mensile e' un MINIMO osservato,
   // non la spesa reale. Dirlo e' meglio di mostrare un numero che si crede completo.
@@ -7193,13 +7201,13 @@ function CostSummaryPanel({ debugLog }) {
       <br/><span style="opacity:.7">È un minimo osservato, non la spesa certa: il registro tiene le ultime 50 voci, quindi le più vecchie del mese possono esserne già uscite.</span>
     </div>
     ${costEntries.length === 0 ? html`<div class="r-hub-detail" style="margin-top:8px">Nessuna chiamata tracciata ancora nel log (max 50 voci totali, condivise con tutti gli eventi di debug).</div>` : html`
-      <div class="r-hub-detail" style="margin-top:10px"><b>Oggi</b>: ${todayEntries.length} chiamate · ${sumTokens(todayEntries)} token · ${anyCostToday ? `$${sumCost(todayEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
-      <div class="r-hub-detail" style="margin-top:4px"><b>Ultimi 7 giorni</b> (entro il tetto di 50 voci del log): ${weekEntries.length} chiamate · ${sumTokens(weekEntries)} token · ${anyCostWeek ? `$${sumCost(weekEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
+      <div class="r-hub-detail" style="margin-top:10px"><b>Oggi</b>: ${todayEntries.length} chiamate · ${sumTokens(todayEntries)} token (di cui ${anyRagionamentoToday ? sumRagionamento(todayEntries) : "n/d"} di ragionamento) · ${anyCostToday ? `$${sumCost(todayEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
+      <div class="r-hub-detail" style="margin-top:4px"><b>Ultimi 7 giorni</b> (entro il tetto di 50 voci del log): ${weekEntries.length} chiamate · ${sumTokens(weekEntries)} token (di cui ${anyRagionamentoWeek ? sumRagionamento(weekEntries) : "n/d"} di ragionamento) · ${anyCostWeek ? `$${sumCost(weekEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
       <table style="width:100%;margin-top:10px;border-collapse:collapse;font-size:12.5px">
-        <thead><tr style="text-align:left;opacity:.6"><th>Funzione</th><th>Chiamate</th><th>Token</th><th>Costo</th></tr></thead>
+        <thead><tr style="text-align:left;opacity:.6"><th>Funzione</th><th>Chiamate</th><th>Token</th><th>Ragionamento</th><th>Costo</th></tr></thead>
         <tbody>
           ${Object.entries(weekByTag).map(([tag, row]) => html`<tr key=${tag} style="border-top:1px solid var(--border)">
-            <td style="padding:4px 0">${tag}</td><td>${row.calls}</td><td>${row.tokensTotal || "—"}</td><td>${row.hasCost ? `$${row.costUsd.toFixed(4)}` : "n/d"}</td>
+            <td style="padding:4px 0">${tag}</td><td>${row.calls}</td><td>${row.tokensTotal || "—"}</td><td>${row.hasRagionamento ? row.tokensRagionamento : "n/d"}</td><td>${row.hasCost ? `$${row.costUsd.toFixed(4)}` : "n/d"}</td>
           </tr>`)}
         </tbody>
       </table>
