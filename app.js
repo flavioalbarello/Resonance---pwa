@@ -613,12 +613,11 @@ function richiedeConfermaEsplicita(azioneId) {
 function eseguibileSubito(azioneId) {
   return !richiedeConfermaEsplicita(azioneId);
 }
-// Vero se disfare l'azione non e' possibile: e' cio' che giustifica il gate pieno (testo integrale,
-// indirizzo per esteso) invece di quello leggero. Prima questa differenza esisteva solo nel markup
-// scritto a mano per la mail; ora viene dal dato dichiarato.
-function azioneIrreversibile(azioneId) {
-  return AZIONI_CONVERSAZIONALI.find((x) => x.id === azioneId)?.reversibile === false;
-}
+// 25/08/2026 (audit "Motoko") — RIMOSSA azioneIrreversibile: zero chiamate in tutto il file.
+// Il campo `reversibile` che leggeva non e' morto — e' letto direttamente dove serve (il testo
+// informativo di Setup, vedi `a.reversibile ? "..." : "..."`) — solo questa funzione intermedia
+// era rimasta senza nessuno a chiamarla. Stesso schema gia' visto e corretto per `richiedeGate`:
+// una dichiarazione che non produce piu' l'effetto che il suo commento diceva.
 const AZIONI_INTERRUTTORI_KEY = "azioni-interruttori";
 function leggiInterruttori() {
   const salvati = loadKey(AZIONI_INTERRUTTORI_KEY, {});
@@ -4064,8 +4063,12 @@ function titoloUsabile(titolo) {
 // copriva. Nessuna card e' comparsa, e il Ghost non aveva modo di creare il percorso dalla chat.
 // Stessa identica famiglia di difetto vista piu' volte oggi sul lato calendario (un verbo o una
 // forma non previsti): qui tocca la proposta di percorso, non la selezione di un'azione.
+// 26/08/2026 — trovato dalla prima esecuzione della prova strutturale anti-"forma dimenticata"
+// (tests/trigger-robustness.test.mjs): "vuoi" e "che" erano separati da uno spazio letterale
+// invece di \s+, quindi uno spazio doppio (un copia-incolla, un refuso) rompeva il riconoscimento
+// in silenzio, esattamente come le forme mancanti gia' viste. Corretto usando \s+ ovunque.
 function detectPercorsoProposalHeuristic(shellReply) {
-  const m = /vuoi che (?:ne\s+)?apr[ao]\s+(?:un\s+percorso|uno)\b/i.test(shellReply);
+  const m = /vuoi\s+che\s+(?:ne\s+)?apr[ao]\s+(?:un\s+percorso|uno)\b/i.test(shellReply);
   if (!m) return { proposed: false };
   const lower = shellReply.toLowerCase();
   let pillar = "vidya";
