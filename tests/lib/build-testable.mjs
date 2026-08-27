@@ -56,7 +56,7 @@ const EXPORT_NAMES = [
   "candidataTrovaEventoDiretta", "TROVA_EVENTO_DIRETTO_RE", "formatAzioniBlock", "azioniAttive",
   "scriviInterruttore", "leggiInterruttori", "estraiBersaglioPerRicercaDiretta",
   "RUMORE_BERSAGLIO_RE", "extractUsageForLog", "detectPercorsoProposalHeuristic",
-  "titoloUsabile", "troncaAConfineDiParola",
+  "titoloUsabile", "troncaAConfineDiParola", "validaPercorsoSuggerito", "eVincoloAlimentare",
 ];
 
 export function buildTestableApp() {
