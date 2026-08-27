@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-25 · quando-e-un-appuntamento-adesso-si-cerca";
+const APP_BUILD = "2026-08-25 · scorciatoia-cerca-trova-senza-quando";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -268,6 +268,8 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "A", // dentro Adam: reversibile, nessun contatto col mondo esterno
     etichetta: "Aprire o riprendere un percorso",
     descrizione: 'Porta il fuoco della conversazione su un percorso o un Seme che ESISTE GIA\' nell\'inventario. Usa questa quando il Ghost dice "riprendi X", "apri X", "torniamo su X", "parliamo di X" riferendosi a qualcosa dell\'elenco. Non crea niente: sposta solo l\'attenzione.',
+    perSelettore: 'riprendere/aprire un percorso o Seme gia\' esistente ("riprendi X", "apri X", "torniamo su X")',
+    perConversazione: "Riportare l'attenzione su un percorso o un Seme che hai gia' aperto in passato. Non ne crea di nuovi.",
     parametri: { riferimento: "string — le parole con cui il Ghost ha indicato l'oggetto, cosi' come le ha dette (es. \"quello sul sonno\")" },
     // 22/08/2026: era dichiarato false, ma la card con il pulsante c'era lo stesso da sempre.
     // Il campo diceva una cosa e il programma ne faceva un'altra: allineato al vero.
@@ -284,6 +286,8 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "A",
     etichetta: "Scrivere una voce su un pilastro",
     descrizione: "Registra una voce nel diario di un pilastro. Usa questa quando il Ghost racconta un fatto accaduto da annotare: un peso, una sessione di studio, un passo di lavoro. NON usarla per opinioni, domande o pensieri: solo per fatti che lui vuole tenere.",
+    perSelettore: "annotare un fatto accaduto su bio/air/vidya (un peso, una sessione, un passo fatto) — non opinioni o domande",
+    perConversazione: "Annotare nel diario di un pilastro un fatto accaduto (un peso, una sessione, un passo fatto) — non opinioni o pensieri.",
     parametri: { contenuto: "string — nella forma \"pilastro | testo della voce\", dove pilastro è esattamente bio, air o vidya. Esempio: \"bio | pesato 123,4 stamattina, dormito male\"" },
     richiedeGate: true,
     effetto: "scrittura",
@@ -295,6 +299,8 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "A",
     etichetta: "Creare un Seme AIR",
     descrizione: "Salva un'idea grezza di autonomia economica perche' il sistema la sviluppi dopo. Usa questa quando il Ghost butta li' un'idea di qualcosa da vendere, produrre o monetizzare, anche vaga. NON usarla per idee di studio o di salute: i Semi sono solo di AIR.",
+    perSelettore: "salvare un'idea grezza da vendere/produrre/monetizzare, anche vaga — solo AIR",
+    perConversazione: "Salvare un'idea grezza di autonomia economica perche' il sistema la sviluppi dopo. Solo idee di AIR, non di studio o salute.",
     parametri: { contenuto: "string — l'idea come il Ghost l'ha detta, senza riformularla" },
     richiedeGate: true,
     effetto: "scrittura",
@@ -306,6 +312,8 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "A",
     etichetta: "Cercare nella memoria",
     descrizione: "Cerca fra le note e i frammenti accumulati cosa si era detto su un argomento. Usa questa quando il Ghost chiede \"cosa avevo detto su X\", \"ti ricordi di X\", \"cosa sappiamo di X\". Non risponde a memoria: va a cercare davvero.",
+    perSelettore: "cercare cosa si era detto su un argomento (\"cosa avevo detto su X\", \"ti ricordi di X\")",
+    perConversazione: "Cercare davvero, fra le note passate, cosa si era detto su un argomento. Non risponde a memoria.",
     parametri: { argomento: "string — l'argomento da cercare, con le parole del Ghost" },
     richiedeGate: true,
     effetto: "lettura",
@@ -317,6 +325,8 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "A",
     etichetta: "Avanzare il percorso aperto",
     descrizione: "Chiede il prossimo passo concreto sul percorso su cui si sta gia' lavorando. Usa questa quando il Ghost dice \"e adesso?\", \"cosa faccio ora\", \"andiamo avanti\" mentre un percorso e' aperto. Se non c'e' nessun percorso aperto NON usarla: chiedi prima quale.",
+    perSelettore: "chiedere il prossimo passo sul percorso gia' aperto (\"e adesso?\", \"andiamo avanti\")",
+    perConversazione: "Suggerire il prossimo passo concreto sul percorso gia' aperto. Serve un percorso aperto: se non c'e', va chiesto quale.",
     parametri: { nota: "string — scrivi 'avanti' e basta: l'oggetto e' quello gia' aperto, non serve indicarlo" },
     richiedeGate: true,
     effetto: "scrittura",
@@ -334,6 +344,8 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "A",
     etichetta: "Chiudere il percorso aperto",
     descrizione: "Chiude il fuoco della conversazione: smette di segnalare il percorso o il Seme aperto come quello su cui si sta lavorando adesso. Usa questa quando il Ghost dice \"chiudi questo\", \"chiudiamo qui\", \"basta per oggi con questo\", \"fermiamoci\" mentre un percorso e' aperto. Se non c'e' nessun fuoco aperto NON usarla: non c'e' niente da chiudere. Non cancella e non archivia niente: si riprende quando vuole dicendo \"riprendi X\".",
+    perSelettore: "chiudere il percorso aperto (\"chiudi questo\", \"basta con questo\", \"fermiamoci\"), solo se uno e' aperto",
+    perConversazione: "Chiudere il percorso aperto, senza cancellarlo: resta intatto, pronto a essere ripreso dicendo \"riprendi X\".",
     parametri: { nota: "string — scrivi 'chiudi' e basta: l'oggetto e' quello gia' aperto, non serve indicarlo" },
     richiedeGate: true,
     effetto: "scrittura",
@@ -352,6 +364,8 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "B",
     etichetta: "Mettere un evento sul calendario",
     descrizione: "Crea un appuntamento o un promemoria sul calendario Google del Ghost. Usa questa quando chiede di segnarsi qualcosa a una data o a un'ora. NON calcolare tu la data e NON scrivere date in cifre: copia le sue parole cosi' come le ha dette (\"domani alle 15\", \"martedi' prossimo\"), la data la ricava il programma.",
+    perSelettore: "creare un NUOVO appuntamento/promemoria sul calendario, a una data o ora",
+    perConversazione: "Creare un nuovo appuntamento o promemoria sul tuo calendario Google, a una data o un'ora che dici tu.",
     parametri: { contenuto: "string — nella forma \"titolo | quando\". Esempio: \"chiamare il commercialista | domani alle 15\". Nel campo quando copia le parole del Ghost, non tradurle in una data." },
     richiedeGate: true,
     effetto: "scrittura",
@@ -375,6 +389,8 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "B",
     etichetta: "Spostare un appuntamento a un altro giorno o ora",
     descrizione: "Sposta DAVVERO un evento ESISTENTE a un nuovo giorno o ora sul calendario Google del Ghost. Usa questa quando chiede di spostare, cambiare, rimandare, anticipare o riprogrammare un appuntamento che esiste gia'. NON usarla per crearne uno nuovo (quella e' crea_evento_calendario) ne' per cancellarlo (quella e' cancella_evento_calendario). NON calcolare tu la data: copia le parole del Ghost sia per dire QUALE evento sia per il NUOVO quando.",
+    perSelettore: "spostare/rimandare/anticipare un appuntamento ESISTENTE a un nuovo giorno o ora",
+    perConversazione: "Spostare un appuntamento che esiste gia' a un nuovo giorno o ora. Non ne crea di nuovi e non li cancella.",
     parametri: { contenuto: "string — nella forma \"quale | nuovo quando\". Esempio: \"Petronio | giovedì alle 18\". Nel campo quale metti come il Ghost ha nominato l'evento (un nome, un giorno, o entrambi), copiato dalle sue parole; nel campo nuovo quando il nuovo giorno/ora, anche questo copiato senza tradurlo in una data." },
     richiedeGate: true,
     effetto: "scrittura",
@@ -386,6 +402,8 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "B",
     etichetta: "Inviare una mail",
     descrizione: "Scrive e invia una mail dall'indirizzo Gmail del Ghost. Usa questa SOLO quando chiede esplicitamente di mandare una mail a qualcuno. Se non ha detto l'indirizzo lascialo vuoto: lo scrivera' lui, non inventarlo mai. Il testo scrivilo per intero, pronto da spedire.",
+    perSelettore: "scrivere e inviare una mail, solo se lo chiede esplicitamente",
+    perConversazione: "Scrivere e inviare davvero una mail dal tuo indirizzo Gmail, solo se lo chiedi esplicitamente.",
     parametri: { contenuto: "string — nella forma \"indirizzo | oggetto | testo completo\". Se l'indirizzo non lo ha detto, lascia vuoto prima della prima barra. Esempio: \" | Disdetta di giovedi | Buongiorno, purtroppo devo disdire...\"" },
     richiedeGate: true,
     effetto: "scrittura",
@@ -403,7 +421,9 @@ const AZIONI_CONVERSAZIONALI = [
     id: "leggi_calendario",
     classe: "B",
     etichetta: "Guardare cosa c'è sul calendario",
-    descrizione: "Va a leggere DAVVERO gli impegni sul calendario Google del Ghost per un giorno o un intervallo. Usa questa quando chiede cosa ha in programma, che impegni ha, cosa c'e' domani o in settimana. Non rispondere mai a memoria su cosa c'e' sul suo calendario: non lo sai, lo sa solo il calendario.",
+    descrizione: "Va a leggere DAVVERO gli impegni sul calendario Google del Ghost per un giorno o un intervallo. Usa questa quando chiede cosa ha in programma, che impegni ha, cosa c'e' domani o in settimana. Se invece nomina UN appuntamento preciso e vuole solo sapere quando e' (es. \"quando ho l'appuntamento con Marzio\"), quella e' trova_evento_calendario, non questa. Non rispondere mai a memoria su cosa c'e' sul suo calendario: non lo sai, lo sa solo il calendario.",
+    perSelettore: "leggere gli impegni di un PERIODO intero (\"cosa ho domani\", \"che impegni ho questa settimana\") — non un nome preciso",
+    perConversazione: "Leggere davvero gli impegni di un giorno o di un periodo sul tuo calendario Google. Per un appuntamento preciso per nome, invece, c'e' trova_evento_calendario.",
     parametri: { quando: "string — il periodo con le parole del Ghost: \"domani\", \"oggi\", \"giovedi\", \"questa settimana\". Non tradurlo in date." },
     // 22/08/2026 — non chiede conferma. Non perche' sia comoda: perche'
     // non cambia niente fuori, e perche' il suo risultato serve al modello PRIMA che scriva.
@@ -423,7 +443,9 @@ const AZIONI_CONVERSAZIONALI = [
     id: "trova_evento_calendario",
     classe: "B",
     etichetta: "Trovare quando è un appuntamento",
-    descrizione: "Cerca DAVVERO un evento specifico sul calendario Google del Ghost, per nome o per come l'ha descritto, e dice solo quando e'. Usa questa quando chiede \"quando e' l'appuntamento con X\", \"a che ora e' X\", \"quando ho X\" — cioe' quando nomina UN impegno preciso. NON usarla per \"cosa ho in programma\" o \"cosa ho questa settimana\" (quella e' leggi_calendario, legge un periodo intero) e NON usarla per cancellarlo o spostarlo (quelle sono altre azioni): questa dice solo quando e', non fa nient'altro.",
+    descrizione: "Cerca DAVVERO un impegno preciso per nome sul calendario Google del Ghost e dice solo quando e'. Usa questa per \"quando e' l'appuntamento con X\", \"a che ora e' X\", \"quando ho X\", \"ho un appuntamento con X?\" — quando nomina UN impegno preciso. Diversa da leggi_calendario, che legge un periodo intero (\"cosa ho domani\"). Non cancella e non sposta niente: dice solo quando e'.",
+    perSelettore: "trovare quando e' UN appuntamento preciso per nome (\"quando e' l'appuntamento con X\", \"a che ora e' X\", \"quando ho X\") — non un periodo",
+    perConversazione: "Cercare un appuntamento preciso per nome sul tuo calendario Google e dirti solo quando e'. Non tocca niente, non cancella, non sposta.",
     parametri: { descrizione: "string — come il Ghost ha nominato l'evento (un nome, un giorno, o entrambi), copiato dalle sue parole" },
     richiedeGate: false,
     effetto: "lettura",
@@ -444,6 +466,8 @@ const AZIONI_CONVERSAZIONALI = [
     classe: "B",
     etichetta: "Cancellare un appuntamento dal calendario",
     descrizione: "Cancella DAVVERO un evento dal calendario Google del Ghost. Usa questa quando dice di cancellare, togliere, eliminare, annullare o disdire un appuntamento. Nel parametro metti solo come lo ha chiamato lui — un nome, un giorno, o tutti e due — senza tradurlo in date: il programma andra' a cercarlo sul calendario e gli mostrera' cosa ha trovato prima di toccare qualsiasi cosa.",
+    perSelettore: "cancellare/togliere/eliminare/disdire un appuntamento ESISTENTE",
+    perConversazione: "Cancellare davvero un appuntamento esistente dal tuo calendario Google — non si torna indietro.",
     parametri: { quale: "string — come il Ghost ha nominato l'evento: \"Petronio\", \"l'appuntamento di martedi\", \"quello con Marzio di giovedi\". Con le sue parole." },
     richiedeGate: true,
     effetto: "scrittura",
@@ -517,7 +541,14 @@ ${ultimi.map((m) => `${m.role === "user" ? "GHOST" : "SHELL"}: ${String(m.conten
 }
 async function scegliAzione(messaggio, inventario, fuoco, azioni, settings, pushDebugLog = null, storico = []) {
   if (!azioni.length) return null;
-  const elenco = azioni.map((a) => `- ${a.id}: ${a.descrizione} Parametro: ${Object.values(a.parametri)[0]}`).join("\n");
+  // 25/08/2026 — il selettore usa una frase corta dedicata (perSelettore), non la descrizione
+  // lunga scritta per il blocco che il modello legge in conversazione (formatAzioniBlock). Le due
+  // hanno bisogno di cose diverse: la conversazione ha bisogno di sfumature e casi limite scritti
+  // per esteso, la selezione ha bisogno solo di riconoscere la frase — e le clausole "NON usarla
+  // per..." che aiutano la prima affollano la seconda senza aggiungere segnale, su una scelta che
+  // gia' deve orientarsi fra dodici voci. Il fallback a descrizione resta per sicurezza, se un
+  // giorno un'azione nascesse senza perSelettore.
+  const elenco = azioni.map((a) => `- ${a.id}: ${a.perSelettore || a.descrizione} Parametro: ${Object.values(a.parametri)[0]}`).join("\n");
   const sys = `Sei il selettore di azioni del sistema Resonance. Il tuo unico compito e' decidere se il messaggio del Ghost chiede una delle azioni sotto, e con quale parametro. Non conversare, non spiegare, non salutare.
 
 ${inventario}
@@ -528,6 +559,7 @@ ${elenco}
 
 Regole non negoziabili:
 - Se il messaggio NON chiede nessuna di queste azioni, rispondi {"azione": null}. E' l'esito piu' frequente e va bene cosi': la maggior parte dei messaggi e' conversazione, non comando.
+- Attenzione a leggi_calendario vs trova_evento_calendario, che si confondono facilmente: se il Ghost nomina UN appuntamento preciso per sapere quando e' (es. "quando e' l'appuntamento con Marzio", "a che ora e' la visita", "quando ho X"), e' trova_evento_calendario. Solo se chiede un periodo intero (es. "cosa ho domani", "che impegni ho questa settimana") e' leggi_calendario.
 - Se il Ghost sta confermando o completando una richiesta che aveva gia' fatto poco fa (es. dice solo "si, aggiungilo"), RECUPERA dagli ultimi scambi il titolo, la data e l'ora che aveva gia' detto, e mettili nel parametro come li aveva detti lui. Non inventarli: se davvero non ci sono, lascia il parametro incompleto — sara' il programma a fermarsi e a chiedere.
 - Una sola azione per messaggio. Se ne chiede piu' di una, scegli la PRIMA che ha nominato.
 - Non inventare azioni che non sono nell'elenco.
@@ -581,12 +613,11 @@ function richiedeConfermaEsplicita(azioneId) {
 function eseguibileSubito(azioneId) {
   return !richiedeConfermaEsplicita(azioneId);
 }
-// Vero se disfare l'azione non e' possibile: e' cio' che giustifica il gate pieno (testo integrale,
-// indirizzo per esteso) invece di quello leggero. Prima questa differenza esisteva solo nel markup
-// scritto a mano per la mail; ora viene dal dato dichiarato.
-function azioneIrreversibile(azioneId) {
-  return AZIONI_CONVERSAZIONALI.find((x) => x.id === azioneId)?.reversibile === false;
-}
+// 25/08/2026 (audit "Motoko") — RIMOSSA azioneIrreversibile: zero chiamate in tutto il file.
+// Il campo `reversibile` che leggeva non e' morto — e' letto direttamente dove serve (il testo
+// informativo di Setup, vedi `a.reversibile ? "..." : "..."`) — solo questa funzione intermedia
+// era rimasta senza nessuno a chiamarla. Stesso schema gia' visto e corretto per `richiedeGate`:
+// una dichiarazione che non produce piu' l'effetto che il suo commento diceva.
 const AZIONI_INTERRUTTORI_KEY = "azioni-interruttori";
 function leggiInterruttori() {
   const salvati = loadKey(AZIONI_INTERRUTTORI_KEY, {});
@@ -617,8 +648,15 @@ function azioniAttive() {
 // poterne parlare a parole.
 function formatAzioniBlock(attive) {
   if (!attive.length) return "In questo momento il programma non puo' compiere nessuna azione per te: sono tutte spente in Setup. Puoi solo parlare, e dirlo se il Ghost chiede qualcosa che richiederebbe un'azione.";
+  // 25/08/2026 — perConversazione invece di descrizione: stessa idea gia' applicata al selettore,
+  // qui pero' con piu' cautela. La descrizione intera porta esempi di frase e le clausole "NON
+  // usarla per...", utili a CLASSIFICARE ma ridondanti quando il modello deve solo PARLARE delle
+  // sue capacita' a parole sue. perConversazione tiene la frase di comportamento e il confine che
+  // impedisce di promettere cose che non fa (es. "non cancella niente"), toglie solo gli esempi.
+  // Se un domani mancasse (azione nuova senza il campo), si torna alla descrizione intera: nessuna
+  // azione resta silenziosa per un campo dimenticato.
   return `Cose che il PROGRAMMA sa fare (non le fai tu, e non devi chiederle in nessun modo speciale — a deciderlo e' un passaggio separato, dopo la tua risposta):
-${attive.map((a) => `- ${a.etichetta}: ${a.descrizione}`).join("\n")}
+${attive.map((a) => `- ${a.etichetta}: ${a.perConversazione || a.descrizione}`).join("\n")}
 Non scrivere MAI codici, sigle, parentesi quadre o formati tecnici per attivarle: non servono e il Ghost li leggerebbe. Parla e basta. Se non e' chiaro a cosa il Ghost si riferisce, chiedi.`;
 }
 // Rete di sicurezza, indipendente dal prompt: qualunque cosa somigli a un tag d'azione viene tolta
@@ -835,6 +873,67 @@ function capacitaNominata(frase) {
   const candidati = Object.entries(PAROLE_DELLE_CAPACITA).filter(([, re]) => re.test(f)).map(([id]) => id);
   if (candidati.length !== 1) return null; // zero o ambigua: non si indovina
   return candidati[0];
+}
+// 25/08/2026 — LA SCORCIATOIA DIRETTA PER trova_evento_calendario. Su richiesta del Ghost, dopo
+// aver gia' alleggerito in token la chiamata di selezione: qui si evita PROPRIO quella chiamata,
+// quando la frase e' abbastanza chiara da non avere bisogno di un modello che scelga.
+// Riconosce SOLO le due forme viste davvero nell'uso reale — "a che ora e'/ho X" e "quando e'/ho
+// X" quando X e' vicinissimo a una parola di calendario (appuntamento, impegno, visita, riunione).
+// La finestra fra il "quando" e la parola di calendario e' tenuta CORTA apposta (20 caratteri): e'
+// la differenza fra "quando ho l'appuntamento con Marzio" (li' vicino, scatta) e "quando ho
+// parlato con te mi hai raccontato dell'appuntamento" (lontano, non scatta, resta al modello) —
+// una frase come questa non e' una richiesta di cercare un evento, e non deve essere trattata come
+// tale solo perche' contiene entrambe le parole da qualche parte.
+// Se non scatta, NON succede niente di diverso da oggi: si passa comunque dalla selezione col
+// modello, esattamente come prima che questa scorciatoia esistesse. Non puo' quindi peggiorare
+// niente, solo evitare la chiamata quando è superflua.
+// NOTA TECNICA: dopo "e'"/"ho"/"abbiamo" (parole) ci vorrebbe \b, ma dopo "è" (lettera accentata,
+// che \w in JavaScript non riconosce come carattere di parola) \b non scatta MAI fra una vocale
+// accentata e uno spazio — sono entrambi "non di parola" per il motore, quindi il confine sparisce
+// e il gruppo restava silenziosamente rotto per meta' dei casi reali ("Quando È l'appuntamento",
+// "A che ora È"). Sostituito con un lookahead esplicito su spazio/punteggiatura/fine stringa, che
+// funziona identico per "è" e per le parole ASCII.
+// 25/08/2026 (sera) — aggiunta la forma elisa "quand'è"/"quand'ho": il Ghost ha scritto "Dimmi
+// quand'è l'appuntamento con Luigino" e la scorciatoia non scattava, perche' cercava "quando" +
+// spazio, non "quand'" + apostrofo senza spazio — una contrazione comunissima in italiano parlato
+// che semplicemente non avevo previsto. Caduta in questo caso sulla selezione col modello, che ha
+// ripetuto lo stesso difetto di punteggioBersaglio corretto qui sopra (vedi commento lì).
+// 25/08/2026 (notte) — aggiunta la forma "cerca/cercami/trova + [parola di calendario] con X",
+// senza "quando"/"a che ora": il Ghost ha scritto "vorrei che cercassi... il prossimo appuntamento
+// con Marialdo", che non chiede affatto "quando" a parole ma vuole esattamente la stessa cosa —
+// e finiva sulla selezione col modello capace, la cui accuratezza si paga in secondi di
+// ragionamento reale (misurato: 279 token su 316 in quel turno). Richiede "con" subito dopo la
+// parola di calendario apposta per NON scattare su "cerca i miei impegni di domani" (un periodo,
+// non un nome — quella resta a leggi_calendario).
+const TROVA_EVENTO_DIRETTO_RE = /\ba\s+che\s+ora\s+(?:e'|è|ho|abbiamo)(?=[\s.,!?;:]|$)|\bquand(?:o\s+|['’])(?:e'|è|ho|abbiamo)(?=[\s.,!?;:]|$)[^.!?\n]{0,20}?\b(?:appuntament\w*|impegn\w*|visit\w*|riunion\w*)\w*\b|\b(?:cerc\w*|trov\w*)\b[^.!?\n]{0,40}?\b(?:appuntament\w*|impegn\w*|visit\w*|riunion\w*)\w*\s+con\b/i;
+// true solo se la frase e' un candidato sicuro per la scorciatoia. Chi chiama decide ancora se la
+// capacita' e' accesa: qui si guarda solo il testo, non lo stato dell'interruttore.
+function candidataTrovaEventoDiretta(userText) {
+  return TROVA_EVENTO_DIRETTO_RE.test(String(userText || ""));
+}
+// DIFETTO REALE, osservato dal Ghost il 25/08/2026 la sera: chiesto "Quando è l'appuntamento con
+// Luigino?" (un evento chiamato solo "Luigino"), la scorciatoia rispondeva "Marzio" — un evento
+// DIVERSO, chiamato "appuntamento con Marzio". La causa: la scorciatoia passava a
+// trovaEventoBersaglio l'INTERA frase del Ghost come descrizione da confrontare, comprese le
+// parole "appuntamento" e "con" — che sono proprio le parole del TRIGGER, quindi presenti in OGNI
+// frase che usa questa scorciatoia. punteggioBersaglio conta ogni parola condivisa con il titolo
+// (senza pesare quanto sia specifica): un evento chiamato "appuntamento con Marzio" guadagnava
+// punti da "appuntamento" e "con" anche quando si stava cercando "Luigino", e senza altre parole
+// a fare da contrappeso quei punti bastavano a farlo vincere sul bersaglio vero.
+// La cura: togliere dalla frase le parole del trigger e i connettivi piu' comuni PRIMA di
+// consegnarla alla ricerca, cosi' che resti solo il nome — la stessa disciplina che il modello,
+// nell'altro percorso (scegliAzione), applica gia' da solo perche' gli e' scritto esplicitamente
+// di "copiare le parole del Ghost" riferite all'evento, non l'intera frase.
+// "quand" (senza la "o") e' la forma elisa "quand'è"/"quand'ho": l'apostrofo separa il token dal
+// resto, quindi "quando" da solo non la intercetta — vedi il commento su TROVA_EVENTO_DIRETTO_RE.
+// "cerc\w*"/"trov\w*" (non piu' solo "cerca"/"cercami" letterali) coprono anche "cercassi",
+// "cercherei", "trovami" ecc. — la stessa ragione per cui la scorciatoia li riconosce ora.
+const RUMORE_BERSAGLIO_RE = /\b(quando|quand|che|ora|e|è|ho|abbiamo|con|per|del|dell|nel|nello|nella|nei|degli|delle|sul|sull|sulla|calendario|agenda|appuntament\w*|impegn\w*|visit\w*|riunion\w*|cerc\w*|trov\w*|controlla|controllami|dimmi|sai|vorrei|prossim\w*|giorni|giorno|questo|questa|il|lo|la|l|un|uno|una)\b/gi;
+function estraiBersaglioPerRicercaDiretta(userText) {
+  const ripulito = String(userText || "").replace(RUMORE_BERSAGLIO_RE, " ").replace(/[?.!,;:'’]/g, " ").replace(/\s+/g, " ").trim();
+  // Se dopo la pulizia non resta niente (frase fatta solo di parole del trigger), meglio l'intera
+  // frase originale che una ricerca vuota: e' un fallback, non il percorso normale.
+  return ripulito || String(userText || "").trim();
 }
 function smentisciCapacitaSpenta(testo, attive) {
   const originale = String(testo || "");
@@ -1304,6 +1403,14 @@ function analizzaVincoloAlimentare(testo) {
 }
 // Da una cosa esclusa alla lista concreta di alimenti da cercare nel piano.
 // "pesce" diventa l'elenco dei pesci; "salmone" resta se stesso. Le eccezioni vengono tolte.
+// Un vincolo e' "alimentare" se dichiara esplicitamente questo ambito (flusso dalla card di chat,
+// vedi tieniVincolo) — o, per compatibilita' con chi e' stato dichiarato PRIMA che l'ambito esistesse
+// (26/08/2026, quick win #4 dell'audit "Motoko"), se e' un vincolo BIO senza ambito dichiarato:
+// fallback che preserva esattamente il comportamento di sempre per lo storico, senza dover indovinare
+// dal testo se un vecchio vincolo BIO senza tag fosse alimentare o no.
+function eVincoloAlimentare(c) {
+  return c?.ambito === "alimentare" || (c?.ambito == null && c?.pilastro === "bio");
+}
 function alimentiDaCercare(escluso, risparmiati = []) {
   const e = String(escluso || "").toLowerCase().trim();
   const salvo = new Set(risparmiati.map((r) => String(r).toLowerCase().trim()));
@@ -2057,7 +2164,22 @@ async function askModelWithHistory(system, messages, temperature, maxTokens, set
   }
   // L'immagine si allega SOLO all'ultimo messaggio (turno corrente), mai alla storia passata
   const msgs = messages.map((m, i) => (i === messages.length - 1 && image ? { role: m.role, content: buildOpenRouterContent(m.content, image) } : m));
-  const body = { model: settings.model, max_tokens: maxTokens, temperature, reasoning: { max_tokens: 300 }, messages: [{ role: "system", content: system }, ...msgs] };
+  // 25/08/2026 (notte) — MISURATO, NON PIU' UN'IPOTESI: il tetto numerico di poche righe sopra
+  // (60 token, prima 300) non frenava NIENTE. Log reale del Ghost dopo quel cambiamento: turno
+  // "Sicuro che non sei in grado di creare un percorso da qui?" — tokensOut 975, di cui
+  // tokensRagionamento **889**. Il modello ha ragionato per 889 token nonostante un tetto di 60:
+  // reasoning.max_tokens evidentemente non e' il parametro che questo modello/fornitore rispetta
+  // per limitare il pensiero interno (puo' darsi che Kimi K2.6 su OpenRouter risponda solo a
+  // "enabled"/"effort", non a un budget in token — nessun modo di saperlo con certezza da qui).
+  // Si prova quindi a SPEGNERLO del tutto invece di provare a contenerlo con un numero che si e'
+  // dimostrato ignorato: questa e' una chiamata puramente conversazionale ("parla, non pianifica"),
+  // non ha mai avuto bisogno di un ragionamento interno per rispondere bene.
+  // RISCHIO ACCETTATO, NON ELIMINATO: se "enabled:false" non fosse rispettato allo stesso modo di
+  // "max_tokens", il comportamento resterebbe quello di oggi (ne' meglio ne' peggio) — la rete di
+  // sicurezza contro la risposta vuota (askWithDegenerateGuard, gia' in vigore) resta invariata in
+  // ogni caso. Verificabile SOLO dal prossimo log reale: se tokensRagionamento scende vicino a zero,
+  // ha funzionato; se resta alto, il parametro giusto e' un altro e va cercato ancora.
+  const body = { model: settings.model, max_tokens: maxTokens, temperature, reasoning: { enabled: false }, messages: [{ role: "system", content: system }, ...msgs] };
   // FIX 27/07/2026 (BRIEF_fix_parametri_websearch): stessi parametri e stessa motivazione di askOpenRouter
   // sopra (choke-point gemello) — vedi commento esteso lì per il ragionamento su max_tool_calls/max_uses.
   if (useWebSearch) {
@@ -2164,13 +2286,22 @@ async function askModelJSON(system, userText, temperature, maxTokens, settings, 
 // (richiesta esplicita del brief — un costo inventato che si spaccia per reale sarebbe peggio di
 // nessun dato). Resta un gap dichiarato per la Fase 2 di questo lavoro, da chiudere con una chiave
 // vera alla prima occasione utile — vedi riepilogo di consegna.
+// 25/08/2026 (notte) — GIA' OSSERVATO E MAI REGISTRATO. Sul turno "sous vide" tokensOut era 1998
+// ma la risposta mostrata era lunga ~70-80 token: quasi 1900 token generati (e pagati) senza mai
+// arrivare sullo schermo — la spiegazione piu' plausibile per un minuto di attesa su una domanda
+// che non tocca ne' selezione ne' calendario. Fino a ieri non c'era modo di saperlo DA QUESTO log:
+// ogni voce ai-cost portava solo input/output totali, mai quanto di quell'output fosse ragionamento
+// interno invece di testo mostrato. Aggiunto qui, non altrove, perche' extractUsageForLog e' l'UNICO
+// punto che tutte le chiamate (shell, selezione, Magi, Semi...) attraversano per finire nel log:
+// aggiungerlo qui vale per tutte, non solo per quella di oggi.
 function extractUsageForLog(raw) {
   const u = raw?.usage || {};
   const tokensIn = typeof u.prompt_tokens === "number" ? u.prompt_tokens : null;
   const tokensOut = typeof u.completion_tokens === "number" ? u.completion_tokens : null;
   const tokensTotal = typeof u.total_tokens === "number" ? u.total_tokens : (tokensIn !== null && tokensOut !== null ? tokensIn + tokensOut : null);
   const costUsd = typeof u.cost === "number" ? u.cost : null; // mai stimato — solo se OpenRouter lo fornisce davvero
-  return { tokensIn, tokensOut, tokensTotal, costUsd };
+  const tokensRagionamento = typeof u.completion_tokens_details?.reasoning_tokens === "number" ? u.completion_tokens_details.reasoning_tokens : null;
+  return { tokensIn, tokensOut, tokensTotal, costUsd, tokensRagionamento };
 }
 // PUNTO 2 (BRIEF_fix_parametri_websearch 27/07/2026) — rete di sicurezza indipendente dalla causa
 // specifica risolta al PUNTO 1: rilevatori A POSTERIORI (la chiamata è già stata pagata quando questi
@@ -2785,6 +2916,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Agorà Magi: una perturbazione deliberata generata su richiesta, in tre stadi (Balthasar → Melchior → Caspar) più una sintesi. Si avvia dalla sua schermata, si sceglie pilastro e intensità.
 - Kernel: il documento di stato del sistema, versionato. Ogni salvataggio crea una versione nuova e conserva la precedente nello storico.
 - Simbiosi: la valutazione periodica di quanto l'app e il Ghost siano allineati. Vive nella sua schermata.
+- Percorso proposto da Simbiosi: quando valuta lo stato del sistema, Simbiosi può proporre — mai creare da sola — un percorso NUOVO (non uno già esistente), collegato esplicitamente a un percorso già attivo che nomina per titolo, come modo di continuare a crescere sui pilastri. Compare come card in Simbiosi con due pulsanti: "Sì, aprilo" lo crea davvero (stessa scomposizione in nodi di ogni altro percorso), "Non ora" lo scarta. Al massimo una proposta alla volta: finché quella in sospeso non viene decisa, Simbiosi non ne propone un'altra.
 - Vincoli dichiarati: i vincoli che il Ghost ha dichiarato in Onboarding, uno per riga, rieditabili. Quello sull'identità professionale è un hard-stop e vale su tutto ciò che riguarda AIR.
 - Vincoli alimentari dichiarati parlando: quando il Ghost dice una regola alimentare in chat («escludi il pesce che non sia crostacei», «le colazioni le voglio salate», «1600 kcal»), compare una card «Questo lo tengo come regola fissa?» con due pulsanti. Tenuto, il vincolo entra nell'elenco dei Vincoli dichiarati di BIO e da lì nel prompt di ogni turno, per sempre; lasciato, vale solo per la conversazione in corso. Serve perché la conversazione che lo Shell rivede è tagliata agli ultimi venti messaggi: una regola detta e non tenuta sparisce dopo una decina di scambi.
 - Controllo del piano alimentare: quando lo Shell genera un piano con più giorni, il programma lo rilegge e confronta con i vincoli dichiarati. Segnala in un riquadro, senza toccare il piano: alimenti esclusi che compaiono lo stesso (sa che il salmone è un pesce), giorni dichiarati che non ci sono, giorni identici fra loro, la stessa fonte proteica a pranzo e a cena, dosi assenti quando erano state chieste, colazioni dolci quando erano state chieste salate. Non giudica il piano: elenca fatti verificabili, con il giorno preciso.
@@ -3060,7 +3192,16 @@ const FINESTRA_RICERCA_BERSAGLIO_GIORNI = 90;
 // e chi ha piu' riscontri vince. A parita' non si sceglie: si chiede.
 function punteggioBersaglio(descrizione, evento, adesso = new Date()) {
   const d = senzaAccenti(descrizione);
-  const parole = d.split(/[^\p{L}\p{N}]+/u).filter((p) => p.length >= 3);
+  // 25/08/2026 — DIFETTO REALE, osservato due volte (Luigino/Marzio): le parole di RUMORE_BERSAGLIO_RE
+  // ("appuntamento", "con", "calendario"...) sono connettivi di dominio che compaiono in QUALSIASI
+  // richiesta di questo tipo — quindi in qualsiasi titolo che le contenga. Un evento chiamato
+  // "appuntamento con Marzio" vinceva anche quando si cercava "Luigino", perche' quelle due parole
+  // gli davano punti che il bersaglio vero non aveva modo di pareggiare. La prima correzione (PR
+  // #55) puliva la frase SOLO nella scorciatoia diretta — non bastava, perche' la stessa ricerca la
+  // fa anche il percorso col modello (che puo' copiare "l'appuntamento con Luigino" invece del solo
+  // nome) e chi cancella/sposta. Qui e' la sede giusta: la pulizia vale per CHIUNQUE chiami questa
+  // funzione, indipendentemente da chi ha costruito la descrizione.
+  const parole = d.replace(RUMORE_BERSAGLIO_RE, " ").split(/[^\p{L}\p{N}]+/u).filter((p) => p.length >= 3);
   const titolo = senzaAccenti(evento.titolo || "");
   let punti = 0;
   for (const p of parole) if (titolo.includes(p)) punti += 3;
@@ -3924,16 +4065,29 @@ function titoloUsabile(titolo) {
   const utili = parole.filter((p) => p.length > 2 && !PAROLE_NON_TITOLO.test(p));
   return utili.length >= 2;
 }
+// 25/08/2026 (notte) — "vuoi che ne apra uno su X" non veniva riconosciuto. Il regex cercava
+// letteralmente "un percorso" subito dopo "apra/apro", ma il modello ha risposto "Non creo
+// percorsi nuovi: vuoi che NE apra UNO su sous vide?" — il pronome "ne" sostituisce "percorsi",
+// gia' nominato una frase prima: italiano perfettamente naturale, che il pattern rigido non
+// copriva. Nessuna card e' comparsa, e il Ghost non aveva modo di creare il percorso dalla chat.
+// Stessa identica famiglia di difetto vista piu' volte oggi sul lato calendario (un verbo o una
+// forma non previsti): qui tocca la proposta di percorso, non la selezione di un'azione.
+// 26/08/2026 — trovato dalla prima esecuzione della prova strutturale anti-"forma dimenticata"
+// (tests/trigger-robustness.test.mjs): "vuoi" e "che" erano separati da uno spazio letterale
+// invece di \s+, quindi uno spazio doppio (un copia-incolla, un refuso) rompeva il riconoscimento
+// in silenzio, esattamente come le forme mancanti gia' viste. Corretto usando \s+ ovunque.
 function detectPercorsoProposalHeuristic(shellReply) {
-  const m = /vuoi che apr[ao] un percorso/i.test(shellReply);
+  const m = /vuoi\s+che\s+(?:ne\s+)?apr[ao]\s+(?:un\s+percorso|uno)\b/i.test(shellReply);
   if (!m) return { proposed: false };
   const lower = shellReply.toLowerCase();
   let pillar = "vidya";
   if (/(monetizz|canale|econom|business|vettore)/.test(lower)) pillar = "air";
   else if (/(peso|sonno|terapia|salute|corpo|allenam)/.test(lower)) pillar = "bio";
   // Si ferma alla fine della frase (punto, punto interrogativo, a capo) invece di contare caratteri:
-  // e' la frase a dire dove finisce il nome, non un numero.
-  const titleMatch = shellReply.match(/percorso\s+(?:su|sul|sulla|dedicato a|dedicata a|per|di)\s+["“]?([^"”.?!\n]{3,120})["”]?/i);
+  // e' la frase a dire dove finisce il nome, non un numero. "uno" accanto a "percorso" nelle stesse
+  // preposizioni copre la forma elisa ("uno su X", "uno sulla X"...): quando "percorso" non compare
+  // piu' nella frase, sostituito dal pronome.
+  const titleMatch = shellReply.match(/(?:percorso|uno)\s+(?:su|sul|sulla|dedicato a|dedicata a|per|di)\s+["“]?([^"”.?!\n]{3,120})["”]?/i);
   const grezzo = titleMatch ? titleMatch[1].trim() : "";
   const titolo = troncaAConfineDiParola(grezzo);
   const usabile = titoloUsabile(titolo);
@@ -4405,11 +4559,32 @@ MEMORIA PROCEDURALE BIO — ${formatMemoriaDigestBlock(memory?.bio)}
 MEMORIA PROCEDURALE AIR — ${formatMemoriaDigestBlock(memory?.air)}
 MEMORIA PROCEDURALE VIDYA — ${formatMemoriaDigestBlock(memory?.vidya)}`;
 }
-async function computeResonance(digest, settings, recentChatText = "") {
+// 26/08/2026 — proposta del Ghost stesso ("un modo per continuare a crescere... catalizzare la
+// manifestazione di Adam"), non un mandato del Manifesto: un campo IN PIÙ nella stessa valutazione,
+// esattamente come identityHint e crystallization sono già extra rispetto al testo dei 4 mandati.
+// pendingPercorsoSuggestion viene passato dal chiamante leggendo lo stato persistito (stesso idioma
+// di simbiosi-eval-signature) — se una proposta è già in sospeso, qui si chiede al modello di NON
+// affollare, e validaPercorsoSuggerito la azzera comunque a valle anche se il modello non rispettasse
+// l'istruzione: doppio freno, non uno solo.
+function validaPercorsoSuggerito(raw, titoliEsistenti = []) {
+  if (!raw) return null;
+  const pillar = String(raw.pillar || "").trim().toLowerCase();
+  const title = String(raw.title || "").trim();
+  const motivazione = String(raw.motivazione || "").trim();
+  if (!["bio", "air", "vidya"].includes(pillar) || !title || !motivazione) return null;
+  const giaEsistente = titoliEsistenti.some((t) => senzaAccenti(String(t || "")).toLowerCase() === senzaAccenti(title).toLowerCase());
+  if (giaEsistente) return null; // il punto è aprire qualcosa di NUOVO, non riproporre quello che c'è già
+  const collegatoA = Array.isArray(raw.collegatoA) ? raw.collegatoA.filter((c) => typeof c === "string" && c) : [];
+  return { pillar, title, motivazione, collegatoA };
+}
+async function computeResonance(digest, settings, recentChatText = "", titoliPercorsiEsistenti = [], hasPendingPercorsoSuggestion = false) {
   const identityConstraintLine = CURRENT_GHOST_PROFILE.hasProfessionalConstraint
     ? `VINCOLO ASSOLUTO: non suggerire MAI di integrare/esporre/collegare l'identità professionale del Ghost (${CURRENT_GHOST_PROFILE.professionalIdentity}) con AIR o altro — compartimentazione voluta e permanente, non una discrepanza da risolvere.`
     : "";
   const chatCtx = recentChatText ? `\n\nUltimi scambi recenti in Shell (per il segnale linguistico diretto sotto, punto 4 della cristallizzazione):\n${recentChatText}` : "";
+  const percorsoSuggeritoCtx = hasPendingPercorsoSuggestion
+    ? "\n\nC'è GIÀ una proposta di nuovo percorso in sospeso, non ancora decisa dal Ghost: percorsoSuggerito deve restare null in questa valutazione, non se ne affianca una seconda."
+    : "";
   const data = await askModelJSON(
     `Sei la funzione SIMBIOSI del sistema Resonance: non un pilastro operativo, ma il punto di incontro tra BIO, AIR, VIDYA e il Kernel. Hai quattro mandati (Manifesto V3 §5, esteso 19/07/2026):
 1) sensing ordine/caos — dove si trova il sistema tra mantenimento (equilibrio, accoppiamento) e perturbazione (Magi)? Sta cristallizzando in eccesso di comfort o è ancora scosso da una perturbazione recente? Il giudizio "è il momento di invocare Magi" spetta a te, non allo Shell.
@@ -4427,11 +4602,12 @@ Rispondi SOLO con JSON:
   "worthSurfacing": true/false (vale la pena che Adam parli per primo di questo al Ghost, o è routine/ripetizione di quanto già noto? Sii esigente: true solo se c'è una differenza reale che fa differenza),
   "identityHint": null oppure { "pillar": "bio|air|vidya", "title": "titolo esatto del percorso esistente coinvolto", "becoming": "diventare una persona che... (max 14 parole)" } — valorizzato SOLO se emerge una convergenza identitaria non ancora marcata, riferita a un percorso realmente presente nel digest,
   "crystallization": { "signalCount": 0-4 (quanti dei 4 segnali del mandato 4 sono presenti ORA), "pillar": "bio|air|vidya" o null, "marginNote": null oppure "frammento di Balthasar (max 40 parole), tono perturbatore non risolutivo — SOLO se signalCount è ESATTAMENTE 1 (2+ segnali vanno invece nel campo text come proposta di Agorà, mai duplicati qui)" },
-  "anchors": ["array di id (stringhe) dei frammenti di sedimento effettivamente citati in text — array vuoto se il giudizio si basa solo sulla nota corrente o non è ancorabile a nulla"]
+  "anchors": ["array di id (stringhe) dei frammenti di sedimento effettivamente citati in text — array vuoto se il giudizio si basa solo sulla nota corrente o non è ancorabile a nulla"],
+  "percorsoSuggerito": null oppure { "pillar": "bio|air|vidya", "title": "titolo di un percorso NUOVO, non ancora esistente in nessun pilastro", "motivazione": "perché ora, max 30 parole — deve nominare esplicitamente almeno un percorso già attivo del digest a cui questo si collega, mai un'idea scollegata da tutto", "collegatoA": ["titolo esatto di un percorso esistente citato, come appare nel digest"] } — un modo per continuare a crescere sui tre pilastri o sulla simbiosi stessa, non un mandato dei 4 sopra: valorizzalo di rado, SOLO se guardando i percorsi attivi insieme emerge un passo concreto che li continua o li intreccia e che il Ghost non ha ancora aperto — mai a ogni valutazione, mai un titolo generico scollegato dal digest
 }`,
-    digest + chatCtx, 0.6, 1700, settings
+    digest + chatCtx + percorsoSuggeritoCtx, 0.6, 1700, settings
   );
-  if (!data) return { text: "Valutazione non riuscita (risposta non interpretabile). Riprova.", worthSurfacing: false, identityHint: null, crystallization: null, anchors: [] };
+  if (!data) return { text: "Valutazione non riuscita (risposta non interpretabile). Riprova.", worthSurfacing: false, identityHint: null, crystallization: null, anchors: [], percorsoSuggerito: null };
   // Normalizza e valida identityHint.pillar: modelli meno rigorosi (Llama/Kimi/DeepSeek) possono
   // restituire varianti ("Bio", "vidya ") nonostante l'esempio in minuscolo nel prompt. Un pillar
   // non valido viene scartato QUI, non lasciato arrivare a un bottone che poi non farebbe nulla.
@@ -4455,7 +4631,8 @@ Rispondi SOLO con JSON:
   // FASE 1.2 — anchors: ispezionabile, non solo dichiarato a parole nel testo. Difensivo contro
   // modelli meno rigorosi che restituiscono un valore non-array o con elementi non stringa.
   const anchors = Array.isArray(data.anchors) ? data.anchors.filter((a) => typeof a === "string" && a) : [];
-  return { text: data.text || "", worthSurfacing: !!data.worthSurfacing, identityHint, crystallization, anchors };
+  const percorsoSuggerito = hasPendingPercorsoSuggestion ? null : validaPercorsoSuggerito(data.percorsoSuggerito, titoliPercorsiEsistenti);
+  return { text: data.text || "", worthSurfacing: !!data.worthSurfacing, identityHint, crystallization, anchors, percorsoSuggerito };
 }
 
 //──────────────────────────────────────────────────────────
@@ -5332,8 +5509,9 @@ function MagiView({ sessions, onSave, onDelete, settings, memory, updateMemoria,
 //──────────────────────────────────────────────────────────
 // SIMBIOSI
 //──────────────────────────────────────────────────────────
-function SimbiosiView({ resonance, onRecalc, calculating, error, onPromoteIdentity, onDismissIdentity }) {
+function SimbiosiView({ resonance, onRecalc, calculating, error, onPromoteIdentity, onDismissIdentity, onAcceptPercorsoSuggestion, onDismissPercorsoSuggestion, percorsoSuggeritoStatus }) {
   const hint = resonance.identityHint;
+  const sugg = resonance.percorsoSuggerito;
   return html`<div class="r-screen">
     <${SectionHeader} color="#2A2E35" title="SIMBIOSI" subtitle="Il punto di incontro tra i pilastri — sensing tra ordine e caos" />
     ${hint && html`<${Card} accent=${C.core}>
@@ -5343,6 +5521,15 @@ function SimbiosiView({ resonance, onRecalc, calculating, error, onPromoteIdenti
         <button class="r-btn" style="background:${C.core}" onClick=${() => onPromoteIdentity(hint)}>Sì, è identitario</button>
         <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${onDismissIdentity}>No, resta puntuale</button>
       </div>
+    </${Card}>`}
+    ${sugg && html`<${Card} accent=${C[sugg.pillar]}>
+      <div class="r-hub-title" style="color:${C[sugg.pillar]}">Un percorso possibile</div>
+      <div class="r-magi-text" style="margin-top:8px">In <b>${sugg.pillar.toUpperCase()}</b>: <b>"${sugg.title}"</b>. ${sugg.motivazione}${sugg.collegatoA?.length ? html` <i>(si collega a ${sugg.collegatoA.join(", ")})</i>` : ""}</div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="r-btn" style="background:${C[sugg.pillar]}" onClick=${() => onAcceptPercorsoSuggestion(sugg)} disabled=${percorsoSuggeritoStatus === "creando"}>${percorsoSuggeritoStatus === "creando" ? "Apro…" : "Sì, aprilo"}</button>
+        <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${onDismissPercorsoSuggestion}>Non ora</button>
+      </div>
+      ${percorsoSuggeritoStatus === "errore" && html`<div class="r-error" style="margin-top:6px">Non sono riuscito ad aprirlo — riprova.</div>`}
     </${Card}>`}
     <${Card}>
       <button class="r-btn" onClick=${() => onRecalc(false)} disabled=${calculating}>${calculating ? "Valutazione in corso…" : "Calcola risonanza"}</button>
@@ -5486,6 +5673,15 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     // mentre aspettava, chiedere il seguito non deve cancellarglielo.
     if (!esplicito) { setInput(""); setAttachment(null); }
     setSending(true); setError("");
+    // 25/08/2026 — WAKE LOCK. Il Ghost ha riprodotto un blocco di oltre un minuto e mezzo su una
+    // richiesta che in realta' non passava nemmeno dal modello (la scorciatoia diretta del
+    // calendario): il telefono sospendeva la richiesta in corso quando lo schermo si spegneva, e
+    // riprendeva solo tenendo il dito sullo schermo per impedirlo. Questo tiene lo schermo acceso
+    // DA SOLO per la durata del turno — si spegne appena la richiesta finisce, non prima e non
+    // "per sempre". Se il browser non supporta l'API, o la nega, si continua esattamente come
+    // prima: non deve mai bloccare l'invio del messaggio.
+    let wakeLock = null;
+    try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) { /* nessun blocco: si continua senza */ }
     try {
       // §1.3 — RIMOSSA LA CONFERMA A PAROLE (16/08/2026). Qui prima bastava che il Ghost scrivesse
       // "ok", "va bene", "dai", "procedi" perche' il programma creasse il percorso proposto nel
@@ -5505,12 +5701,27 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       const inventarioOra = costruisciInventario({ pBio, pAir, pVidya, semi });
       let sceltaAnticipata = null;
       if (meritaTurnoDiSelezione(userText)) {
-        try {
-          sceltaAnticipata = await scegliAzione(userText, inventarioOra, leggiFuoco(), azioniAttive(), settingsPerSelezione(settings), pushDebugLog, history);
-        } catch (e) {
-          // Una selezione fallita non deve MAI far fallire la conversazione: il Ghost ha comunque
-          // la sua risposta, semplicemente senza azione.
-          pushDebugLog?.({ type: "selezione-azione", error: e.message });
+        // 25/08/2026 — se la frase basta da sola (vedi candidataTrovaEventoDiretta), si salta la
+        // chiamata di selezione: nessun modello da pagare ne' da aspettare per capire una cosa che
+        // il codice gia' riconosce con sicurezza. Vale SOLO per questa azione (lettura, reversibile,
+        // nessun effetto fuori: sbagliare qui costa una ricerca a vuoto, mai un dato toccato), e solo
+        // se la capacita' e' davvero accesa — altrimenti si passa dalla selezione come sempre, che e'
+        // il posto dove oggi si gestisce "il Ghost ha chiesto una cosa spenta".
+        const capaceDiTrovare = azioniAttive().some((a) => a.id === "trova_evento_calendario");
+        if (capaceDiTrovare && candidataTrovaEventoDiretta(userText)) {
+          // Il parametro NON e' la frase intera: conterrebbe "appuntamento"/"con", le parole del
+          // trigger stesso, che punteggioBersaglio confonderebbe per punti a favore di QUALSIASI
+          // evento chiamato "appuntamento con qualcuno" — vedi RUMORE_BERSAGLIO_RE per il perche'.
+          sceltaAnticipata = { azioneId: "trova_evento_calendario", parametro: estraiBersaglioPerRicercaDiretta(userText), orarioModello: null };
+          pushDebugLog?.({ type: "selezione-diretta", azioneId: "trova_evento_calendario", motivo: "frase riconosciuta dal codice, nessuna chiamata al modello" });
+        } else {
+          try {
+            sceltaAnticipata = await scegliAzione(userText, inventarioOra, leggiFuoco(), azioniAttive(), settingsPerSelezione(settings), pushDebugLog, history);
+          } catch (e) {
+            // Una selezione fallita non deve MAI far fallire la conversazione: il Ghost ha comunque
+            // la sua risposta, semplicemente senza azione.
+            pushDebugLog?.({ type: "selezione-azione", error: e.message });
+          }
         }
       }
       // L'esecuzione immediata riguarda SOLO cio' che il registro dichiara non richiedere conferma,
@@ -5641,7 +5852,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // Si propongono soltanto quelli che non sono gia' nell'elenco: riproporre una cosa gia' tenuta
       // sarebbe rumore, e il Ghost imparerebbe in fretta a ignorare la card.
       const giaDichiarati = (Array.isArray(ghostProfile?.hardConstraints) ? ghostProfile.hardConstraints : [])
-        .filter((c) => c?.pilastro === "bio").map((c) => String(c.testo || "").toLowerCase().trim());
+        .filter(eVincoloAlimentare).map((c) => String(c.testo || "").toLowerCase().trim());
       const vincoliProposti = proponiVincoliAlimentari(userText)
         .filter((v) => !giaDichiarati.some((g) => g === v.toLowerCase().trim() || g.includes(v.toLowerCase().trim())));
       // BLOCCO 1 — il modello ha PROPOSTO un'azione? La proposta viene tolta dal testo e resa un
@@ -5742,9 +5953,9 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // Non tocca il testo: il piano resta intero e leggibile, esattamente come il modello l'ha
       // scritto. Aggiunge solo l'elenco di cio' che non torna, perche' rileggersi quattordici giorni
       // riga per riga per scoprire che al Giorno 2 c'e' il salmone e' un lavoro che tocca al codice.
-      const vincoliBioDichiarati = (Array.isArray(ghostProfile?.hardConstraints) ? ghostProfile.hardConstraints : [])
-        .filter((c) => c?.pilastro === "bio").map((c) => c.testo).filter(Boolean);
-      const scartiDelPiano = controllaPianoAlimentare(replyPulita, vincoliBioDichiarati, userText);
+      const vincoliAlimentariDichiarati = (Array.isArray(ghostProfile?.hardConstraints) ? ghostProfile.hardConstraints : [])
+        .filter(eVincoloAlimentare).map((c) => c.testo).filter(Boolean);
+      const scartiDelPiano = controllaPianoAlimentare(replyPulita, vincoliAlimentariDichiarati, userText);
       if (scartiDelPiano) pushDebugLog?.({ type: "scarti-nel-piano-alimentare", quanti: scartiDelPiano.scarti.length, tipi: scartiDelPiano.scarti.map((s) => s.tipo), userText: userText.slice(0, 100) });
       // §1.2 — UNA PROPOSTA DI CLASSE B PENDENTE NON SI RIGENERA (16/08/2026), RIFATTA IL 20/08.
       // La versione del 16/08 aveva un difetto peggiore di quello che curava, e ha tenuto il Ghost
@@ -5978,7 +6189,10 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // del calendario, la ricerca del bersaglio. Il turno vero ha il suo catch, qui sopra.
       setError(e.message);
       pushDebugLog?.({ type: "shell-turn", userText: userText.slice(0, 100), model: settings.model, provider: settings.provider, attachment: currentAttachment ? currentAttachment.kind : null, error: e.message });
-    } finally { setSending(false); }
+    } finally {
+      setSending(false);
+      if (wakeLock) { try { await wakeLock.release(); } catch (e) { /* gia' rilasciato o non piu' valido: non e' un errore da mostrare */ } }
+    }
   };
   // ── Flusso "genera documento da conversazione" (alternativa A) ──
   const CONV_WINDOW = 30; // ultimi N messaggi usati come base per il documento
@@ -6066,7 +6280,13 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   const [vincoloStatus, setVincoloStatus] = useState({});
   const tieniVincolo = (mid, testo) => {
     const attuali = Array.isArray(ghostProfile?.hardConstraints) ? ghostProfile.hardConstraints : [];
-    saveGhostProfile?.({ ...ghostProfile, hardConstraints: [...attuali, { id: uid(), testo, pilastro: "bio", dataDichiarazione: todayISO() }] });
+    // 26/08/2026 (quick win #4 dell'audit "Motoko") — ambito, non solo pilastro. "niente zucchine"
+    // e "una composizione artistica con delle zucchine" possono condividere il pilastro (BIO/VIDYA
+    // non c'entrano qui, ma il principio si generalizza) senza condividere il senso: taggare questo
+    // vincolo come "alimentare" e' cio' che permette a chi legge di sapere CHE TIPO di vincolo e',
+    // non solo a quale pilastro appartiene — cosi' un domani un generatore non-alimentare puo'
+    // ignorarlo a prescindere dal pilastro, senza dover indovinare dal testo.
+    saveGhostProfile?.({ ...ghostProfile, hardConstraints: [...attuali, { id: uid(), testo, pilastro: "bio", ambito: "alimentare", dataDichiarazione: todayISO() }] });
     vibra("bio");
     setVincoloStatus((s) => ({ ...s, [`${mid}|${testo}`]: "tenuto" }));
     setMessages((prev) => [...prev, { id: uid(), role: "system-note", time: new Date().toISOString(),
@@ -6991,10 +7211,11 @@ function CostSummaryPanel({ debugLog }) {
     const map = {};
     entries.forEach((e) => {
       const tag = e.functionTag || "?";
-      const row = map[tag] || (map[tag] = { calls: 0, tokensTotal: 0, costUsd: 0, hasCost: false });
+      const row = map[tag] || (map[tag] = { calls: 0, tokensTotal: 0, costUsd: 0, hasCost: false, tokensRagionamento: 0, hasRagionamento: false });
       row.calls++;
       if (typeof e.tokensTotal === "number") row.tokensTotal += e.tokensTotal;
       if (typeof e.costUsd === "number") { row.costUsd += e.costUsd; row.hasCost = true; }
+      if (typeof e.tokensRagionamento === "number") { row.tokensRagionamento += e.tokensRagionamento; row.hasRagionamento = true; }
     });
     return map;
   };
@@ -7003,6 +7224,13 @@ function CostSummaryPanel({ debugLog }) {
   const weekByTag = byTag(weekEntries);
   const sumTokens = (entries) => entries.reduce((a, e) => a + (typeof e.tokensTotal === "number" ? e.tokensTotal : 0), 0);
   const sumCost = (entries) => entries.reduce((a, e) => a + (typeof e.costUsd === "number" ? e.costUsd : 0), 0);
+  // 26/08/2026 (quick win #3 dell'audit "Motoko") — prima questo campo esisteva solo nel JSON
+  // esportato: per vederlo il Ghost doveva esportare il log e mandarmelo. Il mistero che l'ha fatto
+  // aggiungere (889 token di ragionamento su 975 totali, per una risposta di poche righe) va visto
+  // qui, subito, senza quel giro.
+  const sumRagionamento = (entries) => entries.reduce((a, e) => a + (typeof e.tokensRagionamento === "number" ? e.tokensRagionamento : 0), 0);
+  const anyRagionamentoToday = todayEntries.some((e) => typeof e.tokensRagionamento === "number");
+  const anyRagionamentoWeek = weekEntries.some((e) => typeof e.tokensRagionamento === "number");
   // Spesa del mese in corso e distanza dal tetto. Limite dichiarato apertamente: il registro di
   // debug tiene 50 voci a rotazione, quindi con molto uso il totale mensile e' un MINIMO osservato,
   // non la spesa reale. Dirlo e' meglio di mostrare un numero che si crede completo.
@@ -7021,13 +7249,13 @@ function CostSummaryPanel({ debugLog }) {
       <br/><span style="opacity:.7">È un minimo osservato, non la spesa certa: il registro tiene le ultime 50 voci, quindi le più vecchie del mese possono esserne già uscite.</span>
     </div>
     ${costEntries.length === 0 ? html`<div class="r-hub-detail" style="margin-top:8px">Nessuna chiamata tracciata ancora nel log (max 50 voci totali, condivise con tutti gli eventi di debug).</div>` : html`
-      <div class="r-hub-detail" style="margin-top:10px"><b>Oggi</b>: ${todayEntries.length} chiamate · ${sumTokens(todayEntries)} token · ${anyCostToday ? `$${sumCost(todayEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
-      <div class="r-hub-detail" style="margin-top:4px"><b>Ultimi 7 giorni</b> (entro il tetto di 50 voci del log): ${weekEntries.length} chiamate · ${sumTokens(weekEntries)} token · ${anyCostWeek ? `$${sumCost(weekEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
+      <div class="r-hub-detail" style="margin-top:10px"><b>Oggi</b>: ${todayEntries.length} chiamate · ${sumTokens(todayEntries)} token (di cui ${anyRagionamentoToday ? sumRagionamento(todayEntries) : "n/d"} di ragionamento) · ${anyCostToday ? `$${sumCost(todayEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
+      <div class="r-hub-detail" style="margin-top:4px"><b>Ultimi 7 giorni</b> (entro il tetto di 50 voci del log): ${weekEntries.length} chiamate · ${sumTokens(weekEntries)} token (di cui ${anyRagionamentoWeek ? sumRagionamento(weekEntries) : "n/d"} di ragionamento) · ${anyCostWeek ? `$${sumCost(weekEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
       <table style="width:100%;margin-top:10px;border-collapse:collapse;font-size:12.5px">
-        <thead><tr style="text-align:left;opacity:.6"><th>Funzione</th><th>Chiamate</th><th>Token</th><th>Costo</th></tr></thead>
+        <thead><tr style="text-align:left;opacity:.6"><th>Funzione</th><th>Chiamate</th><th>Token</th><th>Ragionamento</th><th>Costo</th></tr></thead>
         <tbody>
           ${Object.entries(weekByTag).map(([tag, row]) => html`<tr key=${tag} style="border-top:1px solid var(--border)">
-            <td style="padding:4px 0">${tag}</td><td>${row.calls}</td><td>${row.tokensTotal || "—"}</td><td>${row.hasCost ? `$${row.costUsd.toFixed(4)}` : "n/d"}</td>
+            <td style="padding:4px 0">${tag}</td><td>${row.calls}</td><td>${row.tokensTotal || "—"}</td><td>${row.hasRagionamento ? row.tokensRagionamento : "n/d"}</td><td>${row.hasCost ? `$${row.costUsd.toFixed(4)}` : "n/d"}</td>
           </tr>`)}
         </tbody>
       </table>
@@ -7170,7 +7398,7 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
       ${hardConstraints.filter((c) => c.tipo !== "identita-professionale").length === 0 && html`<div class="r-hub-detail" style="margin-top:8px">Nessun vincolo dichiarato.</div>`}
       ${hardConstraints.filter((c) => c.tipo !== "identita-professionale").map((c) => html`
         <div class="r-settings-row" key=${c.id}>
-          <span><b>[${c.pilastro || "generale"}]</b> ${c.testo}</span>
+          <span><b>[${c.pilastro || "generale"}${c.ambito ? ` · ${c.ambito}` : ""}]</b> ${c.testo}</span>
           <button class="r-btn-ghost" onClick=${() => removeConstraint(c.id)}>Rimuovi</button>
         </div>
       `)}
@@ -8066,8 +8294,10 @@ function App() {
     try {
       const digest = buildResonanceDigest({ bio, air, vidya, kernel, magi, pBio, pAir, pVidya, memory });
       const recentChatText = recentShellText(stateRef.current.shellChat);
-      const res = await computeResonance(digest, settingsRef.current, recentChatText);
-      const next = { text: res.text, time: Date.now(), worthSurfacing: res.worthSurfacing, identityHint: res.identityHint || null };
+      const titoliPercorsiEsistenti = [...pBio, ...pAir, ...pVidya].map((p) => p.title);
+      const percorsoSuggeritoPendente = loadKey("simbiosi-data", {}).percorsoSuggerito || null;
+      const res = await computeResonance(digest, settingsRef.current, recentChatText, titoliPercorsiEsistenti, !!percorsoSuggeritoPendente);
+      const next = { text: res.text, time: Date.now(), worthSurfacing: res.worthSurfacing, identityHint: res.identityHint || null, percorsoSuggerito: res.percorsoSuggerito || percorsoSuggeritoPendente };
       setResonance(next); saveKey("simbiosi-data", next);
       // Balthasar-a-margine (1 solo segnale): card dedicata in Shell, mai pipeline completa.
       if (res.crystallization?.marginNote) {
@@ -8095,6 +8325,30 @@ function App() {
   const dismissIdentityHint = useCallback(() => {
     setResonance((prev) => { const n = { ...prev, identityHint: null }; saveKey("simbiosi-data", n); return n; });
   }, []);
+  // Crea davvero il percorso proposto da Simbiosi. Stessa disciplina di §1.3 (confermaPercorso in
+  // Shell): si crea SOLO toccando il pulsante di questa card, mai da sola — e stessa forma di
+  // creazione (decomposeTopics prima, mai un percorso senza nodi).
+  const [percorsoSuggeritoStatus, setPercorsoSuggeritoStatus] = useState("idle"); // idle | creando | errore
+  const acceptPercorsoSuggestion = useCallback(async (sugg) => {
+    if (!sugg?.pillar || !sugg?.title) return;
+    setPercorsoSuggeritoStatus("creando");
+    try {
+      const labels = await decomposeTopics(sugg.pillar, sugg.title, settingsRef.current);
+      const p = { id: uid(), pillar: sugg.pillar, title: sugg.title, createdAt: new Date().toISOString(),
+        topics: (labels.length ? labels : ["Primo passo"]).map((l) => ({ id: uid(), label: l, status: "non iniziato", lastTouched: null })),
+        sessions: [], competenze: "" };
+      const setter = { bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }[sugg.pillar];
+      const list = { bio: pBio, air: pAir, vidya: pVidya }[sugg.pillar];
+      setter([p, ...list]);
+      setResonance((prev) => { const n = { ...prev, percorsoSuggerito: null }; saveKey("simbiosi-data", n); return n; });
+      pushDebugLog({ type: "percorso-suggerito-simbiosi", esito: "creato", pillar: sugg.pillar, title: sugg.title });
+      setPercorsoSuggeritoStatus("idle");
+    } catch (e) { setPercorsoSuggeritoStatus("errore"); pushDebugLog({ type: "percorso-suggerito-simbiosi", esito: "errore", error: e.message }); }
+  }, [pBio, pAir, pVidya, setPBioSync, setPAirSync, setPVidyaSync, pushDebugLog]);
+  const dismissPercorsoSuggestion = useCallback(() => {
+    setResonance((prev) => { const n = { ...prev, percorsoSuggerito: null }; saveKey("simbiosi-data", n); return n; });
+    pushDebugLog({ type: "percorso-suggerito-simbiosi", esito: "scartato" });
+  }, [pushDebugLog]);
 
   // ═══ SIMBIOSI PROATTIVA ═══
   // Al mount (una sola volta per sessione), se c'è una chiave API e se è cambiato qualcosa dall'ultima
@@ -8128,8 +8382,10 @@ function App() {
       resonanceBusyRef.current = true;
       try {
         const digest = buildResonanceDigest({ bio: s.bio, air: s.air, vidya: s.vidya, kernel: s.kernel, magi: s.magi, pBio: s.pBio, pAir: s.pAir, pVidya: s.pVidya, memory: s.memory });
-        const res = await computeResonance(digest, settingsRef.current, recentShellText(s.shellChat));
-        const next = { text: res.text, time: Date.now(), worthSurfacing: res.worthSurfacing, identityHint: res.identityHint || null };
+        const titoliPercorsiEsistenti = [...s.pBio, ...s.pAir, ...s.pVidya].map((p) => p.title);
+        const percorsoSuggeritoPendente = loadKey("simbiosi-data", {}).percorsoSuggerito || null;
+        const res = await computeResonance(digest, settingsRef.current, recentShellText(s.shellChat), titoliPercorsiEsistenti, !!percorsoSuggeritoPendente);
+        const next = { text: res.text, time: Date.now(), worthSurfacing: res.worthSurfacing, identityHint: res.identityHint || null, percorsoSuggerito: res.percorsoSuggerito || percorsoSuggeritoPendente };
         setResonance(next); saveKey("simbiosi-data", next);
         if (res.crystallization?.marginNote) {
           setShellChat((prev) => [...prev, { id: uid(), role: "balthasar-margin", pillar: res.crystallization.pillar || null, note: res.crystallization.marginNote }]);
@@ -8174,7 +8430,7 @@ function App() {
       semi=${semi} onAddSeed=${(content) => addSeed(content, "manual")} onApproveSeedStrategy=${approveSeedStrategy} onUnlockGatedSeed=${unlockGatedSeed} onDiscussInShell=${discussSeedInShell} pushDebugLog=${pushDebugLog} advanceSeedIfDue=${advanceSeedIfDue} onArchiveSeed=${archiveSeed} />`}
     ${view === "vidya" && html`<${VidyaView} entries=${vidya} onAdd=${addVidya} onDelete=${delVidya} percorsi=${pVidya} setPercorsi=${setPVidyaSync} settings=${settings} digest=${digestVidya} memory=${memory} />`}
     ${view === "magi" && html`<${MagiView} sessions=${magi} onSave=${addMagi} onDelete=${delMagi} settings=${settings} memory=${memory} updateMemoria=${updateMemoria} pushDebugLog=${pushDebugLog} />`}
-    ${view === "simbiosi" && html`<${SimbiosiView} resonance=${resonance} onRecalc=${recalcResonance} calculating=${resCalculating} error=${resError} onPromoteIdentity=${promoteToIdentity} onDismissIdentity=${dismissIdentityHint} />`}
+    ${view === "simbiosi" && html`<${SimbiosiView} resonance=${resonance} onRecalc=${recalcResonance} calculating=${resCalculating} error=${resError} onPromoteIdentity=${promoteToIdentity} onDismissIdentity=${dismissIdentityHint} onAcceptPercorsoSuggestion=${acceptPercorsoSuggestion} onDismissPercorsoSuggestion=${dismissPercorsoSuggestion} percorsoSuggeritoStatus=${percorsoSuggeritoStatus} />`}
     ${view === "kernel" && html`<${KernelView} kernel=${kernel} onSave=${saveKernel} driveStatus=${driveStatus} />`}
     ${view === "settings" && html`<${SettingsView} settings=${settings} updateSettings=${updateSettings} driveStatus=${driveStatus} debugLog=${debugLog} clearDebugLog=${clearDebugLog} pullAndMergeOnce=${pullAndMergeOnce} ghostProfile=${ghostProfile} saveGhostProfile=${saveGhostProfile} />`}
     <div class="r-tab-bar"><div class="r-tab-bar-inner">${TABS.map((t) => html`<button class="r-tab ${view === t.key ? "active" : ""}" onClick=${() => setView(t.key)}>${t.label}${t.key === "air" && activeSeedCount > 0 ? html`<span class="r-tab-badge">${activeSeedCount}</span>` : ""}</button>`)}</div></div>
