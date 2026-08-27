@@ -1403,6 +1403,14 @@ function analizzaVincoloAlimentare(testo) {
 }
 // Da una cosa esclusa alla lista concreta di alimenti da cercare nel piano.
 // "pesce" diventa l'elenco dei pesci; "salmone" resta se stesso. Le eccezioni vengono tolte.
+// Un vincolo e' "alimentare" se dichiara esplicitamente questo ambito (flusso dalla card di chat,
+// vedi tieniVincolo) — o, per compatibilita' con chi e' stato dichiarato PRIMA che l'ambito esistesse
+// (26/08/2026, quick win #4 dell'audit "Motoko"), se e' un vincolo BIO senza ambito dichiarato:
+// fallback che preserva esattamente il comportamento di sempre per lo storico, senza dover indovinare
+// dal testo se un vecchio vincolo BIO senza tag fosse alimentare o no.
+function eVincoloAlimentare(c) {
+  return c?.ambito === "alimentare" || (c?.ambito == null && c?.pilastro === "bio");
+}
 function alimentiDaCercare(escluso, risparmiati = []) {
   const e = String(escluso || "").toLowerCase().trim();
   const salvo = new Set(risparmiati.map((r) => String(r).toLowerCase().trim()));
@@ -2908,6 +2916,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Agorà Magi: una perturbazione deliberata generata su richiesta, in tre stadi (Balthasar → Melchior → Caspar) più una sintesi. Si avvia dalla sua schermata, si sceglie pilastro e intensità.
 - Kernel: il documento di stato del sistema, versionato. Ogni salvataggio crea una versione nuova e conserva la precedente nello storico.
 - Simbiosi: la valutazione periodica di quanto l'app e il Ghost siano allineati. Vive nella sua schermata.
+- Percorso proposto da Simbiosi: quando valuta lo stato del sistema, Simbiosi può proporre — mai creare da sola — un percorso NUOVO (non uno già esistente), collegato esplicitamente a un percorso già attivo che nomina per titolo, come modo di continuare a crescere sui pilastri. Compare come card in Simbiosi con due pulsanti: "Sì, aprilo" lo crea davvero (stessa scomposizione in nodi di ogni altro percorso), "Non ora" lo scarta. Al massimo una proposta alla volta: finché quella in sospeso non viene decisa, Simbiosi non ne propone un'altra.
 - Vincoli dichiarati: i vincoli che il Ghost ha dichiarato in Onboarding, uno per riga, rieditabili. Quello sull'identità professionale è un hard-stop e vale su tutto ciò che riguarda AIR.
 - Vincoli alimentari dichiarati parlando: quando il Ghost dice una regola alimentare in chat («escludi il pesce che non sia crostacei», «le colazioni le voglio salate», «1600 kcal»), compare una card «Questo lo tengo come regola fissa?» con due pulsanti. Tenuto, il vincolo entra nell'elenco dei Vincoli dichiarati di BIO e da lì nel prompt di ogni turno, per sempre; lasciato, vale solo per la conversazione in corso. Serve perché la conversazione che lo Shell rivede è tagliata agli ultimi venti messaggi: una regola detta e non tenuta sparisce dopo una decina di scambi.
 - Controllo del piano alimentare: quando lo Shell genera un piano con più giorni, il programma lo rilegge e confronta con i vincoli dichiarati. Segnala in un riquadro, senza toccare il piano: alimenti esclusi che compaiono lo stesso (sa che il salmone è un pesce), giorni dichiarati che non ci sono, giorni identici fra loro, la stessa fonte proteica a pranzo e a cena, dosi assenti quando erano state chieste, colazioni dolci quando erano state chieste salate. Non giudica il piano: elenca fatti verificabili, con il giorno preciso.
@@ -4550,11 +4559,32 @@ MEMORIA PROCEDURALE BIO — ${formatMemoriaDigestBlock(memory?.bio)}
 MEMORIA PROCEDURALE AIR — ${formatMemoriaDigestBlock(memory?.air)}
 MEMORIA PROCEDURALE VIDYA — ${formatMemoriaDigestBlock(memory?.vidya)}`;
 }
-async function computeResonance(digest, settings, recentChatText = "") {
+// 26/08/2026 — proposta del Ghost stesso ("un modo per continuare a crescere... catalizzare la
+// manifestazione di Adam"), non un mandato del Manifesto: un campo IN PIÙ nella stessa valutazione,
+// esattamente come identityHint e crystallization sono già extra rispetto al testo dei 4 mandati.
+// pendingPercorsoSuggestion viene passato dal chiamante leggendo lo stato persistito (stesso idioma
+// di simbiosi-eval-signature) — se una proposta è già in sospeso, qui si chiede al modello di NON
+// affollare, e validaPercorsoSuggerito la azzera comunque a valle anche se il modello non rispettasse
+// l'istruzione: doppio freno, non uno solo.
+function validaPercorsoSuggerito(raw, titoliEsistenti = []) {
+  if (!raw) return null;
+  const pillar = String(raw.pillar || "").trim().toLowerCase();
+  const title = String(raw.title || "").trim();
+  const motivazione = String(raw.motivazione || "").trim();
+  if (!["bio", "air", "vidya"].includes(pillar) || !title || !motivazione) return null;
+  const giaEsistente = titoliEsistenti.some((t) => senzaAccenti(String(t || "")).toLowerCase() === senzaAccenti(title).toLowerCase());
+  if (giaEsistente) return null; // il punto è aprire qualcosa di NUOVO, non riproporre quello che c'è già
+  const collegatoA = Array.isArray(raw.collegatoA) ? raw.collegatoA.filter((c) => typeof c === "string" && c) : [];
+  return { pillar, title, motivazione, collegatoA };
+}
+async function computeResonance(digest, settings, recentChatText = "", titoliPercorsiEsistenti = [], hasPendingPercorsoSuggestion = false) {
   const identityConstraintLine = CURRENT_GHOST_PROFILE.hasProfessionalConstraint
     ? `VINCOLO ASSOLUTO: non suggerire MAI di integrare/esporre/collegare l'identità professionale del Ghost (${CURRENT_GHOST_PROFILE.professionalIdentity}) con AIR o altro — compartimentazione voluta e permanente, non una discrepanza da risolvere.`
     : "";
   const chatCtx = recentChatText ? `\n\nUltimi scambi recenti in Shell (per il segnale linguistico diretto sotto, punto 4 della cristallizzazione):\n${recentChatText}` : "";
+  const percorsoSuggeritoCtx = hasPendingPercorsoSuggestion
+    ? "\n\nC'è GIÀ una proposta di nuovo percorso in sospeso, non ancora decisa dal Ghost: percorsoSuggerito deve restare null in questa valutazione, non se ne affianca una seconda."
+    : "";
   const data = await askModelJSON(
     `Sei la funzione SIMBIOSI del sistema Resonance: non un pilastro operativo, ma il punto di incontro tra BIO, AIR, VIDYA e il Kernel. Hai quattro mandati (Manifesto V3 §5, esteso 19/07/2026):
 1) sensing ordine/caos — dove si trova il sistema tra mantenimento (equilibrio, accoppiamento) e perturbazione (Magi)? Sta cristallizzando in eccesso di comfort o è ancora scosso da una perturbazione recente? Il giudizio "è il momento di invocare Magi" spetta a te, non allo Shell.
@@ -4572,11 +4602,12 @@ Rispondi SOLO con JSON:
   "worthSurfacing": true/false (vale la pena che Adam parli per primo di questo al Ghost, o è routine/ripetizione di quanto già noto? Sii esigente: true solo se c'è una differenza reale che fa differenza),
   "identityHint": null oppure { "pillar": "bio|air|vidya", "title": "titolo esatto del percorso esistente coinvolto", "becoming": "diventare una persona che... (max 14 parole)" } — valorizzato SOLO se emerge una convergenza identitaria non ancora marcata, riferita a un percorso realmente presente nel digest,
   "crystallization": { "signalCount": 0-4 (quanti dei 4 segnali del mandato 4 sono presenti ORA), "pillar": "bio|air|vidya" o null, "marginNote": null oppure "frammento di Balthasar (max 40 parole), tono perturbatore non risolutivo — SOLO se signalCount è ESATTAMENTE 1 (2+ segnali vanno invece nel campo text come proposta di Agorà, mai duplicati qui)" },
-  "anchors": ["array di id (stringhe) dei frammenti di sedimento effettivamente citati in text — array vuoto se il giudizio si basa solo sulla nota corrente o non è ancorabile a nulla"]
+  "anchors": ["array di id (stringhe) dei frammenti di sedimento effettivamente citati in text — array vuoto se il giudizio si basa solo sulla nota corrente o non è ancorabile a nulla"],
+  "percorsoSuggerito": null oppure { "pillar": "bio|air|vidya", "title": "titolo di un percorso NUOVO, non ancora esistente in nessun pilastro", "motivazione": "perché ora, max 30 parole — deve nominare esplicitamente almeno un percorso già attivo del digest a cui questo si collega, mai un'idea scollegata da tutto", "collegatoA": ["titolo esatto di un percorso esistente citato, come appare nel digest"] } — un modo per continuare a crescere sui tre pilastri o sulla simbiosi stessa, non un mandato dei 4 sopra: valorizzalo di rado, SOLO se guardando i percorsi attivi insieme emerge un passo concreto che li continua o li intreccia e che il Ghost non ha ancora aperto — mai a ogni valutazione, mai un titolo generico scollegato dal digest
 }`,
-    digest + chatCtx, 0.6, 1700, settings
+    digest + chatCtx + percorsoSuggeritoCtx, 0.6, 1700, settings
   );
-  if (!data) return { text: "Valutazione non riuscita (risposta non interpretabile). Riprova.", worthSurfacing: false, identityHint: null, crystallization: null, anchors: [] };
+  if (!data) return { text: "Valutazione non riuscita (risposta non interpretabile). Riprova.", worthSurfacing: false, identityHint: null, crystallization: null, anchors: [], percorsoSuggerito: null };
   // Normalizza e valida identityHint.pillar: modelli meno rigorosi (Llama/Kimi/DeepSeek) possono
   // restituire varianti ("Bio", "vidya ") nonostante l'esempio in minuscolo nel prompt. Un pillar
   // non valido viene scartato QUI, non lasciato arrivare a un bottone che poi non farebbe nulla.
@@ -4600,7 +4631,8 @@ Rispondi SOLO con JSON:
   // FASE 1.2 — anchors: ispezionabile, non solo dichiarato a parole nel testo. Difensivo contro
   // modelli meno rigorosi che restituiscono un valore non-array o con elementi non stringa.
   const anchors = Array.isArray(data.anchors) ? data.anchors.filter((a) => typeof a === "string" && a) : [];
-  return { text: data.text || "", worthSurfacing: !!data.worthSurfacing, identityHint, crystallization, anchors };
+  const percorsoSuggerito = hasPendingPercorsoSuggestion ? null : validaPercorsoSuggerito(data.percorsoSuggerito, titoliPercorsiEsistenti);
+  return { text: data.text || "", worthSurfacing: !!data.worthSurfacing, identityHint, crystallization, anchors, percorsoSuggerito };
 }
 
 //──────────────────────────────────────────────────────────
@@ -5477,8 +5509,9 @@ function MagiView({ sessions, onSave, onDelete, settings, memory, updateMemoria,
 //──────────────────────────────────────────────────────────
 // SIMBIOSI
 //──────────────────────────────────────────────────────────
-function SimbiosiView({ resonance, onRecalc, calculating, error, onPromoteIdentity, onDismissIdentity }) {
+function SimbiosiView({ resonance, onRecalc, calculating, error, onPromoteIdentity, onDismissIdentity, onAcceptPercorsoSuggestion, onDismissPercorsoSuggestion, percorsoSuggeritoStatus }) {
   const hint = resonance.identityHint;
+  const sugg = resonance.percorsoSuggerito;
   return html`<div class="r-screen">
     <${SectionHeader} color="#2A2E35" title="SIMBIOSI" subtitle="Il punto di incontro tra i pilastri — sensing tra ordine e caos" />
     ${hint && html`<${Card} accent=${C.core}>
@@ -5488,6 +5521,15 @@ function SimbiosiView({ resonance, onRecalc, calculating, error, onPromoteIdenti
         <button class="r-btn" style="background:${C.core}" onClick=${() => onPromoteIdentity(hint)}>Sì, è identitario</button>
         <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${onDismissIdentity}>No, resta puntuale</button>
       </div>
+    </${Card}>`}
+    ${sugg && html`<${Card} accent=${C[sugg.pillar]}>
+      <div class="r-hub-title" style="color:${C[sugg.pillar]}">Un percorso possibile</div>
+      <div class="r-magi-text" style="margin-top:8px">In <b>${sugg.pillar.toUpperCase()}</b>: <b>"${sugg.title}"</b>. ${sugg.motivazione}${sugg.collegatoA?.length ? html` <i>(si collega a ${sugg.collegatoA.join(", ")})</i>` : ""}</div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="r-btn" style="background:${C[sugg.pillar]}" onClick=${() => onAcceptPercorsoSuggestion(sugg)} disabled=${percorsoSuggeritoStatus === "creando"}>${percorsoSuggeritoStatus === "creando" ? "Apro…" : "Sì, aprilo"}</button>
+        <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${onDismissPercorsoSuggestion}>Non ora</button>
+      </div>
+      ${percorsoSuggeritoStatus === "errore" && html`<div class="r-error" style="margin-top:6px">Non sono riuscito ad aprirlo — riprova.</div>`}
     </${Card}>`}
     <${Card}>
       <button class="r-btn" onClick=${() => onRecalc(false)} disabled=${calculating}>${calculating ? "Valutazione in corso…" : "Calcola risonanza"}</button>
@@ -5810,7 +5852,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // Si propongono soltanto quelli che non sono gia' nell'elenco: riproporre una cosa gia' tenuta
       // sarebbe rumore, e il Ghost imparerebbe in fretta a ignorare la card.
       const giaDichiarati = (Array.isArray(ghostProfile?.hardConstraints) ? ghostProfile.hardConstraints : [])
-        .filter((c) => c?.pilastro === "bio").map((c) => String(c.testo || "").toLowerCase().trim());
+        .filter(eVincoloAlimentare).map((c) => String(c.testo || "").toLowerCase().trim());
       const vincoliProposti = proponiVincoliAlimentari(userText)
         .filter((v) => !giaDichiarati.some((g) => g === v.toLowerCase().trim() || g.includes(v.toLowerCase().trim())));
       // BLOCCO 1 — il modello ha PROPOSTO un'azione? La proposta viene tolta dal testo e resa un
@@ -5911,9 +5953,9 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // Non tocca il testo: il piano resta intero e leggibile, esattamente come il modello l'ha
       // scritto. Aggiunge solo l'elenco di cio' che non torna, perche' rileggersi quattordici giorni
       // riga per riga per scoprire che al Giorno 2 c'e' il salmone e' un lavoro che tocca al codice.
-      const vincoliBioDichiarati = (Array.isArray(ghostProfile?.hardConstraints) ? ghostProfile.hardConstraints : [])
-        .filter((c) => c?.pilastro === "bio").map((c) => c.testo).filter(Boolean);
-      const scartiDelPiano = controllaPianoAlimentare(replyPulita, vincoliBioDichiarati, userText);
+      const vincoliAlimentariDichiarati = (Array.isArray(ghostProfile?.hardConstraints) ? ghostProfile.hardConstraints : [])
+        .filter(eVincoloAlimentare).map((c) => c.testo).filter(Boolean);
+      const scartiDelPiano = controllaPianoAlimentare(replyPulita, vincoliAlimentariDichiarati, userText);
       if (scartiDelPiano) pushDebugLog?.({ type: "scarti-nel-piano-alimentare", quanti: scartiDelPiano.scarti.length, tipi: scartiDelPiano.scarti.map((s) => s.tipo), userText: userText.slice(0, 100) });
       // §1.2 — UNA PROPOSTA DI CLASSE B PENDENTE NON SI RIGENERA (16/08/2026), RIFATTA IL 20/08.
       // La versione del 16/08 aveva un difetto peggiore di quello che curava, e ha tenuto il Ghost
@@ -6238,7 +6280,13 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   const [vincoloStatus, setVincoloStatus] = useState({});
   const tieniVincolo = (mid, testo) => {
     const attuali = Array.isArray(ghostProfile?.hardConstraints) ? ghostProfile.hardConstraints : [];
-    saveGhostProfile?.({ ...ghostProfile, hardConstraints: [...attuali, { id: uid(), testo, pilastro: "bio", dataDichiarazione: todayISO() }] });
+    // 26/08/2026 (quick win #4 dell'audit "Motoko") — ambito, non solo pilastro. "niente zucchine"
+    // e "una composizione artistica con delle zucchine" possono condividere il pilastro (BIO/VIDYA
+    // non c'entrano qui, ma il principio si generalizza) senza condividere il senso: taggare questo
+    // vincolo come "alimentare" e' cio' che permette a chi legge di sapere CHE TIPO di vincolo e',
+    // non solo a quale pilastro appartiene — cosi' un domani un generatore non-alimentare puo'
+    // ignorarlo a prescindere dal pilastro, senza dover indovinare dal testo.
+    saveGhostProfile?.({ ...ghostProfile, hardConstraints: [...attuali, { id: uid(), testo, pilastro: "bio", ambito: "alimentare", dataDichiarazione: todayISO() }] });
     vibra("bio");
     setVincoloStatus((s) => ({ ...s, [`${mid}|${testo}`]: "tenuto" }));
     setMessages((prev) => [...prev, { id: uid(), role: "system-note", time: new Date().toISOString(),
@@ -7350,7 +7398,7 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
       ${hardConstraints.filter((c) => c.tipo !== "identita-professionale").length === 0 && html`<div class="r-hub-detail" style="margin-top:8px">Nessun vincolo dichiarato.</div>`}
       ${hardConstraints.filter((c) => c.tipo !== "identita-professionale").map((c) => html`
         <div class="r-settings-row" key=${c.id}>
-          <span><b>[${c.pilastro || "generale"}]</b> ${c.testo}</span>
+          <span><b>[${c.pilastro || "generale"}${c.ambito ? ` · ${c.ambito}` : ""}]</b> ${c.testo}</span>
           <button class="r-btn-ghost" onClick=${() => removeConstraint(c.id)}>Rimuovi</button>
         </div>
       `)}
@@ -8246,8 +8294,10 @@ function App() {
     try {
       const digest = buildResonanceDigest({ bio, air, vidya, kernel, magi, pBio, pAir, pVidya, memory });
       const recentChatText = recentShellText(stateRef.current.shellChat);
-      const res = await computeResonance(digest, settingsRef.current, recentChatText);
-      const next = { text: res.text, time: Date.now(), worthSurfacing: res.worthSurfacing, identityHint: res.identityHint || null };
+      const titoliPercorsiEsistenti = [...pBio, ...pAir, ...pVidya].map((p) => p.title);
+      const percorsoSuggeritoPendente = loadKey("simbiosi-data", {}).percorsoSuggerito || null;
+      const res = await computeResonance(digest, settingsRef.current, recentChatText, titoliPercorsiEsistenti, !!percorsoSuggeritoPendente);
+      const next = { text: res.text, time: Date.now(), worthSurfacing: res.worthSurfacing, identityHint: res.identityHint || null, percorsoSuggerito: res.percorsoSuggerito || percorsoSuggeritoPendente };
       setResonance(next); saveKey("simbiosi-data", next);
       // Balthasar-a-margine (1 solo segnale): card dedicata in Shell, mai pipeline completa.
       if (res.crystallization?.marginNote) {
@@ -8275,6 +8325,30 @@ function App() {
   const dismissIdentityHint = useCallback(() => {
     setResonance((prev) => { const n = { ...prev, identityHint: null }; saveKey("simbiosi-data", n); return n; });
   }, []);
+  // Crea davvero il percorso proposto da Simbiosi. Stessa disciplina di §1.3 (confermaPercorso in
+  // Shell): si crea SOLO toccando il pulsante di questa card, mai da sola — e stessa forma di
+  // creazione (decomposeTopics prima, mai un percorso senza nodi).
+  const [percorsoSuggeritoStatus, setPercorsoSuggeritoStatus] = useState("idle"); // idle | creando | errore
+  const acceptPercorsoSuggestion = useCallback(async (sugg) => {
+    if (!sugg?.pillar || !sugg?.title) return;
+    setPercorsoSuggeritoStatus("creando");
+    try {
+      const labels = await decomposeTopics(sugg.pillar, sugg.title, settingsRef.current);
+      const p = { id: uid(), pillar: sugg.pillar, title: sugg.title, createdAt: new Date().toISOString(),
+        topics: (labels.length ? labels : ["Primo passo"]).map((l) => ({ id: uid(), label: l, status: "non iniziato", lastTouched: null })),
+        sessions: [], competenze: "" };
+      const setter = { bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }[sugg.pillar];
+      const list = { bio: pBio, air: pAir, vidya: pVidya }[sugg.pillar];
+      setter([p, ...list]);
+      setResonance((prev) => { const n = { ...prev, percorsoSuggerito: null }; saveKey("simbiosi-data", n); return n; });
+      pushDebugLog({ type: "percorso-suggerito-simbiosi", esito: "creato", pillar: sugg.pillar, title: sugg.title });
+      setPercorsoSuggeritoStatus("idle");
+    } catch (e) { setPercorsoSuggeritoStatus("errore"); pushDebugLog({ type: "percorso-suggerito-simbiosi", esito: "errore", error: e.message }); }
+  }, [pBio, pAir, pVidya, setPBioSync, setPAirSync, setPVidyaSync, pushDebugLog]);
+  const dismissPercorsoSuggestion = useCallback(() => {
+    setResonance((prev) => { const n = { ...prev, percorsoSuggerito: null }; saveKey("simbiosi-data", n); return n; });
+    pushDebugLog({ type: "percorso-suggerito-simbiosi", esito: "scartato" });
+  }, [pushDebugLog]);
 
   // ═══ SIMBIOSI PROATTIVA ═══
   // Al mount (una sola volta per sessione), se c'è una chiave API e se è cambiato qualcosa dall'ultima
@@ -8308,8 +8382,10 @@ function App() {
       resonanceBusyRef.current = true;
       try {
         const digest = buildResonanceDigest({ bio: s.bio, air: s.air, vidya: s.vidya, kernel: s.kernel, magi: s.magi, pBio: s.pBio, pAir: s.pAir, pVidya: s.pVidya, memory: s.memory });
-        const res = await computeResonance(digest, settingsRef.current, recentShellText(s.shellChat));
-        const next = { text: res.text, time: Date.now(), worthSurfacing: res.worthSurfacing, identityHint: res.identityHint || null };
+        const titoliPercorsiEsistenti = [...s.pBio, ...s.pAir, ...s.pVidya].map((p) => p.title);
+        const percorsoSuggeritoPendente = loadKey("simbiosi-data", {}).percorsoSuggerito || null;
+        const res = await computeResonance(digest, settingsRef.current, recentShellText(s.shellChat), titoliPercorsiEsistenti, !!percorsoSuggeritoPendente);
+        const next = { text: res.text, time: Date.now(), worthSurfacing: res.worthSurfacing, identityHint: res.identityHint || null, percorsoSuggerito: res.percorsoSuggerito || percorsoSuggeritoPendente };
         setResonance(next); saveKey("simbiosi-data", next);
         if (res.crystallization?.marginNote) {
           setShellChat((prev) => [...prev, { id: uid(), role: "balthasar-margin", pillar: res.crystallization.pillar || null, note: res.crystallization.marginNote }]);
@@ -8354,7 +8430,7 @@ function App() {
       semi=${semi} onAddSeed=${(content) => addSeed(content, "manual")} onApproveSeedStrategy=${approveSeedStrategy} onUnlockGatedSeed=${unlockGatedSeed} onDiscussInShell=${discussSeedInShell} pushDebugLog=${pushDebugLog} advanceSeedIfDue=${advanceSeedIfDue} onArchiveSeed=${archiveSeed} />`}
     ${view === "vidya" && html`<${VidyaView} entries=${vidya} onAdd=${addVidya} onDelete=${delVidya} percorsi=${pVidya} setPercorsi=${setPVidyaSync} settings=${settings} digest=${digestVidya} memory=${memory} />`}
     ${view === "magi" && html`<${MagiView} sessions=${magi} onSave=${addMagi} onDelete=${delMagi} settings=${settings} memory=${memory} updateMemoria=${updateMemoria} pushDebugLog=${pushDebugLog} />`}
-    ${view === "simbiosi" && html`<${SimbiosiView} resonance=${resonance} onRecalc=${recalcResonance} calculating=${resCalculating} error=${resError} onPromoteIdentity=${promoteToIdentity} onDismissIdentity=${dismissIdentityHint} />`}
+    ${view === "simbiosi" && html`<${SimbiosiView} resonance=${resonance} onRecalc=${recalcResonance} calculating=${resCalculating} error=${resError} onPromoteIdentity=${promoteToIdentity} onDismissIdentity=${dismissIdentityHint} onAcceptPercorsoSuggestion=${acceptPercorsoSuggestion} onDismissPercorsoSuggestion=${dismissPercorsoSuggestion} percorsoSuggeritoStatus=${percorsoSuggeritoStatus} />`}
     ${view === "kernel" && html`<${KernelView} kernel=${kernel} onSave=${saveKernel} driveStatus=${driveStatus} />`}
     ${view === "settings" && html`<${SettingsView} settings=${settings} updateSettings=${updateSettings} driveStatus=${driveStatus} debugLog=${debugLog} clearDebugLog=${clearDebugLog} pullAndMergeOnce=${pullAndMergeOnce} ghostProfile=${ghostProfile} saveGhostProfile=${saveGhostProfile} />`}
     <div class="r-tab-bar"><div class="r-tab-bar-inner">${TABS.map((t) => html`<button class="r-tab ${view === t.key ? "active" : ""}" onClick=${() => setView(t.key)}>${t.label}${t.key === "air" && activeSeedCount > 0 ? html`<span class="r-tab-badge">${activeSeedCount}</span>` : ""}</button>`)}</div></div>
