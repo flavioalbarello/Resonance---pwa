@@ -59,6 +59,7 @@ const EXPORT_NAMES = [
   "titoloUsabile", "troncaAConfineDiParola", "validaPercorsoSuggerito", "eVincoloAlimentare",
   "trovaMetaNarrazione", "META_NARRAZIONE_RE",
   "tettoTokenPerIlTurno", "TETTO_TOKEN_CONVERSAZIONE", "TETTO_TOKEN_CONTENUTO_LUNGO",
+  "isDegenerateOutput", "diagnosiDegenerazione", "senzaFormattazioneMarkdown",
 ];
 
 export function buildTestableApp() {
