@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-28 · niente-meta-narrazione-nelle-risposte-lunghe";
+const APP_BUILD = "2026-08-28 · tetto-token-piu-alto-per-i-contenuti-lunghi";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -2969,6 +2969,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Kernel: il documento di stato del sistema, versionato. Ogni salvataggio crea una versione nuova e conserva la precedente nello storico.
 - Simbiosi: la valutazione periodica di quanto l'app e il Ghost siano allineati. Vive nella sua schermata.
 - Percorso proposto da Simbiosi: quando valuta lo stato del sistema, Simbiosi può proporre — mai creare da sola — un percorso NUOVO (non uno già esistente), collegato esplicitamente a un percorso già attivo che nomina per titolo, come modo di continuare a crescere sui pilastri. Compare come card in Simbiosi con due pulsanti: "Sì, aprilo" lo crea davvero (stessa scomposizione in nodi di ogni altro percorso), "Non ora" lo scarta. Al massimo una proposta alla volta: finché quella in sospeso non viene decisa, Simbiosi non ne propone un'altra.
+- Lunghezza massima di una risposta: ogni risposta ha un tetto di spazio. Per la conversazione normale è basso; quando il Ghost chiede un contenuto strutturato lungo (un piano, un menu, un programma, un elenco di più giorni) il programma lo riconosce dalla richiesta e alza il tetto da solo, senza che serva chiedere. Se il tetto viene raggiunto lo stesso, la risposta si interrompe dov'era e compare la card "questa risposta è tagliata a metà" con il pulsante "Continua da dove ti sei fermato": ciò che è già scritto resta valido, manca solo il seguito.
 - Vincoli dichiarati: i vincoli che il Ghost ha dichiarato in Onboarding, uno per riga, rieditabili. Quello sull'identità professionale è un hard-stop e vale su tutto ciò che riguarda AIR.
 - Vincoli alimentari dichiarati parlando: quando il Ghost dice una regola alimentare in chat («escludi il pesce che non sia crostacei», «le colazioni le voglio salate», «1600 kcal»), compare una card «Questo lo tengo come regola fissa?» con due pulsanti. Tenuto, il vincolo entra nell'elenco dei Vincoli dichiarati di BIO e da lì nel prompt di ogni turno, per sempre; lasciato, vale solo per la conversazione in corso. Serve perché la conversazione che lo Shell rivede è tagliata agli ultimi venti messaggi: una regola detta e non tenuta sparisce dopo una decina di scambi.
 - Controllo del piano alimentare: quando lo Shell genera un piano con più giorni, il programma lo rilegge e confronta con i vincoli dichiarati. Segnala in un riquadro, senza toccare il piano: alimenti esclusi che compaiono lo stesso (sa che il salmone è un pesce), giorni dichiarati che non ci sono, giorni identici fra loro, la stessa fonte proteica a pranzo e a cena, dosi assenti quando erano state chieste, colazioni dolci quando erano state chieste salate. Non giudica il piano: elenca fatti verificabili, con il giorno preciso.
@@ -4088,6 +4089,41 @@ function meritaLetturaMultiLente(messaggio, conAllegato = false) {
   // decidere cosa sia importante nella vita del Ghost: quella non e' una decisione del codice.
   return true;
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// QUANTO SPAZIO SERVE A QUESTA RISPOSTA (28/08/2026, misurato)
+// ══════════════════════════════════════════════════════════════════════════════
+// Il 28/08 la regola contro la meta-narrazione ha funzionato — dalle schermate contavo almeno otto
+// forme distinte ("piccola pausa nella risposta per reset cognitivo", "fine nota tecnica",
+// "ricomincio con spuntino ora"...), nel primo turno col nuovo codice il registro ne ha trovate DUE
+// — ma il piano si e' interrotto lo stesso. E il registro dice perche', senza margine di
+// interpretazione: tokensOut **3000** su un tetto di 3000, due volte su due, con
+// tokensRagionamento a 0 (nessun budget sprecato in pensiero interno). Non e' spreco residuo: e'
+// che il compito non ci sta. Un piano di 14 giorni per 5 pasti sono 70 celle con grammature; nei
+// 3000 token il modello arriva a poco piu' di meta'.
+//
+// Quindi il tetto smette di essere unico. Resta 3000 per la conversazione — dove il prompt chiede
+// comunque 110 parole, e un tetto alto inviterebbe solo a dilungarsi — e sale SOLO per i turni in
+// cui il Ghost ha chiesto un contenuto strutturato lungo, cioe' gli stessi che il prompt di sistema
+// gia' esenta dal limite delle 110 parole. Fin qui il prompt diceva "genera il contenuto per
+// intero" e il tetto lo impediva: due istruzioni in contraddizione, e vinceva quella sbagliata.
+//
+// PERCHE' UN FALSO POSITIVO QUI COSTA POCO, e l'euristica puo' permettersi di essere larga: alzare
+// il tetto NON allunga le risposte da solo, toglie soltanto un limite. Su un turno normale continua
+// a valere il vincolo delle 110 parole nel prompt, e OpenRouter fattura i token davvero generati,
+// non quelli concessi. Il rischio vero sarebbe il contrario — un'euristica troppo stretta che lascia
+// tagliato a meta' proprio il piano che il Ghost aspettava.
+const CONTENUTO_LUNGO_RE = /(?<![\p{L}'’])(?:piano|programma|planning|schema|tabella|scaletta|calendarizza\w*|menu|men[uù]|elenco\s+(?:completo|dettagliat\w*)|lista\s+(?:completa|dettagliat\w*)|documento|report|bisettimanal\w*|settimanal\w*|mensil\w*|quindicinal\w*|giornalier\w*)(?![\p{L}'’])|(?<![\p{L}'’])\d+\s*(?:giorni|settimane|mesi|pasti)(?![\p{L}'’])/iu;
+// Il tetto alto. Scelto sul dato: 3000 token hanno prodotto ~10.000 caratteri e poco piu' di meta'
+// piano, quindi per finirlo ne serve grosso modo il doppio; 8000 lascia margine senza essere un
+// numero buttato li'. Se un fornitore rifiutasse un tetto cosi' alto per un certo modello, l'errore
+// arriva al Ghost per la strada che gia' esiste (nessun percorso silenzioso) — e resta comunque il
+// pulsante "Continua da dove ti sei fermato", che non e' stato toccato.
+const TETTO_TOKEN_CONVERSAZIONE = 3000;
+const TETTO_TOKEN_CONTENUTO_LUNGO = 8000;
+function tettoTokenPerIlTurno(messaggio) {
+  return CONTENUTO_LUNGO_RE.test(String(messaggio || "")) ? TETTO_TOKEN_CONTENUTO_LUNGO : TETTO_TOKEN_CONVERSAZIONE;
+}
 // Euristiche istantanee — nessuna chiamata AI dove basta un controllo testuale
 // CORRETTA IL 16/08/2026 (sera) — §2 del brief, il difetto piu' grave dei cinque.
 // Il Ghost aveva in Vidya due percorsi chiamati "Questo?" e "Dedicato su questo? Ti terrei traccia
@@ -4375,7 +4411,7 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
   let ultimaRisposta = null;
   const [reply, lensResult, draft] = await Promise.all([
     askWithDegenerateGuard(
-      () => askModelWithHistory(system, messages, 0.7, 3000, settings, image, false, (raw) => {
+      () => askModelWithHistory(system, messages, 0.7, tettoTokenPerIlTurno(userMessage), settings, image, false, (raw) => {
         logAiCost(pushDebugLog, "shell", settings.model, raw);
         const c = raw?.choices?.[0];
         rispostaTroncata = c?.finish_reason === "length";
@@ -6238,7 +6274,11 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
           : mm)));
         // stileRef.current, non styleMemory: la fotografia di inizio turno qui sarebbe vecchia.
         if (esito.newStyleMemory && esito.newStyleMemory !== stileRef.current) setStyleMemory(esito.newStyleMemory);
-        pushDebugLog?.({ type: "shell-turn", userText: userText.slice(0, 100), model: settings.model, provider: settings.provider, attachment: currentAttachment ? currentAttachment.kind : null, replyLength: esito.reply.length, actionsLog: esito.actionsLog, alertsCount: esito.alerts?.length || 0, hasDraft: !!esito.draft, anochinDecisione: esito.anochin?.decisione, anochinAccettore: esito.anochin?.accettore, error: null });
+        // `tetto` e `troncata` viaggiano insieme da qui in avanti (28/08/2026): senza sapere con
+        // quale tetto e' stato generato un turno, "tokensOut 3000" da solo non distingue "il
+        // modello aveva finito" da "il modello e' stato interrotto" — ed e' la distinzione che
+        // serve per decidere se il tetto va ancora alzato o se il problema e' altrove.
+        pushDebugLog?.({ type: "shell-turn", userText: userText.slice(0, 100), model: settings.model, provider: settings.provider, attachment: currentAttachment ? currentAttachment.kind : null, replyLength: esito.reply.length, tetto: tettoTokenPerIlTurno(userText), troncata: !!esito.rispostaTroncata, actionsLog: esito.actionsLog, alertsCount: esito.alerts?.length || 0, hasDraft: !!esito.draft, anochinDecisione: esito.anochin?.decisione, anochinAccettore: esito.anochin?.accettore, error: null });
       } catch (e) {
         // Se la risposta era gia' comparsa, resta valida: e' fallito solo cio' che veniva dopo, e
         // quel fallimento va nel log invece che addosso al Ghost.

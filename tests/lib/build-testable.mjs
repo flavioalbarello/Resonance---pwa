@@ -58,6 +58,7 @@ const EXPORT_NAMES = [
   "RUMORE_BERSAGLIO_RE", "extractUsageForLog", "detectPercorsoProposalHeuristic",
   "titoloUsabile", "troncaAConfineDiParola", "validaPercorsoSuggerito", "eVincoloAlimentare",
   "trovaMetaNarrazione", "META_NARRAZIONE_RE",
+  "tettoTokenPerIlTurno", "TETTO_TOKEN_CONVERSAZIONE", "TETTO_TOKEN_CONTENUTO_LUNGO",
 ];
 
 export function buildTestableApp() {
