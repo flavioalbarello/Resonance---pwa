@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-28 · tetto-token-piu-alto-per-i-contenuti-lunghi";
+const APP_BUILD = "2026-08-29 · le-tabelle-non-sono-degenerazione";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -2451,19 +2451,55 @@ const ANTI_LOOP_PENALTIES = { repetition_penalty: 1.05, frequency_penalty: 0.1 }
 const DEGENERATE_OUTPUT_WINDOW = 40;
 const DEGENERATE_OUTPUT_THRESHOLD = 16;      // era 8: tagliava i piani alimentari con le dosi
 const DEGENERATE_MIN_VOCABOLARIO = 8;        // parole diverse minime in una finestra perche' sia un testo
-function isDegenerateOutput(text) {
-  if (!text) return false;
-  const words = text.trim().toLowerCase().split(/\s+/).map((w) => w.replace(/[.,!?;:"'()«»]/g, "")).filter(Boolean);
-  if (words.length < DEGENERATE_OUTPUT_WINDOW) return false; // troppo corto per giudicare: evita falsi positivi su risposte brevi legittime
+// 29/08/2026 — LA TERZA VOLTA CHE QUESTA GUARDIA TAGLIA UN PIANO ALIMENTARE, e stavolta la causa
+// non e' la soglia: e' la conta delle parole. RIPRODOTTO prima di toccare il codice, su una tabella
+// markdown a sei colonne come quelle che lo Shell scrive davvero:
+//   · tabella con celle spaziose  → "|" 11 volte su 40 (passa, ma e' gia' il doppio di ogni parola vera)
+//   · tabella compatta con le kcal → "|" 14 su 40 (passa per due)
+//   · tabella con la riga separatrice scritta spaziata ("| :--- | :--- |") → "|" **21 su 40**: SCATTA.
+// Il difetto e' che `|` non era nella punteggiatura da togliere ([.,!?;:"'()«»]), quindi ogni
+// separatore di colonna veniva contato come una parola ripetuta. Una tabella e' ripetitiva per
+// costruzione nella sua STRUTTURA, non nel suo contenuto: contare i separatori come vocabolario
+// misura la formattazione e la chiama degenerazione. Ed e' un difetto a scatto variabile — il
+// modello a volte scrive la separatrice attaccata ("|:---|:---|", un solo token) e a volte spaziata:
+// la stessa richiesta passava ieri e falliva stanotte senza che niente fosse cambiato nel piano.
+// Il 28/08 il Ghost e' rimasto senza niente, dopo aver pagato due chiamate ($0,028 in tutto).
+//
+// LA CORREZIONE NON INDEBOLISCE LA GUARDIA, verificato sul caso per cui e' nata: "of 10 of 20 of
+// 12..." ha "of" 20 volte su 40 e continua a scattare, perche' li' non c'e' nessun markdown. Si
+// toglie la formattazione, non le parole.
+const RIGA_SEPARATRICE_TABELLA_RE = /^[ \t]*\|?[\s:|-]*-[\s:|-]*\|?[ \t]*$/gm;
+function senzaFormattazioneMarkdown(testo) {
+  return String(testo || "")
+    .replace(RIGA_SEPARATRICE_TABELLA_RE, " ")  // la riga "|:---|:---|" non e' testo, e' una cornice
+    .replace(/\|/g, " ")                        // i separatori di colonna: struttura, non vocabolario
+    .replace(/[*#`_>]/g, " ");                  // grassetti, titoli, citazioni: decorazione
+}
+// Restituisce null se il testo e' sano, oppure la PROVA di cosa non va. Prima questa funzione
+// diceva solo si'/no, e il registro annotava che era successo senza dire cosa: esattamente il buco
+// gia' chiuso una volta per la risposta vuota ("l'unica cosa registrata era il fatto che fosse
+// successo"). Senza la prova, ogni diagnosi resta un'ipotesi — ed e' costato due notti.
+function diagnosiDegenerazione(text) {
+  if (!text) return null;
+  const words = senzaFormattazioneMarkdown(text).trim().toLowerCase()
+    .split(/\s+/).map((w) => w.replace(/[.,!?;:"'()«»]/g, "")).filter(Boolean);
+  if (words.length < DEGENERATE_OUTPUT_WINDOW) return null; // troppo corto per giudicare: evita falsi positivi su risposte brevi legittime
   for (let i = 0; i + DEGENERATE_OUTPUT_WINDOW <= words.length; i += 10) {
     const counts = {};
     for (const w of words.slice(i, i + DEGENERATE_OUTPUT_WINDOW)) counts[w] = (counts[w] || 0) + 1;
-    const massimo = Math.max(...Object.values(counts));
-    if (massimo >= DEGENERATE_OUTPUT_THRESHOLD) return true;
-    if (Object.keys(counts).length <= DEGENERATE_MIN_VOCABOLARIO) return true;
+    const coppie = Object.entries(counts);
+    const [parolaPiuFrequente, massimo] = coppie.reduce((a, b) => (b[1] > a[1] ? b : a));
+    const diverse = coppie.length;
+    if (massimo >= DEGENERATE_OUTPUT_THRESHOLD) {
+      return { criterio: "ripetizione", parola: parolaPiuFrequente, occorrenze: massimo, soglia: DEGENERATE_OUTPUT_THRESHOLD, diverse, finestra: i, campione: words.slice(i, i + DEGENERATE_OUTPUT_WINDOW).join(" ").slice(0, 200) };
+    }
+    if (diverse <= DEGENERATE_MIN_VOCABOLARIO) {
+      return { criterio: "vocabolario-povero", diverse, soglia: DEGENERATE_MIN_VOCABOLARIO, finestra: i, campione: words.slice(i, i + DEGENERATE_OUTPUT_WINDOW).join(" ").slice(0, 200) };
+    }
   }
-  return false;
+  return null;
 }
+function isDegenerateOutput(text) { return diagnosiDegenerazione(text) !== null; }
 // `call` è una funzione zero-argomenti che rifà la richiesta originale (closure sul chiamante) — nessuna
 // duplicazione della costruzione del prompt qui. Se degenerato anche al secondo tentativo, lancia un
 // errore onesto (i chiamanti esistenti lo mostrano già via i loro cicli try/catch — nessuna UI nuova).
@@ -2489,13 +2525,23 @@ async function askWithDegenerateGuard(call, functionTag, pushDebugLog = null) {
     }
     return ritenta;
   }
-  if (!isDegenerateOutput(first)) return first;
-  pushDebugLog?.({ type: "degenerate-output", functionTag, attempt: 1, degenerateOutputDetected: true, error: null });
+  const diagnosiPrima = diagnosiDegenerazione(first);
+  if (!diagnosiPrima) return first;
+  pushDebugLog?.({ type: "degenerate-output", functionTag, attempt: 1, degenerateOutputDetected: true, ...diagnosiPrima, error: null });
   const second = await call();
   if (rispostaNonArrivata(second)) { pushDebugLog?.({ type: "risposta-vuota-dopo-degenerata", functionTag, attempt: 2, error: null }); return ""; }
-  if (!isDegenerateOutput(second)) return second;
-  pushDebugLog?.({ type: "degenerate-output", functionTag, attempt: 2, degenerateOutputDetected: true, error: "risposta degenerata anche al secondo tentativo" });
-  throw new Error("Risposta non valida, riprova più tardi.");
+  const diagnosiSeconda = diagnosiDegenerazione(second);
+  if (!diagnosiSeconda) return second;
+  // 29/08/2026 — NON SI BUTTA PIU' VIA UNA RISPOSTA PAGATA SULLA PAROLA DI UN'EURISTICA.
+  // Fin qui questa riga lanciava un errore: il Ghost vedeva "Risposta non valida, riprova piu'
+  // tardi", perdeva tutto e aveva pagato due chiamate. Il 28/08 e' successo su un piano alimentare
+  // che con ogni probabilita' era buono — la guardia contava i separatori "|" della tabella come
+  // parole ripetute (difetto corretto qui sopra). Il confronto fra i due errori possibili non e'
+  // alla pari: se la risposta e' davvero degenerata il Ghost se ne accorge da solo in un secondo e
+  // rimanda; se e' buona e la buttiamo, il lavoro e' perso e la spesa pure. Quindi si consegna, e
+  // il sospetto resta scritto nel registro con la sua prova — dichiarato, non nascosto.
+  pushDebugLog?.({ type: "degenerate-output", functionTag, attempt: 2, degenerateOutputDetected: true, ...diagnosiSeconda, consegnataUgualmente: true, error: "sospetta degenerazione anche al secondo tentativo: consegnata comunque, il giudizio resta al Ghost" });
+  return second;
 }
 
 //──────────────────────────────────────────────────────────
