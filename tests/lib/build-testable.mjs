@@ -57,6 +57,7 @@ const EXPORT_NAMES = [
   "scriviInterruttore", "leggiInterruttori", "estraiBersaglioPerRicercaDiretta",
   "RUMORE_BERSAGLIO_RE", "extractUsageForLog", "detectPercorsoProposalHeuristic",
   "titoloUsabile", "troncaAConfineDiParola", "validaPercorsoSuggerito", "eVincoloAlimentare",
+  "trovaMetaNarrazione", "META_NARRAZIONE_RE",
 ];
 
 export function buildTestableApp() {

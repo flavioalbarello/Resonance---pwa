@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-25 · scorciatoia-cerca-trova-senza-quando";
+const APP_BUILD = "2026-08-28 · niente-meta-narrazione-nelle-risposte-lunghe";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1584,6 +1584,58 @@ function togliEchiDelPrompt(testo) {
   ].map((x) => x.trim());
   if (!trovati.length) return { testo: originale, echi: [] };
   return { testo: ripulisciDetriti(originale.replace(ECHI_DEL_PROMPT_RE, "").replace(DIDASCALIA_RE, "")), echi: trovati };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// IL MODELLO CHE RACCONTA COME STA SCRIVENDO (28/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Stessa famiglia di DIDASCALIA_RE qui sopra — il modello che recita la parte del narratore — ma in
+// una forma che quel filtro non vede: senza parentesi quadre, in prosa, in mezzo al contenuto vero.
+//
+// Il caso reale, misurato sulle schermate del Ghost (piano alimentare bisettimanale, 5 pasti):
+// "Piccola pausa nella risposta per reset cognitivo tuo e mio", "Torna a tabella strutturata ora",
+// "Fine colazione martedì settimana due. Ricomincio con spuntino ora", "Risposta prosegue con
+// tabella standardizzata dal punto spuntino in poi evitando ripetizioni note tecniche fuori formato
+// tabella". Insieme a lunghe divagazioni non richieste (una lezione sulla pastorizzazione delle
+// uova, una sul budget alimentare, una sulla bilancia a impedenziometria) hanno mangiato tanto del
+// tetto di 3000 token che il piano si e' interrotto a meta' della seconda settimana — la card
+// "questa risposta e' tagliata a meta'" e' comparsa correttamente, ma il Ghost e' rimasto senza
+// mezzo piano.
+//
+// PERCHE' QUI SI MISURA E NON SI TOGLIE, a differenza degli altri filtri di questo file.
+// Gli altri tolgono frasi INTERE perche' la frase intera e' il difetto (un'offerta di una capacita'
+// che non esiste, un'eco del prompt). Qui no: la meta-narrazione e' intrecciata DENTRO la stessa
+// frase del contenuto vero — "Spuntino martedi' settimana due prosegue tabella: Cottage cheese
+// spalmabile o classico [...] che in tabella segue comunque separatamente" e' una frase sola che
+// contiene sia il rumore sia lo spuntino. Toglierla butterebbe via il contenuto; tenerla non
+// recupera niente. E soprattutto: quando questo filtro gira, i token sono GIA' stati spesi e la
+// risposta e' GIA' stata tagliata — nessuna pulizia a posteriori restituisce il budget.
+// L'unico intervento che recupera davvero budget e' impedire che quel testo nasca, e quello sta nel
+// prompt di sistema (vedi la REGOLA SUL NON RACCONTARE COME STAI SCRIVENDO). Questa funzione serve
+// a sapere SE quella regola ha funzionato, invece di supporlo: stessa disciplina di
+// tokensRagionamento, che e' stato aggiunto per misurare e non per correggere.
+const META_NARRAZIONE_RE = new RegExp(
+  "(" +
+  "torn[ao]\\s+a(?:lla|l)?\\s+(?:tabella|schema|formato|elenco)" +
+  "|riprend[oe]\\s+(?:la\\s+|il\\s+)?(?:tabella|schema|elenco)" +
+  "|(?:la\\s+)?risposta\\s+(?:prosegue|continua|riprende|segue)" +
+  "|prosegue\\s+(?:ora\\s+)?(?:come\\s+)?(?:da\\s+)?tabella" +
+  "|da\\s+tabella\\s+segue" +
+  "|in\\s+tabella\\s+segue" +
+  "|fine\\s+nota\\s+tecnica" +
+  "|reset\\s+cognitivo" +
+  "|pausa\\s+nella\\s+risposta" +
+  "|senza\\s+ulteriori\\s+divagazioni" +
+  "|overhead\\s+cognitiv" +
+  "|ricomincio\\s+(?:con|da|ora)" +
+  ")", "giu");
+// Restituisce i frammenti trovati (non le frasi: vedi sopra, la frase non e' l'unita' giusta qui).
+// Array vuoto = nessuna meta-narrazione, cioe' la regola del prompt ha retto in questo turno.
+function trovaMetaNarrazione(testo) {
+  const t = String(testo || "");
+  if (!t.trim()) return [];
+  META_NARRAZIONE_RE.lastIndex = 0;
+  return [...new Set((t.match(META_NARRAZIONE_RE) || []).map((x) => x.trim().toLowerCase()))];
 }
 
 // ── E il gemello del quarto filtro: quando la lettura FALLISCE, il fallimento si dichiara ──
@@ -4296,7 +4348,9 @@ ${formatBersaglioSpostamento(bersaglioSpostamento)}
 ${formatBersaglioRicerca(ricercaEvento)}
 Memoria procedurale accumulata sui tre pilastri (leggila sempre insieme — l'interpretazione resta integrata anche quando l'azione è mirata a un solo pilastro): ${lente}${styleNote}
 REGOLA SUL TEMPO VERBALE, non negoziabile (corretta il 16/08/2026 dopo una prova reale in cui hai scritto "Ho segnato un appuntamento" prima ancora che il Ghost confermasse). TU NON ESEGUI NIENTE. Non salvi, non segni, non aggiungi, non mandi, non fissi: tutto questo lo fa il programma dopo, e solo se il Ghost tocca un pulsante. Quindi non usare MAI il passato per un'azione ("ho segnato", "ho aggiunto", "fatto", "l'ho messo in calendario"), nemmeno se ti sembra naturale, nemmeno se il Ghost ti ha appena detto di sì. Usa l'INDICATIVO con la conferma ancora pendente, non il condizionale servile: "te lo segno", "te lo metto in calendario", "te la mando" — poi lascia che sia il pulsante a chiedere la conferma. "Te lo segnerei" suona falso e non serve a niente: che l'azione non sia ancora avvenuta lo dice gia' il pulsante, non il modo verbale. Cio' che resta vietato e' il PASSATO ("ho segnato", "e' stato aggiunto", "fatto"): quello dichiara compiuto qualcosa che non lo e'. Se una cosa e' stata davvero fatta, e' l'app a scriverlo sotto la tua risposta, con la conferma riletta dalla fonte — non tu. Dire "fatto" per qualcosa che non e' successo e' il modo piu' rapido di rendere inaffidabile tutto il sistema. Questo vale anche al contrario, e dal 22/08/2026 con una precisazione importante: NON SAI cosa c'e' sul calendario del Ghost, TRANNE quando sopra ti e' stato dato esplicitamente un blocco che dice "IL CALENDARIO E' STATO LETTO DAVVERO ADESSO" con l'elenco degli impegni. Se quel blocco c'e', quelli sono fatti letti da Google in questo turno e ne parli come di cose che sai, senza aggiungerne e senza toglierne. Se quel blocco NON c'e', o se dice che la lettura e' fallita o non e' avvenuta, allora non sai niente: NON rispondere con quello che ricordi di aver letto in questa conversazione — una cosa nominata in chat non e' un impegno, e una proposta che non ha confermato non esiste. In quel caso di' che non l'hai letto, con il motivo che ti e' stato dato. Il codice controlla ogni tua risposta e toglie le affermazioni di compiuto che non corrispondono a un'azione verificata, avvisando il Ghost che l'hai scritta: non e' un rimprovero, e' un fatto tecnico, e ti conviene saperlo perche' rende inutile scriverle.
-Dialoga in modo diretto e concreto, massimo 110 parole per risposta — TRANNE quando il Ghost chiede esplicitamente un contenuto strutturato intrinsecamente lungo (un piano, un elenco multi-giorno, un documento): in quel caso il limite non si applica, genera il contenuto per intero, completo, senza comprimerlo né riassumerlo per stare corto. NON scrivere mai sintassi tecnica o tag tra parentesi quadre nella risposta. Rispondi solo in linguaggio naturale.${dialecticNote}
+Dialoga in modo diretto e concreto, massimo 110 parole per risposta — TRANNE quando il Ghost chiede esplicitamente un contenuto strutturato intrinsecamente lungo (un piano, un elenco multi-giorno, un documento): in quel caso il limite non si applica, genera il contenuto per intero, completo, senza comprimerlo né riassumerlo per stare corto. NON scrivere mai sintassi tecnica o tag tra parentesi quadre nella risposta. Rispondi solo in linguaggio naturale.
+REGOLA SUL NON RACCONTARE COME STAI SCRIVENDO, aggiunta il 28/08/2026 dopo un caso reale in cui un piano alimentare di due settimane si e' interrotto a meta' della seconda. Lo spazio di una risposta e' finito: ogni parola spesa a commentare la scrittura e' una riga di piano che il Ghost non riceve. Quindi, mentre scrivi un contenuto lungo, NON commentare mai il tuo stesso processo: niente "torno alla tabella ora", "fine nota tecnica", "riprendo con lo spuntino", "piccola pausa nella risposta per reset cognitivo", "la risposta prosegue senza ulteriori divagazioni", "mantengo la separazione formale nella tabella". Sono frasi che il Ghost non ha chiesto e che non gli dicono niente: se una cosa va detta, dilla; se non va detta, non annunciare che non la stai dicendo, non annunciare che stai per dirla e non annunciare che hai finito di dirla. Un contenuto strutturato comincia e basta.
+E la stessa regola vale per le divagazioni non richieste. Nello stesso caso reale hai inserito, in mezzo alla tabella, una lezione sulla pastorizzazione delle uova, una sul budget alimentare e una sulle bilance a impedenziometria: nessuna delle tre era stata chiesta, e insieme sono costate piu' spazio di un'intera giornata di piano. Il Ghost ha chiesto un piano, non un manuale. Se un avvertimento e' davvero indispensabile, sta in UNA riga alla fine, mai in mezzo al contenuto; se un dato dipende da cose che non sai (il suo budget, la sua marca di pasta, i suoi elettrodomestici), non serve dichiarare che non lo sai e nemmeno spiegare come potrebbe deciderlo lui: scegli un valore ragionevole e vai avanti.${dialecticNote}
 Non hai accesso a diagnosticare te stesso o l'infrastruttura tecnica su cui giri. Se il Ghost te lo chiede, NON inventare mai una spiegazione plausibile — di' semplicemente che non lo sai e che potrebbe essere un limite tecnico, senza dettagli inventati.
 Se ti arriva un'immagine o un documento allegato, descrivi cosa vi leggi in modo concreto (numeri, testo, dettagli visibili) prima di commentare.
 Ogni interpretazione che offri è una lettura tua, mai un verdetto oggettivo — resta sempre rivedibile da lui.
@@ -5949,6 +6003,14 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       const replyPulita = elencoOrisultato ? `${senzaEchi.testo.trim()}\n\n${elencoOrisultato}`.trim() : senzaEchi.testo;
       const contenutiCalendarioInventati = senzaCalendario.contenuti;
       if (contenutiCalendarioInventati.length) pushDebugLog?.({ type: "contenuto-calendario-senza-lettura", frasi: contenutiCalendarioInventati, userText: userText.slice(0, 100), model: settings.model });
+      // 28/08/2026 — MISURA, NON CORREZIONE. Vedi trovaMetaNarrazione: il testo non viene toccato
+      // (togliere la frase butterebbe via il contenuto intrecciato, e a questo punto i token sono
+      // gia' spesi comunque). Serve a sapere se la regola aggiunta al prompt di sistema regge sul
+      // modello vero, invece di supporlo. `troncata` viaggia insieme di proposito: meta-narrazione
+      // DA SOLA e' fastidiosa, meta-narrazione PIU' troncamento e' il difetto vero — spazio speso a
+      // commentare invece che a scrivere il piano, che poi si interrompe.
+      const metaNarrazione = trovaMetaNarrazione(replyPulita);
+      if (metaNarrazione.length) pushDebugLog?.({ type: "meta-narrazione-nella-risposta", frammenti: metaNarrazione, quanti: metaNarrazione.length, troncata: rispostaTroncata, model: settings.model, userText: userText.slice(0, 100) });
       // 23/08/2026 — IL CONTROLLO DEL PIANO ALIMENTARE. Vedi controllaPianoAlimentare.
       // Non tocca il testo: il piano resta intero e leggibile, esattamente come il modello l'ha
       // scritto. Aggiunge solo l'elenco di cio' che non torna, perche' rileggersi quattordici giorni
