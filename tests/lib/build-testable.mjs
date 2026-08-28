@@ -60,6 +60,8 @@ const EXPORT_NAMES = [
   "trovaMetaNarrazione", "META_NARRAZIONE_RE",
   "tettoTokenPerIlTurno", "TETTO_TOKEN_CONVERSAZIONE", "TETTO_TOKEN_CONTENUTO_LUNGO",
   "isDegenerateOutput", "diagnosiDegenerazione", "senzaFormattazioneMarkdown",
+  "eRigaDiTabella", "eRigaSeparatriceTabella", "celleDiRigaTabella", "parseTabellaMarkdown",
+  "costruisciTabellaDocx",
 ];
 
 export function buildTestableApp() {

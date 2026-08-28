@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-29 · le-tabelle-non-sono-degenerazione";
+const APP_BUILD = "2026-08-29 · tabelle-vere-nel-documento";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -3046,6 +3046,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Forma delle risposte: la lunghezza e il registro vengono dal profilo cognitivo del Ghost, non da una regola generale del sistema.
 - Memoria procedurale: la nota che ogni pilastro accumula sugli scambi, riscritta per intero a ogni aggiornamento e non aggiunta in coda. Ha un sedimento storico e delle parole chiave per ritrovarla.
 - Tetto di spesa (Setup): raggiunti 5 dollari nel mese si fermano solo le cose che partono da sole — Semi che avanzano, Simbiosi. La chat resta utilizzabile.
+- Genera documento da questa conversazione: un pulsante sopra la chat trasforma quanto concordato parlando in un file .docx vero. Il programma rilegge la conversazione, ne estrae la versione FINALE (non le versioni intermedie scartate) e i vincoli dichiarati, li mostra in anteprima, e poi lo salva su Drive o lo scarica agganciandolo a un percorso. Quando il contenuto è una griglia — giorni per pasti, settimane per esercizi — nel documento diventa una TABELLA vera, con righe e colonne, non i trattini e le barrette che la simulano in chat.
 - Backup e ripristino (Setup): scarica in un unico file tutto lo stato locale e sa rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo previa conferma.
 Capacità NON disponibili in questa app: notifiche push; promemoria o azioni che si attivano da soli senza che il Ghost apra l'app; invio automatico di messaggi, mail o post senza la sua conferma esplicita su quello specifico invio; MODIFICARE il titolo o la descrizione di un evento del calendario (spostarlo a un altro giorno o ora invece si può); pubblicazione automatica su social o piattaforme esterne; esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost.`;
 
@@ -4875,17 +4876,93 @@ function loadDocxLib() {
 // Stesso pattern di loadDocxLib: import dinamico, una sola volta, cache azzerata se fallisce.
 // Usato dal canale feedback — nessuna dipendenza Drive/OAuth, funziona anche per chi non ha mai
 // collegato Drive (vedi FeedbackWidget più sotto).
+// ══════════════════════════════════════════════════════════════════════════════
+// TABELLE VERE NEL .docx, NON I SEGNI CHE LE SIMULANO (29/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Osservazione del Ghost, dopo tre notti passate a leggere piani alimentari in chat: una griglia di
+// quattordici giorni per cinque pasti e' una TABELLA, e leggerla come "| Lun | Uova 2 | Yogurt |..."
+// su uno schermo di telefono e' un lavoro che non dovrebbe toccare a lui. Il .docx sa fare le
+// tabelle davvero — righe, colonne, intestazione — e l'app sapeva gia' produrre .docx: mancava solo
+// che generateDocxBlob riconoscesse i blocchi di tabella invece di trattarli come paragrafi, e
+// stampasse i pipe uno per uno dentro al documento.
+// LIMITE DICHIARATO: non risolve il troncamento. Il modello genera comunque markdown dentro il suo
+// tetto di token, e il .docx e' solo il modo in cui quel markdown viene reso. Serve a leggere
+// meglio cio' che e' stato generato, non a generarne di piu'.
+const RIGA_DI_TABELLA_MD_RE = /^\s*\|.*\|\s*$/;
+// La riga di cornice ("|:---|:---|" oppure "| :--- | :--- |"): dice dove sono le colonne, non contiene dati.
+const RIGA_SEPARATRICE_MD_RE = /^\s*\|[\s:|-]*-[\s:|-]*\|\s*$/;
+function eRigaDiTabella(riga) { return RIGA_DI_TABELLA_MD_RE.test(String(riga ?? "")); }
+function eRigaSeparatriceTabella(riga) { return RIGA_SEPARATRICE_MD_RE.test(String(riga ?? "")); }
+// Le celle di una riga, ripulite dai segni di enfasi: dentro una cella di tabella "**Asporto**" e'
+// esattamente uno di quei segni che il Ghost non vuole piu' vedere.
+function celleDiRigaTabella(riga) {
+  return String(riga ?? "").trim().replace(/^\|/, "").replace(/\|$/, "")
+    .split("|").map((c) => c.trim().replace(/\*\*/g, "").replace(/`/g, ""));
+}
+// Da un blocco di righe markdown a una struttura pronta da stampare. Le righe possono avere un
+// numero di celle diverso (il modello non e' sempre regolare): si normalizza sul massimo, cosi' una
+// riga corta non fa saltare la tabella intera — meglio una cella vuota che un documento rotto.
+function parseTabellaMarkdown(righe) {
+  const conIntestazione = righe.some(eRigaSeparatriceTabella);
+  const dati = righe.filter((r) => !eRigaSeparatriceTabella(r)).map(celleDiRigaTabella);
+  if (!dati.length) return null;
+  const colonne = Math.max(...dati.map((r) => r.length));
+  const normalizzate = dati.map((r) => {
+    const c = r.slice(0, colonne);
+    while (c.length < colonne) c.push("");
+    return c;
+  });
+  return {
+    colonne,
+    intestazione: conIntestazione ? normalizzate[0] : null,
+    corpo: conIntestazione ? normalizzate.slice(1) : normalizzate,
+  };
+}
+// Costruisce la tabella docx. Restituisce null se la libreria caricata non espone le tabelle: in
+// quel caso il chiamante ripiega sui paragrafi di prima, cioe' il comportamento storico. Una
+// dipendenza caricata da CDN puo' cambiare senza avvisare — meglio un documento come ieri che un
+// errore in faccia al Ghost.
+function costruisciTabellaDocx(docx, blocco) {
+  const { Table, TableRow, TableCell, Paragraph, TextRun, WidthType } = docx;
+  if (!Table || !TableRow || !TableCell) return null;
+  const cella = (testo, grassetto) => new TableCell({
+    children: [new Paragraph({ children: [new TextRun({ text: String(testo || ""), bold: !!grassetto })] })],
+  });
+  const righe = [];
+  if (blocco.intestazione) righe.push(new TableRow({ children: blocco.intestazione.map((c) => cella(c, true)) }));
+  for (const r of blocco.corpo) righe.push(new TableRow({ children: r.map((c) => cella(c, false)) }));
+  if (!righe.length) return null;
+  const larghezza = WidthType ? { size: 100, type: WidthType.PERCENTAGE } : undefined;
+  return new Table(larghezza ? { rows: righe, width: larghezza } : { rows: righe });
+}
 // Genera un Blob .docx da testo strutturato leggero. Convenzioni riga: "# " = titolo1,
-// "## " = titolo2, "- " o "* " = voce elenco, riga vuota = spazio, resto = paragrafo.
-// Non interpreta grassetto inline (out of scope per ora): testo pulito, formattazione a blocchi.
+// "## " = titolo2, "- " o "* " = voce elenco, riga vuota = spazio, un blocco di righe che cominciano
+// e finiscono con "|" = TABELLA VERA, resto = paragrafo.
+// Non interpreta grassetto inline fuori dalle tabelle (out of scope): testo pulito, formattazione a blocchi.
 async function generateDocxBlob(title, bodyText) {
   const docx = await loadDocxLib();
   const { Document, Paragraph, TextRun, HeadingLevel, Packer } = docx;
   const children = [];
   if (title) children.push(new Paragraph({ text: String(title), heading: HeadingLevel.TITLE }));
   const lines = String(bodyText || "").replace(/\r\n/g, "\n").split("\n");
-  for (const raw of lines) {
-    const line = raw.replace(/\s+$/, "");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].replace(/\s+$/, "");
+    // Un blocco di tabella si consuma tutto insieme: e' l'unico costrutto che sta su piu' righe.
+    if (eRigaDiTabella(line)) {
+      const blocco = [];
+      while (i < lines.length && eRigaDiTabella(lines[i])) blocco.push(lines[i++]);
+      i--; // il for incrementa di nuovo
+      const parsed = parseTabellaMarkdown(blocco);
+      const tabella = parsed && costruisciTabellaDocx(docx, parsed);
+      if (tabella) {
+        children.push(tabella);
+        children.push(new Paragraph({ children: [new TextRun("")] })); // aria sotto la tabella
+        continue;
+      }
+      // Nessuna tabella costruibile: si ricade sul comportamento storico, riga per riga.
+      for (const r of blocco) children.push(new Paragraph({ children: [new TextRun(r)] }));
+      continue;
+    }
     if (line.trim() === "") { children.push(new Paragraph({ children: [new TextRun("")] })); continue; }
     if (line.startsWith("## ")) { children.push(new Paragraph({ text: line.slice(3), heading: HeadingLevel.HEADING_2 })); continue; }
     if (line.startsWith("# ")) { children.push(new Paragraph({ text: line.slice(2), heading: HeadingLevel.HEADING_1 })); continue; }
@@ -6356,10 +6433,18 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     setDocPhase("generating"); setDocMsg("");
     try {
       const convo = conversationText();
-      const sysDoc = `Sei lo Shell del sistema Resonance. Dalla conversazione qui sotto tra GHOST e SHELL, estrai e formalizza il documento concordato (es. un piano). Riporta la versione FINALE emersa dalla negoziazione, non le versioni intermedie scartate. Rispetta ogni vincolo o esclusione dichiarato dal Ghost. Usa markup leggero: "# " titolo, "## " sezioni, "- " elenchi, righe normali per paragrafi. Solo il documento, nessuna premessa.`;
+      // 29/08/2026 — le tabelle sono entrate in questo elenco, e non e' un dettaglio di stile: fin
+      // qui il markup consentito erano solo titoli, elenchi e paragrafi, quindi un piano di
+      // quattordici giorni per cinque pasti — che e' una griglia — veniva appiattito in una sequenza
+      // di elenchi. Adesso generateDocxBlob sa stampare una tabella vera nel .docx, ma puo' farlo
+      // solo se il documento ne contiene una.
+      const sysDoc = `Sei lo Shell del sistema Resonance. Dalla conversazione qui sotto tra GHOST e SHELL, estrai e formalizza il documento concordato (es. un piano). Riporta la versione FINALE emersa dalla negoziazione, non le versioni intermedie scartate. Rispetta ogni vincolo o esclusione dichiarato dal Ghost. Usa markup leggero: "# " titolo, "## " sezioni, "- " elenchi, righe normali per paragrafi. Quando il contenuto e' una griglia — giorni per pasti, settimane per esercizi, qualunque cosa abbia righe e colonne — usa una TABELLA markdown (prima riga di intestazione, poi la riga "|---|---|", poi le righe di dati): diventa una tabella vera nel documento finale, con le sue colonne. Non spezzare mai una griglia in elenchi. Solo il documento, nessuna premessa.`;
       const sysSum = `Sei lo Shell del sistema Resonance. Dalla conversazione qui sotto, estrai in forma sintetica SOLO i vincoli, le esclusioni e le preferenze stabili che il Ghost ha dichiarato (es. "no zucchine", "calorie discontinue", "pranzi portatili lun/mer/ven"). Sono la memoria procedurale che guiderà le prossime versioni. Elenco secco, una riga per vincolo, niente altro.`;
       const [doc, sum] = await Promise.all([
-        askModel(sysDoc, convo, 0.5, 4000, settings),
+        // Il tetto qui era 4000, cioe' lo stesso ordine di grandezza che il 28/08 ha tagliato a
+        // meta' il piano in chat. Un DOCUMENTO e' per definizione il caso "contenuto lungo": usa lo
+        // stesso tetto alto, altrimenti la formalizzazione si interrompe proprio come la chat.
+        askModel(sysDoc, convo, 0.5, TETTO_TOKEN_CONTENUTO_LUNGO, settings),
         askModel(sysSum, convo, 0.4, 800, settings),
       ]);
       setDocText(doc); setDocSummary(sum);
