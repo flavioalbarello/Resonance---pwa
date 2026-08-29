@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-29 · tabelle-vere-nel-documento";
+const APP_BUILD = "2026-08-29 · la-griglia-la-monta-il-programma";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1459,6 +1459,211 @@ const DOSE_RE = /\b\d+\s*(?:g|gr|grammi|ml|kg|l\b|cucchia\w+|fette?|cucchiaini?|
 function senzaDoppioni(nomi) {
   const unici = [...new Set(nomi)];
   return unici.filter((a) => !unici.some((b) => b !== a && b.includes(a)));
+}
+// ══════════════════════════════════════════════════════════════════════════════
+// IL REPERTORIO LO INVENTA IL MODELLO, LA GRIGLIA LA MONTA IL PROGRAMMA (29/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Tre notti di tentativi falliti, e la diagnosi vera e' arrivata solo fermandosi a ragionare invece
+// di rincorrere il sintomo. Un piano di quattordici giorni per cinque pasti NON E' UN TESTO: e' un
+// problema combinatorio con vincoli aritmetici. Chiedere al modello di risolverlo SCRIVENDO DI FILA
+// significa chiedergli di tenere a mente settanta celle, una media calorica, le rotazioni e le
+// esclusioni per ottomila token consecutivi. Misurato: a 3000 token divagava, a 8000 e' collassato
+// del tutto (Heidegger, meccanica quantistica, generi punk — vedi il registro del 29/08 04:53).
+// E il punto decisivo e' che ANCHE SE NON COLLASSASSE non potrebbe garantire niente: ne' la media di
+// 1600, ne' l'assenza di ripetizioni. Sono proprieta' che si dimostrano, non che si sperano.
+//
+// E' esattamente la lezione che questo file ha gia' imparato per il calendario — "l'elenco degli
+// impegni lo compone il programma, non il modello" — mai applicata qui.
+//
+// Divisione del lavoro, secca:
+//   · il MODELLO inventa un repertorio di piatti con grammature e calorie (una chiamata corta, ben
+//     dentro l'orizzonte di coerenza: e' cio' in cui e' bravo, e non deve ricordare niente);
+//   · il PROGRAMMA monta i giorni, ruota i piatti, sceglie la cena che avvicina il totale al
+//     bersaglio, fa le somme e dichiara le medie vere.
+// Effetto collaterale non secondario: rimontare una variante diversa non costa NIENTE, perche' il
+// repertorio e' gia' in mano e non serve richiamare il modello.
+// ══════════════════════════════════════════════════════════════════════════════
+// LA RICHIESTA CHE SOPRAVVIVE ALL'USCITA DALL'APP (29/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost: "su Claude o Gemini lancio la domanda, vado a fare altro col telefono, e quando riapro
+// trovo la risposta. Qui invece decade la chiamata". E' vero, ed e' strutturale: qui non c'e' nessun
+// server che tenga in mano la richiesta: e' il browser, in quella scheda, a parlare con OpenRouter.
+// Se Android sospende la scheda, la richiesta muore con "Failed to fetch" (nel registro ce ne sono
+// gia' diversi). Il Wake Lock aggiunto il 25/08 tiene acceso lo SCHERMO, ma non fa niente se il
+// Ghost cambia app di proposito.
+// LA SOLUZIONE PIENA e' un relay lato server, ed e' il passo successivo gia' concordato. Questo e'
+// il pezzo che si puo' avere SUBITO e senza infrastruttura: la richiesta viene messa da parte prima
+// di partire, e se muore per la rete riparte DA SOLA quando il Ghost torna sull'app. Non e' "la
+// trovi gia' pronta" — e' "non l'hai persa, e riparte senza che tu debba riscriverla".
+// Il tetto di quindici minuti evita il caso peggiore: riaprire l'app il giorno dopo e vedere
+// ripartire da sola una richiesta che il Ghost aveva ormai abbandonato (e pagarla).
+const RICHIESTA_IN_SOSPESO_KEY = "richiesta-in-sospeso";
+const FINESTRA_RIPRESA_MS = 15 * 60 * 1000;
+function salvaRichiestaInSospeso(testo) { saveKey(RICHIESTA_IN_SOSPESO_KEY, { testo: String(testo || ""), quando: Date.now() }); }
+function chiudiRichiestaInSospeso() { saveKey(RICHIESTA_IN_SOSPESO_KEY, null); }
+function leggiRichiestaInSospeso(adesso = Date.now()) {
+  const r = loadKey(RICHIESTA_IN_SOSPESO_KEY, null);
+  if (!r || !r.testo || !Number.isFinite(r.quando)) return null;
+  if (adesso - r.quando > FINESTRA_RIPRESA_MS) return null;
+  return r;
+}
+// Solo un guasto di RETE merita la ripresa. Un errore vero (chiave sbagliata, modello che rifiuta)
+// ripartirebbe all'infinito ogni volta che il Ghost riapre l'app, pagando ogni giro.
+function eGuastoDiRete(messaggio) {
+  return /failed to fetch|networkerror|network error|load failed|connessione|timeout|abort/i.test(String(messaggio || ""));
+}
+const RICHIESTA_PIANO_ALIMENTARE_RE =/(?<![\p{L}'’])(?:piano|programma|schema|menu|men[uù]|dieta)(?![\p{L}'’])[^.!?\n]{0,60}(?<![\p{L}'’])(?:alimentar\w*|nutrizional\w*|pasti|dietetic\w*|settimanal\w*|bisettimanal\w*)(?![\p{L}'’])|(?<![\p{L}'’])(?:piano|programma|schema)\s+(?:alimentare|dei\s+pasti)(?![\p{L}'’])/iu;
+function richiestaDiPianoAlimentare(testo) {
+  const t = String(testo || "");
+  // Serve la CO-PRESENZA di due cose: che sia un piano, e che parli di cibo. "programma settimanale"
+  // da solo puo' essere un allenamento — e questa macchina, oggi, sa montare solo pasti.
+  if (!RICHIESTA_PIANO_ALIMENTARE_RE.test(t)) return false;
+  return /(?<![\p{L}'’])(?:pasti|colazion\w*|pranz\w*|cen[ae]|spuntin\w*|merend\w*|kcal|calorie|aliment\w*|mangia\w*)(?![\p{L}'’])/iu.test(t);
+}
+// Cio' che si puo' ricavare dalla richiesta SENZA chiedere al modello: quanti giorni, che media
+// calorica, quali giorni vogliono il pranzo da asporto. Sono numeri, e i numeri li legge il codice.
+const GIORNI_SETTIMANA_BREVI = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
+const NOMI_GIORNI_PER_INDICE = [/luned/i, /marted/i, /mercoled/i, /gioved/i, /venerd/i, /sabat/i, /domenic/i];
+function estraiParametriPiano(testo) {
+  const t = String(testo || "");
+  let giorni = 7;
+  if (/bisettimanal|due\s+settimane|2\s+settimane|quindicinal/i.test(t)) giorni = 14;
+  const nGiorni = t.match(/(?<![\p{L}\d])(\d{1,2})\s*giorni(?![\p{L}])/iu);
+  if (nGiorni) { const n = Number(nGiorni[1]); if (n >= 2 && n <= 31) giorni = n; }
+  const nSettimane = t.match(/(?<![\p{L}\d])(\d)\s*settimane(?![\p{L}])/iu);
+  if (nSettimane) { const n = Number(nSettimane[1]); if (n >= 1 && n <= 4) giorni = n * 7; }
+  const kcal = t.match(/(?<![\p{L}\d])(\d{3,4})\s*(?:kcal|calorie)(?![\p{L}])/iu);
+  // I giorni con il pranzo da asporto: si leggono dai nomi dei giorni nominati nella richiesta, ma
+  // solo se l'asporto e' davvero nominato — altrimenti "lunedì" potrebbe essere li' per altro.
+  const parlaDiAsporto = /(?<![\p{L}'’])(?:asporto|portatil\w*|in\s+macchina|a\s+studio|fuori\s+casa|schiscet\w*|pranzo\s+al\s+sacco)(?![\p{L}'’])/iu.test(t);
+  const giorniPortatili = parlaDiAsporto
+    ? NOMI_GIORNI_PER_INDICE.map((re, i) => (re.test(t) ? i : -1)).filter((i) => i >= 0)
+    : [];
+  return { giorni, kcalMedia: kcal ? Number(kcal[1]) : null, giorniPortatili };
+}
+// Il repertorio che torna dal modello, ripulito. Un piatto senza nome o senza calorie non e'
+// utilizzabile: si scarta QUI, non si lascia arrivare alla griglia dove produrrebbe una cella vuota.
+function validaRepertorio(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const categoria = (v) => (Array.isArray(v) ? v : []).map((p) => ({
+    nome: String(p?.nome || "").trim(),
+    ingredienti: String(p?.ingredienti || "").trim(),
+    kcal: Number(p?.kcal),
+    portatile: !!p?.portatile,
+  })).filter((p) => p.nome && Number.isFinite(p.kcal) && p.kcal > 0);
+  const r = {
+    colazioni: categoria(raw.colazioni), spuntini: categoria(raw.spuntini),
+    pranzi: categoria(raw.pranzi), merende: categoria(raw.merende), cene: categoria(raw.cene),
+  };
+  // Servono tutte e cinque le categorie: con una vuota la griglia avrebbe una colonna di buchi.
+  for (const k of ["colazioni", "spuntini", "pranzi", "merende", "cene"]) if (!r[k].length) return null;
+  return r;
+}
+// LA GARANZIA, dichiarata per intero perche' e' il punto di tutto questo: un piatto non ricompare
+// prima di L giorni, dove L e' quanti piatti ha la sua categoria. Non e' una speranza riposta nel
+// modello: e' una proprieta' della rotazione (indice = giorno modulo L), dimostrabile guardandola.
+// Chiedendo al modello NUMERI DIVERSI per categoria (7 colazioni, 8 spuntini, 9 pranzi...) anche le
+// COMBINAZIONI di giornata non si ripetono per il minimo comune multiplo dei conteggi, non per L.
+const VARIAZIONE_CALORICA = [0, 120, -80, 60, -140, 100, -60]; // la "non linearita'" chiesta dal Ghost, resa esatta
+function montaPianoAlimentare(repertorio, opzioni = {}) {
+  const r = validaRepertorio(repertorio);
+  if (!r) return null;
+  const giorni = Math.max(1, Math.min(60, Number(opzioni.giorni) || 14));
+  const kcalMedia = Number(opzioni.kcalMedia) || null;
+  const portatiliDi = new Set(Array.isArray(opzioni.giorniPortatili) ? opzioni.giorniPortatili : []);
+  const pranziPortatili = r.pranzi.filter((p) => p.portatile);
+  const righe = [];
+  const cenaUsataAlGiorno = new Map(); // nome cena -> ultimo giorno in cui e' comparsa
+  for (let d = 0; d < giorni; d++) {
+    const gs = d % 7;
+    const colazione = r.colazioni[d % r.colazioni.length];
+    const spuntino = r.spuntini[d % r.spuntini.length];
+    // Su un giorno da asporto si pesca dai portatili, se ce ne sono: altrimenti si usa il pranzo
+    // normale e lo si dichiara dopo, invece di fingere che sia portatile.
+    const listaPranzi = portatiliDi.has(gs) && pranziPortatili.length ? pranziPortatili : r.pranzi;
+    const pranzo = listaPranzi[d % listaPranzi.length];
+    const merenda = r.merende[d % r.merende.length];
+    // LA CENA E' LA LEVA. Gli altri quattro pasti ruotano; la cena viene SCELTA fra quelle non
+    // ancora usate di recente, prendendo quella che avvicina di piu' il totale al bersaglio del
+    // giorno. E' il punto in cui il programma fa quello che il modello non poteva garantire.
+    const parziale = colazione.kcal + spuntino.kcal + pranzo.kcal + merenda.kcal;
+    const bersaglio = kcalMedia ? kcalMedia + VARIAZIONE_CALORICA[d % VARIAZIONE_CALORICA.length] : null;
+    const distanzaMinima = Math.min(3, Math.max(0, r.cene.length - 1));
+    const disponibili = r.cene.filter((c) => {
+      const ultimo = cenaUsataAlGiorno.get(c.nome);
+      return ultimo === undefined || d - ultimo > distanzaMinima;
+    });
+    const candidate = disponibili.length ? disponibili : r.cene;
+    const cena = bersaglio === null
+      ? candidate[d % candidate.length]
+      : candidate.reduce((a, b) => (Math.abs(parziale + b.kcal - bersaglio) < Math.abs(parziale + a.kcal - bersaglio) ? b : a));
+    cenaUsataAlGiorno.set(cena.nome, d);
+    righe.push({
+      indice: d, settimana: Math.floor(d / 7) + 1, giorno: GIORNI_SETTIMANA_BREVI[gs],
+      colazione, spuntino, pranzo, merenda, cena,
+      portatile: portatiliDi.has(gs) && pranziPortatili.length > 0,
+      totale: parziale + cena.kcal,
+    });
+  }
+  const totali = righe.map((x) => x.totale);
+  return {
+    righe,
+    mediaReale: Math.round(totali.reduce((a, b) => a + b, 0) / totali.length),
+    minimo: Math.min(...totali), massimo: Math.max(...totali),
+    kcalMedia, giorniPortatiliSenzaPiatti: portatiliDi.size > 0 && pranziPortatili.length === 0,
+  };
+}
+// Da griglia montata a tabella markdown. Il markdown non e' decorazione: generateDocxBlob lo
+// trasforma in una tabella VERA nel documento, quindi questa e' anche la strada verso il .docx.
+function formatPianoAlimentare(piano) {
+  if (!piano) return "";
+  const cella = (p) => `${p.nome}${p.ingredienti ? ` — ${p.ingredienti}` : ""} (${p.kcal})`;
+  const fuori = [];
+  let settimanaCorrente = 0;
+  for (const r of piano.righe) {
+    if (r.settimana !== settimanaCorrente) {
+      settimanaCorrente = r.settimana;
+      if (fuori.length) fuori.push("");
+      fuori.push(`## Settimana ${settimanaCorrente}`, "");
+      fuori.push("| Giorno | Colazione | Spuntino | Pranzo | Merenda | Cena | Totale |");
+      fuori.push("|---|---|---|---|---|---|---|");
+    }
+    fuori.push(`| ${r.giorno} | ${cella(r.colazione)} | ${cella(r.spuntino)} | ${r.portatile ? "Asporto: " : ""}${cella(r.pranzo)} | ${cella(r.merenda)} | ${cella(r.cena)} | ${r.totale} kcal |`);
+  }
+  fuori.push("");
+  // Le medie sono CALCOLATE, non dichiarate dal modello: e' la differenza fra un numero vero e un
+  // numero che suona bene. Se il bersaglio era dichiarato, si dice anche di quanto ci si discosta.
+  const scarto = piano.kcalMedia ? ` (chiesta ${piano.kcalMedia}, scarto ${piano.mediaReale - piano.kcalMedia >= 0 ? "+" : ""}${piano.mediaReale - piano.kcalMedia})` : "";
+  fuori.push(`Media reale: **${piano.mediaReale} kcal** al giorno${scarto}. Giorno più leggero ${piano.minimo}, più pesante ${piano.massimo} — la variazione è voluta, non un errore di arrotondamento.`);
+  if (piano.giorniPortatiliSenzaPiatti) fuori.push("Nota: avevi chiesto un pranzo da asporto in certi giorni, ma nel repertorio non c'era nessun pranzo marcato come portatile — ho usato i pranzi normali. Chiedimelo di nuovo e te li rifaccio portatili.");
+  return fuori.join("\n");
+}
+// La chiamata al modello. CORTA di proposito: quaranta piatti sono circa duemila token, un quarto
+// di quello che lo faceva collassare, e soprattutto il modello non deve ricordare NIENTE mentre
+// scrive — ogni piatto e' indipendente dagli altri. E' il contrario esatto del compito impossibile
+// che gli si chiedeva prima.
+// I CONTEGGI SONO DIVERSI PER CATEGORIA (7/8/9/6/10) e non e' un capriccio: e' cio' che fa si' che
+// anche le combinazioni di giornata non si ripetano, non solo i singoli piatti (vedi montaPianoAlimentare).
+// memoriaBio arriva ESPLICITAMENTE, mai da uno stato globale: e' il bug gia' pagato una volta —
+// un piano generato senza vedere memory.bio, quindi senza le esclusioni che ci stavano dentro.
+async function generaRepertorioPasti(richiesta, vincoliDichiarati, memoriaBio, settings, pushDebugLog = null) {
+  const vincoli = (vincoliDichiarati || []).filter(Boolean);
+  const bloccoVincoli = vincoli.length
+    ? `\nVINCOLI GIA' DICHIARATI dal Ghost, che valgono sempre e non vanno mai contraddetti (se escludono un alimento, NON proporlo, nemmeno come alternativa): ${vincoli.join("; ")}`
+    : "";
+  const data = await askModelJSON(
+    `Sei lo Shell del sistema Resonance, pilastro BIO. Devi produrre un REPERTORIO di piatti, NON un piano: non assegnare giorni, non fare tabelle, non calcolare medie — a montare i giorni ci pensa il programma.
+Per ogni piatto: un nome breve, gli ingredienti con le grammature, e le calorie come NUMERO.
+Quantità richieste, rispettale: 7 colazioni, 8 spuntini, 9 pranzi, 6 merende, 10 cene.
+Fra i 9 pranzi, ALMENO 4 devono avere "portatile": true — mangiabili freddi in macchina o a studio, senza scaldare e senza posate complicate.
+Varia le fonti proteiche e le verdure fra un piatto e l'altro: il programma li ruoterà, quindi più sono diversi fra loro meno il piano risulterà monotono.${bloccoVincoli}${memoriaProceduraleBlock(memoriaBio)}
+Rispondi SOLO con JSON:
+{"colazioni":[{"nome":"...","ingredienti":"... con grammature","kcal":000}],"spuntini":[...],"pranzi":[{"nome":"...","ingredienti":"...","kcal":000,"portatile":true}],"merende":[...],"cene":[...]}`,
+    `Richiesta del Ghost, da cui ricavare gusti, esclusioni e stile dei piatti:\n${richiesta}`,
+    0.8, 2500, settings, null,
+    pushDebugLog ? (raw) => logAiCost(pushDebugLog, "repertorio_pasti", settings.model, raw) : null
+  );
+  return validaRepertorio(data);
 }
 // ── IL CONTROLLO. Tutto quello che qui viene segnalato e' un FATTO verificabile riga per riga:
 // nessun giudizio sul gusto, nessuna opinione su cosa sia un buon piano.
@@ -3018,6 +3223,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Lunghezza massima di una risposta: ogni risposta ha un tetto di spazio. Per la conversazione normale è basso; quando il Ghost chiede un contenuto strutturato lungo (un piano, un menu, un programma, un elenco di più giorni) il programma lo riconosce dalla richiesta e alza il tetto da solo, senza che serva chiedere. Se il tetto viene raggiunto lo stesso, la risposta si interrompe dov'era e compare la card "questa risposta è tagliata a metà" con il pulsante "Continua da dove ti sei fermato": ciò che è già scritto resta valido, manca solo il seguito.
 - Vincoli dichiarati: i vincoli che il Ghost ha dichiarato in Onboarding, uno per riga, rieditabili. Quello sull'identità professionale è un hard-stop e vale su tutto ciò che riguarda AIR.
 - Vincoli alimentari dichiarati parlando: quando il Ghost dice una regola alimentare in chat («escludi il pesce che non sia crostacei», «le colazioni le voglio salate», «1600 kcal»), compare una card «Questo lo tengo come regola fissa?» con due pulsanti. Tenuto, il vincolo entra nell'elenco dei Vincoli dichiarati di BIO e da lì nel prompt di ogni turno, per sempre; lasciato, vale solo per la conversazione in corso. Serve perché la conversazione che lo Shell rivede è tagliata agli ultimi venti messaggi: una regola detta e non tenuta sparisce dopo una decina di scambi.
+- Piano alimentare montato dal programma: quando il Ghost chiede un piano/menu alimentare, il modello NON scrive il piano. Inventa solo un repertorio di piatti con grammature e calorie (una chiamata corta), e poi è il programma a montare la griglia dei giorni: ruota i piatti in modo che nessuno ricompaia prima di aver esaurito la sua categoria, mette i pranzi da asporto nei giorni chiesti, sceglie la cena che avvicina il totale al bersaglio calorico del giorno, fa le somme e dichiara la media VERA con lo scarto rispetto a quella chiesta. Serve perché una griglia di 14 giorni per 5 pasti è un problema combinatorio, non un testo: chiedendola al modello come testo continuo collassava a metà (osservato il 28-29/08) e comunque non poteva garantire né la media né l'assenza di ripetizioni. La variazione calorica fra i giorni è voluta, non un errore.
 - Controllo del piano alimentare: quando lo Shell genera un piano con più giorni, il programma lo rilegge e confronta con i vincoli dichiarati. Segnala in un riquadro, senza toccare il piano: alimenti esclusi che compaiono lo stesso (sa che il salmone è un pesce), giorni dichiarati che non ci sono, giorni identici fra loro, la stessa fonte proteica a pranzo e a cena, dosi assenti quando erano state chieste, colazioni dolci quando erano state chieste salate. Non giudica il piano: elenca fatti verificabili, con il giorno preciso.
 - Il vincolo AIR chiede, non decide: quando una lettura destinata ad AIR sembra legare l'identità professionale del Ghost al pilastro, il programma non la scrive e non la butta. Compare una card che mostra il dato, dice quale dei due rilevatori ha segnalato — il codice, deterministico sui termini dichiarati; il modello, come seconda opinione — e perché. Due pulsanti: "Va bene, procedi" scrive il dato, "No, lascialo fuori" lo lascia fuori. La risposta resta scritta nel messaggio, quindi la domanda non ricompare domani.
 - Catena Printify → Etsy: uno dei modi in cui un Seme AIR può produrre qualcosa nel mondo. Va dal disegno all'anteprima del prodotto.
@@ -3047,6 +3253,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Memoria procedurale: la nota che ogni pilastro accumula sugli scambi, riscritta per intero a ogni aggiornamento e non aggiunta in coda. Ha un sedimento storico e delle parole chiave per ritrovarla.
 - Tetto di spesa (Setup): raggiunti 5 dollari nel mese si fermano solo le cose che partono da sole — Semi che avanzano, Simbiosi. La chat resta utilizzabile.
 - Genera documento da questa conversazione: un pulsante sopra la chat trasforma quanto concordato parlando in un file .docx vero. Il programma rilegge la conversazione, ne estrae la versione FINALE (non le versioni intermedie scartate) e i vincoli dichiarati, li mostra in anteprima, e poi lo salva su Drive o lo scarica agganciandolo a un percorso. Quando il contenuto è una griglia — giorni per pasti, settimane per esercizi — nel documento diventa una TABELLA vera, con righe e colonne, non i trattini e le barrette che la simulano in chat.
+- Ripresa della richiesta interrotta: se il Ghost esce dall'app mentre una risposta sta arrivando, il telefono sospende la scheda e la richiesta muore (l'app non ha un server che la tenga in mano al posto suo). La richiesta però viene messa da parte prima di partire, e quando il Ghost torna sull'app riparte da sola, senza doverla riscrivere — solo se è morta per un guasto di RETE e solo entro quindici minuti. NON significa "la trovi già pronta al ritorno": per quello servirebbe un server che tenga la richiesta, non ancora costruito.
 - Backup e ripristino (Setup): scarica in un unico file tutto lo stato locale e sa rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo previa conferma.
 Capacità NON disponibili in questa app: notifiche push; promemoria o azioni che si attivano da soli senza che il Ghost apra l'app; invio automatico di messaggi, mail o post senza la sua conferma esplicita su quello specifico invio; MODIFICARE il titolo o la descrizione di un evento del calendario (spostarlo a un altro giorno o ora invece si può); pubblicazione automatica su social o piattaforme esterne; esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost.`;
 
@@ -5895,7 +6102,40 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     // prima: non deve mai bloccare l'invio del messaggio.
     let wakeLock = null;
     try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) { /* nessun blocco: si continua senza */ }
+    // Vedi salvaRichiestaInSospeso: messa da parte PRIMA di partire, cosi' se il telefono sospende
+    // la scheda la richiesta non e' persa. Viene tolta appena la risposta compare, o appena si
+    // capisce che il guasto non era di rete.
+    salvaRichiestaInSospeso(userText);
     try {
+      // ═══ PIANO ALIMENTARE: IL MODELLO INVENTA, IL PROGRAMMA MONTA (29/08/2026) ═══
+      // Vedi montaPianoAlimentare per il perche'. E' una strada SEPARATA dal turno normale, non un
+      // ramo dentro di esso: nel turno normale il modello SCRIVE la risposta, qui il modello non
+      // scrive il piano — inventa solo i piatti, e la griglia la compone il codice. Percio' non
+      // passa dalla selezione di un'azione (non ce n'e' nessuna da scegliere in "fammi un piano")
+      // ne' dalla lettura multi-lente. Limite dichiarato e accettato: per questi turni la memoria
+      // procedurale non si aggiorna da sola.
+      if (richiestaDiPianoAlimentare(userText) && settings.apiKey && !currentAttachment) {
+        const parametri = estraiParametriPiano(userText);
+        const vincoliAlimentari = (Array.isArray(ghostProfile?.hardConstraints) ? ghostProfile.hardConstraints : [])
+          .filter(eVincoloAlimentare).map((c) => c.testo).filter(Boolean);
+        const repertorio = await generaRepertorioPasti(userText, vincoliAlimentari, memoriaRef.current?.bio?.corrente || null, settings, pushDebugLog);
+        const piano = repertorio && montaPianoAlimentare(repertorio, parametri);
+        if (piano) {
+          const testoPiano = formatPianoAlimentare(piano);
+          const scartiDelPiano = controllaPianoAlimentare(testoPiano, vincoliAlimentari, userText);
+          const giaDichiarati = vincoliAlimentari.map((v) => v.toLowerCase().trim());
+          const vincoliProposti = proponiVincoliAlimentari(userText)
+            .filter((v) => !giaDichiarati.some((g) => g === v.toLowerCase().trim() || g.includes(v.toLowerCase().trim())));
+          chiudiRichiestaInSospeso();
+          pushDebugLog?.({ type: "piano-montato-dal-programma", giorni: piano.righe.length, mediaChiesta: piano.kcalMedia, mediaReale: piano.mediaReale, minimo: piano.minimo, massimo: piano.massimo, scarti: scartiDelPiano ? scartiDelPiano.scarti.length : 0, error: null });
+          setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: testoPiano, time: new Date().toISOString(), actions: [], alerts: [], scartiDelPiano, vincoliProposti }]);
+          vibra("bio");
+          return; // il finally esterno rilascia il Wake Lock e rimette a posto lo stato di invio
+        }
+        // Repertorio inutilizzabile: si dichiara e si prosegue col turno normale, che almeno
+        // qualcosa produce. Non si finge che sia andata bene, e non si lascia il Ghost a mani vuote.
+        pushDebugLog?.({ type: "piano-montato-dal-programma", error: "repertorio non utilizzabile: ripiego sul turno normale" });
+      }
       // §1.3 — RIMOSSA LA CONFERMA A PAROLE (16/08/2026). Qui prima bastava che il Ghost scrivesse
       // "ok", "va bene", "dai", "procedi" perche' il programma creasse il percorso proposto nel
       // messaggio precedente. E' esattamente la conferma dedotta dal contesto che il piano vieta:
@@ -6009,6 +6249,8 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       let mostrato = false;
       const mostra = ({ reply, proposal, draft, usedWebSearch, anochin, rispostaTroncata, ultimaRisposta }) => {
       if (mostrato) return; mostrato = true;
+      // La risposta e' arrivata sotto gli occhi del Ghost: non c'e' piu' niente da riprendere.
+      chiudiRichiestaInSospeso();
       // 23/08/2026 — UNA BOLLA VUOTA NON E' UNA RISPOSTA.
       // Stanotte il Ghost ha ricevuto due bolle senza una parola dentro e nessuna spiegazione.
       // Succede quando il provider restituisce una scelta senza contenuto — per un rifiuto, per un
@@ -6407,18 +6649,53 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         // quel fallimento va nel log invece che addosso al Ghost.
         if (mostrato) pushDebugLog?.({ type: "sfondo-turno-fallito", userText: userText.slice(0, 100), error: e.message });
         else setError(e.message);
+        // La ripresa al ritorno vale SOLO per i guasti di rete, e solo se il Ghost non ha ancora
+        // visto niente: se la risposta era gia' comparsa non c'e' niente da riprendere, e se
+        // l'errore e' vero (chiave, rifiuto del modello) ripartirebbe all'infinito pagando ogni giro.
+        if (mostrato || !eGuastoDiRete(e.message)) chiudiRichiestaInSospeso();
         pushDebugLog?.({ type: "shell-turn", userText: userText.slice(0, 100), model: settings.model, provider: settings.provider, attachment: currentAttachment ? currentAttachment.kind : null, error: e.message });
       } finally { sbloccaLaCoda(); setSending(false); }
     } catch (e) {
       // Qui arriva solo cio' che e' fallito PRIMA del turno: la selezione anticipata, la lettura
       // del calendario, la ricerca del bersaglio. Il turno vero ha il suo catch, qui sopra.
       setError(e.message);
+      if (!eGuastoDiRete(e.message)) chiudiRichiestaInSospeso();
       pushDebugLog?.({ type: "shell-turn", userText: userText.slice(0, 100), model: settings.model, provider: settings.provider, attachment: currentAttachment ? currentAttachment.kind : null, error: e.message });
     } finally {
       setSending(false);
       if (wakeLock) { try { await wakeLock.release(); } catch (e) { /* gia' rilasciato o non piu' valido: non e' un errore da mostrare */ } }
     }
   };
+  // ── LA RIPRESA AL RITORNO (29/08/2026) — vedi salvaRichiestaInSospeso ──
+  // Quando il Ghost torna sull'app, se c'e' una richiesta morta per la rete negli ultimi quindici
+  // minuti, riparte da sola. Non e' il relay lato server (quello e' il passo successivo, e da' la
+  // cosa vera: "la trovi gia' pronta"): e' il pezzo che si puo' avere senza infrastruttura.
+  // I riferimenti passano da una ref perche' l'ascoltatore vive una volta sola, mentre `send` viene
+  // ricreata a ogni render: senza la ref, l'ascoltatore chiamerebbe per sempre la prima versione.
+  const sendRef = useRef(null);
+  const sendingRef = useRef(false);
+  sendRef.current = send;
+  sendingRef.current = sending;
+  useEffect(() => {
+    const alRitorno = () => {
+      if (typeof document === "undefined" || document.visibilityState !== "visible") return;
+      if (sendingRef.current) return;                      // ne sta gia' arrivando una: non si accavallano
+      const inSospeso = leggiRichiestaInSospeso();
+      if (!inSospeso) return;
+      // D4/C.16 — questa parte da sola, quindi si ferma al tetto di spesa come ogni cosa automatica.
+      if (!operazioniAutomaticheConsentite()) {
+        chiudiRichiestaInSospeso();
+        pushDebugLog?.({ type: "tetto-raggiunto", operazione: "ripresa-richiesta-interrotta", spesaMese: Number(spesaDelMeseCorrente().toFixed(4)), tetto: TETTO_MENSILE_USD });
+        return;
+      }
+      chiudiRichiestaInSospeso();                          // tolta PRIMA di ripartire: mai due giri per lo stesso testo
+      pushDebugLog?.({ type: "richiesta-ripresa-al-ritorno", userText: inSospeso.testo.slice(0, 100), attesaSecondi: Math.round((Date.now() - inSospeso.quando) / 1000), error: null });
+      sendRef.current?.(inSospeso.testo);
+    };
+    document.addEventListener("visibilitychange", alRitorno);
+    alRitorno();                                           // anche all'apertura, non solo al cambio di scheda
+    return () => document.removeEventListener("visibilitychange", alRitorno);
+  }, []);
   // ── Flusso "genera documento da conversazione" (alternativa A) ──
   const CONV_WINDOW = 30; // ultimi N messaggi usati come base per il documento
   const conversationText = () => messages.slice(-CONV_WINDOW)
