@@ -62,6 +62,10 @@ const EXPORT_NAMES = [
   "isDegenerateOutput", "diagnosiDegenerazione", "senzaFormattazioneMarkdown",
   "eRigaDiTabella", "eRigaSeparatriceTabella", "celleDiRigaTabella", "parseTabellaMarkdown",
   "costruisciTabellaDocx",
+  "richiestaDiPianoAlimentare", "estraiParametriPiano", "validaRepertorio",
+  "montaPianoAlimentare", "formatPianoAlimentare",
+  "salvaRichiestaInSospeso", "chiudiRichiestaInSospeso", "leggiRichiestaInSospeso",
+  "eGuastoDiRete", "FINESTRA_RIPRESA_MS",
 ];
 
 export function buildTestableApp() {
