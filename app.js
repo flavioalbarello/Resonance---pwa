@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-29 · la-griglia-la-monta-il-programma";
+const APP_BUILD = "2026-08-29 · il-ragionamento-si-spegne-davvero";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -2355,7 +2355,19 @@ async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, m
   const body = {
     model, max_tokens: maxTokens, temperature,
     messages: [{ role: "system", content: system }, { role: "user", content: buildOpenRouterContent(userText, image) }],
-    reasoning: { max_tokens: 300 }, // tetto fisso al "pensiero" interno: previene troncamenti da budget mangiato
+    // 29/08/2026 — DIMOSTRATO DAL REGISTRO, non piu' sospettato: `reasoning.max_tokens` su questo
+    // fornitore NON LIMITA NIENTE, e qui ha fatto fallire il repertorio dei pasti al primo colpo.
+    // La riga incriminata: functionTag "repertorio_pasti", tokensOut 2500, tokensRagionamento **2500**.
+    // Tutto il budget speso a pensare, zero token di contenuto, JSON vuoto, repertorio inutilizzabile.
+    // Il confronto nello stesso registro chiude il caso:
+    //   · qui (max_tokens:300)  → 2500, e prima 795 / 515 / 318 su selezione_azione: SEMPRE oltre il tetto
+    //   · askModelWithHistory (enabled:false, dal 25/08) → 0, su ogni singola chiamata
+    // Il dubbio era gia' scritto nel commento del 25/08 ("puo' darsi che risponda solo a enabled"), e
+    // li' era stato risolto solo per la chiamata conversazionale. Qui restava il vecchio tetto finto:
+    // non un tetto piu' permissivo, proprio un parametro ignorato. Nessuna di queste chiamate
+    // (JSON, Magi, Semi, repertorio) ha bisogno di ragionamento interno: producono struttura, non
+    // deliberazione — e una risposta vuota e' comunque il peggiore degli esiti possibili.
+    reasoning: { enabled: false },
   };
   // FIX 20/07/2026: prima il tool era dichiarato ma il modello poteva ignorarlo ("auto") — con prompt
   // densi (es. Shell con Manifesto+memoria pilastri) il riflesso "non ho accesso al web" prevaleva
@@ -6515,13 +6527,30 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // Il caso per cui questo avviso e' nato — il Ghost chiede un appuntamento, il modello dice
       // "vuoi confermare?", e nessuna card nasce — passa da quella porta e continua a scattare.
       const chiedevaUnAzione = meritaTurnoDiSelezione(userText);
-      const haChiestoUnaCosaSpenta = chiedevaUnAzione
-        && AZIONI_CONVERSAZIONALI.some((a) => !azioniAttive().some((b) => b.id === a.id));
+      // 29/08/2026 — LO STESSO DIFETTO DEL 17/08, RIENTRATO DA UN'ALTRA PORTA.
+      // Osservato dal vivo: il Ghost chiede un piano alimentare, il modello gli fa una domanda di
+      // chiarimento ("Confermi il repertorio piatti della prima settimana?"), e compare un riquadro
+      // rosso che gli dice che la capacita' che serve e' spenta — nominando "Inviare una mail".
+      // Con un piano alimentare la mail non c'entra niente.
+      // La causa: qui si guardava se esisteva ANCHE UNA SOLA azione spenta da qualche parte
+      // (`AZIONI_CONVERSAZIONALI.some(...)`), non se fosse spenta quella che il Ghost aveva chiesto.
+      // Siccome le sei azioni esterne nascono spente, la condizione era praticamente sempre vera:
+      // bastava un verbo d'azione nella frase ("Crea un piano...") per far comparire un avviso che
+      // accusava una capacita' a caso. Il rilevatore giusto c'era gia' e non veniva usato qui:
+      // capacitaNominata dice QUALE capacita' nomina la frase, e restituisce null quando non ne
+      // nomina nessuna o e' ambigua — cioe' esattamente il caso del piano alimentare.
+      const capacitaChiesta = capacitaNominata(userText);
+      const haChiestoUnaCosaSpenta = chiedevaUnAzione && capacitaChiesta !== null
+        && !azioniAttive().some((b) => b.id === capacitaChiesta);
       let confermaSenzaBersaglio = null;
       if (chiedevaUnAzione && !azioneProposta && !classeBPendente && domandeDiConferma.length) {
         confermaSenzaBersaglio = {
           motivo: haChiestoUnaCosaSpenta ? "forse-spenta" : "nessuna-proposta",
-          spente: AZIONI_CONVERSAZIONALI.filter((a) => !azioniAttive().some((b) => b.id === a.id)).map((a) => a.etichetta),
+          // Solo la capacita' DAVVERO chiesta e spenta: elencare tutte quelle spente faceva dire
+          // all'avviso cose che non c'entravano con la domanda del Ghost.
+          spente: haChiestoUnaCosaSpenta
+            ? AZIONI_CONVERSAZIONALI.filter((a) => a.id === capacitaChiesta).map((a) => a.etichetta)
+            : [],
           frasi: domandeDiConferma,
           // 23/08/2026 (voce 2.2 del brief) — il testo dell'avviso diceva sempre "con giorno e ora",
           // che e' la lingua del calendario. Anche quando l'avviso scatta a ragione, l'azione in

@@ -39,6 +39,29 @@ describe("richiestaDiPianoAlimentare — riconosce la richiesta reale, non tutto
   });
 });
 
+describe("il riquadro «capacità spenta» non deve accusare una capacità a caso", () => {
+  // Osservato dal vivo il 29/08: il Ghost chiede un piano alimentare, il modello gli fa una domanda
+  // di chiarimento ("Confermi il repertorio piatti?"), e compare un riquadro rosso che dice che la
+  // capacità che serve è spenta — nominando «Inviare una mail». Con un piano alimentare la mail non
+  // c'entra niente. La causa: si guardava se esistesse ANCHE UNA SOLA azione spenta da qualche
+  // parte, non se fosse spenta quella chiesta. Siccome le sei azioni esterne nascono spente, bastava
+  // un verbo d'azione nella frase ("Crea un piano...") per far comparire l'avviso.
+  // La richiesta REALE, per intero come sta nel registro: abbreviarla perde i verbi della coda
+  // ("scrivi", "tieni conto") che sono parte del motivo per cui il vecchio controllo si accendeva.
+  const RICHIESTA_PIANO = "Crea un piano alimentare bisettimanale, 5 pasti al giorno ( colazione, spuntino, pranzo, merenda, cena), appagante nei sapori e nelle quantità, non monotono, sulle 1600 kcal di media, non lineare nella settimana per non addormentare il metabolismo e con un buon apporto proteico per il mantenimento della massa muscolare. Nei giorni di lunedì, mercoledì e venerdì per il pranzo prevedi anche un'opzione da asporto che possa mangiare in macchina o a studio. Sono aperto a sostituire la pasta con pasta di farine di legumi e il pane con pane di segale o wasa. Preferisco colazioni salate. E vorrei escludere ceci e il pesce ( molluschi, crostacei e tonno in scatola sono ok) per ogni pasto scrivi le quantità e le calorie. Tieni conto del mio profilo utente";
+
+  test("la richiesta del piano fa scattare la selezione (è il verbo «Crea»): è il motivo per cui il vecchio controllo si accendeva", () => {
+    assert.equal(app.meritaTurnoDiSelezione(RICHIESTA_PIANO), true);
+  });
+  test("…ma NON nomina nessuna capacità: è questo il fatto che il riquadro deve guardare", () => {
+    assert.equal(app.capacitaNominata(RICHIESTA_PIANO), null,
+      "se questo tornasse non-null, il riquadro tornerebbe ad accusare una capacità che il Ghost non ha chiesto");
+  });
+  test("una richiesta che nomina DAVVERO una capacità continua a essere riconosciuta", () => {
+    assert.equal(app.capacitaNominata("Puoi mandare una mail a Marzio con il riepilogo?"), "invia_mail");
+  });
+});
+
 describe("estraiParametriPiano — i numeri li legge il codice, non il modello", () => {
   test("«bisettimanale» sono quattordici giorni", () => {
     assert.equal(app.estraiParametriPiano("piano alimentare bisettimanale").giorni, 14);
