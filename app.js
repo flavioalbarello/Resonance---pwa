@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-29 · niente-piatti-ripetuti-ne-nomi-che-narrano";
+const APP_BUILD = "2026-08-30 · il-documento-si-scarica-anche-senza-percorso";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -3305,7 +3305,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Forma delle risposte: la lunghezza e il registro vengono dal profilo cognitivo del Ghost, non da una regola generale del sistema.
 - Memoria procedurale: la nota che ogni pilastro accumula sugli scambi, riscritta per intero a ogni aggiornamento e non aggiunta in coda. Ha un sedimento storico e delle parole chiave per ritrovarla.
 - Tetto di spesa (Setup): raggiunti 5 dollari nel mese si fermano solo le cose che partono da sole — Semi che avanzano, Simbiosi. La chat resta utilizzabile.
-- Genera documento da questa conversazione: un pulsante sopra la chat trasforma quanto concordato parlando in un file .docx vero. Il programma rilegge la conversazione, ne estrae la versione FINALE (non le versioni intermedie scartate) e i vincoli dichiarati, li mostra in anteprima, e poi lo salva su Drive o lo scarica agganciandolo a un percorso. Quando il contenuto è una griglia — giorni per pasti, settimane per esercizi — nel documento diventa una TABELLA vera, con righe e colonne, non i trattini e le barrette che la simulano in chat.
+- Genera documento da questa conversazione: un pulsante sopra la chat trasforma quanto concordato parlando in un file .docx vero. Il programma rilegge la conversazione, ne estrae la versione FINALE (non le versioni intermedie scartate) e i vincoli dichiarati, li mostra in anteprima, e poi lo salva su Drive o lo scarica. Agganciarlo a un percorso è FACOLTATIVO: serve solo per ritrovarlo dentro l'app: se il Ghost non sceglie nessun percorso il file viene comunque prodotto e consegnato, e il programma glielo dice. Quando il contenuto è una griglia — giorni per pasti, settimane per esercizi — nel documento diventa una TABELLA vera, con righe e colonne, non i trattini e le barrette che la simulano in chat.
 - Ripresa della richiesta interrotta: se il Ghost esce dall'app mentre una risposta sta arrivando, il telefono sospende la scheda e la richiesta muore (l'app non ha un server che la tenga in mano al posto suo). La richiesta però viene messa da parte prima di partire, e quando il Ghost torna sull'app riparte da sola, senza doverla riscrivere — solo se è morta per un guasto di RETE e solo entro quindici minuti. NON significa "la trovi già pronta al ritorno": per quello servirebbe un server che tenga la richiesta, non ancora costruito.
 - Backup e ripristino (Setup): scarica in un unico file tutto lo stato locale e sa rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo previa conferma.
 Capacità NON disponibili in questa app: notifiche push; promemoria o azioni che si attivano da soli senza che il Ghost apra l'app; invio automatico di messaggi, mail o post senza la sua conferma esplicita su quello specifico invio; MODIFICARE il titolo o la descrizione di un evento del calendario (spostarlo a un altro giorno o ora invece si può); pubblicazione automatica su social o piattaforme esterne; esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost.`;
@@ -6800,36 +6800,62 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       setDocPhase("preview");
     } catch (e) { setDocMsg("Errore generazione: " + e.message); setDocPhase("idle"); }
   };
+  // 30/08/2026 — "I TASTI NON FUNZIONANO". E in effetti non facevano niente, ma non erano rotti:
+  // la prima riga rifiutava tutto finche' il Ghost non sceglieva un percorso di destinazione, e
+  // l'unico segno era una riga grigia sotto i pulsanti ("Scegli un percorso o dai un nome al
+  // nuovo") facile da non vedere. Da fuori: premi, non succede niente, il documento non esiste.
+  // Ma il difetto vero e' a monte del messaggio: SCARICARE UN FILE NON DEVE RICHIEDERE DI
+  // ARCHIVIARLO. Erano due cose diverse tenute insieme da un solo gesto — produrre il .docx, e
+  // agganciarlo a un percorso perche' l'app se lo ricordi. La seconda e' utile ma facoltativa: se
+  // il Ghost vuole solo il file in mano, deve poterlo avere.
+  // Ora l'aggancio avviene SOLO se un percorso e' stato scelto, e in entrambi i casi il messaggio
+  // finale dice esattamente cosa e' successo — file consegnato e archiviato, oppure file consegnato
+  // e basta, dichiarando che non e' stato agganciato a niente.
   const confirmDoc = async (toDrive) => {
     if (docPhase === "saving") return;
-    if (!docTargetId && !docNewTitle.trim()) { setDocMsg("Scegli un percorso o dai un nome al nuovo."); return; }
     setDocPhase("saving"); setDocMsg("");
     try {
       const list = percorsi[docTargetPillar] || [];
       const setList = setPercorsi[docTargetPillar];
-      if (!setList) { setDocMsg("Errore: pilastro non valido."); setDocPhase("preview"); return; }
-      let targetId = docTargetId;
-      let target = list.find((p) => p.id === targetId);
-      // Percorso nuovo al volo (competenza puntuale, senza scomposizione AI: è un contenitore per l'artefatto)
-      if (!target) {
-        target = { id: uid(), pillar: docTargetPillar, title: docNewTitle.trim(), kind: "puntuale", identityGoal: null,
-          createdAt: new Date().toISOString(), topics: [{ id: uid(), label: "Verifica efficacia", status: "non iniziato", lastTouched: null }],
-          sessions: [], competenze: "", touchesPillars: [], localMemory: "", documents: [] };
-        targetId = target.id;
-      }
-      const fname = `${(docTitle || target.title || "documento").replace(/[^\w\sàèéìòù-]/gi, "").trim().slice(0, 60) || "documento"}.docx`;
+      const percorsoScelto = list.find((p) => p.id === docTargetId) || null;
+      // Percorso nuovo al volo (competenza puntuale, senza scomposizione AI: è un contenitore per
+      // l'artefatto). Nasce solo se il Ghost gli ha dato un nome: senza nome non se ne crea uno vuoto.
+      const percorsoNuovo = (!percorsoScelto && docNewTitle.trim())
+        ? { id: uid(), pillar: docTargetPillar, title: docNewTitle.trim(), kind: "puntuale", identityGoal: null,
+            createdAt: new Date().toISOString(), topics: [{ id: uid(), label: "Verifica efficacia", status: "non iniziato", lastTouched: null }],
+            sessions: [], competenze: "", touchesPillars: [], localMemory: "", documents: [] }
+        : null;
+      const target = percorsoScelto || percorsoNuovo;
+      const titolo = docTitle || target?.title || "documento";
+      const fname = `${titolo.replace(/[^\w\sàèéìòù-]/gi, "").trim().slice(0, 60) || "documento"}.docx`;
+      // IL FILE SI PRODUCE SEMPRE: e' la cosa che il Ghost ha chiesto premendo il pulsante.
       let driveId = null;
-      const blob = await generateDocxBlob(docTitle || target.title, docText);
+      const blob = await generateDocxBlob(titolo, docText);
       if (toDrive) { const r = await createDriveFile(fname, blob, DOCX_MIME); driveId = r?.id || null; }
       else { const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = fname; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
-      const doc = { id: uid(), name: fname, title: docTitle || target.title, text: docText, date: new Date().toISOString(), driveId };
-      const stamp = new Date().toISOString().slice(0, 10);
-      const newMem = (target.localMemory ? target.localMemory + "\n\n" : "") + `[${stamp}] Vincoli da conversazione:\n${docSummary}`;
-      const updated = { ...target, documents: [doc, ...(target.documents || [])], localMemory: newMem };
-      setList(list.some((p) => p.id === targetId) ? list.map((p) => (p.id === targetId ? updated : p)) : [updated, ...list]);
-      setDocMsg(toDrive ? "Salvato su Drive e agganciato al percorso." : "Scaricato e agganciato al percorso.");
+      // L'aggancio al percorso: solo se c'e' un percorso, e senza far fallire la consegna del file
+      // se qualcosa qui non torna — il file e' gia' in mano al Ghost a questo punto.
+      if (target && setList) {
+        const doc = { id: uid(), name: fname, title: titolo, text: docText, date: new Date().toISOString(), driveId };
+        const stamp = new Date().toISOString().slice(0, 10);
+        const newMem = (target.localMemory ? target.localMemory + "\n\n" : "") + `[${stamp}] Vincoli da conversazione:\n${docSummary}`;
+        const updated = { ...target, documents: [doc, ...(target.documents || [])], localMemory: newMem };
+        setList(list.some((p) => p.id === target.id) ? list.map((p) => (p.id === target.id ? updated : p)) : [updated, ...list]);
+        setDocMsg(toDrive ? "Salvato su Drive e agganciato al percorso." : "Scaricato e agganciato al percorso.");
+      } else {
+        setDocMsg(toDrive
+          ? "Salvato su Drive. Non l'ho agganciato a nessun percorso: non ne avevi scelto uno — se lo vuoi anche dentro l'app, scegli un percorso qui sopra e premi di nuovo."
+          : "Scaricato. Non l'ho agganciato a nessun percorso: non ne avevi scelto uno — se lo vuoi anche dentro l'app, scegli un percorso qui sopra e premi di nuovo.");
+      }
+      pushDebugLog?.({ type: "documento-generato", suDrive: !!toDrive, agganciato: !!target, nomeFile: fname, error: null });
       setDocPhase("done");
-    } catch (e) { setDocMsg("Errore salvataggio: " + e.message); setDocPhase("preview"); }
+    } catch (e) {
+      // Un fallimento qui va DETTO, non lasciato sembrare "il pulsante non funziona": la libreria
+      // .docx si carica da un CDN, e se quella chiamata non riesce il Ghost deve sapere perche'.
+      setDocMsg("Errore: " + e.message);
+      pushDebugLog?.({ type: "documento-generato", suDrive: !!toDrive, error: e.message });
+      setDocPhase("preview");
+    }
   };
   const [copiedId, setCopiedId] = useState(null);
   const copyDraft = (mid, draft) => {
@@ -7704,11 +7730,15 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         <${Field} label="Pilastro"><select class="r-input" value=${docTargetPillar} onChange=${(e) => { setDocTargetPillar(e.target.value); setDocTargetId(""); }}>
           <option value="bio">BIO</option><option value="air">AIR</option><option value="vidya">VIDYA</option>
         </select></${Field}>
-        <${Field} label="Percorso di destinazione"><select class="r-input" value=${docTargetId} onChange=${(e) => setDocTargetId(e.target.value)}>
+        <${Field} label="Percorso di destinazione (facoltativo)"><select class="r-input" value=${docTargetId} onChange=${(e) => setDocTargetId(e.target.value)}>
           <option value="">➕ Nuovo percorso…</option>
           ${(percorsi[docTargetPillar] || []).map((p) => html`<option value=${p.id}>${p.title}</option>`)}
         </select></${Field}>
-        ${!docTargetId && html`<input class="r-input" style="margin-bottom:10px" value=${docNewTitle} onInput=${(e) => setDocNewTitle(e.target.value)} placeholder="Nome del nuovo percorso" />`}
+        ${!docTargetId && html`<input class="r-input" style="margin-bottom:4px" value=${docNewTitle} onInput=${(e) => setDocNewTitle(e.target.value)} placeholder="Nome del nuovo percorso" />`}
+        ${/* 30/08/2026 — prima questo era un requisito nascosto: i pulsanti sembravano attivi ma
+              rifiutavano finche' non c'era un percorso, e l'unico segno era una riga grigia in
+              fondo. Ora e' scritto qui, prima di premere. */ ""}
+        <div class="r-hub-detail" style="margin-bottom:10px">Serve solo se vuoi ritrovare il documento dentro l'app, agganciato a un percorso. Per avere il file e basta, lascia pure vuoto e premi.</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="r-btn" style="background:${C.core}" onClick=${() => confirmDoc(false)} disabled=${docPhase === "saving"}>${docPhase === "saving" ? "…" : "Scarica .docx"}</button>
           <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => confirmDoc(true)} disabled=${docPhase === "saving"}>Salva su Drive</button>
