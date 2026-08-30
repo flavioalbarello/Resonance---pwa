@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-29 · il-ragionamento-si-spegne-davvero";
+const APP_BUILD = "2026-08-29 · niente-piatti-ripetuti-ne-nomi-che-narrano";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1543,6 +1543,15 @@ function estraiParametriPiano(testo) {
 }
 // Il repertorio che torna dal modello, ripulito. Un piatto senza nome o senza calorie non e'
 // utilizzabile: si scarta QUI, non si lascia arrivare alla griglia dove produrrebbe una cella vuota.
+// 29/08/2026 — LA META-NARRAZIONE E' RIENTRATA DAL NOME DEL PIATTO. Osservato dal vivo:
+//   "Pasta di ceci SKIP — pasta di ceci ESCLUSA, sostituita con: pasta di edamame 80g..."
+//   "Hummus di ceci SKIP — hummus di ceci ESCLUSO, sostituito con: Philadelphia light 40g..."
+// Il piatto sostitutivo e' ottimo; e' il NOME che racconta al Ghost cosa e' stato escluso, invece di
+// chiamare il piatto per quello che e'. E c'e' un danno oltre alla bruttezza: il nome contiene
+// l'alimento escluso, quindi il controllo del piano lo trova e segnala una violazione che non c'e'.
+// Un piatto cosi' si scarta: il repertorio ne ha in abbondanza (ne chiediamo 40 e ne servono meno),
+// e perderne uno costa molto meno che mostrarne uno che si contraddice da solo.
+const NOME_CHE_NARRA_ESCLUSIONE_RE = /\bskip\b|\besclus\w*|\bsostituit\w*\s+con\b|\bnon\s+ammess\w*/i;
 function validaRepertorio(raw) {
   if (!raw || typeof raw !== "object") return null;
   const categoria = (v) => (Array.isArray(v) ? v : []).map((p) => ({
@@ -1550,7 +1559,8 @@ function validaRepertorio(raw) {
     ingredienti: String(p?.ingredienti || "").trim(),
     kcal: Number(p?.kcal),
     portatile: !!p?.portatile,
-  })).filter((p) => p.nome && Number.isFinite(p.kcal) && p.kcal > 0);
+  })).filter((p) => p.nome && Number.isFinite(p.kcal) && p.kcal > 0
+    && !NOME_CHE_NARRA_ESCLUSIONE_RE.test(p.nome));
   const r = {
     colazioni: categoria(raw.colazioni), spuntini: categoria(raw.spuntini),
     pranzi: categoria(raw.pranzi), merende: categoria(raw.merende), cene: categoria(raw.cene),
@@ -1565,6 +1575,27 @@ function validaRepertorio(raw) {
 // Chiedendo al modello NUMERI DIVERSI per categoria (7 colazioni, 8 spuntini, 9 pranzi...) anche le
 // COMBINAZIONI di giornata non si ripetono per il minimo comune multiplo dei conteggi, non per L.
 const VARIAZIONE_CALORICA = [0, 120, -80, 60, -140, 100, -60]; // la "non linearita'" chiesta dal Ghost, resa esatta
+// Quanti giorni deve passare un piatto prima di poter tornare. Era 3, ed era troppo poco: il Ghost
+// si e' ritrovato la stessa cena mercoledi' e domenica — dentro la regola, ma nella stessa settimana,
+// e con dieci cene in repertorio non c'era nessun motivo. Sei giorni significa "mai due volte nella
+// stessa settimana", che e' la cosa che si nota davvero mangiando.
+const DISTANZA_MINIMA_RIPETIZIONE = 6;
+// Fra i piatti ammessi (quelli non usati troppo di recente) prende il MENO RECENTE, cosi' la
+// rotazione copre tutto il repertorio invece di girare sui primi. Se nessuno rispetta la distanza —
+// lista corta rispetto ai giorni — si ripiega sull'intera lista prendendo comunque il meno recente:
+// meglio una ripetizione distante che una cella vuota.
+function scegliMenoRecente(lista, usati, d, preferenza = null) {
+  const distanza = Math.min(Math.max(0, lista.length - 1), DISTANZA_MINIMA_RIPETIZIONE);
+  const ammessi = lista.filter((p) => {
+    const ultimo = usati.get(p.nome);
+    return ultimo === undefined || d - ultimo > distanza;
+  });
+  const candidati = ammessi.length ? ammessi : lista;
+  // Con una preferenza (la cena, che deve avvicinare il totale al bersaglio) si sceglie fra i soli
+  // ammessi: la distanza resta un vincolo, il bersaglio calorico e' il criterio dentro quel vincolo.
+  if (preferenza) return candidati.reduce((a, b) => (preferenza(b) < preferenza(a) ? b : a));
+  return candidati.reduce((a, b) => ((usati.get(b.nome) ?? -1) < (usati.get(a.nome) ?? -1) ? b : a));
+}
 function montaPianoAlimentare(repertorio, opzioni = {}) {
   const r = validaRepertorio(repertorio);
   if (!r) return null;
@@ -1572,31 +1603,40 @@ function montaPianoAlimentare(repertorio, opzioni = {}) {
   const kcalMedia = Number(opzioni.kcalMedia) || null;
   const portatiliDi = new Set(Array.isArray(opzioni.giorniPortatili) ? opzioni.giorniPortatili : []);
   const pranziPortatili = r.pranzi.filter((p) => p.portatile);
+  const pranziNonPortatili = r.pranzi.filter((p) => !p.portatile);
   const righe = [];
-  const cenaUsataAlGiorno = new Map(); // nome cena -> ultimo giorno in cui e' comparsa
+  const cenaUsataAlGiorno = new Map();   // nome cena -> ultimo giorno in cui e' comparsa
+  const pranzoUsatoAlGiorno = new Map(); // CONDIVISO fra portatili e non: vedi il commento sotto
   for (let d = 0; d < giorni; d++) {
     const gs = d % 7;
     const colazione = r.colazioni[d % r.colazioni.length];
     const spuntino = r.spuntini[d % r.spuntini.length];
     // Su un giorno da asporto si pesca dai portatili, se ce ne sono: altrimenti si usa il pranzo
     // normale e lo si dichiara dopo, invece di fingere che sia portatile.
-    const listaPranzi = portatiliDi.has(gs) && pranziPortatili.length ? pranziPortatili : r.pranzi;
-    const pranzo = listaPranzi[d % listaPranzi.length];
+    // 29/08/2026 — DIFETTO MIO, VISTO DAL GHOST E RIPRODOTTO: lo stesso pranzo due giorni di fila
+    // (martedi' "Insalata di cous cous e cozze", mercoledi' la stessa come asporto). La causa era
+    // qui: nei giorni da asporto si pescava dalla lista dei portatili, negli altri dalla lista
+    // completa, e le due liste avevano CONTATORI INDIPENDENTI (`d % lista.length` ciascuna).
+    // Siccome i portatili sono un sottoinsieme dei pranzi, lo stesso piatto poteva uscire da
+    // entrambe a un giorno di distanza. Misurato sul repertorio di prova: 4 ripetizioni entro tre
+    // giorni, di cui 2 a giorni consecutivi.
+    // I miei stessi test non l'avevano preso perche' il teorema sulle ripetizioni escludeva proprio
+    // i pranzi — l'unica categoria con due liste. Il buco era nella prova, non solo nel codice.
+    // Ora: liste DISGIUNTE (i portatili servono i giorni da asporto, gli altri il resto) e un
+    // registro CONDIVISO degli ultimi usi, cosi' il vincolo di distanza vale attraverso le due.
+    const listaPranzi = portatiliDi.has(gs) && pranziPortatili.length
+      ? pranziPortatili
+      : (pranziNonPortatili.length ? pranziNonPortatili : r.pranzi);
+    const pranzo = scegliMenoRecente(listaPranzi, pranzoUsatoAlGiorno, d);
+    pranzoUsatoAlGiorno.set(pranzo.nome, d);
     const merenda = r.merende[d % r.merende.length];
     // LA CENA E' LA LEVA. Gli altri quattro pasti ruotano; la cena viene SCELTA fra quelle non
     // ancora usate di recente, prendendo quella che avvicina di piu' il totale al bersaglio del
     // giorno. E' il punto in cui il programma fa quello che il modello non poteva garantire.
     const parziale = colazione.kcal + spuntino.kcal + pranzo.kcal + merenda.kcal;
     const bersaglio = kcalMedia ? kcalMedia + VARIAZIONE_CALORICA[d % VARIAZIONE_CALORICA.length] : null;
-    const distanzaMinima = Math.min(3, Math.max(0, r.cene.length - 1));
-    const disponibili = r.cene.filter((c) => {
-      const ultimo = cenaUsataAlGiorno.get(c.nome);
-      return ultimo === undefined || d - ultimo > distanzaMinima;
-    });
-    const candidate = disponibili.length ? disponibili : r.cene;
-    const cena = bersaglio === null
-      ? candidate[d % candidate.length]
-      : candidate.reduce((a, b) => (Math.abs(parziale + b.kcal - bersaglio) < Math.abs(parziale + a.kcal - bersaglio) ? b : a));
+    const cena = scegliMenoRecente(r.cene, cenaUsataAlGiorno, d,
+      bersaglio === null ? null : (c) => Math.abs(parziale + c.kcal - bersaglio));
     cenaUsataAlGiorno.set(cena.nome, d);
     righe.push({
       indice: d, settimana: Math.floor(d / 7) + 1, giorno: GIORNI_SETTIMANA_BREVI[gs],
@@ -1649,7 +1689,8 @@ function formatPianoAlimentare(piano) {
 async function generaRepertorioPasti(richiesta, vincoliDichiarati, memoriaBio, settings, pushDebugLog = null) {
   const vincoli = (vincoliDichiarati || []).filter(Boolean);
   const bloccoVincoli = vincoli.length
-    ? `\nVINCOLI GIA' DICHIARATI dal Ghost, che valgono sempre e non vanno mai contraddetti (se escludono un alimento, NON proporlo, nemmeno come alternativa): ${vincoli.join("; ")}`
+    ? `\nVINCOLI GIA' DICHIARATI dal Ghost, che valgono sempre e non vanno mai contraddetti (se escludono un alimento, NON proporlo, nemmeno come alternativa): ${vincoli.join("; ")}
+Un alimento escluso NON VA NEMMENO NOMINATO. Non scrivere piatti come "Pasta di ceci SKIP — pasta di ceci ESCLUSA, sostituita con: pasta di edamame": quel piatto va chiamato "Pasta di edamame al pomodoro" e basta. Il Ghost sa gia' cosa ha escluso, non serve raccontarglielo; e un nome che contiene l'alimento escluso fa scattare per sbaglio il controllo del piano. Proponi direttamente l'alternativa, col suo nome, come se l'esclusione non fosse mai esistita.`
     : "";
   const data = await askModelJSON(
     `Sei lo Shell del sistema Resonance, pilastro BIO. Devi produrre un REPERTORIO di piatti, NON un piano: non assegnare giorni, non fare tabelle, non calcolare medie — a montare i giorni ci pensa il programma.
