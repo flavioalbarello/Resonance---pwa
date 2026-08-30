@@ -94,6 +94,22 @@ describe("validaRepertorio — un piatto inutilizzabile si scarta qui, non nella
   test("un JSON non-oggetto non fa esplodere niente", () => {
     for (const v of [null, undefined, "testo", 42]) assert.equal(app.validaRepertorio(v), null);
   });
+
+  // 29/08/2026 — osservato dal vivo, con questi nomi esatti.
+  test("un piatto il cui NOME racconta l'esclusione viene scartato", () => {
+    const sporchi = [
+      { nome: "Pasta di ceci SKIP", ingredienti: "pasta di ceci ESCLUSA, sostituita con: pasta di edamame 80g", kcal: 505 },
+      { nome: "Hummus di ceci SKIP", ingredienti: "hummus di ceci ESCLUSO, sostituito con: Philadelphia light 40g", kcal: 190 },
+      { nome: "Insalata di tonno (sostituita con pollo)", ingredienti: "pollo 100g", kcal: 300 },
+    ];
+    const r = app.validaRepertorio({ ...REPERTORIO, pranzi: [...REPERTORIO.pranzi, ...sporchi] });
+    assert.equal(r.pranzi.length, REPERTORIO.pranzi.length,
+      "nessuno dei piatti che nominano l'esclusione deve entrare nel repertorio");
+  });
+  test("un piatto con un nome normale non viene toccato", () => {
+    const r = app.validaRepertorio({ ...REPERTORIO, pranzi: [...REPERTORIO.pranzi, { nome: "Pasta di edamame al pomodoro", ingredienti: "pasta di edamame 80g", kcal: 505 }] });
+    assert.equal(r.pranzi.length, REPERTORIO.pranzi.length + 1);
+  });
 });
 
 describe("montaPianoAlimentare — le proprietà che il modello non poteva garantire", () => {
@@ -101,6 +117,30 @@ describe("montaPianoAlimentare — le proprietà che il modello non poteva garan
 
   test("quattordici giorni, tutti montati", () => {
     assert.equal(piano.righe.length, 14);
+  });
+
+  // 29/08/2026 — IL BUCO CHE HA LASCIATO PASSARE IL DIFETTO. Il teorema qui sotto escludeva i
+  // pranzi, cioè l'unica categoria servita da DUE liste (portatili e non) — proprio quella dove la
+  // ripetizione poteva nascere. Il Ghost si è ritrovato lo stesso pranzo martedì e mercoledì, e i
+  // test erano verdi. Questi due controlli chiudono il buco: sono le prove che mancavano.
+  test("TEOREMA 1-bis — i PRANZI non si ripetono a giorni ravvicinati, attraverso ENTRAMBE le liste", () => {
+    const pranzi = piano.righe.map((r) => r.pranzo.nome);
+    for (let i = 0; i < pranzi.length; i++) {
+      for (let j = i + 1; j < Math.min(i + 4, pranzi.length); j++) {
+        assert.notEqual(pranzi[i], pranzi[j],
+          `"${pranzi[i]}" al giorno ${i} e ${j} (distanza ${j - i}): è il difetto del 29/08, il pranzo da asporto e quello normale pescavano da liste con contatori separati`);
+      }
+    }
+  });
+
+  test("TEOREMA 1-ter — le CENE non si ripetono nella stessa settimana", () => {
+    const cene = piano.righe.map((r) => r.cena.nome);
+    for (let i = 0; i < cene.length; i++) {
+      for (let j = i + 1; j < Math.min(i + 7, cene.length); j++) {
+        assert.notEqual(cene[i], cene[j],
+          `"${cene[i]}" al giorno ${i} e ${j}: con dieci cene in repertorio non c'è motivo di ripeterne una entro sei giorni`);
+      }
+    }
   });
 
   test("TEOREMA 1 — nessun piatto si ripete prima di L giorni, con L = quanti piatti ha la sua categoria", () => {
