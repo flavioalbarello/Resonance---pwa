@@ -63,8 +63,9 @@ const EXPORT_NAMES = [
   "eRigaDiTabella", "eRigaSeparatriceTabella", "celleDiRigaTabella", "parseTabellaMarkdown",
   "costruisciTabellaDocx",
   "richiestaDiPianoAlimentare", "estraiParametriPiano", "validaRepertorio",
-  "montaPianoAlimentare", "formatPianoAlimentare",
+  "montaPianoAlimentare", "formatPianoAlimentare", "filtraRepertorioPerVincoli", "alimentiEsclusiDaiVincoli",
   "salvaRichiestaInSospeso", "chiudiRichiestaInSospeso", "leggiRichiestaInSospeso",
+  "controllaPianoAlimentare", "giorniDelPiano", "analizzaVincoloAlimentare", "alimentiDaCercare",
   "eGuastoDiRete", "FINESTRA_RIPRESA_MS",
 ];
 
