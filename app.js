@@ -42,7 +42,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-31 · il-percorso-si-richiama-e-il-log-non-si-duplica";
+const APP_BUILD = "2026-08-31 · i-percorsi-si-eliminano-dalla-lista";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -3138,6 +3138,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Rileggere un documento del percorso: "rileggimi l'Atto I", "riprendi i testi che abbiamo salvato", "mostrami quel pezzo". Il programma va a prendere il testo COMPLETO dal percorso aperto e lo mette davanti allo Shell PRIMA che risponda, così ci lavora sopra davvero invece di ricordarlo. Non chiede conferma: leggere non cambia niente. Se più di un documento corrisponde chiede quale, e se non lo trova lo dichiara invece di rispondere a memoria. Un documento molto lungo viene tagliato e la cosa viene detta.
 - Il percorso aperto viaggia con il suo fascicolo: quando c'è un percorso aperto (il fuoco), lo Shell riceve a ogni turno i suoi nodi con lo stato, le competenze, la memoria del percorso e l'indice dei documenti. È per questo che "continuiamo con l'Atto III" funziona senza dover rispiegare cos'è stato fatto. Il fuoco scade da solo dopo otto ore.
 - Voci gemelle nel log: quando lo Shell scrive da solo una voce in un pilastro e quella voce dice sostanzialmente la stessa cosa di un'altra dello STESSO GIORNO, non ne crea una seconda: aggiorna quella che c'è già, e il testo precedente scende nello storico della voce invece di essere perso. Nel log la voce mostra "N versioni di questa voce" e si tocca per rileggerle tutte. Sotto il messaggio in chat il segno dice "→ VIDYA · 3ª versione" invece di "→ VIDYA", così è visibile che ha aggiornato e non aggiunto. Le voci che contengono una misura (peso, sonno) non vengono mai fuse: due pesate nello stesso giorno sono due dati, non un doppione. Le voci scritte a mano dal Ghost non passano da qui e non vengono mai toccate.
+- Eliminare un percorso dalla lista: in ogni pilastro, sotto Percorsi, ogni percorso ha una ✕ di fianco. Non elimina subito: chiede una volta e dice cosa sta per sparire, contato (quanti nodi, quante sessioni, quanti documenti col loro testo, se ci sono competenze e memoria del percorso). Serve perché da quando i documenti contengono il testo intero, un percorso vale molto più di una voce di log. Resta anche il pulsante "Elimina percorso" dentro il percorso stesso.
 - Documenti del percorso: nel percorso, sotto "Documenti del percorso", ognuno si tocca e si riapre per intero. Quando il Ghost riapre un percorso, lo Shell riceve l'indice di questo materiale — nome, data, lunghezza, come comincia — non i testi interi: sa che esistono e riparte da lì invece di ricominciare da capo. I documenti creati prima del 31/08/2026 hanno solo il nome, non il testo.
 - Andamento misurato (BIO): il programma calcola da solo le serie di peso e sonno dalle voci del log BIO — ultima misura, quanti giorni ha, variazione totale, variazione per settimana, quante misure — e le passa allo Shell e a Simbiosi già calcolate. Compaiono anche in BIO → Log, in un riquadro "Andamento misurato", nella stessa identica forma in cui le riceve il modello. Regola: se una tendenza non è in quel riquadro, il modello non l'ha ricevuta e non deve parlarne. Una misura sola non fa tendenza e viene dichiarata tale; una serie la cui ultima misura ha più di 7 giorni viene marcata "stantia", più di 30 "vecchia", e va detto invece di parlarne come se fosse di oggi. Non serve fare niente per attivarlo: legge i campi Peso e Sonno che le voci BIO hanno già, comprese quelle scritte dallo Shell durante una conversazione.
 - Controllo del piano alimentare: quando lo Shell genera un piano con più giorni, il programma lo rilegge e confronta con i vincoli dichiarati. Segnala in un riquadro, senza toccare il piano: alimenti esclusi che compaiono lo stesso (sa che il salmone è un pesce), giorni dichiarati che non ci sono, giorni identici fra loro, la stessa fonte proteica a pranzo e a cena, dosi assenti quando erano state chieste, colazioni dolci quando erano state chieste salate. Non giudica il piano: elenca fatti verificabili, con il giorno preciso.
@@ -5295,6 +5296,20 @@ const SubTabs = ({ color, tabs, active, setActive }) => html`
 //──────────────────────────────────────────────────────────
 // PERCORSI — componenti generici
 //──────────────────────────────────────────────────────────
+// Cosa sparisce davvero eliminando un percorso, contato invece che detto a parole. Un elenco vuoto
+// non produce "0 documenti": produce niente, così la frase resta leggibile anche per un percorso
+// appena creato ("Spariscono 6 nodi.").
+function contenutoDelPercorso(p) {
+  const pezzi = [
+    [(p?.topics || []).length, "nodo", "nodi"],
+    [(p?.sessions || []).length, "sessione", "sessioni"],
+    [(p?.documents || []).length, "documento con il suo testo", "documenti con il loro testo"],
+  ].filter(([n]) => n > 0).map(([n, uno, molti]) => `${n} ${n === 1 ? uno : molti}`);
+  if (p?.competenze) pezzi.push("le competenze accumulate");
+  if (p?.localMemory) pezzi.push("la memoria del percorso");
+  if (!pezzi.length) return "un percorso ancora vuoto";
+  return pezzi.length === 1 ? pezzi[0] : `${pezzi.slice(0, -1).join(", ")} e ${pezzi[pezzi.length - 1]}`;
+}
 function PercorsiPanel({ pillar, color, percorsi, setPercorsi, settings, digest, pillarMemory }) {
   const [selectedId, setSelectedId] = useState(null);
   const selected = percorsi.find((p) => p.id === selectedId);
@@ -5324,7 +5339,15 @@ function PercorsiPanel({ pillar, color, percorsi, setPercorsi, settings, digest,
     catch (e) { setError(e.message); } finally { setSuggesting(false); }
   };
   const updatePercorso = (updated) => setPercorsi(percorsi.map((p) => (p.id === updated.id ? updated : p)));
-  const deletePercorso = (id) => { setPercorsi(percorsi.filter((p) => p.id !== id)); if (selectedId === id) setSelectedId(null); };
+  const deletePercorso = (id) => { setPercorsi(percorsi.filter((p) => p.id !== id)); if (selectedId === id) setSelectedId(null); setDaEliminare(null); };
+  // 31/08/2026 — la ✕ nella lista, chiesta dal Ghost per togliersi di torno i percorsi con i titoli
+  // spazzatura nati prima che titoloUsabile esistesse ("questo?", "dedicato su questo? Ti terrei
+  // traccia de"). Lui ha detto "banalmente una x di fianco come nei log", e nei log la ✕ cancella
+  // senza chiedere. Qui invece chiede una volta, e il motivo e' cambiato ieri: da quando esiste
+  // salva_nel_percorso, dentro un percorso ci sono i DOCUMENTI col testo intero — sedici brani, un
+  // canovaccio, ore di lavoro. Una voce di log persa per un tocco sbagliato e' una seccatura; un
+  // percorso perso e' un pomeriggio. La conferma dice cosa sta per sparire, contato.
+  const [daEliminare, setDaEliminare] = useState(null);
   if (selected) return html`<${PercorsoDetail} pillar=${pillar} color=${color} percorso=${selected} onUpdate=${updatePercorso} onBack=${() => setSelectedId(null)} onDelete=${() => deletePercorso(selected.id)} settings=${settings} pillarMemory=${pillarMemory} />`;
   return html`
     <div>
@@ -5352,8 +5375,18 @@ function PercorsiPanel({ pillar, color, percorsi, setPercorsi, settings, digest,
           const done = p.topics.filter((t) => t.status === "consolidato").length;
           return html`<${Card} accent=${color}><div class="r-entry-row" style="cursor:pointer" onClick=${() => setSelectedId(p.id)}>
             <div><div class="r-entry-line"><b>${p.title}</b>${p.kind === "identitario" ? html` <span class="r-badge" style="border-color:${color};color:${color}">identitario</span>` : ""}${(p.touchesPillars || []).map((tp) => html` <span class="r-badge" style="border-color:var(--muted);color:var(--muted)">${tp}</span>`)}</div>
-            <div class="r-hub-detail">${done}/${p.topics.length} nodi consolidati · ${p.sessions.length} sessioni</div></div>
-          </div></${Card}>`;
+            <div class="r-hub-detail">${done}/${p.topics.length} nodi consolidati · ${p.sessions.length} sessioni${(p.documents || []).length ? ` · ${(p.documents || []).length} documenti` : ""}</div></div>
+            <button class="r-icon-btn" title="Elimina questo percorso"
+              onClick=${(e) => { e.stopPropagation(); setDaEliminare(daEliminare === p.id ? null : p.id); }}>✕</button>
+          </div>
+          ${daEliminare === p.id && html`<div class="r-error" style="margin-top:8px">
+            <div>Elimino <b>${p.title}</b>? Spariscono ${contenutoDelPercorso(p)}. Non si può annullare.</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+              <button class="r-btn r-draft-copy" onClick=${(e) => { e.stopPropagation(); vibra("bio"); deletePercorso(p.id); }}>Sì, elimina</button>
+              <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${(e) => { e.stopPropagation(); setDaEliminare(null); }}>Annulla</button>
+            </div>
+          </div>`}
+          </${Card}>`;
         })}</div>`}
     </div>`;
 }

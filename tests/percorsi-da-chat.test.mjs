@@ -206,3 +206,36 @@ describe("il registro delle azioni conosce le due azioni nuove", () => {
     assert.equal(app.meritaTurnoDiSelezione("è un discorso generale, niente di preciso"), false);
   });
 });
+
+describe("contenutoDelPercorso — cosa dice la conferma prima di eliminare", () => {
+  // Il Ghost ha chiesto "banalmente una x di fianco come nei log". Nei log la ✕ cancella subito;
+  // qui chiede una volta, perché da quando esiste salva_nel_percorso dentro un percorso ci sono i
+  // documenti col testo intero. Questa funzione è ciò che rende la conferma non generica: dice
+  // cosa sparisce, contato. Se mentisse, la conferma varrebbe meno di nessuna conferma.
+  test("conta nodi, sessioni e documenti, e li lega in italiano", () => {
+    const t = app.contenutoDelPercorso({
+      topics: [{}, {}, {}], sessions: [{}],
+      documents: [{ text: "x" }, { text: "y" }],
+    });
+    assert.equal(t, "3 nodi, 1 sessione e 2 documenti con il loro testo");
+  });
+  test("il singolare è singolare — «1 nodi» sarebbe la prima cosa che nota chi legge", () => {
+    assert.equal(app.contenutoDelPercorso({ topics: [{}], sessions: [], documents: [{}] }),
+      "1 nodo e 1 documento con il suo testo");
+  });
+  test("ciò che non c'è non viene nominato: niente «0 documenti»", () => {
+    const t = app.contenutoDelPercorso({ topics: [{}, {}], sessions: [], documents: [] });
+    assert.equal(t, "2 nodi");
+    assert.doesNotMatch(t, /0 /);
+  });
+  test("competenze e memoria del percorso vengono nominate solo se ci sono", () => {
+    const con = app.contenutoDelPercorso({ topics: [{}], competenze: "sa fare X", localMemory: "niente rime" });
+    assert.match(con, /le competenze accumulate/);
+    assert.match(con, /la memoria del percorso/);
+    assert.doesNotMatch(app.contenutoDelPercorso({ topics: [{}] }), /competenze|memoria/);
+  });
+  test("un percorso davvero vuoto lo dichiara, invece di non dire niente", () => {
+    assert.equal(app.contenutoDelPercorso({}), "un percorso ancora vuoto");
+    assert.equal(app.contenutoDelPercorso(null), "un percorso ancora vuoto");
+  });
+});

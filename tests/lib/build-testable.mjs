@@ -82,7 +82,7 @@ const EXPORT_NAMES = [
   "indiceDocumentiBlock", "ripulisciAffermazioniDiEsito", "ESITO_COMPIUTO_RE",
   "similaritaTesti", "voceGemella", "fondiOAggiungiVoce", "SOGLIA_VOCE_GEMELLA",
   "dossierPercorso", "formatFuocoBlock", "trovaDocumentoNelPercorso", "formatDocumentoAperto",
-  "TETTO_DOCUMENTO_NEL_TURNO",
+  "TETTO_DOCUMENTO_NEL_TURNO", "contenutoDelPercorso",
 ];
 
 // Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.
