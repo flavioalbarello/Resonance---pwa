@@ -67,6 +67,9 @@ const EXPORT_NAMES = [
   "salvaRichiestaInSospeso", "chiudiRichiestaInSospeso", "leggiRichiestaInSospeso",
   "controllaPianoAlimentare", "giorniDelPiano", "analizzaVincoloAlimentare", "alimentiDaCercare",
   "eGuastoDiRete", "FINESTRA_RIPRESA_MS",
+  "numeroItaliano", "oreDaTesto", "fattiDaLogBio", "serieDi", "derivata", "freschezza",
+  "numeroBreve", "etaInParole", "righeSerie", "formatSerieBlock",
+  "GIORNI_FRESCO", "GIORNI_STANTIO", "PESO_MIN", "PESO_MAX",
 ];
 
 export function buildTestableApp() {
