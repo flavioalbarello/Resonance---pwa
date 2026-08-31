@@ -78,6 +78,8 @@ const EXPORT_NAMES = [
   "numeroItaliano", "oreDaTesto", "fattiDaLogBio", "serieDi", "derivata", "freschezza",
   "numeroBreve", "etaInParole", "righeSerie", "formatSerieBlock",
   "GIORNI_FRESCO", "GIORNI_STANTIO", "PESO_MIN", "PESO_MAX",
+  "analizzaParametroPercorso", "testoDaSalvare", "LUNGHEZZA_MINIMA_SALVABILE",
+  "indiceDocumentiBlock", "ripulisciAffermazioniDiEsito", "ESITO_COMPIUTO_RE",
 ];
 
 // Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.

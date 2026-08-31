@@ -11,10 +11,16 @@ import { loadApp } from "./lib/build-testable.mjs";
 const app = await loadApp();
 
 describe("registro azioni", () => {
-  test("le dodici azioni approvate esistono, non una di più e non una diversa", () => {
+  // 31/08/2026 — da dodici a quattordici, e l'aggiornamento di questa riga è deliberato.
+  // Questa prova esiste perché il registro delle azioni non cresca in silenzio: ogni azione in più
+  // è una cosa in più che il programma può fare senza che nessuno l'abbia approvata. Ha funzionato
+  // — ha bocciato l'aggiunta finché non è stata scritta qui. Le due nuove (crea_percorso,
+  // salva_nel_percorso) sono state chieste dal Ghost il 31/08 dopo aver visto lo Shell dichiarare
+  // "Percorso aperto: Divenire" senza che nessun percorso esistesse: l'azione non c'era proprio.
+  test("le quattordici azioni approvate esistono, non una di più e non una diversa", () => {
     assert.equal(
       app.AZIONI_CONVERSAZIONALI.map((a) => a.id).join(","),
-      "apri_percorso,scrivi_su_pilastro,crea_seme,interroga_memoria,avanza_percorso,chiudi_percorso,crea_evento_calendario,sposta_evento_calendario,invia_mail,leggi_calendario,trova_evento_calendario,cancella_evento_calendario"
+      "apri_percorso,crea_percorso,salva_nel_percorso,scrivi_su_pilastro,crea_seme,interroga_memoria,avanza_percorso,chiudi_percorso,crea_evento_calendario,sposta_evento_calendario,invia_mail,leggi_calendario,trova_evento_calendario,cancella_evento_calendario"
     );
   });
   test("trova_evento_calendario: lettura pura, nessuna conferma, nasce spenta", () => {
