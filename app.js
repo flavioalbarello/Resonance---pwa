@@ -42,7 +42,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-31 · i-percorsi-si-eliminano-dalla-lista";
+const APP_BUILD = "2026-08-31 · balthasar-vede-la-storia-e-dichiara-le-fonti";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -2666,10 +2666,42 @@ async function askWithDegenerateGuard(call, functionTag, pushDebugLog = null) {
 // l'intensità modula la sua temperatura (rischio dosato, §4.4); Caspar riceve il pilastro-bersaglio
 // per verificare il contenimento operativo (accoppiamento operativo stretto, §4.4).
 const MAGI_INTENSITY = { leggera: 0.95, media: 1.15, profonda: 1.35 };
+// ── 31/08/2026 — IL COMMENTO QUI SOPRA DICEVA UNA COSA E IL CODICE NE FACEVA UN'ALTRA ───────────
+// "Balthasar vede l'intera memoria procedurale (accoppiamento interpretativo largo, §6.2)": scritto
+// nel commento della Triade, e falso. Il codice passava SOLO `corrente` dei tre pilastri — 900
+// caratteri a testa, riscritti da capo a ogni turno. Il sedimento, che e' la storia vera e datata,
+// non lo ha mai visto. E il suo stesso prompt gli chiede "una perturbazione radicata nella storia
+// reale del sistema, non generica": con novecento caratteri dell'ultima riscrittura, la storia reale
+// non c'era, quindi generica era l'unica cosa che potesse essere.
+// E' la stessa famiglia di difetto che questo file ha gia' corretto due volte (richiedeGate che
+// diceva false mentre la card c'era, azioneIrreversibile senza chiamanti): una dichiarazione che non
+// produce piu' l'effetto che il suo commento descrive.
+//
+// I TETTI SONO ESPLICITI, come chiede C.16 del brief sui Serbatoi: nessun parametro implicito.
+// Quattro frammenti per pilastro e 220 caratteri l'uno — non otto e non interi. Il conto: 3 x 4 x 220
+// = circa 2.600 caratteri, ~800 token, davanti a una chiamata che ne produce 1600. Prendere tutto il
+// sedimento (30 frammenti da 900 caratteri per pilastro) sarebbero ~20.000 token per una risposta di
+// settanta parole: il costo mangerebbe la feature.
+const MAGI_FRAMMENTI_PER_PILASTRO = 4;
+const MAGI_TETTO_FRAMMENTO = 220;
+function memoriaEstesaPerMagi(memory) {
+  if (!memory) return "";
+  const perPilastro = (pil) => {
+    const m = memory[pil];
+    const corrente = m?.corrente || "nessuna nota";
+    const frag = (m?.sedimento || []).slice(-MAGI_FRAMMENTI_PER_PILASTRO);
+    if (!frag.length) return `${pil.toUpperCase()}: ${corrente}`;
+    const storia = frag
+      .map((f) => `[${fmtDate(f.date)}] ${String(f.text || "").slice(0, MAGI_TETTO_FRAMMENTO)}${String(f.text || "").length > MAGI_TETTO_FRAMMENTO ? "…" : ""}`)
+      .join(" · ");
+    return `${pil.toUpperCase()}: ${corrente}\n  ${pil.toUpperCase()} — come si e' riorganizzato prima (dal piu' vecchio al piu' recente): ${storia}`;
+  };
+  return `\n\nMemoria procedurale accumulata sui pilastri — nota corrente e storia datata di come il sistema si e' riorganizzato finora. Leggila per generare una perturbazione radicata in questa storia reale, non generica: se una direzione e' gia' stata attraversata e riattraversata, spingere di nuovo li' e' l'unica cosa che non serve a niente.\n${["bio", "air", "vidya"].map(perPilastro).join("\n")}`;
+}
 async function runTriadeMagi(question, onStage, settings, opts = {}, pushDebugLog = null) {
   const { memory = null, targetPillar = null, intensity = "media" } = opts;
   const baseCtx = `${nowContext()} Contesto: sei parte del sistema "Resonance", framework di sviluppo personale del Ghost (Flavio), tre pilastri: BIO (salute), AIR (autonomia economica), VIDYA (crescita creativa/cognitiva). Sei l'unico polo di perturbazione deliberata del sistema — gli altri meccanismi mantengono, tu spingi oltre la cristallizzazione. Rispondi in italiano, diretto, max 70 parole, senza premesse.`;
-  const memoriaCtx = memory ? `\n\nMemoria procedurale accumulata sui pilastri (leggila per generare una perturbazione radicata nella storia reale del sistema, non generica):\nBIO: ${memory.bio?.corrente || "nessuna nota"}\nAIR: ${memory.air?.corrente || "nessuna nota"}\nVIDYA: ${memory.vidya?.corrente || "nessuna nota"}` : "";
+  const memoriaCtx = memoriaEstesaPerMagi(memory);
   const targetCtx = targetPillar ? `\n\nQuesta perturbazione è MIRATA al pilastro ${targetPillar.toUpperCase()}.` : "";
   // Intensità: modula la temperatura di Balthasar. Su Claude-direct il tetto resta 1.0 (già gestito da askModel).
   const balthasarTemp = settings.provider === "openrouter" ? (MAGI_INTENSITY[intensity] || 1.15) : Math.min(MAGI_INTENSITY[intensity] || 1.0, 1.0);
@@ -2678,11 +2710,21 @@ async function runTriadeMagi(question, onStage, settings, opts = {}, pushDebugLo
   // già noti al Ghost e suona come "eco". Web search solo su OpenRouter (Claude-direct non supporta
   // questo tool nel client attuale) — degrada silenziosamente a perturbazione da sola immaginazione.
   const balthasarWebSearch = settings.provider === "openrouter";
-  const balthasarPrompt = `${baseCtx}${memoriaCtx}${targetCtx} Sei BALTHASAR, il Perturbatore.${balthasarWebSearch ? " Hai accesso alla ricerca web: usala per ancorare la perturbazione a un dato, caso o approccio reale non ancora noto al Ghost — non limitarti a rimescolare concetti che già possiede." : ""} Genera una divergenza evolutiva su questo tema, audace, non convenzionale — a intensità "${intensity}" (leggera = uno spostamento laterale; profonda = una rottura vera con l'assetto attuale).`;
+  const balthasarPrompt = `${baseCtx}${memoriaCtx}${targetCtx} Sei BALTHASAR, il Perturbatore.${balthasarWebSearch ? " Hai accesso alla ricerca web: usala per ancorare la perturbazione a un dato, caso o approccio reale non ancora noto al Ghost — non limitarti a rimescolare concetti che già possiede." : ""} Genera una divergenza evolutiva su questo tema, audace, non convenzionale — a intensità "${intensity}" (leggera = uno spostamento laterale; profonda = una rottura vera con l'assetto attuale).${balthasarWebSearch ? ` Cita SOLO fonti, servizi o domini effettivamente presenti nei risultati di ricerca che hai ricevuto: se non puoi attribuire un dato a una fonte reale, ometti l'attribuzione o dichiara che è una stima non verificata. Non inventare MAI nomi di siti, aziende o servizi — è già successo il 26/07/2026 e il programma adesso controlla.` : ""}`;
+  // La stessa diagnostica del Balthasar-del-Seme, finalmente anche qui: si legge cio' che la
+  // risposta porta gia' con se', nessuna chiamata in piu'.
+  const webSearchDiag = diagnosticaVuota();
   const balthasar = await askWithDegenerateGuard(
-    () => askModel(balthasarPrompt, question, balthasarTemp, 1600, settings, balthasarWebSearch, null, (raw) => logAiCost(pushDebugLog, "balthasar", settings.model, raw), ANTI_LOOP_PENALTIES),
+    () => askModel(balthasarPrompt, question, balthasarTemp, 1600, settings, balthasarWebSearch, null, (raw) => {
+      if (balthasarWebSearch) leggiDiagnosticaRicerca(raw, webSearchDiag);
+      logAiCost(pushDebugLog, "balthasar", settings.model, raw);
+    }, ANTI_LOOP_PENALTIES),
     "balthasar", pushDebugLog
   );
+  // Il sospetto si calcola SEMPRE, anche senza ricerca: senza citazioni reali qualunque nome
+  // fabbricato resta senza riscontro, ed e' esattamente il caso in cui va segnalato.
+  const possibleHallucinatedSource = detectPossibleHallucinatedSource(balthasar, question, webSearchDiag.citationDomains);
+  pushDebugLog?.({ type: "balthasar-fonti", ricercaAttiva: balthasarWebSearch, toolInvoked: webSearchDiag.toolInvoked, citazioni: webSearchDiag.citationCount, domini: webSearchDiag.citationDomains, possibileFonteInventata: possibleHallucinatedSource });
   onStage("balthasar", balthasar);
   onStage("melchior", null);
   const melchior = await askWithDegenerateGuard(
@@ -2710,7 +2752,7 @@ async function runTriadeMagi(question, onStage, settings, opts = {}, pushDebugLo
     "magi_synthesis", pushDebugLog
   );
   onStage("synthesis", synthesis);
-  return { balthasar, melchior, caspar, synthesis };
+  return { balthasar, melchior, caspar, synthesis, webSearchDiag, possibleHallucinatedSource };
 }
 // Dopo la sintesi, la perturbazione lascia una traccia nella memoria del pilastro-bersaglio (§4.1:
 // il Vettore V+1 non evapora più). Il prefisso [perturbato da Magi] è una nota di CONTESTO per lo Shell
@@ -2933,6 +2975,30 @@ function detectSeedWorthyIntent(message) {
   const t = message.trim().toLowerCase();
   return /\b(potrei\s+(fare|provare|lanciare|creare|iniziare)|sarebbe\s+interessante|forse\s+dovrei\s+(provare|fare)|e\s+se\s+provassi|mi\s+piacerebbe\s+provare|chiss[àa]\s+se)\b/.test(t);
 }
+// ── 31/08/2026 — LA DIAGNOSTICA DELLE FONTI ERA COLLEGATA A UNO SOLO DEI DUE BALTHASAR ──────────
+// Il brief sui Serbatoi ricorda che Balthasar e' fra i componenti mai verificati in produzione dopo
+// il fix max_tool_calls, e chiede di dirlo prima di costruirci sopra. Guardando il codice per
+// rispondere e' venuto fuori qualcosa di piu' preciso: la diagnostica costruita il 26/07 per quel
+// preciso incidente — le fonti fabbricate tipo "ShopFoundry", "RankHero" — vive dentro
+// runSeedResearch e SOLO li'. Il Balthasar della Triade (Agora Magi) usa anche lui la ricerca web,
+// e non ha ne' il rilevatore ne' il divieto esplicito di inventare nomi nel prompt.
+// Quindi: puo' citare fonti inventate esattamente come faceva l'altro, e nessuno se ne accorge —
+// nessun flag, nessuna riga nel registro, niente.
+// Questa funzione e' la lettura della diagnostica, estratta dal punto in cui viveva per poter essere
+// usata da entrambi. Nessuna chiamata AI in piu': legge cio' che la risposta porta gia' con se'.
+// Le forme cercate sono tre perche' la forma esatta non e' verificabile senza una chiamata vera —
+// stessa ragione dichiarata nel commento originale, mantenuta.
+function leggiDiagnosticaRicerca(raw, diag) {
+  const msg = raw?.choices?.[0]?.message || {};
+  const annotations = msg.annotations || raw?.citations || msg.tool_calls || [];
+  diag.toolInvoked = Array.isArray(annotations) ? annotations.length > 0 : !!annotations;
+  const urls = (Array.isArray(msg.annotations) ? msg.annotations : [])
+    .map((a) => a?.url_citation?.url || a?.url).filter(Boolean);
+  diag.citationCount = urls.length;
+  diag.citationDomains = [...new Set(urls.map((u) => { try { return new URL(u).hostname; } catch { return u; } }))].slice(0, 8);
+  return diag;
+}
+const diagnosticaVuota = () => ({ toolInvoked: false, citationCount: 0, citationDomains: [] });
 // TASK 2 (BRIEF_costtracking_balthasarsources 26/07/2026), caso (b) — controllo post-generazione,
 // NESSUNA chiamata AI aggiuntiva (richiesta esplicita del brief): estrae nomi compound CamelCase dal
 // testo di Balthasar (es. "ShopFoundry", "RankHero", "InsightAgent", "MerchTitans" — ESATTAMENTE i
@@ -2991,19 +3057,13 @@ async function runSeedResearch(seme, pillarMemory, settings, pushDebugLog = null
   // restituire per una ricerca realmente eseguita (annotazioni/citazioni con URL, in più forme note
   // perché la forma esatta non è verificabile senza una chiamata live) — così il PROSSIMO test reale
   // del Ghost (con la sua chiave vera) può confermare empiricamente invece di fidarsi a parole.
-  const webSearchDiag = { toolInvoked: false, citationCount: 0, citationDomains: [] };
+  const webSearchDiag = diagnosticaVuota();
   const balthasarSystem = `${nowContext()} Sei BALTHASAR nel sistema Resonance, pilastro AIR — funzione di ricerca per un Seme (un'idea grezza non ancora sviluppata). Hai accesso alla ricerca web: usala per trovare dati, casi reali o approcci concreti pertinenti, aggiornati a oggi — non presentare risultati datati come attuali. ${PILLAR_CTX.air}
 Memoria procedurale AIR accumulata finora (non ripetere strategie già scartate): ${pillarMemory || "nessuna nota ancora"}
 Rispondi in italiano, concreto, max 200 parole. Cita SOLO fonti/domini effettivamente presenti nei risultati di ricerca che hai ricevuto — se non puoi attribuire con certezza un dato a una fonte reale, ometti l'attribuzione o dichiara esplicitamente che è una stima non verificata. Non inventare mai nomi di siti o servizi.`;
   const balthasar = await askWithDegenerateGuard(
     () => askOpenRouter(balthasarSystem, `Idea da sviluppare: ${redactedContent}`, 0.7, 1200, settings.apiKey, settings.model, true, null, (raw) => {
-      const msg = raw.choices?.[0]?.message || {};
-      const annotations = msg.annotations || raw.citations || msg.tool_calls || [];
-      webSearchDiag.toolInvoked = Array.isArray(annotations) ? annotations.length > 0 : !!annotations;
-      const urls = (Array.isArray(msg.annotations) ? msg.annotations : [])
-        .map((a) => a?.url_citation?.url || a?.url).filter(Boolean);
-      webSearchDiag.citationCount = urls.length;
-      webSearchDiag.citationDomains = [...new Set(urls.map((u) => { try { return new URL(u).hostname; } catch { return u; } }))].slice(0, 8);
+      leggiDiagnosticaRicerca(raw, webSearchDiag);
       logAiCost(pushDebugLog, "seme_ricerca", settings.model, raw);
     }, ANTI_LOOP_PENALTIES),
     "seme_ricerca", pushDebugLog
@@ -3138,6 +3198,8 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Rileggere un documento del percorso: "rileggimi l'Atto I", "riprendi i testi che abbiamo salvato", "mostrami quel pezzo". Il programma va a prendere il testo COMPLETO dal percorso aperto e lo mette davanti allo Shell PRIMA che risponda, così ci lavora sopra davvero invece di ricordarlo. Non chiede conferma: leggere non cambia niente. Se più di un documento corrisponde chiede quale, e se non lo trova lo dichiara invece di rispondere a memoria. Un documento molto lungo viene tagliato e la cosa viene detta.
 - Il percorso aperto viaggia con il suo fascicolo: quando c'è un percorso aperto (il fuoco), lo Shell riceve a ogni turno i suoi nodi con lo stato, le competenze, la memoria del percorso e l'indice dei documenti. È per questo che "continuiamo con l'Atto III" funziona senza dover rispiegare cos'è stato fatto. Il fuoco scade da solo dopo otto ore.
 - Voci gemelle nel log: quando lo Shell scrive da solo una voce in un pilastro e quella voce dice sostanzialmente la stessa cosa di un'altra dello STESSO GIORNO, non ne crea una seconda: aggiorna quella che c'è già, e il testo precedente scende nello storico della voce invece di essere perso. Nel log la voce mostra "N versioni di questa voce" e si tocca per rileggerle tutte. Sotto il messaggio in chat il segno dice "→ VIDYA · 3ª versione" invece di "→ VIDYA", così è visibile che ha aggiornato e non aggiunto. Le voci che contengono una misura (peso, sonno) non vengono mai fuse: due pesate nello stesso giorno sono due dati, non un doppione. Le voci scritte a mano dal Ghost non passano da qui e non vengono mai toccate.
+- Fonti di Balthasar, controllate dal programma: quando l'Agorà Magi gira su OpenRouter, Balthasar ha la ricerca web. Sotto la sua risposta compare una riga che dice se la ricerca è stata eseguita DAVVERO — letta dalle citazioni che la risposta porta con sé, non dichiarata dal modello — quante citazioni e da quali domini. Se Balthasar nomina un servizio o un sito che non trova riscontro in nessun dominio realmente citato, compare un avviso di possibile fonte inventata: non blocca niente, è un sospetto da verificare. Esisteva già per la ricerca dei Semi dal 26/07/2026 e da oggi vale anche per l'Agorà. Le sessioni Magi precedenti a oggi non hanno questa riga: non è un errore, quel dato allora non veniva raccolto.
+- Cosa vede Balthasar della memoria: la nota corrente di tutti e tre i pilastri PIÙ gli ultimi quattro frammenti di sedimento per pilastro, datati e tagliati a 220 caratteri. Prima vedeva solo le note correnti, quindi non aveva nessuna storia su cui appoggiarsi mentre il suo compito è proprio spingere dove il sistema non è ancora andato.
 - Eliminare un percorso dalla lista: in ogni pilastro, sotto Percorsi, ogni percorso ha una ✕ di fianco. Non elimina subito: chiede una volta e dice cosa sta per sparire, contato (quanti nodi, quante sessioni, quanti documenti col loro testo, se ci sono competenze e memoria del percorso). Serve perché da quando i documenti contengono il testo intero, un percorso vale molto più di una voce di log. Resta anche il pulsante "Elimina percorso" dentro il percorso stesso.
 - Documenti del percorso: nel percorso, sotto "Documenti del percorso", ognuno si tocca e si riapre per intero. Quando il Ghost riapre un percorso, lo Shell riceve l'indice di questo materiale — nome, data, lunghezza, come comincia — non i testi interi: sa che esistono e riparte da lì invece di ricominciare da capo. I documenti creati prima del 31/08/2026 hanno solo il nome, non il testo.
 - Andamento misurato (BIO): il programma calcola da solo le serie di peso e sonno dalle voci del log BIO — ultima misura, quanti giorni ha, variazione totale, variazione per settimana, quante misure — e le passa allo Shell e a Simbiosi già calcolate. Compaiono anche in BIO → Log, in un riquadro "Andamento misurato", nella stessa identica forma in cui le riceve il modello. Regola: se una tendenza non è in quel riquadro, il modello non l'ha ricevuta e non deve parlarne. Una misura sola non fa tendenza e viene dichiarata tale; una serie la cui ultima misura ha più di 7 giorni viene marcata "stantia", più di 30 "vecchia", e va detto invece di parlarne come se fosse di oggi. Non serve fare niente per attivarlo: legge i campi Peso e Sonno che le voci BIO hanno già, comprese quelle scritte dallo Shell durante una conversazione.
@@ -5983,10 +6045,29 @@ function MagiView({ sessions, onSave, onDelete, settings, memory, updateMemoria,
       <${Card} accent=${C.core}><div class="r-entry-row"><div style="flex:1"><div class="r-entry-date">${fmtDate(s.date)}${s.engine ? ` · ${s.engine}` : ""}${s.pillar ? ` · → ${s.pillar.toUpperCase()}` : ""}${s.intensity ? ` · ${s.intensity}` : ""}</div>
         <div class="r-entry-line"><b>${s.question}</b></div>
         <${MagiStage} label="Balthasar · il Perturbatore" color="#C97A5C" text=${s.balthasar} compact />
+        <${DiagnosticaFonti} diag=${s.webSearchDiag} sospetto=${s.possibleHallucinatedSource} />
         <${MagiStage} label="Melchior · il Traduttore" color="#6FA3AD" text=${s.melchior} compact />
         <${MagiStage} label="Caspar · l'Ancora" color="#8FAF95" text=${s.caspar} compact />
         <${MagiStage} label="Sintesi Esecutiva" color=${C.core} text=${s.synthesis} compact />
       </div><button class="r-icon-btn" onClick=${() => onDelete(s.id)}>✕</button></div></${Card}>`)}</div>`}
+  </div>`;
+}
+
+// 31/08/2026 — DOVE IL GHOST VEDE SE BALTHASAR HA CERCATO DAVVERO.
+// Fino a stamattina questa informazione, per l'Agora, non esisteva proprio: nessun rilevatore e
+// nessuna riga nel registro. Il brief sui Serbatoi chiedeva "Balthasar e' stato ritestato con chiave
+// reale?" — la risposta onesta e' che non posso ritestarlo io da qui, ma da adesso si controlla da
+// solo: la prossima Agora vera lascia questo riquadro, e non serve piu' fidarsi a parole.
+// Compare solo quando c'e' qualcosa da dire: una sessione vecchia, o una senza ricerca, non mostra
+// niente invece di mostrare un riquadro vuoto.
+function DiagnosticaFonti({ diag, sospetto }) {
+  if (!diag) return null;
+  const domini = (diag.citationDomains || []).join(", ");
+  return html`<div class="r-hub-detail" style="margin-top:4px">
+    ${diag.toolInvoked
+      ? html`<span>Ricerca web eseguita davvero · ${diag.citationCount} citazion${diag.citationCount === 1 ? "e" : "i"}${domini ? ` · ${domini}` : ""}</span>`
+      : html`<span>Nessuna citazione nella risposta: la ricerca web non risulta eseguita in questo giro.</span>`}
+    ${sospetto && html`<div class="r-error" style="margin-top:4px">Attenzione: Balthasar nomina qualcosa che non trova riscontro in nessun dominio realmente citato — possibile fonte inventata. Non è un blocco, è un sospetto: verificalo prima di usarla.</div>`}
   </div>`;
 }
 

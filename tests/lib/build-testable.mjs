@@ -83,6 +83,8 @@ const EXPORT_NAMES = [
   "similaritaTesti", "voceGemella", "fondiOAggiungiVoce", "SOGLIA_VOCE_GEMELLA",
   "dossierPercorso", "formatFuocoBlock", "trovaDocumentoNelPercorso", "formatDocumentoAperto",
   "TETTO_DOCUMENTO_NEL_TURNO", "contenutoDelPercorso",
+  "leggiDiagnosticaRicerca", "diagnosticaVuota", "detectPossibleHallucinatedSource",
+  "memoriaEstesaPerMagi", "MAGI_FRAMMENTI_PER_PILASTRO", "MAGI_TETTO_FRAMMENTO",
 ];
 
 // Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.
