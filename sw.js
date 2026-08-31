@@ -1,9 +1,17 @@
-const CACHE = "resonance-v5"; // bump di versione: invalida qualunque cache residua e serve il nuovo app.js
+const CACHE = "resonance-v6"; // bump di versione: invalida qualunque cache residua e serve il nuovo app.js
+// 31/08/2026 — I TRE MODULI ESTRATTI DEVONO STARE QUI DENTRO. app.js non e' piu' un file solo: se
+// lib/*.js non fosse precaricato, online non cambierebbe niente (la strategia e' rete-prima), ma la
+// prima apertura SENZA rete dopo un aggiornamento troverebbe app.js in cache e i suoi import no —
+// e l'app non si disegnerebbe affatto, con tutti i dati gia' sul dispositivo. E' esattamente il
+// guasto che il vendoring di Preact era servito a togliere di mezzo: non va reintrodotto adesso.
 const SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./lib/base.js",
+  "./lib/misure.js",
+  "./lib/alimentare.js",
   "./config.js",
   "./vendor/preact.mjs",
   "./vendor/preact-hooks.mjs",
