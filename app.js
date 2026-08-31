@@ -42,7 +42,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-31 · il-percorso-nasce-e-tiene-quello-che-produce";
+const APP_BUILD = "2026-08-31 · il-percorso-si-richiama-e-il-log-non-si-duplica";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -174,10 +174,108 @@ ${perPilastro(pAir, "AIR")}
 ${perPilastro(pVidya, "VIDYA")}
 Semi AIR: ${semiAttivi.length ? semiAttivi.map((s) => `"${String(s.content).slice(0, 60)}" (id:${s.id}, ${s.status})`).join(" · ") : "nessuno"}`;
 }
+// 31/08/2026 — IL FASCICOLO DEL PERCORSO APERTO.
+// Il Ghost: "il percorso e il materiale annesso sarà richiamabile e implementabile dalla chat?".
+// Era no, e questo blocco era il punto preciso in cui diventava no: fino a stamattina portava
+// SOLO l'etichetta e l'id. Lo Shell sapeva che esisteva un percorso chiamato "Divenire" e non
+// sapeva che ci fossero dentro i testi di due atti — quindi, alla richiesta di continuare, poteva
+// solo ricominciare da capo o inventare cosa c'era prima.
+// Il fascicolo c'e' SOLO quando un percorso e' aperto, e il fuoco scade da solo dopo otto ore:
+// il costo in token e' limitato al tempo in cui si sta davvero lavorando su qualcosa.
+function dossierPercorso(percorso) {
+  if (!percorso) return "";
+  const nodi = (percorso.topics || []).map((t) => `${t.label}: ${t.status}`).join("; ");
+  const righe = [
+    nodi ? `Nodi: ${nodi}` : null,
+    percorso.competenze ? `Competenze accumulate finora: ${percorso.competenze}` : null,
+    percorso.localMemory ? `Memoria specifica del percorso (vincoli e tentativi annotati dal Ghost — priorità massima): ${percorso.localMemory}` : null,
+  ].filter(Boolean);
+  const documenti = indiceDocumentiBlock(percorso.documents);
+  if (!righe.length && !documenti) return "";
+  return `\nCosa contiene questo percorso ADESSO — è materiale vero, conservato nell'app, non un ricordo tuo:\n${righe.join("\n")}${documenti}`;
+}
+// ── 31/08/2026 — RIAPRIRE UN DOCUMENTO DEL PERCORSO ───────────────────────────────────────────
+// Ricerca deterministica, zero token, sullo stesso schema del recupero di Grado 0: si contano le
+// parole piene in comune fra ciò che il Ghost ha detto e il titolo del documento. Restituisce
+// SEMPRE i candidati e non sceglie mai al posto suo quando sono a pari punteggio — la
+// disambiguazione è obbligatoria, ed è la regola che vale già per i percorsi e per gli eventi.
+const RUMORE_DOCUMENTO_RE = /\b(il|lo|la|i|gli|le|l|un|uno|una|del|dello|della|dei|delle|documento|documenti|testo|testi|file|allegato|percorso|salvat\w*|dentro|nel|nella|che|abbiamo|ho|hai|mi|per|intero|completo|completa|quello|questo)\b/gi;
+// I numeri di un titolo, arabi o romani. Servono SOLO allo spareggio (vedi sotto): "atto i" e
+// "atto ii" hanno le stesse parole piene, e paroleUtili butta via i token di due lettere o meno —
+// cioè proprio quello che li distingue.
+// Imprecisione dichiarata: in italiano l'articolo "i" e il numero romano I sono la stessa stringa,
+// quindi "i testi" può risolvere su "Atto I". Nel caso peggiore riapre il documento sbagliato — che
+// è una LETTURA, non una scrittura: costa un turno e si corregge dicendolo.
+function numeriDelTitolo(testo) {
+  return normalizzaTesto(testo).split(" ").filter((p) => /^(?:[ivx]{1,4}|\d{1,3})$/.test(p));
+}
+function trovaDocumentoNelPercorso(percorso, riferimento) {
+  const docs = (percorso?.documents || []).filter((d) => d && String(d.text || "").trim());
+  if (!docs.length) {
+    return { esito: "nessuno", candidati: [], motivo: percorso
+      ? "questo percorso non contiene ancora nessun documento con il testo dentro"
+      : "non c'è nessun percorso aperto da cui prendere un documento" };
+  }
+  const chiave = paroleUtili(String(riferimento || "").replace(RUMORE_DOCUMENTO_RE, " "));
+  // Nessuna parola utile ("rileggimelo"): con un solo documento non c'è ambiguità da risolvere.
+  if (!chiave.length) {
+    return docs.length === 1
+      ? { esito: "trovato", doc: docs[0], candidati: [docs[0]] }
+      : { esito: "ambiguo", candidati: docs.slice(0, 6), motivo: "non ho capito quale dei documenti" };
+  }
+  const punteggiati = docs
+    .map((d) => {
+      const parole = new Set(paroleUtili(`${d.title || ""} ${d.name || ""}`));
+      let punteggio = 0;
+      for (const k of chiave) if (parole.has(k)) punteggio++;
+      return { doc: d, punteggio, numeri: numeriDelTitolo(`${d.title || ""} ${d.name || ""}`) };
+    })
+    .filter((x) => x.punteggio > 0)
+    .sort((a, b) => b.punteggio - a.punteggio);
+  // Nessuna corrispondenza: con un solo documento non c'è nient'altro che il Ghost possa intendere.
+  // Con più d'uno si dichiara, e si dice cosa c'è invece di indovinare.
+  if (!punteggiati.length) {
+    return docs.length === 1
+      ? { esito: "trovato", doc: docs[0], candidati: [docs[0]] }
+      : { esito: "nessuno", candidati: docs.slice(0, 6), motivo: `nessun documento di questo percorso corrisponde a "${riferimento}"` };
+  }
+  const massimo = punteggiati[0].punteggio;
+  let aPari = punteggiati.filter((x) => x.punteggio === massimo);
+  // LO SPAREGGIO SUI NUMERI. "Atto I" e "Atto II" hanno le stesse parole piene — "atto" — perché
+  // paroleUtili tiene solo i termini di più di due lettere e butta via proprio la cosa che li
+  // distingue. Senza questo, "rileggimi l'Atto I" è ambiguo sempre, che è il caso più ovvio di
+  // tutti. I numeri contano solo QUI, a parità di punteggio, mai come punteggio a sé: da soli
+  // farebbero vincere un documento che non c'entra ma ha per caso il numero giusto.
+  if (aPari.length > 1) {
+    const numeriChiesti = numeriDelTitolo(riferimento);
+    if (numeriChiesti.length) {
+      const conIlNumero = aPari.filter((x) => numeriChiesti.some((n) => x.numeri.includes(n)));
+      if (conIlNumero.length) aPari = conIlNumero;
+    }
+  }
+  return aPari.length > 1
+    ? { esito: "ambiguo", candidati: aPari.map((x) => x.doc), motivo: "più di un documento corrisponde allo stesso modo" }
+    : { esito: "trovato", doc: aPari[0].doc, candidati: [aPari[0].doc] };
+}
+// Il tetto esiste perché un documento può essere lungo quanto si vuole e il turno no. Tagliare
+// dichiarandolo è l'unica forma onesta: il modello sa di avere una parte, non crede di avere tutto.
+const TETTO_DOCUMENTO_NEL_TURNO = 12000;
+function formatDocumentoAperto(apertura) {
+  if (!apertura) return "";
+  if (apertura.esito === "trovato") {
+    const testo = String(apertura.doc.text || "");
+    const tagliato = testo.length > TETTO_DOCUMENTO_NEL_TURNO;
+    return `\nUN DOCUMENTO DEL PERCORSO È STATO RIAPERTO DAVVERO ADESSO, e il suo testo è qui sotto${tagliato ? ` — tagliato ai primi ${TETTO_DOCUMENTO_NEL_TURNO} caratteri su ${testo.length}, dillo al Ghost se ti serve il resto` : " per intero"}. È materiale reale, già prodotto e conservato nell'app: lavoraci sopra parola per parola, non riscriverlo da capo e non dire di ricordarlo diversamente da com'è.\n--- "${apertura.doc.title || apertura.doc.name}" (${fmtDate(apertura.doc.date)}) ---\n${testo.slice(0, TETTO_DOCUMENTO_NEL_TURNO)}\n--- fine del documento ---`;
+  }
+  if (apertura.esito === "ambiguo") {
+    return `\nIl Ghost ha chiesto di riaprire un documento del percorso, ma più d'uno corrisponde: ${apertura.candidati.map((c) => `"${c.title || c.name}"`).join(", ")}. Chiedi quale intende — non sceglierne uno tu, e non rispondere come se l'avessi letto.`;
+  }
+  return `\nIl Ghost ha chiesto di riaprire un documento del percorso e NON è stato riaperto: ${apertura.motivo}. Dillo con questo motivo${apertura.candidati?.length ? ` (nel percorso ci sono: ${apertura.candidati.map((c) => `"${c.title || c.name}"`).join(", ")})` : ""}, e non rispondere con quello che ricordi.`;
+}
 function formatFuocoBlock(fuoco) {
   if (!fuoco || fuoco.tipo === "nessuno") return "Non state lavorando su niente in particolare in questo momento.";
   const da = fuoco.apertoIl ? fmtDate(fuoco.apertoIl) : "poco fa";
-  return `State lavorando su: ${fuoco.etichetta} (${fuoco.tipo}, id:${fuoco.id}, aperto il ${da}). Quando il Ghost dice "questo", "quello", "il percorso", senza altre indicazioni, si riferisce a questo. Se cambia argomento in modo evidente, dillo invece di continuare ad assumerlo.`;
+  return `State lavorando su: ${fuoco.etichetta} (${fuoco.tipo}, id:${fuoco.id}, aperto il ${da}). Quando il Ghost dice "questo", "quello", "il percorso", senza altre indicazioni, si riferisce a questo. Se cambia argomento in modo evidente, dillo invece di continuare ad assumerlo.${fuoco.dossier || ""}`;
 }
 
 // ── Recupero di Grado 0 (§3.2) — deterministico, ZERO token ──
@@ -193,6 +291,89 @@ function normalizzaTesto(s) {
 const PAROLE_VUOTE = new Set(["il","lo","la","i","gli","le","un","uno","una","di","a","da","in","con","su","per","tra","fra","e","o","che","quello","questa","questo","quella","sul","sulla","sui","del","della","dei","delle","mio","mia","riprendi","apri","continua","vai","al","allo","alla","ai","agli","alle","nel","nella"]);
 function paroleUtili(testo) {
   return normalizzaTesto(testo).split(" ").filter((p) => p.length > 2 && !PAROLE_VUOTE.has(p));
+}
+// ══════════════════════════════════════════════════════════════════════════════
+// LE VOCI GEMELLE — una voce di log non si duplica nello stesso giorno (31/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Portato dal Ghost con lo schermo davanti: cinque voci nel Log VIDYA nella stessa mezz'ora, tutte
+// sullo stesso concept album, ciascuna un po' piu' avanti della precedente. Nessuna delle cinque e'
+// sbagliata presa da sola — a ogni turno il modello produce una lettura del pilastro e il programma
+// la scrive come voce NUOVA, senza mai guardare quelle che ci sono gia'. Non e' il modello che fa
+// male il suo mestiere: e' il programma che non fa il suo.
+//
+// Misura in codice, zero token: sovrapposizione delle parole piene (indice di Jaccard) fra la
+// lettura nuova e le voci dello stesso giorno. Il macchinario esisteva gia' ed e' quello del
+// recupero di Grado 0 (paroleUtili + PAROLE_VUOTE). NON si chiede al modello "e' un doppione?":
+// costerebbe una chiamata, e sarebbe il modello a giudicare la propria ripetizione — esattamente
+// cio' che questo file continua a togliergli di mano.
+//
+// E QUANDO COMBACIANO, decide la Legge 14. Non saltare la voce (perdita silenziosa) e non
+// sovrascriverla (distruttiva): la voce esistente PRENDE UNA VERSIONE NUOVA. Tiene il suo id e la
+// sua data d'origine, il testo vecchio scende in `versioni`, il piu' recente diventa quello
+// visibile. Stesso schema gia' usato per il Kernel (history) e per la memoria procedurale
+// (sedimento): una voce nel log, tutta la sua storia dentro, niente perso.
+// LA SOGLIA E' MISURATA, NON SCELTA A OCCHIO — e la misura mi ha smentito. Avevo scritto 0,34
+// a intuito: sulle cinque voci vere del Ghost non fondeva NIENTE. I numeri reali (indice di
+// Jaccard fra titolo+note, tutte e cinque le voci del Log VIDYA del 31/08):
+//     voci sullo stesso album, fra loro:            0,214  0,231  0,276
+//     l'album contro la voce estranea ("Domanda esistenziale sul senso"):  0,010 – 0,046
+//     l'album contro la voce che lo chiamava ancora "Anagenesi/Cenogenesi": 0,088 – 0,094
+// Separazione netta fra rumore (≤ 0,094) e segnale (≥ 0,214), quindi qualunque valore in mezzo
+// da' lo stesso risultato: 0,15 sta comodo fra i due, con margine da entrambe le parti.
+// COSA FA DAVVERO, detto senza abbellirlo: sul caso reale porta cinque voci a TRE, non a una. La
+// voce che chiamava l'album con un altro nome di lavorazione resta fuori — e' il limite che avevo
+// dichiarato prima di misurare, ed e' rimasto li'. Abbassare la soglia sotto 0,094 per prenderla
+// ridurrebbe il margine sul rumore a meno del doppio: preferisco una voce di troppo a due voci
+// diverse fuse per sbaglio, che sarebbe una perdita mascherata da pulizia.
+const SOGLIA_VOCE_GEMELLA = 0.15;
+const PAROLE_MINIME_PER_GIUDICARE = 4; // sotto, il confronto e' rumore: due voci corte si somigliano sempre
+function similaritaTesti(a, b) {
+  const A = new Set(paroleUtili(a)), B = new Set(paroleUtili(b));
+  if (!A.size || !B.size) return 0;
+  let comuni = 0;
+  for (const p of A) if (B.has(p)) comuni++;
+  return comuni / (A.size + B.size - comuni);
+}
+const testoDellaVoce = (v) => [v?.title, v?.notes].filter(Boolean).join(" ");
+// Una MISURA non e' una narrazione ripetuta: due pesate nello stesso giorno sono due dati, e
+// fonderle ne cancellerebbe una. Le voci che portano un numero restano sempre distinte.
+const voceEUnaMisura = (v) => !!(String(v?.weight || "").trim() || String(v?.sleep || "").trim());
+function voceGemella(nuova, voci, soglia = SOGLIA_VOCE_GEMELLA) {
+  if (voceEUnaMisura(nuova)) return null;
+  const testoNuovo = testoDellaVoce(nuova);
+  if (paroleUtili(testoNuovo).length < PAROLE_MINIME_PER_GIUDICARE) return null;
+  const giorno = String(nuova?.date || "").slice(0, 10);
+  if (!giorno) return null;
+  let migliore = null, punteggio = 0;
+  for (const v of voci || []) {
+    if (!v || v.id === nuova.id || voceEUnaMisura(v)) continue;
+    if (String(v.date || "").slice(0, 10) !== giorno) continue;
+    const s = similaritaTesti(testoNuovo, testoDellaVoce(v));
+    if (s > punteggio) { punteggio = s; migliore = v; }
+  }
+  return punteggio >= soglia ? { voce: migliore, somiglianza: Number(punteggio.toFixed(2)) } : null;
+}
+const TETTO_VERSIONI_VOCE = 12;
+function fondiOAggiungiVoce(voci, nuova, soglia = SOGLIA_VOCE_GEMELLA) {
+  const lista = Array.isArray(voci) ? voci : [];
+  const g = voceGemella(nuova, lista, soglia);
+  if (!g) {
+    const fuori = [nuova, ...lista].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+    return { lista: fuori, esito: { tipo: "aggiunta" } };
+  }
+  const precedente = { date: g.voce.ultimoAggiornamento || g.voce.date, title: g.voce.title || "", notes: g.voce.notes || "" };
+  const versioni = [precedente, ...(g.voce.versioni || [])].slice(0, TETTO_VERSIONI_VOCE);
+  const fusa = {
+    ...g.voce,
+    title: nuova.title || g.voce.title,
+    notes: nuova.notes || g.voce.notes,
+    ultimoAggiornamento: new Date().toISOString(),
+    versioni,
+  };
+  return {
+    lista: lista.map((v) => (v.id === g.voce.id ? fusa : v)),
+    esito: { tipo: "fusa", id: g.voce.id, titolo: g.voce.title || "", versione: versioni.length + 1, somiglianza: g.somiglianza },
+  };
 }
 // ── Recupero di Grado 1 + BLOCCO 5 (strati 1 e 2) — ricerca nella memoria, ZERO token ──
 // Grado 1: ricerca testuale sul contenuto dei frammenti. Restituisce FRAMMENTI, non documenti
@@ -334,6 +515,26 @@ const AZIONI_CONVERSAZIONALI = [
     parametri: { contenuto: "string — un titolo breve per il materiale, con le parole del Ghost o le tue. Esempio: \"Atto I — testi completi\". Il testo NON va qui: lo copia il programma." },
     richiedeGate: true,
     effetto: "scrittura",
+    reversibile: true,
+    accesaDiDefault: true,
+  },
+  // La terza della famiglia, e l'unica che LEGGE invece di scrivere. Il fascicolo che ora viaggia
+  // nel fuoco dice allo Shell che un documento esiste e come comincia — abbastanza per riprendere
+  // il filo, non abbastanza per lavorarci sopra. "Rileggimi l'Atto I e sistemami la metrica" vuole
+  // il testo INTERO nel turno. Stessa disciplina di leggi_calendario: il programma va a prenderlo
+  // PRIMA che il modello scriva, cosi' quello che dice viene da cio' che ha in mano e non dal suo
+  // ricordo. Non chiede conferma perche' non cambia niente: leggere non e' un atto reversibile,
+  // e' un atto che non lascia traccia.
+  {
+    id: "apri_documento",
+    classe: "A",
+    etichetta: "Riaprire per intero un documento del percorso",
+    descrizione: 'Va a prendere il testo COMPLETO di un documento conservato nel percorso aperto. Usa questa quando il Ghost chiede di rileggere, riprendere, correggere o continuare qualcosa che è già stato salvato lì dentro ("rileggimi l\'Atto I", "riprendi i testi che abbiamo salvato", "sistemami la metrica di quel pezzo"). Non usarla se il materiale non è nel percorso: non inventare di averlo letto.',
+    perSelettore: 'rileggere per intero un documento già salvato nel percorso aperto ("rileggimi X", "riprendi i testi di X")',
+    perConversazione: "Andare a prendere il testo completo di un documento del percorso, per lavorarci sopra davvero invece di ricordarlo.",
+    parametri: { contenuto: "string — le parole con cui il Ghost ha indicato il documento, così come le ha dette (es. \"l'Atto I\", \"i testi completi\")" },
+    richiedeGate: false,
+    effetto: "lettura",
     reversibile: true,
     accesaDiDefault: true,
   },
@@ -582,7 +783,7 @@ function settingsPerSelezione(settings) {
 // E' esattamente il difetto di "fissa" (17/08) e di "cancella" (25/08), che questo commento
 // racconta due righe piu' su. Aggiunte anche le forme che il Ghost usa davvero: "creiamo",
 // "tienilo". "genera" ha un veto su "general*": "in generale" non e' una richiesta di azione.
-const VERBI_AZIONE = /\b(crea|crei|genera(?!l)|salva|tien|riprend|ripiglia|apri|aprire|chiud|torniamo|torna|continu|avanz|avanti|e adesso|prossim|adesso che|e ora|segna|annota|registra|scrivi|aggiungi|aggiung|metti|nota che|idea|potrei|si potrebbe|vendere|monetizz|ricordi|ricordati|ricordami|cosa avevo|cosa abbiamo|cosa sappiamo|avevo detto|cerca|trova|che ora|fissa|fissam|prenota|programma|pianifica|promemoria|appuntamento|impegn|calendario|in agenda|agenda|spost|rimand|anticip|posticip|riprogramm|cancell|elimin|disdic|annull|rimuov|togli|manda|invia|spedisci|scrivigli|scrivile|mail|email|che ho|cosa ho|cosa c'e'|cosa c'è|che c'e'|che c'è|previsto|in programma|cosa faccio|che giornata|come e' messa|come è messa)\w*/i;
+const VERBI_AZIONE = /\b(crea|crei|genera(?!l)|salva|tien|rilegg|leggim|leggil|mostram|riprend|ripiglia|apri|aprire|chiud|torniamo|torna|continu|avanz|avanti|e adesso|prossim|adesso che|e ora|segna|annota|registra|scrivi|aggiungi|aggiung|metti|nota che|idea|potrei|si potrebbe|vendere|monetizz|ricordi|ricordati|ricordami|cosa avevo|cosa abbiamo|cosa sappiamo|avevo detto|cerca|trova|che ora|fissa|fissam|prenota|programma|pianifica|promemoria|appuntamento|impegn|calendario|in agenda|agenda|spost|rimand|anticip|posticip|riprogramm|cancell|elimin|disdic|annull|rimuov|togli|manda|invia|spedisci|scrivigli|scrivile|mail|email|che ho|cosa ho|cosa c'e'|cosa c'è|che c'e'|che c'è|previsto|in programma|cosa faccio|che giornata|come e' messa|come è messa)\w*/i;
 function meritaTurnoDiSelezione(messaggio) { return VERBI_AZIONE.test(String(messaggio || "")); }
 // Il turno di selezione: una chiamata dedicata, brevissima, che decide SOLO quale azione e con
 // quale parametro. Separata dalla conversazione di proposito — mescolarla al turno normale
@@ -2934,6 +3135,9 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Piano alimentare montato dal programma: quando il Ghost chiede un piano/menu alimentare, il modello NON scrive il piano. Inventa solo un repertorio di piatti con grammature e calorie (una chiamata corta), e poi è il programma a montare la griglia dei giorni: ruota i piatti in modo che nessuno ricompaia prima di aver esaurito la sua categoria, mette i pranzi da asporto nei giorni chiesti, sceglie la cena che avvicina il totale al bersaglio calorico del giorno, fa le somme e dichiara la media VERA con lo scarto rispetto a quella chiesta. Serve perché una griglia di 14 giorni per 5 pasti è un problema combinatorio, non un testo: chiedendola al modello come testo continuo collassava a metà (osservato il 28-29/08) e comunque non poteva garantire né la media né l'assenza di ripetizioni. La variazione calorica fra i giorni è voluta, non un errore.
 - Creare un percorso parlando: "genera un percorso in vidya su X", "creiamone uno nuovo su Y". Compare una card che mostra il TITOLO che nascerà — non la frase detta — e il percorso nasce solo quando il Ghost tocca il pulsante. Poi diventa da solo quello aperto, così quello che si genera subito dopo si può salvare lì dentro. Tre rifiuti espliciti invece di creare qualcosa di sbagliato: se il pilastro non è uno dei tre, se il titolo è un pezzo di frase invece del nome di una cosa, e se un percorso con quel titolo esiste già (in quel caso dice di dire "riprendi X"). Distinta da "aprire un percorso", che sposta il fuoco su uno che esiste già e non crea niente.
 - Salvare nel percorso quello che lo Shell ha appena prodotto: "salvalo nel percorso", "tienilo", "mettilo nel percorso attivo". Il testo NON viene riscritto dal modello: lo copia il programma dalla conversazione, per intero, e finisce nei documenti del percorso aperto. La card mostra prima quanto è lungo e come comincia, così si vede se sta per salvare il messaggio giusto. Serve perché la conversazione ha due limiti: lo Shell rivede solo gli ultimi sei messaggi, e sopra i quaranta messaggi i più vecchi escono dalla vista e finiscono in un archivio locale. Un contenuto lungo che resta solo in chat, fra un mese, non è più raggiungibile né dal Ghost né dallo Shell; dentro il percorso sì.
+- Rileggere un documento del percorso: "rileggimi l'Atto I", "riprendi i testi che abbiamo salvato", "mostrami quel pezzo". Il programma va a prendere il testo COMPLETO dal percorso aperto e lo mette davanti allo Shell PRIMA che risponda, così ci lavora sopra davvero invece di ricordarlo. Non chiede conferma: leggere non cambia niente. Se più di un documento corrisponde chiede quale, e se non lo trova lo dichiara invece di rispondere a memoria. Un documento molto lungo viene tagliato e la cosa viene detta.
+- Il percorso aperto viaggia con il suo fascicolo: quando c'è un percorso aperto (il fuoco), lo Shell riceve a ogni turno i suoi nodi con lo stato, le competenze, la memoria del percorso e l'indice dei documenti. È per questo che "continuiamo con l'Atto III" funziona senza dover rispiegare cos'è stato fatto. Il fuoco scade da solo dopo otto ore.
+- Voci gemelle nel log: quando lo Shell scrive da solo una voce in un pilastro e quella voce dice sostanzialmente la stessa cosa di un'altra dello STESSO GIORNO, non ne crea una seconda: aggiorna quella che c'è già, e il testo precedente scende nello storico della voce invece di essere perso. Nel log la voce mostra "N versioni di questa voce" e si tocca per rileggerle tutte. Sotto il messaggio in chat il segno dice "→ VIDYA · 3ª versione" invece di "→ VIDYA", così è visibile che ha aggiornato e non aggiunto. Le voci che contengono una misura (peso, sonno) non vengono mai fuse: due pesate nello stesso giorno sono due dati, non un doppione. Le voci scritte a mano dal Ghost non passano da qui e non vengono mai toccate.
 - Documenti del percorso: nel percorso, sotto "Documenti del percorso", ognuno si tocca e si riapre per intero. Quando il Ghost riapre un percorso, lo Shell riceve l'indice di questo materiale — nome, data, lunghezza, come comincia — non i testi interi: sa che esistono e riparte da lì invece di ricominciare da capo. I documenti creati prima del 31/08/2026 hanno solo il nome, non il testo.
 - Andamento misurato (BIO): il programma calcola da solo le serie di peso e sonno dalle voci del log BIO — ultima misura, quanti giorni ha, variazione totale, variazione per settimana, quante misure — e le passa allo Shell e a Simbiosi già calcolate. Compaiono anche in BIO → Log, in un riquadro "Andamento misurato", nella stessa identica forma in cui le riceve il modello. Regola: se una tendenza non è in quel riquadro, il modello non l'ha ricevuta e non deve parlarne. Una misura sola non fa tendenza e viene dichiarata tale; una serie la cui ultima misura ha più di 7 giorni viene marcata "stantia", più di 30 "vecchia", e va detto invece di parlarne come se fosse di oggi. Non serve fare niente per attivarlo: legge i campi Peso e Sonno che le voci BIO hanno già, comprese quelle scritte dallo Shell durante una conversazione.
 - Controllo del piano alimentare: quando lo Shell genera un piano con più giorni, il programma lo rilegge e confronta con i vincoli dichiarati. Segnala in un riquadro, senza toccare il piano: alimenti esclusi che compaiono lo stesso (sa che il salmone è un pesce), giorni dichiarati che non ci sono, giorni identici fra loro, la stessa fonte proteica a pranzo e a cena, dosi assenti quando erano state chieste, colazioni dolci quando erano state chieste salate. Non giudica il piano: elenca fatti verificabili, con il giorno preciso.
@@ -4352,7 +4556,7 @@ async function reflectStyle(styleMemory, userMessage, shellReply, settings) {
 }
 // BLOCCO 1 (16/08/2026) — inventario e fuoco arrivano ESPLICITAMENTE nella firma, non per assunzione
 // e non letti da dentro: e' la stessa regola che ha chiuso le quattro funzioni generative il 14/08.
-async function runShellTurn(history, userMessage, settings, handlers, memory, styleMemory, attachment, dialecticOverride = null, pushDebugLog = null, inventario = null, fuoco = null, letturaCalendario = null, bersaglioCancellazione = null, onRispostaPronta = null, bersaglioSpostamento = null, ricercaEvento = null, serieMisurate = "") {
+async function runShellTurn(history, userMessage, settings, handlers, memory, styleMemory, attachment, dialecticOverride = null, pushDebugLog = null, inventario = null, fuoco = null, letturaCalendario = null, bersaglioCancellazione = null, onRispostaPronta = null, bersaglioSpostamento = null, ricercaEvento = null, serieMisurate = "", documentoAperto = null) {
   const attachmentNote =attachment?.kind === "text" ? `\n\n[Allegato: ${attachment.name}]\n${attachment.content.slice(0, 6000)}` : "";
   const effectiveMessage = userMessage + attachmentNote;
   const image = attachment?.kind === "image" ? attachment : null;
@@ -4380,7 +4584,7 @@ ${PILLAR_CTX.bio} ${PILLAR_CTX.air} ${PILLAR_CTX.vidya}
 ${PILLAR_CTX.formato}
 ${APP_CAPABILITIES_CONTEXT}
 ${inventario || "Inventario dei percorsi non disponibile in questo turno — non fare finta di sapere quali esistono: chiedi."}
-${formatFuocoBlock(fuoco)}
+${formatFuocoBlock(fuoco)}${formatDocumentoAperto(documentoAperto)}
 ${formatAzioniBlock(azioniAttive())}
 ${formatCapacitaSpente(AZIONI_CONVERSAZIONALI, azioniAttive())}
 ${formatCapacitaAccese(azioniAttive())}
@@ -4490,10 +4694,17 @@ Se noti un argomento di studio/lavoro strutturato e continuativo emergere (non u
   });
   for (const reading of accepted) {
     const payload = payloadDaLettura(reading);
-    if (reading.pillar === "bio") handlers.addBio(payload);
-    else if (reading.pillar === "air") handlers.addAir(payload);
-    else if (reading.pillar === "vidya") handlers.addVidya(payload);
-    actionsLog.push(reading.pillar.toUpperCase());
+    // 31/08/2026 — la scrittura passa dalla porta che sa riconoscere una voce gemella. Il ripiego
+    // sui vecchi handlers non e' decorativo: senza, un chiamante che non passasse aggiungiDaLettura
+    // smetterebbe di scrivere del tutto invece di scrivere un doppione.
+    const esito = handlers.aggiungiDaLettura
+      ? handlers.aggiungiDaLettura(reading.pillar, payload)
+      : ({ bio: handlers.addBio, air: handlers.addAir, vidya: handlers.addVidya }[reading.pillar]?.(payload), { tipo: "aggiunta" });
+    // Se il programma decide di NON creare una voce, il Ghost deve vederlo: il segno sotto il
+    // messaggio dice che ha aggiornato, non che ha aggiunto.
+    actionsLog.push(esito?.tipo === "fusa"
+      ? `${reading.pillar.toUpperCase()} · ${esito.versione}ª versione`
+      : reading.pillar.toUpperCase());
     if (reading.alert) alerts.push({ pillar: reading.pillar, note: reading.alertNote || "Segnale da non ignorare." });
   }
   let newStyleMemory = stileOra;
@@ -5485,6 +5696,23 @@ function Hub({ bio, air, vidya, magi, resonance, setView, pBio, pAir, pVidya, pr
 //──────────────────────────────────────────────────────────
 // BIO / VIDYA / AIR (Log + Percorsi, AIR anche Agente)
 //──────────────────────────────────────────────────────────
+// 31/08/2026 — lo storico di una voce che ha assorbito le sue gemelle. Compare SOLO se la voce ha
+// davvero delle versioni precedenti: una voce normale resta identica a com'era. E' la meta' visibile
+// della Legge 14 applicata al log — se il programma decide di non creare una seconda voce, quello
+// che c'era prima deve restare leggibile, non sparire dentro una fusione silenziosa.
+function StoricoVoce({ voce, color }) {
+  const versioni = voce?.versioni || [];
+  const [aperto, setAperto] = useState(false);
+  if (!versioni.length) return null;
+  return html`<div style="margin-top:6px">
+    <div class="r-hub-detail" style="cursor:pointer;color:${color}" onClick=${() => setAperto(!aperto)}>
+      ${aperto ? "\u25be" : "\u25b8"} ${versioni.length + 1} versioni di questa voce${voce.ultimoAggiornamento ? ` \u00b7 aggiornata ${fmtDate(voce.ultimoAggiornamento)}` : ""}
+    </div>
+    ${aperto && versioni.map((v, i) => html`<div key=${i} class="r-entry-notes" style="opacity:.7;margin-top:4px">
+      <b>${versioni.length - i}\u00aa</b> ${fmtDate(v.date)} \u2014 ${v.title ? v.title + ". " : ""}${v.notes || ""}
+    </div>`)}
+  </div>`;
+}
 function BioView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, digest, memory }) {
   const [tab, setTab] = useState("log");
   const [open, setOpen] = useState(false);
@@ -5520,6 +5748,7 @@ function BioView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, di
           ${e.weight && html`<div class="r-entry-line">Peso: <b>${e.weight} kg</b></div>`}
           ${e.sleep && html`<div class="r-entry-line">Sonno: ${e.sleep}</div>`}
           ${e.notes && html`<div class="r-entry-notes">${e.notes}</div>`}
+          <${StoricoVoce} voce=${e} color=${C.bio} />
         </div><button class="r-icon-btn" onClick=${() => onDelete(e.id)}>✕</button></div></${Card}>`)}</div>`}
     ` : html`<${PercorsiPanel} pillar="bio" color=${C.bio} percorsi=${percorsi} setPercorsi=${setPercorsi} settings=${settings} digest=${digest} pillarMemory=${memory?.bio?.corrente} />`}
   </div>`;
@@ -5544,6 +5773,7 @@ function VidyaView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, 
         <${Card} accent=${C.vidya}><div class="r-entry-row"><div><div class="r-entry-date">${fmtDate(e.date)}</div>
           <div class="r-entry-line"><b>${e.title}</b></div>
           ${e.notes && html`<div class="r-entry-notes">${e.notes}</div>`}
+          <${StoricoVoce} voce=${e} color=${C.vidya} />
         </div><button class="r-icon-btn" onClick=${() => onDelete(e.id)}>✕</button></div></${Card}>`)}</div>`}
     ` : html`<${PercorsiPanel} pillar="vidya" color=${C.vidya} percorsi=${percorsi} setPercorsi=${setPercorsi} settings=${settings} digest=${digest} pillarMemory=${memory?.vidya?.corrente} />`}
   </div>`;
@@ -5650,6 +5880,7 @@ function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, di
         <${Card} accent=${C.air}><div class="r-entry-row"><div><div class="r-entry-date">${fmtDate(e.date)} · <span class="r-badge" style="border-color:${C.air};color:${C.air}">${e.status}</span></div>
           <div class="r-entry-line"><b>${e.title}</b></div>
           ${e.notes && html`<div class="r-entry-notes">${e.notes}</div>`}
+          <${StoricoVoce} voce=${e} color=${C.air} />
         </div><button class="r-icon-btn" onClick=${() => onDelete(e.id)}>✕</button></div></${Card}>`)}</div>`}
     ` : tab === "percorsi" ? html`<div>
         <${SemiPanel} color=${C.air} semi=${semi || []} onAddSeed=${onAddSeed} onApproveSeedStrategy=${onApproveSeedStrategy} onUnlockGatedSeed=${onUnlockGatedSeed} onDiscussInShell=${onDiscussInShell} onAdvance=${advanceSeedIfDue} onArchiveSeed=${onArchiveSeed} />
@@ -5802,10 +6033,21 @@ function MessaggioProtetto({ disegna, avvisa }) {
   }
   return html`<${CorpoMessaggio} disegna=${disegna} />`;
 }
-function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory, bio, air, vidya, pushDebugLog, addSeed, advanceSeedIfDue, shellDraft, consumeShellDraft, pBio, pAir, pVidya, semi, ghostProfile, saveGhostProfile }) {
+function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, aggiungiDaLettura, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory, bio, air, vidya, pushDebugLog, addSeed, advanceSeedIfDue, shellDraft, consumeShellDraft, pBio, pAir, pVidya, semi, ghostProfile, saveGhostProfile }) {
   // BLOCCO 1 — il fuoco vive qui perche' e' della conversazione, non dell'app intera.
   const [fuoco, setFuocoState] = useState(() => leggiFuoco());
   const cambiaFuoco = (f) => setFuocoState(f);
+  // 31/08/2026 — il fuoco che parte verso il modello si porta dietro il fascicolo del percorso.
+  // leggiFuoco() resta quello che era (etichetta e id, letti da localStorage): il fascicolo si
+  // costruisce QUI, dove i percorsi ci sono, e solo per il turno di chat.
+  const percorsoDelFuoco = (f) => (f && f.tipo === "percorso"
+    ? PILASTRI_NOMI.map((k) => (percorsi[k] || []).find((p) => p.id === f.id)).find(Boolean) || null
+    : null);
+  const fuocoConDossier = () => {
+    const f = leggiFuoco();
+    const p = percorsoDelFuoco(f);
+    return p ? { ...f, dossier: dossierPercorso(p) } : f;
+  };
   const [input, setInput] = useState("");
   // Trigger di avanzamento Seme (Parte 3 del brief): una sola volta per apertura di questa tab —
   // ShellView viene smontata/rimontata ad ogni cambio di `view` in App() (reso condizionale, non
@@ -6017,6 +6259,15 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
           ricercaEvento = await trovaEventoBersaglio(sceltaAnticipata.parametro).catch((e) => ({ esito: "lettura-fallita", motivo: e.message }));
           registraAzione({ fase: ricercaEvento.esito === "trovato" ? "eseguita-e-verificata" : "esito-" + ricercaEvento.esito, azioneId: "trova_evento_calendario", parametro: sceltaAnticipata.parametro, esitoRicerca: ricercaEvento.esito, candidati: (ricercaEvento.candidati || []).map((c) => ({ id: c.id, etichetta: c.titolo })) });
         }
+      }
+      // 31/08/2026 — RIAPRIRE UN DOCUMENTO DEL PERCORSO. Stessa disciplina delle due letture qui
+      // sopra: si esegue PRIMA che il modello scriva, cosi' il testo su cui lavora e' quello vero e
+      // non il suo ricordo. Il percorso da cui prenderlo e' quello aperto adesso, non uno nominato
+      // nella frase: se non c'e' un fuoco su un percorso, non si indovina — si dichiara.
+      let documentoAperto = null;
+      if (sceltaAnticipata?.azioneId === "apri_documento" && eseguibileSubito("apri_documento")) {
+        documentoAperto = trovaDocumentoNelPercorso(percorsoDelFuoco(leggiFuoco()), sceltaAnticipata.parametro);
+        registraAzione({ fase: documentoAperto.esito === "trovato" ? "eseguita-e-verificata" : "esito-" + documentoAperto.esito, azioneId: "apri_documento", parametro: sceltaAnticipata.parametro, etichetta: documentoAperto.doc?.title || "", motivo: documentoAperto.motivo || "", automatica: true });
       }
       // 22/08/2026 — LA RICERCA DEL BERSAGLIO DA CANCELLARE. Cancellare e' una scrittura e passera'
       // dalla card e dal pulsante, come ogni scrittura. Ma per poter NOMINARE l'evento sulla card
@@ -6446,11 +6697,11 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       codaSfondo.current = new Promise((r) => { sbloccaLaCoda = r; });
       try {
         const esito = await runShellTurn(history, userText, settings, {
-          addBio, addAir, addVidya, updateMemoria,
+          addBio, addAir, addVidya, aggiungiDaLettura, updateMemoria,
           attendiCoda: () => codaPrecedente,
           memoriaOra: () => memoriaRef.current,
           stileOra: () => stileRef.current,
-        }, memory, styleMemory, currentAttachment, dialecticOverride, pushDebugLog, inventarioOra, leggiFuoco(), letturaCalendario, bersaglioCancellazione, mostra, bersaglioSpostamento, ricercaEvento, formatSerieBlock(fattiDaLogBio(bio)));
+        }, memory, styleMemory, currentAttachment, dialecticOverride, pushDebugLog, inventarioOra, fuocoConDossier(), letturaCalendario, bersaglioCancellazione, mostra, bersaglioSpostamento, ricercaEvento, formatSerieBlock(fattiDaLogBio(bio)), documentoAperto);
         // Rete di sicurezza: se per qualunque ragione la richiamata non fosse partita, il messaggio
         // compare comunque adesso. `mostrato` impedisce che compaia due volte.
         mostra(esito);
@@ -6997,6 +7248,10 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     } catch (e) { setEmailSendStatus((s) => ({ ...s, [mid]: "error: " + e.message })); }
   };
   const actionColor = { BIO: C.bio, AIR: C.air, VIDYA: C.vidya };
+  // 31/08/2026 — da quando un segno puo' dire "VIDYA · 3ª versione", la chiave non e' piu' l'intera
+  // etichetta: il colore si prende dal pilastro, che e' la prima parola. Senza questo, ogni voce
+  // fusa perdeva il colore e diventava un badge grigio senza che nessun errore lo segnalasse.
+  const coloreDelSegno = (a) => actionColor[String(a).split(" ")[0]] || C.muted;
   const lastBio = bio?.[0], lastAir = air?.[0], lastVidya = vidya?.[0];
   return html`<div class="r-screen">
     <${SectionHeader} color="#2A2E35" title="SHELL" subtitle="Dialogo diretto — ciclo di percezione-azione visibile per verifica" />
@@ -7570,7 +7825,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
             </div>`}
             <div class="r-shell-msg-footer">
               ${m.usedWebSearch && html`<span class="r-badge" style="border-color:${C.core};color:${C.core}">🌐 WEB</span>`}
-              ${m.actions && m.actions.length > 0 && html`<div class="r-shell-actions">${m.actions.map((a) => html`<span class="r-badge" style="border-color:${actionColor[a]};color:${actionColor[a]}">→ ${a}</span>`)}</div>`}
+              ${m.actions && m.actions.length > 0 && html`<div class="r-shell-actions">${m.actions.map((a) => html`<span class="r-badge" style="border-color:${coloreDelSegno(a)};color:${coloreDelSegno(a)}">→ ${a}</span>`)}</div>`}
               ${m.role === "assistant" && html`<button class="r-shell-speak-btn" onClick=${() => toggleSpeak(mid, m.content)} title=${speakingId === mid ? "Interrompi" : "Riascolta"}>${speakingId === mid ? "⏹" : "🔊"}</button>`}
             </div>
             ${m.anochin && html`<${AnochinTrace} trace=${m.anochin} />`}
@@ -8621,6 +8876,30 @@ function App() {
   const delAir = useCallback((id) => setAir((prev) => { const n = prev.filter((e) => e.id !== id); saveKey("air-data", n); syncIfEnabled("03 AIR_OPERATIONS", formatAirLog(n)); return n; }), [syncIfEnabled]);
   const addVidya = useCallback((e) => setVidya((prev) => { const n = [e, ...prev].sort((a, b) => b.date.localeCompare(a.date)); saveKey("vidya-data", n); syncIfEnabled("05 VIDYA_TUNING", formatVidyaLog(n)); return n; }), [syncIfEnabled]);
   const delVidya = useCallback((id) => setVidya((prev) => { const n = prev.filter((e) => e.id !== id); saveKey("vidya-data", n); syncIfEnabled("05 VIDYA_TUNING", formatVidyaLog(n)); return n; }), [syncIfEnabled]);
+  // 31/08/2026 — LA PORTA DELLE LETTURE AUTOMATICHE, distinta da quella dei pulsanti.
+  // addBio/addAir/addVidya restano quello che erano: se il Ghost scrive due voci simili a mano,
+  // sono affari suoi e nessuno le tocca. Qui passano SOLO le letture che il programma scrive da
+  // solo a ogni turno — quelle che si erano moltiplicate per cinque sullo stesso album.
+  const CHIAVI_PILASTRO = { bio: "bio-data", air: "air-data", vidya: "vidya-data" };
+  const SYNC_PILASTRO = { bio: ["04 BIO_STASIS", formatBioLog], air: ["03 AIR_OPERATIONS", formatAirLog], vidya: ["05 VIDYA_TUNING", formatVidyaLog] };
+  const aggiungiDaLettura = useCallback((pillar, voce) => {
+    const applica = { bio: setBio, air: setAir, vidya: setVidya }[pillar];
+    if (!applica) return { tipo: "aggiunta" };
+    // Il DATO si decide dentro l'aggiornatore, sul valore vero: e' l'unico modo di essere corretti
+    // anche se in un turno arrivassero due letture sullo stesso pilastro. Cio' che si RIFERISCE al
+    // Ghost si calcola qui sopra, dallo stato corrente: nel caso raro delle due letture ravvicinate
+    // il messaggio potrebbe dire "aggiunta" per la seconda invece di "fusa" — una riga di racconto
+    // imprecisa, mai un dato sbagliato.
+    const previsto = fondiOAggiungiVoce({ bio, air, vidya }[pillar] || [], voce).esito;
+    applica((prev) => {
+      const { lista } = fondiOAggiungiVoce(prev, voce);
+      saveKey(CHIAVI_PILASTRO[pillar], lista);
+      const [etichetta, formatta] = SYNC_PILASTRO[pillar];
+      syncIfEnabled(etichetta, formatta(lista));
+      return lista;
+    });
+    return previsto;
+  }, [bio, air, vidya, syncIfEnabled]);
   const addMagi = useCallback((s) => setMagi((prev) => { const n = [s, ...prev]; saveKey("magi-data", n); syncIfEnabled("01 AGORÀ_MAGI", formatMagiLog(n)); return n; }), [syncIfEnabled]);
   const delMagi = useCallback((id) => setMagi((prev) => { const n = prev.filter((s) => s.id !== id); saveKey("magi-data", n); syncIfEnabled("01 AGORÀ_MAGI", formatMagiLog(n)); return n; }), [syncIfEnabled]);
   const setPBioSync = useCallback((n) => { setPBio(n); saveKey("percorsi-bio", n); syncIfEnabled("04 BIO_STASIS — Percorsi", formatPercorsiLog("BIO", n)); }, [syncIfEnabled]);
@@ -8913,7 +9192,7 @@ function App() {
     ${ghostProfile && html`<div>
     <${FeedbackWidget} view=${view} pushDebugLog=${pushDebugLog} />
     ${view === "hub" && html`<${Hub} bio=${bio} air=${air} vidya=${vidya} magi=${magi} resonance=${resonance} setView=${setView} pBio=${pBio} pAir=${pAir} pVidya=${pVidya} proactiveHint=${resonance.worthSurfacing} postura=${postura} />`}
-    ${view === "shell" && html`<${ShellView} messages=${shellChat} setMessages=${setShellChat} settings=${settings} addBio=${addBio} addAir=${addAir} addVidya=${addVidya}
+    ${view === "shell" && html`<${ShellView} messages=${shellChat} setMessages=${setShellChat} settings=${settings} addBio=${addBio} addAir=${addAir} addVidya=${addVidya} aggiungiDaLettura=${aggiungiDaLettura}
       percorsi=${{ bio: pBio, air: pAir, vidya: pVidya }} setPercorsi=${{ bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }}
       memory=${memory} updateMemoria=${updateMemoria} styleMemory=${styleMemory} setStyleMemory=${setStyleMemory} bio=${bio} air=${air} vidya=${vidya} pushDebugLog=${pushDebugLog}
       addSeed=${addSeed} advanceSeedIfDue=${advanceSeedIfDue} shellDraft=${shellDraft} consumeShellDraft=${() => setShellDraft("")}

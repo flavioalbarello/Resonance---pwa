@@ -17,10 +17,10 @@ describe("registro azioni", () => {
   // — ha bocciato l'aggiunta finché non è stata scritta qui. Le due nuove (crea_percorso,
   // salva_nel_percorso) sono state chieste dal Ghost il 31/08 dopo aver visto lo Shell dichiarare
   // "Percorso aperto: Divenire" senza che nessun percorso esistesse: l'azione non c'era proprio.
-  test("le quattordici azioni approvate esistono, non una di più e non una diversa", () => {
+  test("le quindici azioni approvate esistono, non una di più e non una diversa", () => {
     assert.equal(
       app.AZIONI_CONVERSAZIONALI.map((a) => a.id).join(","),
-      "apri_percorso,crea_percorso,salva_nel_percorso,scrivi_su_pilastro,crea_seme,interroga_memoria,avanza_percorso,chiudi_percorso,crea_evento_calendario,sposta_evento_calendario,invia_mail,leggi_calendario,trova_evento_calendario,cancella_evento_calendario"
+      "apri_percorso,crea_percorso,salva_nel_percorso,apri_documento,scrivi_su_pilastro,crea_seme,interroga_memoria,avanza_percorso,chiudi_percorso,crea_evento_calendario,sposta_evento_calendario,invia_mail,leggi_calendario,trova_evento_calendario,cancella_evento_calendario"
     );
   });
   test("trova_evento_calendario: lettura pura, nessuna conferma, nasce spenta", () => {
