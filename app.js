@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-30 · le-esclusioni-le-fa-rispettare-il-programma";
+const APP_BUILD = "2026-08-31 · i-vincoli-dicono-cosa-hanno-capito";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1383,6 +1383,17 @@ const MARCATORI_DOLCE = ["marmellata", "confettura", "miele", "nutella", "ciocco
 // il verbo che esclude, la categoria esclusa, e le eccezioni dopo "che non sia".
 const ESCLUDE_RE = /(?:^|[.;,]\s*)(?:esclud\w*|niente|non\s+(?:mangio|voglio|metter\w*|usare)|evit\w*|togli\w*|elimin\w*|senza|no)\s+(?:il\s+|lo\s+|la\s+|i\s+|gli\s+|le\s+|l')?([^.;!?\n]{2,80})/gi;
 const ECCEZIONE_RE = /\b(?:che\s+non\s+sia|tranne|eccetto|a\s+parte|salvo|ad\s+eccezione\s+di|escluso\s+il|fuorché|fuorche)\b([^.;!?\n]{2,120})/i;
+// 31/08/2026 — LE FORME POSTPOSTE. Misurato su dodici modi plausibili di scrivere la stessa cosa in
+// un campo "Vincoli": cinque non producevano niente, e fra questi "zucchine escluse" e "non mi
+// piacciono le zucchine" — costruzioni in cui il verbo viene DOPO l'alimento, mentre ESCLUDE_RE
+// cerca solo il verbo PRIMA. Aggiunte qui invece che allargando ESCLUDE_RE: quel regex serve anche
+// al controllo del piano, e allargarlo avrebbe cambiato anche cosa viene cercato dentro i piani.
+// Resta fuori di proposito il caso "zucchine" scritto da solo: in un campo vincoli una parola nuda
+// puo' voler dire tutto il contrario ("colazioni salate", "1600 kcal" sono vincoli, non esclusioni).
+// Indovinare li' sarebbe peggio che non capire — e infatti la seconda meta' della correzione e'
+// DIRE al Ghost quando non si e' capito, invece di lasciarlo credere che il vincolo sia attivo.
+const ESCLUDE_POSTPOSTO_RE = /([^.;!?\n,]{2,60}?)\s+(?:esclus[oaie]|vietat[oaie]|bandit[oaie]|proibit[oaie])\b/gi;
+const NON_MI_PIACE_RE = /non\s+mi\s+piac(?:e|ciono)\s+(?:il\s+|lo\s+|la\s+|i\s+|gli\s+|le\s+|l')?([^.;!?\n]{2,60})/gi;
 function analizzaVincoloAlimentare(testo) {
   const t = String(testo || "");
   const esclusi = new Set(), risparmiati = new Set();
@@ -1393,12 +1404,16 @@ function analizzaVincoloAlimentare(testo) {
   }
   // La parte prima dell'eccezione: e' li' che sta la cosa esclusa.
   const primaDellEccezione = ecc ? t.slice(0, t.indexOf(ecc[0])) : t;
-  for (const m of primaDellEccezione.matchAll(ESCLUDE_RE)) {
-    for (const parola of m[1].toLowerCase().split(/[,;]|\bo\b|\be\b/)) {
+  const aggiungi = (grezzo) => {
+    for (const parola of String(grezzo).toLowerCase().split(/[,;]|\bo\b|\be\b/)) {
       const p = parola.trim().replace(/^(il|lo|la|i|gli|le|l')\s*/, "").replace(/\s+$/, "");
       if (p.length >= 3) esclusi.add(p);
     }
-  }
+  };
+  for (const m of primaDellEccezione.matchAll(ESCLUDE_RE)) aggiungi(m[1]);
+  // Le due forme postposte (vedi sopra): "zucchine escluse", "non mi piacciono le zucchine".
+  for (const m of primaDellEccezione.matchAll(ESCLUDE_POSTPOSTO_RE)) aggiungi(m[1]);
+  for (const m of primaDellEccezione.matchAll(NON_MI_PIACE_RE)) aggiungi(m[1]);
   return { esclusi: [...esclusi], risparmiati: [...risparmiati] };
 }
 // Da una cosa esclusa alla lista concreta di alimenti da cercare nel piano.
@@ -8086,12 +8101,27 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
       <div class="r-hub-title" style="color:#3A4750">Vincoli dichiarati</div>
       <div class="r-hub-detail">Ogni vincolo è un'istanza dichiarata da te, rieditabile in qualunque momento — non più cablata nel codice. Aggiungerne o toglierne uno sostituisce lo stato salvato, non lo accumula.</div>
       ${hardConstraints.filter((c) => c.tipo !== "identita-professionale").length === 0 && html`<div class="r-hub-detail" style="margin-top:8px">Nessun vincolo dichiarato.</div>`}
-      ${hardConstraints.filter((c) => c.tipo !== "identita-professionale").map((c) => html`
-        <div class="r-settings-row" key=${c.id}>
-          <span><b>[${c.pilastro || "generale"}${c.ambito ? ` · ${c.ambito}` : ""}]</b> ${c.testo}</span>
+      ${/* 31/08/2026 — LO SCARTO FRA "L'HO DICHIARATO" E "IL PROGRAMMA L'HA CAPITO".
+            Il Ghost ha aggiunto l'esclusione delle zucchine e se l'e' vista comparire qui: da fuori
+            sembrava attiva. Ma il filtro che la fa rispettare agisce su cio' che riesce a
+            INTERPRETARE, non sul testo grezzo — e misurando dodici modi plausibili di scrivere la
+            stessa cosa, cinque non producevano niente ("zucchine" scritto da solo fra questi).
+            Un vincolo che c'e' nell'elenco ma non ha effetto e' peggio di un vincolo che manca:
+            produce fiducia dove non c'e' copertura. Quindi qui si mostra cosa il programma ha
+            capito davvero, vincolo per vincolo, e soprattutto quando non ha capito niente. */ ""}
+      ${hardConstraints.filter((c) => c.tipo !== "identita-professionale").map((c) => {
+        const alimentare = eVincoloAlimentare(c);
+        const esclusi = alimentare ? alimentiEsclusiDaiVincoli([c.testo]) : [];
+        return html`<div class="r-settings-row" key=${c.id}>
+          <div>
+            <div><b>[${c.pilastro || "generale"}${c.ambito ? ` · ${c.ambito}` : ""}]</b> ${c.testo}</div>
+            ${alimentare && html`<div class="r-hub-detail" style="margin-top:2px">${esclusi.length
+              ? `Capito come esclusione di: ${esclusi.slice(0, 6).join(", ")}${esclusi.length > 6 ? ` e altri ${esclusi.length - 6}` : ""}. Nei piani non compariranno.`
+              : "Non ci leggo nessuna esclusione: lo Shell lo riceve come testo, ma il filtro automatico dei piani non lo fa rispettare. Se volevi escludere qualcosa, scrivilo come «niente X» o «escludi X»."}</div>`}
+          </div>
           <button class="r-btn-ghost" onClick=${() => removeConstraint(c.id)}>Rimuovi</button>
-        </div>
-      `)}
+        </div>`;
+      })}
       <div class="r-settings-row" style="margin-top:10px; gap:8px; flex-wrap:wrap;">
         <select class="r-input" style="flex:0 0 auto" value=${newConstraintPillar} onInput=${(e) => setNewConstraintPillar(e.target.value)}>
           <option value="bio">BIO</option><option value="air">AIR</option><option value="vidya">VIDYA</option>

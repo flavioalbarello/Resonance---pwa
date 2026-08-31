@@ -250,6 +250,43 @@ describe("le esclusioni le fa rispettare il programma, non la buona volontà del
   });
 });
 
+describe("le forme in cui il Ghost scrive davvero un vincolo", () => {
+  // 31/08/2026 — il Ghost ha aggiunto l'esclusione delle zucchine nei vincoli, e la domanda è
+  // diventata: il programma la CAPISCE? Misurate dodici formulazioni plausibili: cinque non
+  // producevano niente. Le due postposte qui sotto sono state aggiunte; le tre che restano fuori
+  // ci restano di proposito, e per quelle l'interfaccia dice apertamente di non aver capito.
+  const capisce = (frase) => app.alimentiEsclusiDaiVincoli([frase]);
+
+  for (const frase of ["niente zucchine", "no zucchine", "escludi le zucchine", "evito le zucchine",
+                       "senza zucchine", "non mangio zucchine", "zucchine escluse", "non mi piacciono le zucchine"]) {
+    test(`«${frase}» → riconosciuta`, () => {
+      assert.deepEqual(capisce(frase), ["zucchine"]);
+    });
+  }
+
+  test("più alimenti in una frase sola", () => {
+    assert.deepEqual(capisce("niente zucchine e melanzane").sort(), ["melanzane", "zucchine"]);
+  });
+
+  test("la tassonomia si applica: «escludi il pesce» tira dentro il salmone", () => {
+    const a = capisce("escludi il pesce");
+    assert.ok(a.includes("salmone") && a.includes("merluzzo"), "deve espandere la categoria, non fermarsi alla parola");
+  });
+
+  test("le eccezioni restano fuori dall'esclusione", () => {
+    const a = capisce("escludi il pesce che non sia crostacei o tonno in scatola");
+    assert.ok(!a.includes("gamberi"), "i crostacei erano dichiarati ammessi");
+  });
+
+  test("una parola nuda NON viene interpretata come esclusione — e deve restare così", () => {
+    // In un campo vincoli "zucchine" da solo è ambiguo quanto "colazioni salate" o "1600 kcal":
+    // indovinare qui produrrebbe esclusioni mai chieste. L'interfaccia lo dichiara invece di fingere.
+    assert.deepEqual(capisce("zucchine"), []);
+    assert.deepEqual(capisce("colazioni salate"), []);
+    assert.deepEqual(capisce("1600 kcal"), []);
+  });
+});
+
 describe("il controllo del piano deve saper LEGGERE il piano montato dal programma", () => {
   // 30/08/2026 — difetto scoperto guardando: avevo collegato controllaPianoAlimentare al piano
   // montato, ma giorniDelPiano riconosceva ZERO giorni nel formato a tabella (i giorni stanno
