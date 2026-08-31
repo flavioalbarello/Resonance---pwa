@@ -7,20 +7,27 @@
 // non può disallinearsi da app.js come succedeva prima, e vive nel repository — sopravvive a un
 // riavvio.
 //
-// Cosa fa: legge app.js, toglie le 4 importazioni browser-only (preact/htm/config — non servono
-// e non esistono in Node), le sostituisce con stub minimi, toglie le due righe finali che montano
-// l'app nel DOM reale (`render(...)`, la registrazione del service worker), ed esporta tutto ciò
-// che i test chiedono.
+// 31/08/2026 — RISCRITTO PERCHÉ app.js NON È PIÙ UN FILE SOLO. La prima versione tagliava "le prime
+// 12 righe" e "le ultime 2": numeri fissi, che hanno smesso di essere veri nel momento in cui parte
+// del codice è uscita in lib/*.js e sono comparse nuove righe di import. Ora niente più conteggi:
+// le importazioni browser-only si riconoscono da cosa importano, e quelle verso i moduli estratti
+// vengono solo riscritte col percorso giusto per questa cartella. Un modulo estratto viene provato
+// per quello che è — un vero modulo importato da Node — invece che come testo ritagliato.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const APP_JS_PATH = join(HERE, "..", "..", "app.js");
+const RADICE = join(HERE, "..", "..");
+const APP_JS_PATH = join(RADICE, "app.js");
 // Un nome per processo, non uno fisso: `node --test` esegue piu' file di prova insieme, e due
 // processi che scrivono e leggono lo STESSO file generato nello stesso istante si calpesterebbero
 // a vicenda. Il pid basta a distinguerli senza bisogno di un lock.
 const OUT_PATH = join(HERE, `.generated-app.${process.pid}.mjs`);
+
+// I moduli estratti da app.js: importati davvero, non ritagliati. L'elenco sta qui perche' la
+// generazione deve fallire subito e a voce alta se un modulo viene rinominato o sparisce.
+const MODULI = ["lib/base.js", "lib/misure.js", "lib/alimentare.js"];
 
 const STUB_HEADER = `// FILE GENERATO — non modificare a mano. Rigenerato da tests/lib/build-testable.mjs
 // da app.js ad ogni esecuzione dei test. Se lo modifichi qui, il prossimo test lo sovrascrive.
@@ -46,8 +53,9 @@ const localStorage = {
 globalThis.__store = __store;
 `;
 
-// Nomi che i test possono chiedere. Un nome qui che non esiste (piu') in app.js fa fallire la
-// generazione SUBITO, con un errore leggibile — non un test che fallisce misteriosamente dopo.
+// Nomi che i test possono chiedere. Un nome qui che non esiste (piu') ne' in app.js ne' in un modulo
+// estratto fa fallire la generazione SUBITO, con un errore leggibile — non un test che fallisce
+// misteriosamente dopo.
 const EXPORT_NAMES = [
   "trovaEventoBersaglio", "formatBersaglioRicerca", "componiRisultatoRicerca",
   "AZIONI_CONVERSAZIONALI", "richiedeConfermaEsplicita", "eseguibileSubito",
@@ -67,24 +75,52 @@ const EXPORT_NAMES = [
   "salvaRichiestaInSospeso", "chiudiRichiestaInSospeso", "leggiRichiestaInSospeso",
   "controllaPianoAlimentare", "giorniDelPiano", "analizzaVincoloAlimentare", "alimentiDaCercare",
   "eGuastoDiRete", "FINESTRA_RIPRESA_MS",
+  "numeroItaliano", "oreDaTesto", "fattiDaLogBio", "serieDi", "derivata", "freschezza",
+  "numeroBreve", "etaInParole", "righeSerie", "formatSerieBlock",
+  "GIORNI_FRESCO", "GIORNI_STANTIO", "PESO_MIN", "PESO_MAX",
+  "analizzaParametroPercorso", "testoDaSalvare", "LUNGHEZZA_MINIMA_SALVABILE",
+  "indiceDocumentiBlock", "ripulisciAffermazioniDiEsito", "ESITO_COMPIUTO_RE",
+  "similaritaTesti", "voceGemella", "fondiOAggiungiVoce", "SOGLIA_VOCE_GEMELLA",
+  "dossierPercorso", "formatFuocoBlock", "trovaDocumentoNelPercorso", "formatDocumentoAperto",
+  "TETTO_DOCUMENTO_NEL_TURNO", "contenutoDelPercorso",
+  "leggiDiagnosticaRicerca", "diagnosticaVuota", "detectPossibleHallucinatedSource",
+  "memoriaEstesaPerMagi", "MAGI_FRAMMENTI_PER_PILASTRO", "MAGI_TETTO_FRAMMENTO",
 ];
+
+// Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.
+const IMPORT_BROWSER_RE = /^import\s.*from\s+"\.\/(?:vendor\/|config\.js)/;
+// Le due righe finali che montano l'app nel DOM reale: `render(...)` e la registrazione del
+// service worker. Riconosciute da cosa fanno, non da dove stanno.
+const RIGA_DI_MONTAGGIO_RE = /^\s*(?:render\(|(?:if\s*\()?["']serviceWorker["']\s+in\s+navigator|navigator\.serviceWorker)/;
 
 export function buildTestableApp() {
   const src = readFileSync(APP_JS_PATH, "utf8");
-  const allLines = src.split("\n");
-  // Un file che finisce con newline produce un ultimo elemento vuoto dopo lo split: va tolto PRIMA
-  // di contare "le ultime 2 righe", altrimenti si toglie la riga vuota e quella sbagliata (bug
-  // reale, trovato scrivendo questo stesso file: `render(...)` restava dentro per errore).
-  const lines = allLines[allLines.length - 1] === "" ? allLines.slice(0, -1) : allLines;
-  // Le prime 12 righe sono le importazioni browser-only (vedi STUB_HEADER sopra, le sostituisce).
-  // Le ultime 2 righe montano l'app nel DOM reale: non hanno senso in Node e nessun test le chiama.
-  const body = lines.slice(12, -2).join("\n");
-  const missing = EXPORT_NAMES.filter((n) => !new RegExp(`\\b${n}\\b`).test(body));
-  if (missing.length) {
-    throw new Error(`build-testable: questi nomi non esistono (piu') in app.js, aggiorna EXPORT_NAMES: ${missing.join(", ")}`);
+  const righe = src.split("\n");
+
+  const corpo = righe
+    .filter((l) => !IMPORT_BROWSER_RE.test(l) && !RIGA_DI_MONTAGGIO_RE.test(l))
+    // Le importazioni verso i moduli estratti restano — vanno solo ripuntate: il file generato vive
+    // in tests/lib/, non nella radice del progetto.
+    .map((l) => l.replace(/from\s+"\.\/lib\//, 'from "../../lib/'))
+    .join("\n");
+
+  // Dove vive ogni nome richiesto: nel corpo di app.js, o in uno dei moduli estratti?
+  const testiModuli = Object.fromEntries(MODULI.map((m) => [m, readFileSync(join(RADICE, m), "utf8")]));
+  const nelCorpo = [], daiModuli = [], mancanti = [];
+  for (const n of EXPORT_NAMES) {
+    const re = new RegExp(`^(?:export\\s+)?(?:async\\s+)?(?:function|const|let|var|class)\\s+${n}\\b|,\\s*${n}\\s*=`, "m");
+    if (re.test(corpo)) nelCorpo.push(n);
+    else if (MODULI.some((m) => re.test(testiModuli[m]))) daiModuli.push(n);
+    else mancanti.push(n);
   }
-  const tail = `\nexport { ${EXPORT_NAMES.join(", ")} };\n`;
-  const out = STUB_HEADER + body + tail;
+  if (mancanti.length) {
+    throw new Error(`build-testable: questi nomi non esistono (piu') ne' in app.js ne' in ${MODULI.join("/")}, aggiorna EXPORT_NAMES: ${mancanti.join(", ")}`);
+  }
+
+  // I nomi che vivono nei moduli si ri-esportano dalla loro fonte vera. Quelli che app.js importa
+  // per uso proprio non vanno ri-dichiarati qui: sarebbero un doppione dello stesso binding.
+  const riesporta = MODULI.map((m) => `export * from "../../${m}";`).join("\n");
+  const out = `${STUB_HEADER}${corpo}\n${riesporta}\nexport { ${nelCorpo.join(", ")} };\n`;
   mkdirSync(HERE, { recursive: true });
   writeFileSync(OUT_PATH, out, "utf8");
   return OUT_PATH;
