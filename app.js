@@ -14,7 +14,7 @@ import { CONFIG } from "./config.js";
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-30 · il-documento-si-scarica-anche-senza-percorso";
+const APP_BUILD = "2026-08-30 · le-esclusioni-le-fa-rispettare-il-programma";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1432,15 +1432,31 @@ function alimentiDaCercare(escluso, risparmiati = []) {
   return [...new Set(lista)].filter((x) => !daTogliere.has(x));
 }
 // Spezza un piano nei suoi giorni. Riconosce "Giorno 3", "**Giorno 3**", "GIORNO 3", "Lunedì".
-const GIORNO_RE = /^[\s*#_]*(?:\*\*)?\s*(giorno\s+\d+|lunedì|luned[iì]|marted[iì]|mercoled[iì]|gioved[iì]|venerd[iì]|sabato|domenica)\b[^\n]*$/gim;
+// 30/08/2026 — LA RETE ERA COLLEGATA A UN FORMATO CHE NON SAPEVA LEGGERE.
+// Da quando il piano lo monta il programma, i giorni stanno dentro una riga di tabella
+// ("| Lun | ... |"), non a inizio riga per esteso. Misurato: su quel formato questo regex trovava
+// ZERO giorni, quindi controllaPianoAlimentare usciva subito con null — nessun controllo, nessun
+// avviso possibile, mai. Il difetto non era nel controllo ma nel fatto che non veniva mai eseguito.
+// La seconda alternativa qui sotto copre la riga di tabella, e le abbreviazioni (Lun/Mar/...) sono
+// ammesse SOLO li': a inizio riga, in mezzo alla prosa, "mar" o "dom" produrrebbero falsi tagli.
+const GIORNO_RE = /^[\s*#_]*(?:\*\*)?\s*(giorno\s+\d+|luned[iì]|marted[iì]|mercoled[iì]|gioved[iì]|venerd[iì]|sabato|domenica)\b[^\n]*$|^\s*\|\s*(?:\*\*)?\s*(lun|mar|mer|gio|ven|sab|dom|luned[iì]|marted[iì]|mercoled[iì]|gioved[iì]|venerd[iì]|sabato|domenica)\b[^\n]*$/gim;
 function giorniDelPiano(testo) {
   const t = String(testo || "");
   const tagli = [...t.matchAll(GIORNO_RE)];
   if (!tagli.length) return [];
-  return tagli.map((m, i) => ({
-    etichetta: m[1].trim(),
-    corpo: t.slice(m.index + m[0].length, i + 1 < tagli.length ? tagli[i + 1].index : t.length).trim(),
-  }));
+  return tagli.map((m, i) => {
+    // In un piano a PROSA il nome del giorno e' un'intestazione e il contenuto sta nelle righe
+    // sotto: il corpo comincia dopo il match. In una riga di TABELLA il contenuto sta dentro la
+    // riga stessa, e il match se la mangia tutta ([^\n]*$) — quindi il corpo comincia dal match,
+    // non dopo, altrimenti resta vuoto e non c'e' niente da controllare. E' il difetto per cui il
+    // controllo, pur trovando i quattordici giorni, non vedeva un solo alimento (30/08/2026).
+    const eRigaDiTabella = !!m[2];
+    const inizio = eRigaDiTabella ? m.index : m.index + m[0].length;
+    return {
+      etichetta: (m[1] || m[2] || "").trim(),
+      corpo: t.slice(inizio, i + 1 < tagli.length ? tagli[i + 1].index : t.length).trim(),
+    };
+  });
 }
 // La riga di un pasto dentro un giorno.
 const PASTO_RE = /^[\s*\-•·]*(colazione|spuntino|pranzo|merenda|cena|snack)\s*:?\s*(.+)$/gim;
@@ -1568,6 +1584,49 @@ function validaRepertorio(raw) {
   // Servono tutte e cinque le categorie: con una vuota la griglia avrebbe una colonna di buchi.
   for (const k of ["colazioni", "spuntini", "pranzi", "merende", "cene"]) if (!r[k].length) return null;
   return r;
+}
+// ── L'ESCLUSIONE LA FA RISPETTARE IL PROGRAMMA, NON LA BUONA VOLONTA' DEL MODELLO (30/08/2026) ──
+// Il Ghost: "ci sono ancora le zucchine". Il prompt del repertorio riceve i vincoli e chiede di non
+// proporre cio' che e' escluso — ma "chiedere" a un modello non e' una garanzia, ed e' esattamente
+// la lezione che questo file ripete da settimane. Qui c'e' pero' un aggravante scoperta guardando:
+// la rete di sicurezza a valle (controllaPianoAlimentare) NON LEGGEVA il piano montato dal
+// programma. Misurato: sul formato a tabella che produce formatPianoAlimentare, giorniDelPiano
+// riconosce ZERO giorni, quindi il controllo usciva subito restituendo null. Avevo collegato la
+// rete a un formato che non sa leggere: nessun avviso poteva comparire, mai.
+// Quindi due mosse, e questa e' la prima e la piu' importante: PREVENZIONE. Un piatto che contiene
+// un alimento escluso non entra proprio nel repertorio, quindi non puo' finire nella griglia
+// nemmeno se il modello ignora l'istruzione. Si riusa la tassonomia che gia' esiste
+// (analizzaVincoloAlimentare + alimentiDaCercare), quella che sa che il salmone e' un pesce.
+function alimentiEsclusiDaiVincoli(vincoli) {
+  const fuori = new Set();
+  for (const v of vincoli || []) {
+    const { esclusi, risparmiati } = analizzaVincoloAlimentare(v);
+    for (const e of esclusi) for (const a of alimentiDaCercare(e, risparmiati)) fuori.add(String(a).toLowerCase());
+  }
+  return [...fuori].filter((a) => a.length >= 3);
+}
+// Restituisce { repertorio, scartati } — quanti piatti sono stati tolti e quali alimenti li hanno
+// fatti togliere, cosi' finisce nel registro invece di essere una sparizione silenziosa.
+function filtraRepertorioPerVincoli(repertorio, vincoli) {
+  const r = validaRepertorio(repertorio);
+  if (!r) return { repertorio: null, scartati: [] };
+  const esclusi = alimentiEsclusiDaiVincoli(vincoli);
+  if (!esclusi.length) return { repertorio: r, scartati: [] };
+  const scartati = [];
+  const pulisci = (lista) => lista.filter((p) => {
+    const testo = senzaAccenti(`${p.nome} ${p.ingredienti}`);
+    const colpevole = esclusi.find((a) => new RegExp(`(?<![\\p{L}])${a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "iu").test(testo));
+    if (colpevole) { scartati.push({ piatto: p.nome, per: colpevole }); return false; }
+    return true;
+  });
+  const fuori = {
+    colazioni: pulisci(r.colazioni), spuntini: pulisci(r.spuntini), pranzi: pulisci(r.pranzi),
+    merende: pulisci(r.merende), cene: pulisci(r.cene),
+  };
+  // Se un'intera categoria resta vuota il repertorio non e' montabile: si dichiara, non si ripiega
+  // reintroducendo cio' che era escluso — meglio nessun piano che un piano che viola un vincolo.
+  for (const k of ["colazioni", "spuntini", "pranzi", "merende", "cene"]) if (!fuori[k].length) return { repertorio: null, scartati };
+  return { repertorio: fuori, scartati };
 }
 // LA GARANZIA, dichiarata per intero perche' e' il punto di tutto questo: un piatto non ricompare
 // prima di L giorni, dove L e' quanti piatti ha la sua categoria. Non e' una speranza riposta nel
@@ -6171,7 +6230,12 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         const parametri = estraiParametriPiano(userText);
         const vincoliAlimentari = (Array.isArray(ghostProfile?.hardConstraints) ? ghostProfile.hardConstraints : [])
           .filter(eVincoloAlimentare).map((c) => c.testo).filter(Boolean);
-        const repertorio = await generaRepertorioPasti(userText, vincoliAlimentari, memoriaRef.current?.bio?.corrente || null, settings, pushDebugLog);
+        const repertorioGrezzo = await generaRepertorioPasti(userText, vincoliAlimentari, memoriaRef.current?.bio?.corrente || null, settings, pushDebugLog);
+        // Vedi filtraRepertorioPerVincoli: al modello si CHIEDE di rispettare le esclusioni, il
+        // programma le FA RISPETTARE. Un piatto che contiene un alimento escluso non entra nella
+        // griglia nemmeno se il modello ha ignorato l'istruzione (30/08: "ci sono ancora le zucchine").
+        const { repertorio, scartati } = filtraRepertorioPerVincoli(repertorioGrezzo, vincoliAlimentari);
+        if (scartati.length) pushDebugLog?.({ type: "repertorio-filtrato-per-vincoli", quanti: scartati.length, scartati: scartati.slice(0, 10), error: null });
         const piano = repertorio && montaPianoAlimentare(repertorio, parametri);
         if (piano) {
           const testoPiano = formatPianoAlimentare(piano);
@@ -6787,13 +6851,25 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // solo se il documento ne contiene una.
       const sysDoc = `Sei lo Shell del sistema Resonance. Dalla conversazione qui sotto tra GHOST e SHELL, estrai e formalizza il documento concordato (es. un piano). Riporta la versione FINALE emersa dalla negoziazione, non le versioni intermedie scartate. Rispetta ogni vincolo o esclusione dichiarato dal Ghost. Usa markup leggero: "# " titolo, "## " sezioni, "- " elenchi, righe normali per paragrafi. Quando il contenuto e' una griglia — giorni per pasti, settimane per esercizi, qualunque cosa abbia righe e colonne — usa una TABELLA markdown (prima riga di intestazione, poi la riga "|---|---|", poi le righe di dati): diventa una tabella vera nel documento finale, con le sue colonne. Non spezzare mai una griglia in elenchi. Solo il documento, nessuna premessa.`;
       const sysSum = `Sei lo Shell del sistema Resonance. Dalla conversazione qui sotto, estrai in forma sintetica SOLO i vincoli, le esclusioni e le preferenze stabili che il Ghost ha dichiarato (es. "no zucchine", "calorie discontinue", "pranzi portatili lun/mer/ven"). Sono la memoria procedurale che guiderà le prossime versioni. Elenco secco, una riga per vincolo, niente altro.`;
+      // 30/08/2026 — IL DOCUMENTO VUOTO. Il Ghost ha scaricato un .docx che conteneva solo il
+      // titolo "Documento": il modello aveva restituito una risposta vuota, il pannello e' passato
+      // lo stesso all'anteprima (di niente), e il pulsante ha prodotto un file di niente.
+      // Due reti, nessuna delle quali c'era: la prima e' askWithDegenerateGuard, che esiste
+      // apposta per la risposta vuota e ritenta una volta — questa chiamata non ci passava; la
+      // seconda e' il controllo qui sotto, che si rifiuta di mostrare un'anteprima inesistente.
       const [doc, sum] = await Promise.all([
         // Il tetto qui era 4000, cioe' lo stesso ordine di grandezza che il 28/08 ha tagliato a
         // meta' il piano in chat. Un DOCUMENTO e' per definizione il caso "contenuto lungo": usa lo
         // stesso tetto alto, altrimenti la formalizzazione si interrompe proprio come la chat.
-        askModel(sysDoc, convo, 0.5, TETTO_TOKEN_CONTENUTO_LUNGO, settings),
+        askWithDegenerateGuard(() => askModel(sysDoc, convo, 0.5, TETTO_TOKEN_CONTENUTO_LUNGO, settings), "documento", pushDebugLog),
         askModel(sysSum, convo, 0.4, 800, settings),
       ]);
+      if (!String(doc || "").trim()) {
+        setDocMsg("Il modello non ha scritto niente, nemmeno al secondo tentativo. Non ti faccio scaricare un documento vuoto: riprova fra poco, oppure premi Rigenera.");
+        pushDebugLog?.({ type: "documento-generato", fase: "formalizzazione", error: "risposta vuota anche dopo il ritentativo" });
+        setDocPhase("idle");
+        return;
+      }
       setDocText(doc); setDocSummary(sum);
       const firstH = (doc.match(/^#\s+(.+)$/m) || [])[1];
       setDocTitle(firstH || "Documento");
@@ -6813,6 +6889,10 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   // e basta, dichiarando che non e' stato agganciato a niente.
   const confirmDoc = async (toDrive) => {
     if (docPhase === "saving") return;
+    // Ultima rete prima di consegnare: un .docx col solo titolo dentro non e' un documento. E'
+    // successo il 30/08 — vedi generateFromConversation — e va fermato anche qui, perche' il testo
+    // puo' essere stato svuotato a mano nell'anteprima.
+    if (!String(docText || "").trim()) { setDocMsg("Non c'è niente da mettere nel documento: il testo è vuoto. Premi Rigenera."); return; }
     setDocPhase("saving"); setDocMsg("");
     try {
       const list = percorsi[docTargetPillar] || [];

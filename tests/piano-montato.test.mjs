@@ -202,6 +202,78 @@ describe("montaPianoAlimentare — le proprietà che il modello non poteva garan
   });
 });
 
+describe("le esclusioni le fa rispettare il programma, non la buona volontà del modello", () => {
+  // 30/08/2026 — il Ghost: "ci sono ancora le zucchine". Il prompt le vietava, il modello le ha
+  // messe lo stesso. Chiedere non è garantire: ora il piatto che le contiene non entra proprio.
+  const CON_ZUCCHINE = {
+    ...REPERTORIO,
+    pranzi: [...REPERTORIO.pranzi, { nome: "Cous cous estivo", ingredienti: "cous cous 60g, zucchine grigliate 100g", kcal: 470 }],
+    cene: [...REPERTORIO.cene, { nome: "Prosciutto e verdure", ingredienti: "prosciutto 120g, zucchine grigliate 300g", kcal: 360 }],
+  };
+
+  test("un piatto che contiene un alimento escluso viene tolto dal repertorio", () => {
+    const { repertorio, scartati } = app.filtraRepertorioPerVincoli(CON_ZUCCHINE, ["escludi le zucchine"]);
+    assert.equal(scartati.length, 2);
+    assert.ok(scartati.every((s) => s.per === "zucchine"));
+    assert.ok(!repertorio.pranzi.some((p) => /zucchine/i.test(p.ingredienti)));
+    assert.ok(!repertorio.cene.some((p) => /zucchine/i.test(p.ingredienti)));
+  });
+
+  test("e quindi il piano montato non può contenerlo, comunque vada", () => {
+    const { repertorio } = app.filtraRepertorioPerVincoli(CON_ZUCCHINE, ["escludi le zucchine"]);
+    const testo = app.formatPianoAlimentare(app.montaPianoAlimentare(repertorio, { giorni: 14, kcalMedia: 1600, giorniPortatili: [0, 2, 4] }));
+    assert.doesNotMatch(testo, /zucchine/i);
+  });
+
+  test("la tassonomia vale anche qui: chi esclude «il pesce» perde il salmone, non solo la parola «pesce»", () => {
+    const conSalmone = { ...REPERTORIO, cene: [...REPERTORIO.cene, { nome: "Salmone al forno", ingredienti: "salmone 150g, finocchi 200g", kcal: 450 }] };
+    const { scartati } = app.filtraRepertorioPerVincoli(conSalmone, ["escludi il pesce"]);
+    assert.ok(scartati.some((s) => s.piatto === "Salmone al forno"));
+  });
+
+  test("le eccezioni dichiarate vengono risparmiate: «il pesce, ma crostacei e tonno in scatola sono ok»", () => {
+    const conGamberi = { ...REPERTORIO, cene: [...REPERTORIO.cene, { nome: "Gamberi alla piastra", ingredienti: "gamberi 200g, rucola", kcal: 300 }] };
+    const { scartati } = app.filtraRepertorioPerVincoli(conGamberi, ["escludi il pesce che non sia crostacei o tonno in scatola"]);
+    assert.ok(!scartati.some((s) => s.piatto === "Gamberi alla piastra"), "i crostacei erano dichiarati ammessi");
+  });
+
+  test("senza vincoli il repertorio passa intero", () => {
+    const { repertorio, scartati } = app.filtraRepertorioPerVincoli(REPERTORIO, []);
+    assert.equal(scartati.length, 0);
+    assert.equal(repertorio.cene.length, REPERTORIO.cene.length);
+  });
+
+  test("se un'intera categoria resta vuota il repertorio non è montabile: meglio nessun piano che uno che viola un vincolo", () => {
+    const soloZucchine = { ...REPERTORIO, cene: [{ nome: "Zucchine ripiene", ingredienti: "zucchine 300g", kcal: 300 }] };
+    const { repertorio } = app.filtraRepertorioPerVincoli(soloZucchine, ["niente zucchine"]);
+    assert.equal(repertorio, null);
+  });
+});
+
+describe("il controllo del piano deve saper LEGGERE il piano montato dal programma", () => {
+  // 30/08/2026 — difetto scoperto guardando: avevo collegato controllaPianoAlimentare al piano
+  // montato, ma giorniDelPiano riconosceva ZERO giorni nel formato a tabella (i giorni stanno
+  // dentro la riga, non a inizio riga per esteso). Il controllo usciva subito con null: la rete
+  // era appesa a un formato che non sapeva leggere, e nessun avviso poteva comparire. Mai.
+  const piano = app.montaPianoAlimentare(REPERTORIO, { giorni: 14, kcalMedia: 1600, giorniPortatili: [0, 2, 4] });
+  const testo = app.formatPianoAlimentare(piano);
+
+  test("riconosce tutti i quattordici giorni nel formato a tabella", () => {
+    assert.equal(app.giorniDelPiano(testo).length, 14);
+  });
+  test("il corpo della giornata non è vuoto: è dentro la riga, e va incluso", () => {
+    for (const g of app.giorniDelPiano(testo)) {
+      assert.ok(g.corpo.length > 20, `giorno "${g.etichetta}" con corpo vuoto: non ci sarebbe niente da controllare`);
+    }
+  });
+  test("e quindi un'esclusione violata verrebbe vista davvero", () => {
+    const conZucchine = { ...REPERTORIO, cene: [...REPERTORIO.cene, { nome: "Cena test", ingredienti: "zucchine grigliate 300g", kcal: 300 }] };
+    const t = app.formatPianoAlimentare(app.montaPianoAlimentare(conZucchine, { giorni: 14, kcalMedia: 1600 }));
+    const scarti = app.controllaPianoAlimentare(t, ["escludi le zucchine"], "piano");
+    assert.ok(scarti && scarti.scarti.some((s) => s.tipo === "esclusione"), "la rete deve accorgersene");
+  });
+});
+
 describe("formatPianoAlimentare — markdown che diventa una tabella vera nel .docx", () => {
   const piano = app.montaPianoAlimentare(REPERTORIO, { giorni: 14, kcalMedia: 1600, giorniPortatili: [0, 2, 4] });
   const testo = app.formatPianoAlimentare(piano);
