@@ -42,7 +42,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-09-01 · quale-conversazione-esattamente";
+const APP_BUILD = "2026-09-01 · un-gesto-che-salva-sempre";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -3266,6 +3266,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Vincoli alimentari dichiarati parlando: quando il Ghost dice una regola alimentare in chat («escludi il pesce che non sia crostacei», «le colazioni le voglio salate», «1600 kcal»), compare una card «Questo lo tengo come regola fissa?» con due pulsanti. Tenuto, il vincolo entra nell'elenco dei Vincoli dichiarati di BIO e da lì nel prompt di ogni turno, per sempre; lasciato, vale solo per la conversazione in corso. Serve perché la conversazione che lo Shell rivede è tagliata agli ultimi venti messaggi: una regola detta e non tenuta sparisce dopo una decina di scambi.
 - Piano alimentare montato dal programma: quando il Ghost chiede un piano/menu alimentare, il modello NON scrive il piano. Inventa solo un repertorio di piatti con grammature e calorie (una chiamata corta), e poi è il programma a montare la griglia dei giorni: ruota i piatti in modo che nessuno ricompaia prima di aver esaurito la sua categoria, mette i pranzi da asporto nei giorni chiesti, sceglie la cena che avvicina il totale al bersaglio calorico del giorno, fa le somme e dichiara la media VERA con lo scarto rispetto a quella chiesta. Serve perché una griglia di 14 giorni per 5 pasti è un problema combinatorio, non un testo: chiedendola al modello come testo continuo collassava a metà (osservato il 28-29/08) e comunque non poteva garantire né la media né l'assenza di ripetizioni. La variazione calorica fra i giorni è voluta, non un errore.
 - Creare un percorso parlando: "genera un percorso in vidya su X", "creiamone uno nuovo su Y". Compare una card che mostra il TITOLO che nascerà — non la frase detta — e il percorso nasce solo quando il Ghost tocca il pulsante. Poi diventa da solo quello aperto, così quello che si genera subito dopo si può salvare lì dentro. Tre rifiuti espliciti invece di creare qualcosa di sbagliato: se il pilastro non è uno dei tre, se il titolo è un pezzo di frase invece del nome di una cosa, e se un percorso con quel titolo esiste già (in quel caso dice di dire "riprendi X"). Distinta da "aprire un percorso", che sposta il fuoco su uno che esiste già e non crea niente.
+- Salvare un testo con un gesto, senza dire niente: ogni risposta dello Shell abbastanza lunga ha accanto a 🔊 un pulsante 💾. Toccarlo apre un pannello con il titolo già proposto dal testo, il pilastro e il percorso di destinazione (preselezionato su quello aperto, se c'è), e un pulsante che salva. Non passa dal modello, non richiede una frase particolare, non richiede che un percorso sia aperto: è la strada che funziona sempre. Il testo salvato è quello INTERO e finisce sotto il nodo giusto se il titolo corrisponde a uno.
 - Salvare nel percorso quello che lo Shell ha appena prodotto: "salvalo nel percorso", "tienilo", "mettilo nel percorso attivo". Il testo NON viene riscritto dal modello: lo copia il programma dalla conversazione, per intero, e finisce nei documenti del percorso aperto. La card mostra prima quanto è lungo e come comincia, così si vede se sta per salvare il messaggio giusto. Serve perché la conversazione ha due limiti: lo Shell rivede solo gli ultimi sei messaggi, e sopra i quaranta messaggi i più vecchi escono dalla vista e finiscono in un archivio locale. Un contenuto lungo che resta solo in chat, fra un mese, non è più raggiungibile né dal Ghost né dallo Shell; dentro il percorso sì.
 - Rileggere un documento del percorso: "rileggimi l'Atto I", "riprendi i testi che abbiamo salvato", "mostrami quel pezzo". Il programma va a prendere il testo COMPLETO dal percorso aperto e lo mette davanti allo Shell PRIMA che risponda, così ci lavora sopra davvero invece di ricordarlo. Non chiede conferma: leggere non cambia niente. Se più di un documento corrisponde chiede quale, e se non lo trova lo dichiara invece di rispondere a memoria. Un documento molto lungo viene tagliato e la cosa viene detta.
 - Il percorso aperto viaggia con il suo fascicolo: quando c'è un percorso aperto (il fuoco), lo Shell riceve a ogni turno i suoi nodi con lo stato, le competenze, la memoria del percorso e l'indice dei documenti. È per questo che "continuiamo con l'Atto III" funziona senza dover rispiegare cos'è stato fatto. Il fuoco scade da solo dopo otto ore.
@@ -3277,6 +3278,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Nodi del percorso: ogni nodo si tocca e si apre, mostrando il materiale che gli è stato legato — i documenti col loro testo intero e le sessioni che lo nominano. Un nodo senza niente lo dichiara invece di aprirsi vuoto. La verifica (il quiz) è diventata un pulsante DENTRO il nodo aperto: prima era l'effetto obbligato del tocco, ora è una scelta.
 - Sotto quale nodo finisce quello che si salva: quando il Ghost dice "salvalo nel percorso", il programma confronta il titolo del materiale con le etichette dei nodi e lo lega a quello giusto — con lo spareggio sui numeri, così "Atto I" non finisce sotto "Atto II". Se nessun nodo corrisponde o se due corrispondono allo stesso modo, il documento resta del percorso senza nodo: meglio senza che sotto quello sbagliato.
 - Salvare qualcosa detto PRIMA dell'ultimo messaggio: il titolo che si dà al materiale fa anche da riferimento. "Salva i testi dell'Atto I nel percorso" fa cercare al programma, dentro la conversazione, il messaggio che parla dell'Atto I — non prende ciecamente il precedente. Se il riferimento non corrisponde a niente vale il più recente, e la card mostra sempre come comincia ciò che sta per essere salvato.
+- Quando manca il percorso aperto: se il Ghost chiede a voce di salvare qualcosa ma non c'è nessun percorso nel fuoco, l'azione non si rifiuta più — si apre lo stesso pannello del pulsante 💾, con il testo già trovato, e il percorso lo si sceglie lì. Serve perché il fuoco non c'è in due casi comunissimi: un percorso creato dal pannello del pilastro invece che dalla chat, e le otto ore di scadenza passate.
 - Documenti del percorso: nel percorso, sotto "Documenti del percorso", ognuno si tocca e si riapre per intero. Quando il Ghost riapre un percorso, lo Shell riceve l'indice di questo materiale — nome, data, lunghezza, come comincia — non i testi interi: sa che esistono e riparte da lì invece di ricominciare da capo. I documenti creati prima del 31/08/2026 hanno solo il nome, non il testo.
 - Andamento misurato (BIO): il programma calcola da solo le serie di peso e sonno dalle voci del log BIO — ultima misura, quanti giorni ha, variazione totale, variazione per settimana, quante misure — e le passa allo Shell e a Simbiosi già calcolate. Compaiono anche in BIO → Log, in un riquadro "Andamento misurato", nella stessa identica forma in cui le riceve il modello. Regola: se una tendenza non è in quel riquadro, il modello non l'ha ricevuta e non deve parlarne. Una misura sola non fa tendenza e viene dichiarata tale; una serie la cui ultima misura ha più di 7 giorni viene marcata "stantia", più di 30 "vecchia", e va detto invece di parlarne come se fosse di oggi. Non serve fare niente per attivarlo: legge i campi Peso e Sonno che le voci BIO hanno già, comprese quelle scritte dallo Shell durante una conversazione.
 - Controllo del piano alimentare: quando lo Shell genera un piano con più giorni, il programma lo rilegge e confronta con i vincoli dichiarati. Segnala in un riquadro, senza toccare il piano: alimenti esclusi che compaiono lo stesso (sa che il salmone è un pesce), giorni dichiarati che non ci sono, giorni identici fra loro, la stessa fonte proteica a pranzo e a cena, dosi assenti quando erano state chieste, colazioni dolci quando erano state chieste salate. Non giudica il piano: elenca fatti verificabili, con il giorno preciso.
@@ -4543,6 +4545,16 @@ function testoDaSalvare(messages, midDellaProposta = null, riferimento = "") {
   }
   // Nessun riferimento utile, o nessuna corrispondenza: vale il piu' recente, come prima.
   return { testo: candidati[0].testo, id: candidati[0].id, perRiferimento: false };
+}
+// 01/09/2026 — Il titolo che il pannello propone da solo: la prima intestazione markdown se c'e',
+// altrimenti la prima riga con del testo. Il Ghost puo' sempre riscriverlo — ma partire da un campo
+// vuoto significa, nove volte su dieci, un documento che si chiama "documento".
+function titoloSuggeritoDaTesto(testo) {
+  const righe = String(testo || "").split("\n").map((r) => r.trim()).filter(Boolean);
+  const intestazione = righe.find((r) => /^#{1,3}\s+\S/.test(r));
+  const grezzo = (intestazione ? intestazione.replace(/^#{1,3}\s+/, "") : (righe[0] || ""))
+    .replace(/\*\*/g, "").replace(/[:.]\s*$/, "").trim();
+  return grezzo ? troncaAConfineDiParola(grezzo, 60) : "";
 }
 // A quale nodo appartiene un documento. Nessun modello: si confrontano le parole piene del titolo
 // con quelle dell'etichetta del nodo, con lo stesso spareggio sui numeri gia' usato per riaprire un
@@ -6375,6 +6387,45 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   const [docTitle, setDocTitle] = useState("");
   // 01/09/2026 — di cosa deve parlare il documento, quando la conversazione ne contiene piu' d'una.
   const [docArgomento, setDocArgomento] = useState("");
+  // ── 01/09/2026 — LA STRADA CHE NON PUO' FALLIRE ────────────────────────────────────────────
+  // Il Ghost: "concretamente pero' non salva quanto prodotto, ho dovuto copiarlo e incollarlo io".
+  // Aveva ragione, e il difetto non e' nel salvataggio: e' che per arrivarci devono andare bene
+  // CINQUE cose di fila — la frase deve far partire la selezione, il modello deve scegliere
+  // salva_nel_percorso fra quindici azioni, l'interruttore deve essere acceso, ci deve essere un
+  // percorso NEL FUOCO (e il fuoco scade dopo otto ore, e non si accende se il percorso e' stato
+  // creato dal pannello invece che dalla chat), e il programma deve pescare il messaggio giusto.
+  // Se una qualunque salta non succede niente, e da fuori non si capisce quale.
+  // Questa e' l'altra strada, e non ha nessuno di quei cinque anelli: un pulsante SUL MESSAGGIO,
+  // sempre presente, che apre un pannello dove si sceglie il percorso e si salva. Nessun modello,
+  // nessuna frase da indovinare, nessun fuoco richiesto. E' lo stesso principio dei segni "→ VIDYA"
+  // sotto i messaggi: il gesto sta dove sta la cosa.
+  const [salvaDa, setSalvaDa] = useState(null); // { mid, testo, titolo }
+  const [salvaPil, setSalvaPil] = useState("vidya");
+  const [salvaPercorsoId, setSalvaPercorsoId] = useState("");
+  const [salvaEsito, setSalvaEsito] = useState("");
+  const apriSalvataggio = (mid, testo, titoloProposto = "") => {
+    const f = leggiFuoco();
+    const p = percorsoDelFuoco(f);
+    const pil = p ? (PILASTRI_NOMI.find((k) => (percorsi[k] || []).some((x) => x.id === p.id)) || "vidya") : salvaPil;
+    setSalvaPil(pil);
+    setSalvaPercorsoId(p ? p.id : ((percorsi[pil] || [])[0]?.id || ""));
+    setSalvaEsito("");
+    setSalvaDa({ mid, testo: String(testo || ""), titolo: titoloProposto || titoloSuggeritoDaTesto(testo) });
+  };
+  const salvaOra = () => {
+    const lista = percorsi[salvaPil] || [];
+    const target = lista.find((p) => p.id === salvaPercorsoId);
+    if (!target) { setSalvaEsito("Scegli un percorso di destinazione."); return; }
+    const titolo = (salvaDa.titolo || "").trim() || `Dalla conversazione del ${fmtDate(new Date())}`;
+    const nodoId = nodoPerDocumento(target.topics, titolo);
+    const doc = { id: uid(), name: `${titolo}.md`, title: titolo, text: salvaDa.testo, date: new Date().toISOString(), driveId: null, origine: "chat", messaggioId: salvaDa.mid, nodoId };
+    setPercorsi[salvaPil](lista.map((p) => (p.id === target.id ? { ...p, documents: [doc, ...(p.documents || [])] } : p)));
+    vibra(salvaPil);
+    registraAzione({ fase: "eseguita", azioneId: "salva_nel_percorso", etichetta: titolo, percorso: target.title, caratteri: salvaDa.testo.length, daPulsante: true });
+    const nodo = nodoId ? (target.topics.find((t) => t.id === nodoId)?.label || "") : "";
+    setSalvaEsito(`✓ Salvato in "${target.title}"${nodo ? `, sotto il nodo "${nodo}"` : ""} — ${salvaDa.testo.length} caratteri, per intero.`);
+    setSalvaDa((s) => (s ? { ...s, fatto: true } : s));
+  };
   const [docTargetPillar, setDocTargetPillar] = useState("bio");
   const [docTargetId, setDocTargetId] = useState("");      // id percorso esistente, o "" = nuovo
   const [docNewTitle, setDocNewTitle] = useState("");       // titolo del nuovo percorso se docTargetId vuoto
@@ -7397,12 +7448,21 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   // Ghost puo' aver chiuso o cambiato percorso (stessa regola gia' applicata ad avanza/chiudi).
   const eseguiSalvaNelPercorso = (mid, parametro) => {
     const f = leggiFuoco();
+    // 01/09/2026 — QUI LA CATENA SI SPEZZAVA PIU' SPESSO. Senza un percorso nel fuoco l'azione si
+    // rifiutava e finiva li': il testo restava in chat e il Ghost doveva copiarselo a mano. Ma il
+    // fuoco non c'e' in due casi comunissimi — il percorso creato dal pannello di VIDYA invece che
+    // dalla chat, e le otto ore passate. Adesso il gesto non muore: si apre il pannello di
+    // salvataggio con il testo gia' trovato, e il percorso lo si sceglie li'.
     if (f.tipo !== "percorso") {
-      const motivo = f.tipo === "nessuno"
-        ? "non c'è nessun percorso aperto: dimmi quale riprendere, o creiamone uno"
-        : "quello aperto è un Seme, non un percorso — i documenti stanno nei percorsi";
-      aggiornaAzione(mid, { tipo: "rifiutato", motivo });
-      registraAzione({ fase: "rifiutata", azioneId: "salva_nel_percorso", motivo });
+      const materiale = testoDaSalvare(messages, mid, String(parametro || ""));
+      if (!materiale) {
+        aggiornaAzione(mid, { tipo: "rifiutato", motivo: `qui sopra non trovo un contenuto lungo almeno ${LUNGHEZZA_MINIMA_SALVABILE} caratteri da salvare` });
+        registraAzione({ fase: "rifiutata", azioneId: "salva_nel_percorso", motivo: "nessun materiale abbastanza lungo" });
+        return;
+      }
+      aggiornaAzione(mid, { tipo: "scegli-percorso" });
+      apriSalvataggio(mid, materiale.testo, String(parametro || ""));
+      registraAzione({ fase: "proposta", azioneId: "salva_nel_percorso", motivo: "nessun percorso nel fuoco: scelta manuale", caratteri: materiale.testo.length });
       return;
     }
     const pil = PILASTRI_NOMI.find((k) => (percorsi[k] || []).some((p) => p.id === f.id));
@@ -8018,6 +8078,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
             ${azioneStatus[mid]?.tipo === "seme" && html`<div class="r-ok">✓ Salvato come Seme AIR — lo trovi in AIR → Percorsi.</div>`}
             ${azioneStatus[mid]?.tipo === "avanza" && html`<div class="r-ok">✓ Fuoco su ${azioneStatus[mid].etichetta} — chiedimi pure il prossimo passo.</div>`}
             ${azioneStatus[mid]?.tipo === "chiuso" && html`<div class="r-ok">✓ Chiuso: ${azioneStatus[mid].etichetta}. Resta tutto com'era — dimmi "riprendi" quando vuoi tornarci.</div>`}
+            ${azioneStatus[mid]?.tipo === "scegli-percorso" && html`<div class="r-hub-detail">Non c'è nessun percorso aperto: scegline uno qui sotto e lo salvo lì.</div>`}
             ${azioneStatus[mid]?.tipo === "percorso-creato" && html`<div class="r-ok">✓ Percorso "${azioneStatus[mid].titolo}" creato in ${azioneStatus[mid].pilastro.toUpperCase()}, ${azioneStatus[mid].nodi} nodi. È quello aperto adesso: quello che generiamo lo posso salvare lì dentro.</div>`}
             ${azioneStatus[mid]?.tipo === "salvato-nel-percorso" && html`<div class="r-ok">✓ "${azioneStatus[mid].titolo}" salvato per intero (${azioneStatus[mid].caratteri} caratteri) nel percorso ${azioneStatus[mid].percorso}${azioneStatus[mid].nodo ? `, sotto il nodo "${azioneStatus[mid].nodo}"` : ""}. Lo ritrovi lì fra un mese, anche quando questa conversazione sarà stata compattata.</div>`}
             ${/* BLOCCO 3 §3.1 — la verifica di ritorno mostrata al Ghost. "Verificata" vuol dire
@@ -8143,7 +8204,36 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
               ${m.usedWebSearch && html`<span class="r-badge" style="border-color:${C.core};color:${C.core}">🌐 WEB</span>`}
               ${m.actions && m.actions.length > 0 && html`<div class="r-shell-actions">${m.actions.map((a) => html`<span class="r-badge" style="border-color:${coloreDelSegno(a)};color:${coloreDelSegno(a)}">→ ${a}</span>`)}</div>`}
               ${m.role === "assistant" && html`<button class="r-shell-speak-btn" onClick=${() => toggleSpeak(mid, m.content)} title=${speakingId === mid ? "Interrompi" : "Riascolta"}>${speakingId === mid ? "⏹" : "🔊"}</button>`}
+              ${m.role === "assistant" && String(m.content || "").trim().length >= LUNGHEZZA_MINIMA_SALVABILE && html`<button class="r-shell-speak-btn"
+                title="Salva questo testo in un percorso"
+                onClick=${() => (salvaDa?.mid === mid ? setSalvaDa(null) : apriSalvataggio(mid, m.content))}>${salvaDa?.mid === mid ? "✕" : "💾"}</button>`}
             </div>
+            ${salvaDa?.mid === mid && html`<div class="r-draft-card">
+              <div class="r-draft-label">▸ SALVO QUESTO TESTO IN UN PERCORSO</div>
+              <div class="r-hub-detail">${salvaDa.testo.length} caratteri, per intero. Resta lì anche quando questa conversazione sarà stata compattata.</div>
+              <${Field} label="Titolo del materiale">
+                <input class="r-input" value=${salvaDa.titolo} onInput=${(e) => setSalvaDa((sd) => ({ ...sd, titolo: e.target.value }))} />
+              </${Field}>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <${Field} label="Pilastro">
+                  <select class="r-input" value=${salvaPil} onChange=${(e) => { setSalvaPil(e.target.value); setSalvaPercorsoId((percorsi[e.target.value] || [])[0]?.id || ""); }}>
+                    ${PILASTRI_NOMI.map((k) => html`<option value=${k}>${k.toUpperCase()}</option>`)}
+                  </select>
+                </${Field}>
+                <${Field} label="Percorso">
+                  <select class="r-input" value=${salvaPercorsoId} onChange=${(e) => setSalvaPercorsoId(e.target.value)}>
+                    ${(percorsi[salvaPil] || []).length
+                      ? (percorsi[salvaPil] || []).map((p) => html`<option value=${p.id}>${p.title}</option>`)
+                      : html`<option value="">— nessun percorso in ${salvaPil.toUpperCase()} —</option>`}
+                  </select>
+                </${Field}>
+              </div>
+              ${salvaEsito ? html`<div class=${salvaEsito.startsWith("✓") ? "r-ok" : "r-error"}>${salvaEsito}</div>` : ""}
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                ${!salvaDa.fatto && html`<button class="r-btn r-draft-copy" onClick=${salvaOra}>Salva nel percorso</button>`}
+                <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => setSalvaDa(null)}>${salvaDa.fatto ? "Chiudi" : "Annulla"}</button>
+              </div>
+            </div>`}
             ${m.anochin && html`<${AnochinTrace} trace=${m.anochin} />`}
           </div>`} />`; })}
       ${sending && html`<div class="r-shell-row assistant"><div class="r-shell-listening"><span class="r-listening-dot"></span><span class="r-listening-dot"></span><span class="r-listening-dot"></span> <span class="r-listening-text">sto leggendo tra le righe…</span></div></div>`}
