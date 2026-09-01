@@ -429,3 +429,26 @@ describe("l'inventario dice cosa contiene un percorso, non solo che esiste (01/0
     assert.match(inv, /BIO: nessun percorso aperto/);
   });
 });
+
+describe("titoloSuggeritoDaTesto — il pannello non parte da un campo vuoto (01/09/2026)", () => {
+  // Partire da vuoto significa, nove volte su dieci, un documento che si chiama "documento".
+  test("prende l'intestazione markdown quando c'è", () => {
+    assert.equal(app.titoloSuggeritoDaTesto("# Atto I: Origine\n\nPulsazione. Battito."), "Atto I: Origine");
+    assert.equal(app.titoloSuggeritoDaTesto("Premessa\n\n## Mappa sonora\n\nDettagli"), "Mappa sonora");
+  });
+  test("altrimenti la prima riga con del testo", () => {
+    assert.equal(app.titoloSuggeritoDaTesto("\n\n  ATTO II: Complessità  \nNervo, Occhio"), "ATTO II: Complessità");
+  });
+  test("toglie il grassetto e i due punti finali, che nel nome di un file non servono", () => {
+    assert.equal(app.titoloSuggeritoDaTesto("**Sintesi esecutiva:**\ntesto"), "Sintesi esecutiva");
+  });
+  test("un titolo lunghissimo viene tagliato a confine di parola", () => {
+    const lungo = "Canovaccio dell'architettura narrativa e sonora del concept album sulla fragilità dell'esistenza";
+    const t = app.titoloSuggeritoDaTesto(lungo);
+    assert.ok(t.length <= 61, `lungo ${t.length}`);
+    assert.match(t, /…$/);
+  });
+  test("un testo vuoto non produce un titolo finto", () => {
+    for (const v of ["", "   \n\n  ", null, undefined]) assert.equal(app.titoloSuggeritoDaTesto(v), "");
+  });
+});
