@@ -88,6 +88,8 @@ const EXPORT_NAMES = [
   "nodoPerDocumento", "materialeDelNodo", "numeriDelTitolo",
   "contaPercorso", "costruisciInventario",
   "finestraConversazione", "ORE_DI_STACCO_CONVERSAZIONE", "titoloSuggeritoDaTesto",
+  "senzaDeliberazione", "testoDelMagio", "LUNGHEZZA_MINIMA_MAGI", "MAGI_TETTO_PAROLE",
+  "documentoDaContesto", "cercaNellaMemoria", "TETTO_DOCUMENTO_IN_RICERCA",
 ];
 
 // Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.

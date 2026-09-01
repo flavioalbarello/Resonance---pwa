@@ -42,7 +42,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-09-01 · un-gesto-che-salva-sempre";
+const APP_BUILD = "2026-09-01 · il-ragionamento-fuori-dallo-schermo";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -312,7 +312,30 @@ function trovaDocumentoNelPercorso(percorso, riferimento) {
   }
   return aPari.length > 1
     ? { esito: "ambiguo", candidati: aPari.map((x) => x.doc), motivo: "più di un documento corrisponde allo stesso modo" }
-    : { esito: "trovato", doc: aPari[0].doc, candidati: [aPari[0].doc] };
+    // viaPunteggio: qui il documento è stato scelto perché parole vere della frase stanno nel suo
+    // titolo. Gli altri due "trovato" qui sopra non sono la stessa cosa — sono "ce n'è uno solo,
+    // quindi è quello", che va benissimo quando il Ghost ha CHIESTO di aprire un documento e non va
+    // affatto bene per l'apertura automatica (vedi documentoDaContesto): allegherebbe lo stesso
+    // testo a ogni turno di ogni percorso con un solo documento dentro.
+    : { esito: "trovato", doc: aPari[0].doc, candidati: [aPari[0].doc], viaPunteggio: true };
+}
+// ── 01/09/2026 — IL DOCUMENTO CHE NESSUNO AVEVA CHIESTO DI APRIRE ────────────────────────────────
+// Il Ghost: "non mi sembra che legga i documenti del percorso e di conseguenza perde contesto".
+// È esatto, ed era per costruzione. Con un percorso aperto, allo Shell arrivava l'INDICE dei
+// documenti (titolo, data, lunghezza, 180 caratteri d'inizio) — sapere che esistono, non cosa
+// dicono. Il testo intero arrivava solo se il modello sceglieva l'azione apri_documento, cioè solo
+// dopo essere passato dal turno di selezione, che è la stessa strozzatura che il 25/08 si era già
+// mangiata "cancella" e il 31/08 "genera": se la frase non somiglia a un comando, non si apre
+// niente e il modello risponde su un ricordo invece che sul testo.
+// Qui il programma cerca da solo, prima del turno, senza chiedere il permesso al modello: se nella
+// frase del Ghost ci sono parole che stanno nel titolo di un documento del percorso aperto, quel
+// documento entra nel turno per intero. Deterministico, zero token di selezione.
+// Il freno al costo è viaPunteggio: senza corrispondenza vera non si allega niente. "Che ne pensi?"
+// non trascina dentro dodicimila caratteri; "riprendiamo l'Atto III" sì.
+function documentoDaContesto(percorso, frase) {
+  if (!percorso || !String(frase || "").trim()) return null;
+  const trovato = trovaDocumentoNelPercorso(percorso, frase);
+  return trovato.esito === "trovato" && trovato.viaPunteggio ? { ...trovato, automatico: true } : null;
 }
 // Il tetto esiste perché un documento può essere lungo quanto si vuole e il turno no. Tagliare
 // dichiarandolo è l'unica forma onesta: il modello sa di avere una parte, non crede di avere tutto.
@@ -442,13 +465,36 @@ function fondiOAggiungiVoce(voci, nuova, soglia = SOGLIA_VOCE_GEMELLA) {
 // cose che non si somigliano affatto, unite solo dall'essere state pensate insieme. Per un pensiero
 // arborescente vale piu' della somiglianza di dominio, che riporta cose a cui si arriverebbe da soli.
 const CONTIGUITA_TETTO = 2; // pochi, e dichiarati come tali: e' un accostamento, non un risultato
-function cercaNellaMemoria(argomento, memory) {
+// 01/09/2026 — quanto di un documento entra in un risultato di ricerca. Un frammento di memoria sta
+// sotto il migliaio di caratteri per costruzione; un documento di percorso puo' essere lungo quanto
+// si vuole, e riversato intero qui coprirebbe tutti gli altri risultati.
+const TETTO_DOCUMENTO_IN_RICERCA = 600;
+// 01/09/2026 — LA RICERCA CHE NON GUARDAVA DOVE C'ERA PIU' ROBA.
+// interroga_memoria cercava nelle note correnti e nel sedimento dei tre pilastri, e basta. I testi
+// prodotti dentro i percorsi — gli Atti dell'opera, cioe' il materiale piu' lungo e piu' lavorato
+// che il sistema conserva — non venivano mai guardati: la funzione che cerca non passava nemmeno
+// vicino a `percorsi`. "Cosa avevamo detto sull'Atto III" rispondeva "non ho trovato niente".
+// Da qui i documenti, le competenze accumulate e la memoria locale di ogni percorso sono corpus
+// come tutto il resto. La forma dei risultati non cambia (pilastro/date/text): cambia `dove`, che
+// dice da quale percorso viene — perche' un frammento senza provenienza non e' un recupero.
+function cercaNellaMemoria(argomento, memory, percorsi = null) {
   const parole = paroleUtili(argomento);
   const tutti = [];
   for (const pil of ["bio", "air", "vidya"]) {
     const m = memory?.[pil];
     if (m?.corrente) tutti.push({ pilastro: pil, id: "corrente-" + pil, date: null, text: m.corrente, chiavi: [], corrente: true });
     for (const f of m?.sedimento || []) tutti.push({ pilastro: pil, id: f.id, date: f.date, text: f.text, chiavi: f.chiavi || [] });
+    for (const p of percorsi?.[pil] || []) {
+      for (const d of p.documents || []) {
+        const testo = String(d?.text || "").trim();
+        if (!testo) continue;
+        // Il titolo entra fra le chiavi: cosi' "Atto III" trova il documento anche quando quelle
+        // parole nel corpo del testo non ci sono (strato 1, gia' previsto qui).
+        tutti.push({ pilastro: pil, id: `doc-${p.id}-${d.id || d.title}`, date: d.date || null, text: troncaAConfineDiParola(testo, TETTO_DOCUMENTO_IN_RICERCA), chiavi: [d.title || d.name || "", p.title || ""], dove: `documento "${d.title || d.name}" nel percorso "${p.title}"` });
+      }
+      if (p.competenze) tutti.push({ pilastro: pil, id: `comp-${p.id}`, date: null, text: p.competenze, chiavi: [p.title || ""], dove: `competenze accumulate nel percorso "${p.title}"` });
+      if (p.localMemory) tutti.push({ pilastro: pil, id: `loc-${p.id}`, date: null, text: p.localMemory, chiavi: [p.title || ""], dove: `memoria specifica del percorso "${p.title}"` });
+    }
   }
   if (!parole.length) return { frammenti: [], perContiguita: [], doveHoGuardato: "nessuna parola utile nella richiesta", totaleEsaminati: tutti.length };
   const punteggiati = tutti.map((f) => {
@@ -471,7 +517,7 @@ function cercaNellaMemoria(argomento, memory) {
   return {
     frammenti: trovati,
     perContiguita,
-    doveHoGuardato: `nelle note correnti e nei frammenti dei tre pilastri (${tutti.length} in tutto)`,
+    doveHoGuardato: `nelle note correnti, nei frammenti dei tre pilastri e nei documenti dei percorsi (${tutti.length} in tutto)`,
     totaleEsaminati: tutti.length,
   };
 }
@@ -2764,15 +2810,119 @@ function memoriaEstesaPerMagi(memory) {
     const frag = (m?.sedimento || []).slice(-MAGI_FRAMMENTI_PER_PILASTRO);
     if (!frag.length) return `${pil.toUpperCase()}: ${corrente}`;
     const storia = frag
-      .map((f) => `[${fmtDate(f.date)}] ${String(f.text || "").slice(0, MAGI_TETTO_FRAMMENTO)}${String(f.text || "").length > MAGI_TETTO_FRAMMENTO ? "…" : ""}`)
+      // troncaAConfineDiParola e non .slice(): un frammento tagliato a metà parola arriva a
+      // Balthasar come un termine che non esiste, ed è materiale che deve ISPIRARE una divergenza —
+      // una parola mozzata è rumore che il modello prova a interpretare.
+      .map((f) => `[${fmtDate(f.date)}] ${troncaAConfineDiParola(String(f.text || ""), MAGI_TETTO_FRAMMENTO)}`)
       .join(" · ");
     return `${pil.toUpperCase()}: ${corrente}\n  ${pil.toUpperCase()} — come si e' riorganizzato prima (dal piu' vecchio al piu' recente): ${storia}`;
   };
   return `\n\nMemoria procedurale accumulata sui pilastri — nota corrente e storia datata di come il sistema si e' riorganizzato finora. Leggila per generare una perturbazione radicata in questa storia reale, non generica: se una direzione e' gia' stata attraversata e riattraversata, spingere di nuovo li' e' l'unica cosa che non serve a niente.\n${["bio", "air", "vidya"].map(perPilastro).join("\n")}`;
 }
+// ══════════════════════════════════════════════════════════════════════════════
+// 01/09/2026 — NON ERA PROLISSITÀ: ERA IL RAGIONAMENTO INTERNO STAMPATO SULLO SCHERMO
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost, sulla terza Agorà: "non ti sembra troppo prolisso? quanti token sprechiamo così?".
+// Guardando le schermate, quello che si legge sotto MELCHIOR non è una risposta lunga — è la
+// deliberazione del modello, parola per parola: «Devo: 1. Rispondere come MELCHIOR… Contiamo:
+// Operazione(1) eseguibile:(2)… 56 parole. Perfetto. Ultimo controllo: "produce—non" il trattino
+// potrebbe contare come parola? … Versione pulita: …» — e SOLO in fondo la risposta vera, di 56
+// parole. Il resto, centinaia di parole, è scarto generato e pagato.
+// Perché non bastava `reasoning: { enabled: false }`, che è già impostato in tutte e due le
+// costruzioni del corpo di askOpenRouter: quel campo spegne il canale di ragionamento SEPARATO.
+// Qui il modello non lo sta usando — sta scrivendo la deliberazione dentro `content`, dove per il
+// protocollo è indistinguibile dalla risposta. Nessuna impostazione può separarli: vanno separati
+// dalla FORMA della risposta.
+// La forma scelta è quella che l'app usa già ovunque serva un campo e non un discorso: JSON.
+// Il ragionamento che il modello scrive prima resta FUORI dal blocco JSON, e extractJsonBlock —
+// scritto nel 2026 esattamente per i preamboli di Llama/Kimi/DeepSeek — lo scarta senza sapere
+// cos'è. Non è un filtro che indovina: è un contenitore in cui la deliberazione non entra.
+// Il ripiego (JSON rotto) non butta la chiamata: pota la deliberazione dalle righe di testa e
+// consegna il resto. Meglio una risposta con qualche riga di troppo che una schermata vuota su una
+// chiamata già pagata — è la stessa scelta presa il 29/08 dentro askWithDegenerateGuard.
+// La scarto NON è stimato: ogni stadio registra caratteri grezzi e caratteri usati (type:
+// "magi-forma"), così quanto si spreca davvero si legge nel registro invece di indovinarlo.
+const MAGI_TETTO_TOKEN = 900;
+// I tetti di parole per stadio. Prima erano uno solo, 70, scritto nel contesto comune: valeva
+// quindi anche per la Sintesi, che deve contenere gli altri tre. Ora sono dichiarati per ruolo.
+const MAGI_TETTO_PAROLE = { balthasar: 60, melchior: 60, caspar: 50, magi_synthesis: 70 };
+// La richiesta del Ghost, alla lettera: "qualcosa di più sintetico, senza però perdere contenuto,
+// come se avessi l'ADHD". Non è "scrivi meno": è una riga per idea, densa, senza il tessuto
+// connettivo che in un testo lungo serve a non perdersi e in una risposta breve è solo peso.
+const MAGI_FORMA = `FORMA DELLA RISPOSTA — vincolante.
+Rispondi SOLO con questo JSON, niente prima e niente dopo, nessun blocco markdown:
+{"testo": "· prima riga\\n· seconda riga"}
+Dentro "testo": righe brevissime separate da \\n, UNA idea per riga, ognuna che comincia con "· ".
+Nessuna premessa, nessuna ripetizione della domanda, nessuna chiusura riepilogativa.
+Nomi, numeri, verbi concreti al posto degli aggettivi. Se una riga si può togliere senza perdere un fatto, toglila.
+Il tuo ragionamento interno NON va dentro "testo": niente conteggi di parole, niente "devo", niente controlli, niente versioni intermedie. Solo la risposta.`;
+// Sotto questa soglia una potatura ha mangiato la risposta invece della deliberazione: si tiene
+// quello che c'era prima. Un ripiego che cancella il contenuto è peggio del difetto che cura.
+const LUNGHEZZA_MINIMA_MAGI = 40;
+// Il modello dichiara lui stesso dove finisce il ragionamento ("Versione pulita:"): quando c'è, è
+// il segnale più affidabile che esista, più di qualunque euristica sulle singole righe.
+const MARCATORE_RISPOSTA_FINALE_RE = /(?:^|\n)[^\S\n]*(?:\*\*|##)?\s*(?:versione (?:pulita|finale|definitiva|corretta)|risposta (?:finale|definitiva|pulita)|output finale|testo finale)\s*(?:\*\*)?\s*:?[^\S\n]*\n?/gi;
+// Righe di deliberazione osservate dal vivo il 01/09. Si applicano SOLO alle righe di testa (vedi
+// senzaDeliberazione): un blocco in mezzo non si tocca, perché lì tagliare sarebbe indovinare.
+const RIGA_DI_DELIBERAZIONE_RE = /^\s*(?:\*\*)?(?:devo\b|dovrei\b|ok[,.]|okay\b|contiamo\b|conto\b|ricontroll\w*\b|ultimo controllo\b|verifico\b|aspetta\b|hmm+\b|quindi devo\b|il mio compito\b|mi viene chiesto\b|l'utente (?:chiede|vuole|mi)\b|riformul\w*\b|riscrivo\b|proviamo\b|circa \d+ parole|\d+ parole\b|bene\.|perfetto\.|\d+[.)]\s*(?:rispondere|scrivere|generare|tradurre|verificare)\b)/i;
+function senzaDeliberazione(raw) {
+  const testo = String(raw || "").trim();
+  if (!testo) return "";
+  let corpo = testo;
+  const marcatori = [...testo.matchAll(MARCATORE_RISPOSTA_FINALE_RE)];
+  if (marcatori.length) {
+    const ultimo = marcatori[marcatori.length - 1];
+    const dopo = testo.slice(ultimo.index + ultimo[0].length).trim();
+    if (dopo.length >= LUNGHEZZA_MINIMA_MAGI) corpo = dopo;
+  }
+  const righe = corpo.split("\n");
+  let i = 0;
+  while (i < righe.length && (!righe[i].trim() || RIGA_DI_DELIBERAZIONE_RE.test(righe[i]))) i++;
+  const potate = righe.slice(i).join("\n").trim();
+  return potate.length >= LUNGHEZZA_MINIMA_MAGI ? potate : corpo;
+}
+// Legge la risposta di uno stadio: prima il contenitore, poi il ripiego. Restituisce anche la
+// misura dello scarto — è il numero che il Ghost ha chiesto, e va misurato, non stimato.
+function testoDelMagio(raw) {
+  const grezzo = String(raw || "");
+  const blocco = extractJsonBlock(grezzo);
+  if (blocco) {
+    try {
+      const dati = JSON.parse(stripTrailingCommas(sanitizeJsonControlChars(blocco)));
+      const testo = String(dati?.testo ?? dati?.risposta ?? dati?.output ?? "").trim();
+      if (testo) return { testo, viaJson: true, caratteriGrezzi: grezzo.length, caratteriUsati: testo.length };
+    } catch { /* JSON rotto: si ripiega sulla potatura, non si perde una chiamata già pagata */ }
+  }
+  const testo = senzaDeliberazione(grezzo);
+  return { testo, viaJson: false, caratteriGrezzi: grezzo.length, caratteriUsati: testo.length };
+}
+// Un solo punto di chiamata per tutti e quattro gli stadi. Prima erano quattro askModel scritti a
+// mano, ognuno con i suoi parametri: è il motivo per cui Caspar era l'unico senza guardia
+// anti-degenerazione e la Sintesi era rimasta a lungo senza tracciamento costi.
+// ANTI_LOOP_PENALTIES non si passa più: il commento sopra ANTI_LOOP_PENALTIES dice — e resta vero —
+// che quelle penalità non vanno MAI su chiamate che generano JSON, perché penalizzano anche la
+// ripetizione strutturale di virgolette e parentesi. Da adesso questi quattro stadi generano JSON.
+// Il freno contro i loop resta askWithDegenerateGuard, che ora copre anche Caspar.
+async function chiediAlMagio(nome, system, question, temperatura, settings, pushDebugLog, opts = {}) {
+  const { webSearch = false, onRaw = null } = opts;
+  const grezzo = await askWithDegenerateGuard(
+    () => askModel(`${system}\n\n${MAGI_FORMA}`, question, temperatura, MAGI_TETTO_TOKEN, settings, webSearch, null, (raw) => {
+      onRaw?.(raw);
+      logAiCost(pushDebugLog, nome, settings.model, raw);
+    }),
+    nome, pushDebugLog
+  );
+  const letto = testoDelMagio(grezzo);
+  pushDebugLog?.({
+    type: "magi-forma", magio: nome, viaJson: letto.viaJson,
+    caratteriGrezzi: letto.caratteriGrezzi, caratteriUsati: letto.caratteriUsati,
+    scartati: Math.max(0, letto.caratteriGrezzi - letto.caratteriUsati), error: null,
+  });
+  return letto.testo || grezzo;
+}
 async function runTriadeMagi(question, onStage, settings, opts = {}, pushDebugLog = null) {
   const { memory = null, targetPillar = null, intensity = "media" } = opts;
-  const baseCtx = `${nowContext()} Contesto: sei parte del sistema "Resonance", framework di sviluppo personale del Ghost (Flavio), tre pilastri: BIO (salute), AIR (autonomia economica), VIDYA (crescita creativa/cognitiva). Sei l'unico polo di perturbazione deliberata del sistema — gli altri meccanismi mantengono, tu spingi oltre la cristallizzazione. Rispondi in italiano, diretto, max 70 parole, senza premesse.`;
+  const baseCtx = `${nowContext()} Contesto: sei parte del sistema "Resonance", framework di sviluppo personale del Ghost (Flavio), tre pilastri: BIO (salute), AIR (autonomia economica), VIDYA (crescita creativa/cognitiva). Sei l'unico polo di perturbazione deliberata del sistema — gli altri meccanismi mantengono, tu spingi oltre la cristallizzazione. Rispondi in italiano, diretto, senza premesse.`;
   const memoriaCtx = memoriaEstesaPerMagi(memory);
   const targetCtx = targetPillar ? `\n\nQuesta perturbazione è MIRATA al pilastro ${targetPillar.toUpperCase()}.` : "";
   // Intensità: modula la temperatura di Balthasar. Su Claude-direct il tetto resta 1.0 (già gestito da askModel).
@@ -2782,26 +2932,24 @@ async function runTriadeMagi(question, onStage, settings, opts = {}, pushDebugLo
   // già noti al Ghost e suona come "eco". Web search solo su OpenRouter (Claude-direct non supporta
   // questo tool nel client attuale) — degrada silenziosamente a perturbazione da sola immaginazione.
   const balthasarWebSearch = settings.provider === "openrouter";
-  const balthasarPrompt = `${baseCtx}${memoriaCtx}${targetCtx} Sei BALTHASAR, il Perturbatore.${balthasarWebSearch ? " Hai accesso alla ricerca web: usala per ancorare la perturbazione a un dato, caso o approccio reale non ancora noto al Ghost — non limitarti a rimescolare concetti che già possiede." : ""} Genera una divergenza evolutiva su questo tema, audace, non convenzionale — a intensità "${intensity}" (leggera = uno spostamento laterale; profonda = una rottura vera con l'assetto attuale).${balthasarWebSearch ? ` Cita SOLO fonti, servizi o domini effettivamente presenti nei risultati di ricerca che hai ricevuto: se non puoi attribuire un dato a una fonte reale, ometti l'attribuzione o dichiara che è una stima non verificata. Non inventare MAI nomi di siti, aziende o servizi — è già successo il 26/07/2026 e il programma adesso controlla.` : ""}`;
+  const balthasarPrompt = `${baseCtx}${memoriaCtx}${targetCtx} Sei BALTHASAR, il Perturbatore. Massimo ${MAGI_TETTO_PAROLE.balthasar} parole.${balthasarWebSearch ? " Hai accesso alla ricerca web: usala per ancorare la perturbazione a un dato, caso o approccio reale non ancora noto al Ghost — non limitarti a rimescolare concetti che già possiede." : ""} Genera una divergenza evolutiva su questo tema, audace, non convenzionale — a intensità "${intensity}" (leggera = uno spostamento laterale; profonda = una rottura vera con l'assetto attuale).${balthasarWebSearch ? ` Cita SOLO fonti, servizi o domini effettivamente presenti nei risultati di ricerca che hai ricevuto: se non puoi attribuire un dato a una fonte reale, ometti l'attribuzione o dichiara che è una stima non verificata. Non inventare MAI nomi di siti, aziende o servizi — è già successo il 26/07/2026 e il programma adesso controlla.` : ""}`;
   // La stessa diagnostica del Balthasar-del-Seme, finalmente anche qui: si legge cio' che la
   // risposta porta gia' con se', nessuna chiamata in piu'.
   const webSearchDiag = diagnosticaVuota();
-  const balthasar = await askWithDegenerateGuard(
-    () => askModel(balthasarPrompt, question, balthasarTemp, 1600, settings, balthasarWebSearch, null, (raw) => {
-      if (balthasarWebSearch) leggiDiagnosticaRicerca(raw, webSearchDiag);
-      logAiCost(pushDebugLog, "balthasar", settings.model, raw);
-    }, ANTI_LOOP_PENALTIES),
-    "balthasar", pushDebugLog
-  );
+  const balthasar = await chiediAlMagio("balthasar", balthasarPrompt, question, balthasarTemp, settings, pushDebugLog, {
+    webSearch: balthasarWebSearch,
+    onRaw: (raw) => { if (balthasarWebSearch) leggiDiagnosticaRicerca(raw, webSearchDiag); },
+  });
   // Il sospetto si calcola SEMPRE, anche senza ricerca: senza citazioni reali qualunque nome
   // fabbricato resta senza riscontro, ed e' esattamente il caso in cui va segnalato.
   const possibleHallucinatedSource = detectPossibleHallucinatedSource(balthasar, question, webSearchDiag.citationDomains);
   pushDebugLog?.({ type: "balthasar-fonti", ricercaAttiva: balthasarWebSearch, toolInvoked: webSearchDiag.toolInvoked, citazioni: webSearchDiag.citationCount, domini: webSearchDiag.citationDomains, possibileFonteInventata: possibleHallucinatedSource });
   onStage("balthasar", balthasar);
   onStage("melchior", null);
-  const melchior = await askWithDegenerateGuard(
-    () => askModel(`${baseCtx} Sei MELCHIOR, il Traduttore. Traduci questa idea in azione concretamente eseguibile.\n\nIdea di Balthasar: "${balthasar}"`, question, 0.7, 1600, settings, false, null, (raw) => logAiCost(pushDebugLog, "melchior", settings.model, raw), ANTI_LOOP_PENALTIES),
-    "melchior", pushDebugLog
+  const melchior = await chiediAlMagio(
+    "melchior",
+    `${baseCtx} Sei MELCHIOR, il Traduttore. Traduci questa idea in azione concretamente eseguibile. Massimo ${MAGI_TETTO_PAROLE.melchior} parole.\n\nIdea di Balthasar: "${balthasar}"`,
+    question, 0.7, settings, pushDebugLog
   );
   onStage("melchior", melchior);
   onStage("caspar", null);
@@ -2811,7 +2959,11 @@ async function runTriadeMagi(question, onStage, settings, opts = {}, pushDebugLo
   const casparIdentityLine = CURRENT_GHOST_PROFILE.hasProfessionalConstraint
     ? `compartimentazione identità professionale (${CURRENT_GHOST_PROFILE.professionalIdentity} mai esposta)`
     : "nessun vincolo di compartimentazione professionale dichiarato";
-  const caspar = await askModel(`${baseCtx} Sei CASPAR, l'Ancora. Verifica il piano contro i vincoli assoluti: salute, tempo lineare del Ghost, sostenibilità economica, ${casparIdentityLine}. ${containmentCtx}\n\nPiano: "${melchior}"`, question, 0.2, 1600, settings, false, null, (raw) => logAiCost(pushDebugLog, "caspar", settings.model, raw));
+  const caspar = await chiediAlMagio(
+    "caspar",
+    `${baseCtx} Sei CASPAR, l'Ancora. Verifica il piano contro i vincoli assoluti: salute, tempo lineare del Ghost, sostenibilità economica, ${casparIdentityLine}. ${containmentCtx} Massimo ${MAGI_TETTO_PAROLE.caspar} parole. Non ripetere il piano di Melchior: dì solo dove regge e dove no.\n\nPiano: "${melchior}"`,
+    question, 0.2, settings, pushDebugLog
+  );
   onStage("caspar", caspar);
   onStage("synthesis", null);
   // FASE 1.3 (brief 14/08/2026) — la sintesi era l'UNICA delle quattro chiamate della Triade senza
@@ -2819,9 +2971,10 @@ async function runTriadeMagi(question, onStage, settings, opts = {}, pushDebugLo
   // quindi una Agora Magi sistematicamente piu' economica di quanto fosse davvero, e l'errore
   // cresceva proprio sulla chiamata finale, che e' quella con il prompt piu' lungo (contiene per
   // intero l'output dei tre Magi precedenti).
-  const synthesis = await askWithDegenerateGuard(
-    () => askModel(`${baseCtx} Genera la SINTESI ESECUTIVA: piano calibrato in 2-3 frasi + "Vettore di Perturbazione V+1".\n\nBalthasar: "${balthasar}"\nMelchior: "${melchior}"\nCaspar: "${caspar}"`, question, 0.6, 1500, settings, false, null, (raw) => logAiCost(pushDebugLog, "magi_synthesis", settings.model, raw), ANTI_LOOP_PENALTIES),
-    "magi_synthesis", pushDebugLog
+  const synthesis = await chiediAlMagio(
+    "magi_synthesis",
+    `${baseCtx} Genera la SINTESI ESECUTIVA: il piano calibrato, poi una riga finale "· Vettore V+1: …". Massimo ${MAGI_TETTO_PAROLE.magi_synthesis} parole. NON riassumere i tre che ti precedono e non ripetere le loro frasi: tieni solo ciò che sopravvive alla verifica di Caspar, e dillo una volta sola.\n\nBalthasar: "${balthasar}"\nMelchior: "${melchior}"\nCaspar: "${caspar}"`,
+    question, 0.6, settings, pushDebugLog
   );
   onStage("synthesis", synthesis);
   return { balthasar, melchior, caspar, synthesis, webSearchDiag, possibleHallucinatedSource };
@@ -3283,6 +3436,10 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Andamento misurato (BIO): il programma calcola da solo le serie di peso e sonno dalle voci del log BIO — ultima misura, quanti giorni ha, variazione totale, variazione per settimana, quante misure — e le passa allo Shell e a Simbiosi già calcolate. Compaiono anche in BIO → Log, in un riquadro "Andamento misurato", nella stessa identica forma in cui le riceve il modello. Regola: se una tendenza non è in quel riquadro, il modello non l'ha ricevuta e non deve parlarne. Una misura sola non fa tendenza e viene dichiarata tale; una serie la cui ultima misura ha più di 7 giorni viene marcata "stantia", più di 30 "vecchia", e va detto invece di parlarne come se fosse di oggi. Non serve fare niente per attivarlo: legge i campi Peso e Sonno che le voci BIO hanno già, comprese quelle scritte dallo Shell durante una conversazione.
 - Controllo del piano alimentare: quando lo Shell genera un piano con più giorni, il programma lo rilegge e confronta con i vincoli dichiarati. Segnala in un riquadro, senza toccare il piano: alimenti esclusi che compaiono lo stesso (sa che il salmone è un pesce), giorni dichiarati che non ci sono, giorni identici fra loro, la stessa fonte proteica a pranzo e a cena, dosi assenti quando erano state chieste, colazioni dolci quando erano state chieste salate. Non giudica il piano: elenca fatti verificabili, con il giorno preciso.
 - Il vincolo AIR chiede, non decide: quando una lettura destinata ad AIR sembra legare l'identità professionale del Ghost al pilastro, il programma non la scrive e non la butta. Compare una card che mostra il dato, dice quale dei due rilevatori ha segnalato — il codice, deterministico sui termini dichiarati; il modello, come seconda opinione — e perché. Due pulsanti: "Va bene, procedi" scrive il dato, "No, lascialo fuori" lo lascia fuori. La risposta resta scritta nel messaggio, quindi la domanda non ricompare domani.
+- Il documento si apre da solo se la frase lo nomina: quando c'è un percorso aperto e il Ghost dice qualcosa che nomina un suo documento ("riprendiamo l'Atto III", "quel pezzo sul Divenire"), il programma trova il documento confrontando le parole della frase con i titoli e lo mette davanti allo Shell PER INTERO prima che risponda — senza aspettare che l'apertura venga riconosciuta come un comando. Se nessun titolo corrisponde davvero non allega niente: una domanda generica non trascina dentro il testo di un documento. È diverso da "rileggimi l'Atto I", che è una richiesta esplicita: questo è il caso in cui il Ghost non chiede di riaprirlo e semplicemente continua a lavorarci.
+- Interrogare la memoria cerca anche dentro i percorsi: "cosa ci eravamo detti su X" guarda nelle note correnti dei pilastri, nei frammenti di sedimento E nei documenti dei percorsi, nelle competenze accumulate e nella memoria specifica di ogni percorso. Ogni risultato dice da dove viene (quale documento, di quale percorso). Prima i documenti non venivano guardati affatto, quindi il materiale più lungo prodotto dal sistema era l'unico che la ricerca non trovava.
+- Forma delle risposte dell'Agorà Magi: ogni stadio risponde dentro un campo strutturato, in righe brevissime che cominciano con "· ", una idea per riga, con un tetto di parole dichiarato per ruolo (Balthasar 60, Melchior 60, Caspar 50, Sintesi 70). Serve a due cose insieme: risposte dense invece che prolisse, e soprattutto tenere fuori dallo schermo il ragionamento interno del modello, che il 01/09/2026 finiva stampato per intero al posto della risposta (conteggi di parole, "devo", versioni intermedie). Se il campo strutturato non arriva leggibile, il programma pota le righe di deliberazione e consegna il resto invece di perdere la chiamata.
+- Voce nell'Agorà Magi: ogni stadio ha un 🔊 accanto al nome, come i messaggi dello Shell. Legge quel solo stadio; ritoccarlo ferma la lettura. Vale anche per le sessioni già registrate.
 - Catena Printify → Etsy: uno dei modi in cui un Seme AIR può produrre qualcosa nel mondo. Va dal disegno all'anteprima del prodotto.
 - Postura e respiro: gli esercizi brevi che l'app propone, con il loro ritorno aptico.
 - Piano di controllo conversazionale: l'impianto per cui il Ghost chiede una cosa a parole e il programma la esegue. Il modello sceglie l'azione, il programma la compie. Ha tre parti: il fuoco conversazionale, l'inventario, il registro delle azioni.
@@ -6194,8 +6351,13 @@ function AirView({ entries, onAdd, onDelete, percorsi, setPercorsi, settings, di
 //──────────────────────────────────────────────────────────
 // AGORÀ MAGI
 //──────────────────────────────────────────────────────────
-const MagiStage = ({ label, color, text, compact }) => !text ? null : html`<div class=${compact ? "r-magi-stage-compact" : "r-magi-stage"}>
-  <div class="r-magi-label" style="color:${color}">${label}</div><div class="r-magi-text">${text}</div></div>`;
+// 01/09/2026 — la voce anche qui. In Shell c'è da sempre (r-shell-speak-btn su ogni messaggio
+// dell'assistente); nell'Agorà no, ed è il posto dove i testi sono più densi e si leggono peggio.
+// Stesso pulsante, stessa classe, stesse funzioni di modulo (speakText/stopSpeaking): non una
+// seconda implementazione della sintesi vocale, che poi diverge.
+const MagiStage = ({ label, color, text, compact, onSpeak, parlando }) => !text ? null : html`<div class=${compact ? "r-magi-stage-compact" : "r-magi-stage"}>
+  <div class="r-magi-label" style="color:${color}">${label}${onSpeak && html`<button class="r-shell-speak-btn" onClick=${onSpeak} title=${parlando ? "Interrompi" : "Ascolta"}>${parlando ? "⏹" : "🔊"}</button>`}</div>
+  <div class="r-magi-text">${text}</div></div>`;
 const MAGI_PILLARS = [{ id: "", label: "Nessuno (trasversale)" }, { id: "bio", label: "BIO" }, { id: "air", label: "AIR" }, { id: "vidya", label: "VIDYA" }];
 const MAGI_INTENSITIES = [{ id: "leggera", label: "Leggera" }, { id: "media", label: "Media" }, { id: "profonda", label: "Profonda" }];
 function MagiView({ sessions, onSave, onDelete, settings, memory, updateMemoria, pushDebugLog }) {
@@ -6203,6 +6365,16 @@ function MagiView({ sessions, onSave, onDelete, settings, memory, updateMemoria,
   const [targetPillar, setTargetPillar] = useState(""); const [intensity, setIntensity] = useState("media");
   const [stage, setStage] = useState({ balthasar: "", melchior: "", caspar: "", synthesis: "" }); const [error, setError] = useState("");
   const engineLabel = MODEL_OPTIONS.find((m) => m.id === settings.model)?.label || settings.model;
+  // La voce, come in Shell: un solo stadio alla volta parla, e ritoccarlo lo ferma. Il "·" di
+  // inizio riga è tipografia, non parola — va tolto prima di leggere, o la sintesi vocale lo
+  // annuncia o inciampa a ogni riga.
+  const [parlanteId, setParlanteId] = useState(null);
+  const alternaVoce = (id, testo) => {
+    if (parlanteId === id) { stopSpeaking(); setParlanteId(null); return; }
+    setParlanteId(id);
+    speakText(senzaFormattazioneMarkdown(String(testo || "")).replace(/^[ \t]*[·•\-*]\s*/gm, ""), () => setParlanteId((cur) => (cur === id ? null : cur)));
+  };
+  const voce = (id, testo) => ({ onSpeak: () => alternaVoce(id, testo), parlando: parlanteId === id });
   const start = async () => { if (!question.trim() || running) return; setRunning(true); setError(""); setStage({ balthasar: "", melchior: "", caspar: "", synthesis: "" });
     try {
       const result = await runTriadeMagi(question.trim(), (k, v) => setStage((s) => ({ ...s, [k]: v === null ? "…" : v })), settings, { memory, targetPillar: targetPillar || null, intensity }, pushDebugLog);
@@ -6235,19 +6407,19 @@ function MagiView({ sessions, onSave, onDelete, settings, memory, updateMemoria,
       ${error && html`<div class="r-error">${error}</div>`}
     </${Card}>
     ${running && html`<${Card} accent=${C.core}>
-      <${MagiStage} label="Balthasar · il Perturbatore" color="#C97A5C" text=${stage.balthasar} />
-      <${MagiStage} label="Melchior · il Traduttore" color="#6FA3AD" text=${stage.melchior} />
-      <${MagiStage} label="Caspar · l'Ancora" color="#8FAF95" text=${stage.caspar} />
-      <${MagiStage} label="Sintesi Esecutiva" color=${C.core} text=${stage.synthesis} />
+      <${MagiStage} label="Balthasar · il Perturbatore" color="#C97A5C" text=${stage.balthasar} ...${voce("vivo-balthasar", stage.balthasar)} />
+      <${MagiStage} label="Melchior · il Traduttore" color="#6FA3AD" text=${stage.melchior} ...${voce("vivo-melchior", stage.melchior)} />
+      <${MagiStage} label="Caspar · l'Ancora" color="#8FAF95" text=${stage.caspar} ...${voce("vivo-caspar", stage.caspar)} />
+      <${MagiStage} label="Sintesi Esecutiva" color=${C.core} text=${stage.synthesis} ...${voce("vivo-synthesis", stage.synthesis)} />
     </${Card}>`}
     ${sessions.length === 0 ? html`<${Empty} text="Nessuna sessione ancora registrata." />` : html`<div class="r-list">${sessions.map((s) => html`
       <${Card} accent=${C.core}><div class="r-entry-row"><div style="flex:1"><div class="r-entry-date">${fmtDate(s.date)}${s.engine ? ` · ${s.engine}` : ""}${s.pillar ? ` · → ${s.pillar.toUpperCase()}` : ""}${s.intensity ? ` · ${s.intensity}` : ""}</div>
         <div class="r-entry-line"><b>${s.question}</b></div>
-        <${MagiStage} label="Balthasar · il Perturbatore" color="#C97A5C" text=${s.balthasar} compact />
+        <${MagiStage} label="Balthasar · il Perturbatore" color="#C97A5C" text=${s.balthasar} compact ...${voce(s.id + "-balthasar", s.balthasar)} />
         <${DiagnosticaFonti} diag=${s.webSearchDiag} sospetto=${s.possibleHallucinatedSource} />
-        <${MagiStage} label="Melchior · il Traduttore" color="#6FA3AD" text=${s.melchior} compact />
-        <${MagiStage} label="Caspar · l'Ancora" color="#8FAF95" text=${s.caspar} compact />
-        <${MagiStage} label="Sintesi Esecutiva" color=${C.core} text=${s.synthesis} compact />
+        <${MagiStage} label="Melchior · il Traduttore" color="#6FA3AD" text=${s.melchior} compact ...${voce(s.id + "-melchior", s.melchior)} />
+        <${MagiStage} label="Caspar · l'Ancora" color="#8FAF95" text=${s.caspar} compact ...${voce(s.id + "-caspar", s.caspar)} />
+        <${MagiStage} label="Sintesi Esecutiva" color=${C.core} text=${s.synthesis} compact ...${voce(s.id + "-synthesis", s.synthesis)} />
       </div><button class="r-icon-btn" onClick=${() => onDelete(s.id)}>✕</button></div></${Card}>`)}</div>`}
   </div>`;
 }
@@ -6622,6 +6794,16 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       if (sceltaAnticipata?.azioneId === "apri_documento" && eseguibileSubito("apri_documento")) {
         documentoAperto = trovaDocumentoNelPercorso(percorsoDelFuoco(leggiFuoco()), sceltaAnticipata.parametro);
         registraAzione({ fase: documentoAperto.esito === "trovato" ? "eseguita-e-verificata" : "esito-" + documentoAperto.esito, azioneId: "apri_documento", parametro: sceltaAnticipata.parametro, etichetta: documentoAperto.doc?.title || "", motivo: documentoAperto.motivo || "", automatica: true });
+      }
+      // 01/09/2026 — e se NESSUNO ha chiesto di aprirlo, ma la frase nomina un documento che c'è?
+      // Si apre lo stesso. Non passa dal turno di selezione (che si è già mangiato tre richieste
+      // chiare in tre occasioni diverse) e non costa niente: è confronto di parole su titoli.
+      if (!documentoAperto && eseguibileSubito("apri_documento")) {
+        const daContesto = documentoDaContesto(percorsoDelFuoco(leggiFuoco()), userText);
+        if (daContesto) {
+          documentoAperto = daContesto;
+          registraAzione({ fase: "eseguita-e-verificata", azioneId: "apri_documento", parametro: "(dal contesto della frase)", etichetta: daContesto.doc?.title || "", motivo: "", automatica: true });
+        }
       }
       // 22/08/2026 — LA RICERCA DEL BERSAGLIO DA CANCELLARE. Cancellare e' una scrittura e passera'
       // dalla card e dal pulsante, come ogni scrittura. Ma per poter NOMINARE l'evento sulla card
@@ -7393,7 +7575,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   // guardato (§3.4: dove il sistema sceglie cosa recuperare, la scelta si mostra, mai si nasconde).
   const eseguiInterrogaMemoria = (mid, parametro) => {
     vibra("conferma");
-    const esito = cercaNellaMemoria(parametro, memory);
+    const esito = cercaNellaMemoria(parametro, memory, { bio: pBio, air: pAir, vidya: pVidya });
     aggiornaAzione(mid, { tipo: "memoria", argomento: parametro, ...esito });
     registraAzione({ fase: "eseguita", azioneId: "interroga_memoria", argomento: parametro, trovati: esito.frammenti.length });
   };
@@ -8154,7 +8336,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
               ${azioneStatus[mid].frammenti.length === 0
                 ? html`<div class="r-draft-body">Non ho trovato niente su "${azioneStatus[mid].argomento}". Non vuol dire che non ne abbiamo parlato: vuol dire che non è finito nella memoria.</div>`
                 : html`<div>${azioneStatus[mid].frammenti.map((f) => html`<div class="r-draft-body" key=${f.id} style="margin-bottom:6px">
-                    <b>${f.pilastro.toUpperCase()}</b>${f.date ? " · " + fmtDate(f.date) : " · nota corrente"}${f.viaChiavi ? " · trovato per affinità, la parola non c'era nel testo" : ""}<br/>${f.text}
+                    <b>${f.pilastro.toUpperCase()}</b>${f.date ? " · " + fmtDate(f.date) : (f.dove ? "" : " · nota corrente")}${f.dove ? " · " + f.dove : ""}${f.viaChiavi ? " · trovato per affinità, la parola non c'era nel testo" : ""}<br/>${f.text}
                   </div>`)}</div>`}
               ${azioneStatus[mid].perContiguita?.length > 0 && html`<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,0,0,.08)">
                 <div class="r-hub-detail">Nato lo stesso giorno, anche se non c'entra:</div>
