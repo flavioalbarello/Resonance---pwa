@@ -378,3 +378,54 @@ describe("materialeDelNodo — cosa compare toccando un nodo", () => {
     assert.deepEqual(app.materialeDelNodo(null, null), { documenti: [], sessioni: [] });
   });
 });
+
+describe("l'inventario dice cosa contiene un percorso, non solo che esiste (01/09/2026)", () => {
+  // Osservato dal Ghost: alla richiesta "genera un percorso per questo concept, comprensivo dei file
+  // di testo elaborati fin'ora", lo Shell ha risposto "esiste già in VIDYA, con i testi degli Atti I
+  // e II già salvati". Il percorso non esisteva e i testi non erano salvati da nessuna parte.
+  // Non è fantasia gratuita: è un buco riempito. L'inventario diceva il nome e taceva il contenuto,
+  // e la cosa più plausibile da dire su un percorso chiamato "Divenire", in una conversazione dove
+  // si sono appena scritti due atti, è che li contenga.
+  const percorso = (over = {}) => ({ id: "p1", title: "Divenire — concept album", topics: [], documents: [], ...over });
+
+  test("UN PERCORSO VUOTO LO DICHIARA A LETTERE MAIUSCOLE — è la riga che toglie il buco", () => {
+    const c = app.contaPercorso(percorso({ topics: [{ status: "non iniziato" }, { status: "non iniziato" }] }));
+    assert.match(c, /NESSUN documento salvato/);
+  });
+  test("un percorso pieno dice quanto è pieno", () => {
+    const c = app.contaPercorso(percorso({
+      topics: [{ status: "consolidato" }, { status: "non iniziato" }, { status: "praticato" }],
+      documents: [{ id: "d1" }, { id: "d2" }],
+    }));
+    assert.match(c, /3 nodi/);
+    assert.match(c, /1 consolidato/);
+    assert.match(c, /2 documenti salvati/);
+  });
+  test("i singolari sono singolari: «1 nodi» è la prima cosa che nota chi legge", () => {
+    const c = app.contaPercorso(percorso({ topics: [{ status: "consolidato" }], documents: [{ id: "d" }] }));
+    assert.match(c, /1 nodo, 1 consolidato, 1 documento salvato/);
+  });
+  test("un percorso appena creato non fa esplodere niente", () => {
+    assert.match(app.contaPercorso({}), /0 nodi/);
+    assert.match(app.contaPercorso(null), /NESSUN documento salvato/);
+  });
+
+  test("IL CONTEGGIO ARRIVA DAVVERO NELL'INVENTARIO CHE VA NEL PROMPT", () => {
+    const inv = app.costruisciInventario({
+      pBio: [], pAir: [],
+      pVidya: [percorso({ topics: [{ status: "non iniziato" }] })],
+      semi: [],
+    });
+    assert.match(inv, /Divenire — concept album/);
+    assert.match(inv, /NESSUN documento salvato/);
+  });
+  test("la regola è scritta esplicita, non lasciata da dedurre", () => {
+    const inv = app.costruisciInventario({ pBio: [], pAir: [], pVidya: [percorso()], semi: [] });
+    assert.match(inv, /NON contiene niente di cio' che avete prodotto parlando/);
+    assert.match(inv, /puo' avere il nome giusto ed essere vuoto/);
+  });
+  test("senza percorsi l'inventario resta quello di prima", () => {
+    const inv = app.costruisciInventario({ pBio: [], pAir: [], pVidya: [], semi: [] });
+    assert.match(inv, /BIO: nessun percorso aperto/);
+  });
+});
