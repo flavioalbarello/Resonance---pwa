@@ -42,7 +42,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-09-01 · anche-i-sostantivi-non-dichiarano-il-compiuto";
+const APP_BUILD = "2026-09-01 · i-nodi-si-leggono-e-si-aprono";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -3216,6 +3216,9 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Fonti di Balthasar, controllate dal programma: quando l'Agorà Magi gira su OpenRouter, Balthasar ha la ricerca web. Sotto la sua risposta compare una riga che dice se la ricerca è stata eseguita DAVVERO — letta dalle citazioni che la risposta porta con sé, non dichiarata dal modello — quante citazioni e da quali domini. Se Balthasar nomina un servizio o un sito che non trova riscontro in nessun dominio realmente citato, compare un avviso di possibile fonte inventata: non blocca niente, è un sospetto da verificare. Esisteva già per la ricerca dei Semi dal 26/07/2026 e da oggi vale anche per l'Agorà. Le sessioni Magi precedenti a oggi non hanno questa riga: non è un errore, quel dato allora non veniva raccolto.
 - Cosa vede Balthasar della memoria: la nota corrente di tutti e tre i pilastri PIÙ gli ultimi quattro frammenti di sedimento per pilastro, datati e tagliati a 220 caratteri. Prima vedeva solo le note correnti, quindi non aveva nessuna storia su cui appoggiarsi mentre il suo compito è proprio spingere dove il sistema non è ancora andato.
 - Eliminare un percorso dalla lista: in ogni pilastro, sotto Percorsi, ogni percorso ha una ✕ di fianco. Non elimina subito: chiede una volta e dice cosa sta per sparire, contato (quanti nodi, quante sessioni, quanti documenti col loro testo, se ci sono competenze e memoria del percorso). Serve perché da quando i documenti contengono il testo intero, un percorso vale molto più di una voce di log. Resta anche il pulsante "Elimina percorso" dentro il percorso stesso.
+- Nodi del percorso: ogni nodo si tocca e si apre, mostrando il materiale che gli è stato legato — i documenti col loro testo intero e le sessioni che lo nominano. Un nodo senza niente lo dichiara invece di aprirsi vuoto. La verifica (il quiz) è diventata un pulsante DENTRO il nodo aperto: prima era l'effetto obbligato del tocco, ora è una scelta.
+- Sotto quale nodo finisce quello che si salva: quando il Ghost dice "salvalo nel percorso", il programma confronta il titolo del materiale con le etichette dei nodi e lo lega a quello giusto — con lo spareggio sui numeri, così "Atto I" non finisce sotto "Atto II". Se nessun nodo corrisponde o se due corrispondono allo stesso modo, il documento resta del percorso senza nodo: meglio senza che sotto quello sbagliato.
+- Salvare qualcosa detto PRIMA dell'ultimo messaggio: il titolo che si dà al materiale fa anche da riferimento. "Salva i testi dell'Atto I nel percorso" fa cercare al programma, dentro la conversazione, il messaggio che parla dell'Atto I — non prende ciecamente il precedente. Se il riferimento non corrisponde a niente vale il più recente, e la card mostra sempre come comincia ciò che sta per essere salvato.
 - Documenti del percorso: nel percorso, sotto "Documenti del percorso", ognuno si tocca e si riapre per intero. Quando il Ghost riapre un percorso, lo Shell riceve l'indice di questo materiale — nome, data, lunghezza, come comincia — non i testi interi: sa che esistono e riparte da lì invece di ricominciare da capo. I documenti creati prima del 31/08/2026 hanno solo il nome, non il testo.
 - Andamento misurato (BIO): il programma calcola da solo le serie di peso e sonno dalle voci del log BIO — ultima misura, quanti giorni ha, variazione totale, variazione per settimana, quante misure — e le passa allo Shell e a Simbiosi già calcolate. Compaiono anche in BIO → Log, in un riquadro "Andamento misurato", nella stessa identica forma in cui le riceve il modello. Regola: se una tendenza non è in quel riquadro, il modello non l'ha ricevuta e non deve parlarne. Una misura sola non fa tendenza e viene dichiarata tale; una serie la cui ultima misura ha più di 7 giorni viene marcata "stantia", più di 30 "vecchia", e va detto invece di parlarne come se fosse di oggi. Non serve fare niente per attivarlo: legge i campi Peso e Sonno che le voci BIO hanno già, comprese quelle scritte dallo Shell durante una conversazione.
 - Controllo del piano alimentare: quando lo Shell genera un piano con più giorni, il programma lo rilegge e confronta con i vincoli dichiarati. Segnala in un riquadro, senza toccare il piano: alimenti esclusi che compaiono lo stesso (sa che il salmone è un pesce), giorni dichiarati che non ci sono, giorni identici fra loro, la stessa fonte proteica a pranzo e a cena, dosi assenti quando erano state chieste, colazioni dolci quando erano state chieste salate. Non giudica il piano: elenca fatti verificabili, con il giorno preciso.
@@ -4421,25 +4424,102 @@ function analizzaParametroPercorso(parametro, titoliEsistenti = []) {
 }
 // Sotto questa soglia non e' materiale da conservare: e' una battuta di conversazione.
 const LUNGHEZZA_MINIMA_SALVABILE = 200;
+// Quanto in testa a un messaggio si cerca il numero che lo distingue da un altro ("ATTO II:").
+const INTESTAZIONE_MESSAGGIO = 120;
 // Quale testo va salvato nel percorso. NON lo riscrive il modello — lo prende il programma dalla
 // conversazione, che e' la stessa regola gia' pagata cara sul piano alimentare e sull'elenco degli
 // impegni. Il punto delicato e' UNO, e sbagliarlo salverebbe sempre la cosa sbagliata: il messaggio
 // che porta la card non e' il materiale, e' la RISPOSTA alla richiesta di salvarlo ("va bene, te lo
 // metto nel percorso"). Il materiale e' l'ultimo messaggio dello Shell PRIMA di quello.
-function testoDaSalvare(messages, midDellaProposta = null) {
+function testoDaSalvare(messages, midDellaProposta = null, riferimento = "") {
   const lista = Array.isArray(messages) ? messages : [];
   let fine = lista.length;
   if (midDellaProposta) {
     const i = lista.findIndex((m) => m?.id === midDellaProposta);
     if (i >= 0) fine = i;
   }
+  const candidati = [];
   for (let i = fine - 1; i >= 0; i--) {
     const m = lista[i];
     if (m?.role !== "assistant") continue;
     const t = String(m.content || "").trim();
-    if (t.length >= LUNGHEZZA_MINIMA_SALVABILE) return { testo: t, id: m.id };
+    if (t.length >= LUNGHEZZA_MINIMA_SALVABILE) candidati.push({ testo: t, id: m.id, posizione: i });
   }
-  return null;
+  if (!candidati.length) return null;
+  // 01/09/2026 — NON SOLO L'ULTIMO. Il Ghost ha chiesto un percorso "comprensivo dei file di testo
+  // elaborati a riguardo fin'ora": i testi dell'Atto I erano di due ore prima, non nel messaggio
+  // appena sopra. Prendere sempre il precedente vuol dire non poter mai salvare niente che non sia
+  // stato appena scritto — e cio' che vale la pena conservare quasi mai lo e'.
+  // Il titolo che il modello propone fa anche da RIFERIMENTO: il programma lo usa per andare a
+  // cercare nel discorso il pezzo giusto, invece di fidarsi della posizione. Stessa regola di
+  // sempre: il modello dice a parole, il programma va a cercarlo davvero.
+  const chiave = paroleUtili(riferimento);
+  if (chiave.length) {
+    const punteggiati = candidati
+      .map((c) => {
+        const parole = new Set(paroleUtili(c.testo.slice(0, 600)));
+        let punti = 0;
+        for (const k of chiave) if (parole.has(k)) punti++;
+        return { ...c, punti };
+      })
+      .filter((c) => c.punti > 0)
+      .sort((a, b) => (b.punti - a.punti) || (b.posizione - a.posizione));
+    if (punteggiati.length) {
+      // LO STESSO SPAREGGIO SUI NUMERI gia' necessario per riaprire un documento, e per la stessa
+      // ragione: "Atto I" e "Atto II" hanno le stesse parole piene, e paroleUtili butta i token di
+      // due lettere. Senza, "salva i testi dell'Atto I" salvava l'Atto II ogni volta — cioe'
+      // esattamente il messaggio sbagliato, in silenzio. I numeri si cercano nell'INTESTAZIONE del
+      // messaggio (le prime battute), non in tutto il testo: piu' in fondo ce ne sono a decine.
+      const massimo = punteggiati[0].punti;
+      let aPari = punteggiati.filter((c) => c.punti === massimo);
+      const numeriChiesti = numeriDelTitolo(riferimento);
+      if (aPari.length > 1 && numeriChiesti.length) {
+        const conIlNumero = aPari.filter((c) => {
+          const numeri = numeriDelTitolo(c.testo.slice(0, INTESTAZIONE_MESSAGGIO));
+          return numeriChiesti.some((n) => numeri.includes(n));
+        });
+        if (conIlNumero.length) aPari = conIlNumero;
+      }
+      return { testo: aPari[0].testo, id: aPari[0].id, perRiferimento: true };
+    }
+  }
+  // Nessun riferimento utile, o nessuna corrispondenza: vale il piu' recente, come prima.
+  return { testo: candidati[0].testo, id: candidati[0].id, perRiferimento: false };
+}
+// A quale nodo appartiene un documento. Nessun modello: si confrontano le parole piene del titolo
+// con quelle dell'etichetta del nodo, con lo stesso spareggio sui numeri gia' usato per riaprire un
+// documento ("Atto I" contro "Atto II"). Se non corrisponde niente il documento resta del percorso
+// e basta — meglio senza nodo che sotto quello sbagliato.
+function nodoPerDocumento(topics, titolo) {
+  const chiave = paroleUtili(titolo);
+  if (!chiave.length) return null;
+  const punteggiati = (topics || [])
+    .map((t) => {
+      const parole = new Set(paroleUtili(t.label || ""));
+      let punti = 0;
+      for (const k of chiave) if (parole.has(k)) punti++;
+      return { t, punti, numeri: numeriDelTitolo(t.label || "") };
+    })
+    .filter((x) => x.punti > 0)
+    .sort((a, b) => b.punti - a.punti);
+  if (!punteggiati.length) return null;
+  const massimo = punteggiati[0].punti;
+  let aPari = punteggiati.filter((x) => x.punti === massimo);
+  if (aPari.length > 1) {
+    const numeriChiesti = numeriDelTitolo(titolo);
+    if (numeriChiesti.length) {
+      const conIlNumero = aPari.filter((x) => numeriChiesti.some((n) => x.numeri.includes(n)));
+      if (conIlNumero.length) aPari = conIlNumero;
+    }
+  }
+  return aPari.length === 1 ? aPari[0].t.id : null;
+}
+// Tutto cio' che sta sotto un nodo: i documenti che gli sono stati legati e le sessioni che lo
+// nominano. E' cio' che compare quando il Ghost tocca il nodo.
+function materialeDelNodo(percorso, topic) {
+  const documenti = (percorso?.documents || []).filter((d) => d?.nodoId === topic?.id);
+  const sessioni = (percorso?.sessions || []).filter((s) => (s?.topicIds || []).includes(topic?.id));
+  return { documenti, sessioni };
 }
 // 25/08/2026 (notte) — "vuoi che ne apra uno su X" non veniva riconosciuto. Il regex cercava
 // letteralmente "un percorso" subito dopo "apra/apro", ma il modello ha risposto "Non creo
@@ -5489,6 +5569,11 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
   // dall'app. Salvare qualcosa che poi non si puo' riaprire e' quasi come non salvarlo — ed era
   // esattamente la domanda del Ghost: "riuscirebbe a riprendere tutto in mano fra un mese?".
   const [docAperto, setDocAperto] = useState(null);
+  // Quale nodo e' aperto. Toccare un nodo apriva il quiz: era l'unica cosa che si potesse fare con
+  // un nodo, e non era quella che serve — il Ghost si aspetta di trovarci dentro cio' che e' stato
+  // prodotto su quel nodo. La verifica resta, ma come pulsante dentro il nodo aperto: una scelta,
+  // non l'effetto obbligato di un tocco.
+  const [nodoAperto, setNodoAperto] = useState(null);
   const [artBrief, setArtBrief] = useState("");
   const [artTitle, setArtTitle] = useState("");
   const [artText, setArtText] = useState("");
@@ -5526,6 +5611,13 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
     } catch (e) { /* silenzioso, la nota resta compilata per riprovare */ } finally { setClosing(false); }
   };
   const statusColor = (s) => (s === "consolidato" ? color : s === "praticato" ? "#8FA3AC" : s === "introdotto" ? "#B7C4C8" : "#D3DCDE");
+  // 01/09/2026 — IL GRIGETTO ILLEGGIBILE, portato dal Ghost con lo schermo davanti.
+  // statusColor finiva sia sul bordo SIA sul testo: per un nodo "non iniziato" voleva dire scrivere
+  // #D3DCDE su bianco, cioe' niente. E "non iniziato" e' lo stato in cui nasce OGNI nodo di OGNI
+  // percorso nuovo — quindi il caso illeggibile non era un caso limite, era il caso normale.
+  // Il colore dello stato resta dov'e' informativo (il bordo, il pallino) e il testo prende un
+  // inchiostro leggibile: un badge deve dire cosa c'e' scritto prima di dire in che stato e'.
+  const statusInk = (s) => (s === "consolidato" ? color : s === "praticato" ? "#5E7480" : s === "introdotto" ? "#6E8087" : "#5B6472");
   const generateArtifact = async () => {
     if (!artBrief.trim() || artBusy) return;
     setArtBusy(true); setArtMsg("");
@@ -5609,9 +5701,31 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
               </div>`
             : html`<div class="r-magi-text" style="font-style:italic;cursor:pointer" onClick=${() => setEditingGoal(true)} title="Tocca per modificare">→ ${percorso.identityGoal || "diventare…"} <span style="opacity:0.5">✎</span></div>`}
         </div>`}
-        <div class="r-hub-detail" style="margin-top:8px">Nodi (tocca per verificarti):</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
-          ${percorso.topics.map((t) => html`<span class="r-badge" style="border-color:${statusColor(t.status)};color:${statusColor(t.status)};cursor:pointer" onClick=${() => startQuiz(t)}>${t.label} · ${t.status}</span>`)}
+        <div class="r-hub-detail" style="margin-top:8px">Nodi (tocca per aprirne il materiale):</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+          ${percorso.topics.map((t) => {
+            const materiale = materialeDelNodo(percorso, t);
+            const aperto = nodoAperto === t.id;
+            return html`<div key=${t.id}>
+              <span class="r-badge" style="border-color:${statusColor(t.status)};color:${statusInk(t.status)};cursor:pointer"
+                onClick=${() => setNodoAperto(aperto ? null : t.id)}>${aperto ? "▾" : "▸"} ${t.label} · ${t.status}${materiale.documenti.length || materiale.sessioni.length ? ` · ${materiale.documenti.length + materiale.sessioni.length}` : ""}</span>
+              ${aperto && html`<div style="margin-top:6px;margin-left:10px;padding-left:10px;border-left:1px solid var(--border)">
+                ${materiale.documenti.length === 0 && materiale.sessioni.length === 0
+                  ? html`<div class="r-hub-detail">Su questo nodo non c'è ancora niente di salvato. Quello che generiamo in chat ci finisce dentro dicendo «salvalo nel percorso».</div>`
+                  : html`<div>
+                      ${materiale.documenti.map((d) => html`<div key=${d.id} style="margin-top:6px">
+                        <div class="r-entry-date">${d.title || d.name} · ${fmtDate(d.date)}${d.text ? ` · ${d.text.length} caratteri` : ""}</div>
+                        ${d.text && html`<div class="r-magi-text" style="white-space:pre-wrap;margin-top:2px">${d.text}</div>`}
+                      </div>`)}
+                      ${materiale.sessioni.map((se) => html`<div key=${se.id} style="margin-top:6px">
+                        <div class="r-entry-date">Sessione · ${fmtDate(se.date)}</div>
+                        <div class="r-entry-notes">${se.summary}</div>
+                      </div>`)}
+                    </div>`}
+                <button class="r-btn r-btn-ghost" style="margin-top:8px;margin-left:0" onClick=${() => startQuiz(t)}>Verificati su questo nodo</button>
+              </div>`}
+            </div>`;
+          })}
         </div>
         ${percorso.competenze && html`<div class="r-hub-detail" style="margin-top:10px"><b>Competenze:</b> ${percorso.competenze}</div>`}
       </${Card}>
@@ -7227,7 +7341,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       registraAzione({ fase: "rifiutata", azioneId: "salva_nel_percorso", motivo: "percorso del fuoco inesistente", id: f.id });
       return;
     }
-    const materiale = testoDaSalvare(messages, mid);
+    const materiale = testoDaSalvare(messages, mid, String(parametro || ""));
     if (!materiale) {
       aggiornaAzione(mid, { tipo: "rifiutato", motivo: `qui sopra non trovo un contenuto lungo almeno ${LUNGHEZZA_MINIMA_SALVABILE} caratteri da salvare` });
       registraAzione({ fase: "rifiutata", azioneId: "salva_nel_percorso", motivo: "nessun materiale abbastanza lungo" });
@@ -7237,9 +7351,11 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     const titolo = String(parametro || "").trim() || `Dalla conversazione del ${fmtDate(new Date())}`;
     // Stessa forma dei documenti creati dentro il percorso (vedi downloadArtifact): il testo INTERO
     // viaggia nel campo `text`, non un riassunto — e' tutto il punto di questa azione.
-    const doc = { id: uid(), name: `${titolo}.md`, title: titolo, text: materiale.testo, date: new Date().toISOString(), driveId: null, origine: "chat", messaggioId: materiale.id };
+    const nodoId = nodoPerDocumento(target.topics, titolo);
+    const doc = { id: uid(), name: `${titolo}.md`, title: titolo, text: materiale.testo, date: new Date().toISOString(), driveId: null, origine: "chat", messaggioId: materiale.id, nodoId };
     setPercorsi[pil](percorsi[pil].map((p) => (p.id === target.id ? { ...p, documents: [doc, ...(p.documents || [])] } : p)));
-    aggiornaAzione(mid, { tipo: "salvato-nel-percorso", percorso: target.title, titolo, caratteri: materiale.testo.length });
+    const etichettaNodo = nodoId ? (target.topics.find((t) => t.id === nodoId)?.label || "") : "";
+    aggiornaAzione(mid, { tipo: "salvato-nel-percorso", percorso: target.title, titolo, caratteri: materiale.testo.length, nodo: etichettaNodo, perRiferimento: materiale.perRiferimento });
     registraAzione({ fase: "eseguita", azioneId: "salva_nel_percorso", etichetta: titolo, percorso: target.title, caratteri: materiale.testo.length });
   };
   // ── BLOCCO 3 — esecutori di Classe B ──────────────────────────────────────────────
@@ -7630,7 +7746,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                 </div>
               </div>`}
               ${m.azioneProposta.esito === "diretto" && m.azioneProposta.azioneId === "salva_nel_percorso" && (() => {
-                const anteprima = testoDaSalvare(messages, mid);
+                const anteprima = testoDaSalvare(messages, mid, String(m.azioneProposta.parametro || ""));
                 return html`<div>
                   <div class="r-draft-label">▸ SALVO QUESTO NEL PERCORSO APERTO</div>
                   <div class="r-draft-body">${fuoco.tipo === "percorso" ? fuoco.etichetta : "non c'è nessun percorso aperto in questo momento"}</div>
@@ -7832,7 +7948,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
             ${azioneStatus[mid]?.tipo === "avanza" && html`<div class="r-ok">✓ Fuoco su ${azioneStatus[mid].etichetta} — chiedimi pure il prossimo passo.</div>`}
             ${azioneStatus[mid]?.tipo === "chiuso" && html`<div class="r-ok">✓ Chiuso: ${azioneStatus[mid].etichetta}. Resta tutto com'era — dimmi "riprendi" quando vuoi tornarci.</div>`}
             ${azioneStatus[mid]?.tipo === "percorso-creato" && html`<div class="r-ok">✓ Percorso "${azioneStatus[mid].titolo}" creato in ${azioneStatus[mid].pilastro.toUpperCase()}, ${azioneStatus[mid].nodi} nodi. È quello aperto adesso: quello che generiamo lo posso salvare lì dentro.</div>`}
-            ${azioneStatus[mid]?.tipo === "salvato-nel-percorso" && html`<div class="r-ok">✓ "${azioneStatus[mid].titolo}" salvato per intero (${azioneStatus[mid].caratteri} caratteri) nel percorso ${azioneStatus[mid].percorso}. Lo ritrovi lì fra un mese, anche quando questa conversazione sarà stata compattata.</div>`}
+            ${azioneStatus[mid]?.tipo === "salvato-nel-percorso" && html`<div class="r-ok">✓ "${azioneStatus[mid].titolo}" salvato per intero (${azioneStatus[mid].caratteri} caratteri) nel percorso ${azioneStatus[mid].percorso}${azioneStatus[mid].nodo ? `, sotto il nodo "${azioneStatus[mid].nodo}"` : ""}. Lo ritrovi lì fra un mese, anche quando questa conversazione sarà stata compattata.</div>`}
             ${/* BLOCCO 3 §3.1 — la verifica di ritorno mostrata al Ghost. "Verificata" vuol dire
                   una cosa sola: sono tornato a chiedere alla fonte e l'ho visto. Ogni altro esito
                   e' scritto come un fallimento, anche quando l'invio potrebbe essere riuscito —
