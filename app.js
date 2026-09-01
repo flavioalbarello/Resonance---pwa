@@ -42,7 +42,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-09-01 · i-nodi-si-leggono-e-si-aprono";
+const APP_BUILD = "2026-09-01 · l-inventario-dice-anche-cosa-contiene";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -158,8 +158,27 @@ function chiudiFuoco() { return scriviFuoco(FUOCO_VUOTO); }
 // Cosa esiste, in forma minima: titolo e identificativo. Limitato apposta — un inventario che cresce
 // senza tetto ricrea esattamente il problema di costo che il documento temeva (e che oggi non c'e').
 const INVENTARIO_TETTO_PER_PILASTRO = 8;
+// 01/09/2026 — L'INVENTARIO DICEVA CHE UN PERCORSO ESISTE, MAI COSA CONTIENE.
+// Osservato dal Ghost: alla richiesta "genera un percorso per questo concept, comprensivo dei file
+// di testo elaborati fin'ora", lo Shell ha risposto "esiste gia' in VIDYA, con i testi degli Atti I
+// e II gia' salvati". Il percorso non esisteva e i testi non erano salvati da nessuna parte.
+// La causa non e' fantasia gratuita: e' un buco riempito. L'inventario dice che un percorso c'e' e
+// come si chiama; il fascicolo con dentro nodi e documenti arriva SOLO se il fuoco e' gia' su quel
+// percorso. Fuori da quel caso il modello sa il nome e non sa il contenuto — e la cosa piu'
+// plausibile da dire su un percorso chiamato "Divenire", in una conversazione dove si sono appena
+// scritti due atti, e' che li contenga.
+// Il rimedio non e' spedire il fascicolo di OGNI percorso a ogni turno (troppi token per una cosa
+// che serve di rado): basta la FORMA. Quanti nodi, quanti consolidati, quanti documenti — e quando
+// sono zero, dirlo. "Divenire (7 nodi, 0 consolidati, NESSUN documento salvato)" toglie il buco
+// senza lasciare niente da riempire, al costo di una manciata di caratteri per percorso.
+function contaPercorso(p) {
+  const nodi = (p?.topics || []).length;
+  const fatti = (p?.topics || []).filter((t) => t.status === "consolidato").length;
+  const docs = (p?.documents || []).length;
+  return `${nodi} nod${nodi === 1 ? "o" : "i"}, ${fatti} consolidat${fatti === 1 ? "o" : "i"}, ${docs ? `${docs} document${docs === 1 ? "o" : "i"} salvat${docs === 1 ? "o" : "i"}` : "NESSUN documento salvato"}`;
+}
 function costruisciInventario({ pBio, pAir, pVidya, semi }) {
-  const riga = (p) => `${p.title}${p.kind === "identitario" ? " [identitario]" : ""} (id:${p.id})`;
+  const riga = (p) => `${p.title}${p.kind === "identitario" ? " [identitario]" : ""} (id:${p.id} · ${contaPercorso(p)})`;
   const perPilastro = (lista, nome) => {
     const attivi = (lista || []).slice(0, INVENTARIO_TETTO_PER_PILASTRO);
     return `${nome}: ${attivi.length ? attivi.map(riga).join(" · ") : "nessun percorso aperto"}`;
@@ -169,6 +188,7 @@ function costruisciInventario({ pBio, pAir, pVidya, semi }) {
   // stati e' gia' spiegato al modello in APP_CAPABILITIES_CONTEXT, quindi la traduzione e' inutile.
   const semiAttivi = (semi || []).filter((s) => s.status !== "archived").slice(0, INVENTARIO_TETTO_PER_PILASTRO);
   return `Percorsi e Semi che esistono ORA in questo sistema — quando il Ghost si riferisce a uno di essi, anche in modo vago ("quello sul sonno"), e' uno di questi e nessun altro. Non inventarne, non ricordarne di vecchi: se non e' in questo elenco, non esiste.
+Fra parentesi c'e' anche COSA CONTIENE ciascun percorso, ed e' un conteggio vero letto adesso dai dati. Regola che ne discende, e non ha eccezioni: se un percorso e' dichiarato con NESSUN documento salvato, allora NON contiene niente di cio' che avete prodotto parlando — dillo, invece di supporre che ci sia. Un percorso puo' avere il nome giusto ed essere vuoto: e' anzi il caso normale appena viene creato. Per far entrare qualcosa in un percorso serve che il Ghost tocchi il pulsante di salvataggio; finche' non succede, li' dentro non c'e' niente.
 ${perPilastro(pBio, "BIO")}
 ${perPilastro(pAir, "AIR")}
 ${perPilastro(pVidya, "VIDYA")}
@@ -3216,6 +3236,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Fonti di Balthasar, controllate dal programma: quando l'Agorà Magi gira su OpenRouter, Balthasar ha la ricerca web. Sotto la sua risposta compare una riga che dice se la ricerca è stata eseguita DAVVERO — letta dalle citazioni che la risposta porta con sé, non dichiarata dal modello — quante citazioni e da quali domini. Se Balthasar nomina un servizio o un sito che non trova riscontro in nessun dominio realmente citato, compare un avviso di possibile fonte inventata: non blocca niente, è un sospetto da verificare. Esisteva già per la ricerca dei Semi dal 26/07/2026 e da oggi vale anche per l'Agorà. Le sessioni Magi precedenti a oggi non hanno questa riga: non è un errore, quel dato allora non veniva raccolto.
 - Cosa vede Balthasar della memoria: la nota corrente di tutti e tre i pilastri PIÙ gli ultimi quattro frammenti di sedimento per pilastro, datati e tagliati a 220 caratteri. Prima vedeva solo le note correnti, quindi non aveva nessuna storia su cui appoggiarsi mentre il suo compito è proprio spingere dove il sistema non è ancora andato.
 - Eliminare un percorso dalla lista: in ogni pilastro, sotto Percorsi, ogni percorso ha una ✕ di fianco. Non elimina subito: chiede una volta e dice cosa sta per sparire, contato (quanti nodi, quante sessioni, quanti documenti col loro testo, se ci sono competenze e memoria del percorso). Serve perché da quando i documenti contengono il testo intero, un percorso vale molto più di una voce di log. Resta anche il pulsante "Elimina percorso" dentro il percorso stesso.
+- L'inventario dice anche cosa contiene un percorso: accanto al nome di ogni percorso lo Shell riceve quanti nodi ha, quanti sono consolidati e quanti documenti ci sono dentro — conteggi veri, letti dai dati in quel momento. Se un percorso ha "NESSUN documento salvato", allora non contiene niente di quello che è stato prodotto parlando, e lo Shell deve dirlo invece di supporre il contrario. Un percorso può avere il nome giusto ed essere vuoto: è il caso normale appena viene creato, perché per farci entrare qualcosa serve toccare il pulsante di salvataggio.
 - Nodi del percorso: ogni nodo si tocca e si apre, mostrando il materiale che gli è stato legato — i documenti col loro testo intero e le sessioni che lo nominano. Un nodo senza niente lo dichiara invece di aprirsi vuoto. La verifica (il quiz) è diventata un pulsante DENTRO il nodo aperto: prima era l'effetto obbligato del tocco, ora è una scelta.
 - Sotto quale nodo finisce quello che si salva: quando il Ghost dice "salvalo nel percorso", il programma confronta il titolo del materiale con le etichette dei nodi e lo lega a quello giusto — con lo spareggio sui numeri, così "Atto I" non finisce sotto "Atto II". Se nessun nodo corrisponde o se due corrispondono allo stesso modo, il documento resta del percorso senza nodo: meglio senza che sotto quello sbagliato.
 - Salvare qualcosa detto PRIMA dell'ultimo messaggio: il titolo che si dà al materiale fa anche da riferimento. "Salva i testi dell'Atto I nel percorso" fa cercare al programma, dentro la conversazione, il messaggio che parla dell'Atto I — non prende ciecamente il precedente. Se il riferimento non corrisponde a niente vale il più recente, e la card mostra sempre come comincia ciò che sta per essere salvato.
