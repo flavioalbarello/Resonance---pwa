@@ -42,7 +42,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-08-31 · balthasar-vede-la-storia-e-dichiara-le-fonti";
+const APP_BUILD = "2026-09-01 · anche-i-sostantivi-non-dichiarano-il-compiuto";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -999,6 +999,21 @@ const ESITO_COMPIUTO_RE = new RegExp(
   // classe [oaie] aggiunge dopo. Scritto "complet", "Nodo 1 completato:" non veniva riconosciuto —
   // e "Nodo 1 completato:" e' letteralmente una delle due righe che il Ghost ha visto sullo schermo.
   `(?:${PARTICIPI}|apert|completat|chius|archiviat|generat|prodott)[oaie](?:\\*\\*)?\\s*:` +
+  // 01/09/2026 — LA NOMINALIZZAZIONE, portata dal Ghost con lo schermo davanti. Lo Shell ha scritto:
+  //     "Il percorso Divenire esiste gia' in VIDYA (...). Non ne creo uno nuovo — riprendo quello
+  //      aperto. Salvataggio dei testi elaborati nel percorso attivo."
+  // Tre affermazioni false in tre righe, e la terza e' passata intatta anche dopo il fix dei
+  // participi-titolo di ieri: "Salvataggio dei testi" non ha verbo NE' participio, e' un sostantivo
+  // messo a fare da etichetta di stato. E' la forma piu' insidiosa delle tre, perche' suona
+  // esattamente come l'intestazione di qualcosa che il sistema ha registrato.
+  // IL FRENO CONTRO I FALSI POSITIVI: non basta il sostantivo a inizio riga — "Creazione del
+  // profilo — passo 3" dentro un documento generato e' prosa legittima. Serve che la stessa riga
+  // nomini un OGGETTO DELL'APP (percorso, calendario, memoria, documento, evento, Seme...), che e'
+  // cio' che distingue "sto dichiarando di aver toccato il sistema" da "sto scrivendo un elenco".
+  // Resta la direzione in cui questo filtro deve sbagliare: in difetto, mai rompendo una frase buona.
+  "|(?:^|\\n)[ \\t]*(?:\\*\\*)?(?:salvataggio|creazione|aggiunta|registrazione|invio|inserimento|archiviazione|apertura|chiusura|generazione|aggiornamento|eliminazione|cancellazione)" +
+  "\\s+(?:del|dello|della|dei|degli|delle|di|d['’])[^\\n.!?]{0,70}?" +
+  "(?:percors\\w*|calendario|agenda|memoria|pilastr\\w*|document\\w*|drive|event\\w*|mail|sem[ei]|voce|nod\\w*)" +
   ")", "giu");
 const ESITO_SOSTITUZIONE = "[non ancora — serve la tua conferma]";
 // azioneVerificata: true SOLO quando in questo turno c'e' stata un'azione esterna riletta dalla

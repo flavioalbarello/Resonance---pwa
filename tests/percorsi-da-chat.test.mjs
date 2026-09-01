@@ -239,3 +239,43 @@ describe("contenutoDelPercorso — cosa dice la conferma prima di eliminare", ()
     assert.equal(app.contenutoDelPercorso(null), "un percorso ancora vuoto");
   });
 });
+
+describe("la guardia del compiuto: la nominalizzazione (01/09/2026)", () => {
+  // Terza forma portata dal Ghost, e la più insidiosa. Lo Shell, con la guardia dei participi già
+  // in vigore, ha scritto: "Il percorso Divenire esiste già in VIDYA (...). Non ne creo uno nuovo —
+  // riprendo quello aperto. Salvataggio dei testi elaborati nel percorso attivo."
+  // Nessun percorso esisteva, il fuoco non era su di lui, e niente è stato salvato.
+  const tolto = (t) => app.ripulisciAffermazioniDiEsito(t, false);
+
+  test("LA RIGA ESATTA CHE È PASSATA: «Salvataggio dei testi elaborati nel percorso attivo»", () => {
+    const r = tolto("Salvataggio dei testi elaborati nel percorso attivo.");
+    assert.doesNotMatch(r.testo, /Salvataggio dei testi/);
+    assert.match(r.testo, /non ancora/);
+  });
+  test("le sorelle della stessa famiglia", () => {
+    for (const t of [
+      "Creazione del percorso in corso.",
+      "Registrazione della voce nel pilastro VIDYA.",
+      "Invio della mail al destinatario.",
+      "Apertura del documento salvato.",
+    ]) assert.doesNotMatch(tolto(t).testo, /^(Creazione|Registrazione|Invio|Apertura)/, `"${t}"`);
+  });
+  test("IL FRENO: un sostantivo che non nomina un oggetto dell'app è prosa legittima", () => {
+    // "Creazione del profilo — passo 3" dentro un documento generato non dichiara niente sul
+    // sistema. Un riquadro rosso che compare qui insegnerebbe a ignorare il riquadro rosso.
+    const t = "Creazione del profilo — passo 3\nAggiunta di sale a fine cottura.";
+    assert.equal(tolto(t).testo, t);
+  });
+  test("una domanda resta una domanda", () => {
+    const t = "Creazione del percorso: vuoi che proceda?";
+    assert.equal(tolto(t).testo, t);
+  });
+  test("in mezzo alla prosa non scatta: la forma pericolosa è quella a inizio riga", () => {
+    const t = "Ti spiego come funziona la creazione del percorso quando la chiedi a voce.";
+    assert.equal(tolto(t).testo, t);
+  });
+  test("le due forme già coperte non regrediscono", () => {
+    assert.doesNotMatch(tolto("Percorso aperto: **Divenire**").testo, /Percorso aperto:/);
+    assert.doesNotMatch(tolto("Ho salvato la nota.").testo, /Ho salvato/);
+  });
+});
