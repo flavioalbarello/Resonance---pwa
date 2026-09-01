@@ -42,7 +42,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-09-01 · l-inventario-dice-anche-cosa-contiene";
+const APP_BUILD = "2026-09-01 · quale-conversazione-esattamente";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -193,6 +193,43 @@ ${perPilastro(pBio, "BIO")}
 ${perPilastro(pAir, "AIR")}
 ${perPilastro(pVidya, "VIDYA")}
 Semi AIR: ${semiAttivi.length ? semiAttivi.map((s) => `"${String(s.content).slice(0, 60)}" (id:${s.id}, ${s.status})`).join(" · ") : "nessuno"}`;
+}
+// ══════════════════════════════════════════════════════════════════════════════
+// QUALE CONVERSAZIONE, ESATTAMENTE (01/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost: "ho chiesto allo Shell di creare un documento e mi ha proposto il piano alimentare".
+// Stava parlando di un concept album da due ore.
+// La causa non e' il modello: e' che il pulsante dice "da questa conversazione" e il programma non
+// sa cosa sia "questa conversazione". Sapeva solo prendere gli ultimi trenta messaggi, qualunque
+// cosa contenessero — e trenta messaggi indietro, nella chat del Ghost, c'era il piano alimentare
+// negoziato tre giorni prima. Davanti a una finestra che contiene una discussione musicale e un
+// piano alimentare completo di vincoli, "il documento concordato" e' il piano: e' la cosa piu'
+// finita, piu' negoziata, piu' a forma di documento che ci sia dentro. Il modello ha scelto bene
+// la cosa sbagliata, perche' la domanda era mal posta.
+//
+// IL TAGLIO E' IL TEMPO, e non e' un'idea nuova in questo file: FUOCO_SCADENZA_ORE dichiara gia'
+// che "un contesto ereditato da ieri e non chiuso non e' piu' il contesto". Stessa soglia, stessa
+// ragione. Uno stacco di piu' di otto ore fra due messaggi non e' una pausa: e' un'altra
+// conversazione, e prendere roba da prima di quello stacco e' il difetto, non una comodita'.
+// Deterministico, zero token, e il pannello dichiara quanti messaggi usera' e da quando.
+const ORE_DI_STACCO_CONVERSAZIONE = FUOCO_SCADENZA_ORE;
+function finestraConversazione(messages, tetto, oreDiStacco = ORE_DI_STACCO_CONVERSAZIONE) {
+  const tutti = (Array.isArray(messages) ? messages : []).filter((m) => m && (m.role === "user" || m.role === "assistant") && m.content);
+  const coda = tutti.slice(-tetto);
+  const stacco = oreDiStacco * 3600000;
+  // Si scorre all'indietro dall'ultimo: al primo salto troppo grande ci si ferma li'.
+  let inizio = 0, tagliataPerStacco = false;
+  for (let i = coda.length - 1; i > 0; i--) {
+    const dopo = new Date(coda[i]?.time).getTime();
+    const prima = new Date(coda[i - 1]?.time).getTime();
+    if (!Number.isFinite(dopo) || !Number.isFinite(prima)) continue; // messaggi senza orario: non tagliano
+    if (dopo - prima > stacco) { inizio = i; tagliataPerStacco = true; break; }
+  }
+  const messaggi = coda.slice(inizio);
+  const primo = messaggi[0]?.time;
+  let primoOrario = "";
+  if (primo) { const d = new Date(primo); if (!Number.isNaN(d.getTime())) primoOrario = `${fmtDate(primo)} ${d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`; }
+  return { messaggi, tagliataPerStacco, oreDiStacco, primoOrario };
 }
 // 31/08/2026 — IL FASCICOLO DEL PERCORSO APERTO.
 // Il Ghost: "il percorso e il materiale annesso sarà richiamabile e implementabile dalla chat?".
@@ -3270,7 +3307,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Forma delle risposte: la lunghezza e il registro vengono dal profilo cognitivo del Ghost, non da una regola generale del sistema.
 - Memoria procedurale: la nota che ogni pilastro accumula sugli scambi, riscritta per intero a ogni aggiornamento e non aggiunta in coda. Ha un sedimento storico e delle parole chiave per ritrovarla.
 - Tetto di spesa (Setup): raggiunti 5 dollari nel mese si fermano solo le cose che partono da sole — Semi che avanzano, Simbiosi. La chat resta utilizzabile.
-- Genera documento da questa conversazione: un pulsante sopra la chat trasforma quanto concordato parlando in un file .docx vero. Il programma rilegge la conversazione, ne estrae la versione FINALE (non le versioni intermedie scartate) e i vincoli dichiarati, li mostra in anteprima, e poi lo salva su Drive o lo scarica. Agganciarlo a un percorso è FACOLTATIVO: serve solo per ritrovarlo dentro l'app: se il Ghost non sceglie nessun percorso il file viene comunque prodotto e consegnato, e il programma glielo dice. Quando il contenuto è una griglia — giorni per pasti, settimane per esercizi — nel documento diventa una TABELLA vera, con righe e colonne, non i trattini e le barrette che la simulano in chat.
+- Genera documento da questa conversazione: un pulsante sopra la chat trasforma quanto concordato parlando in un file .docx vero. Il programma rilegge la conversazione, ne estrae la versione FINALE (non le versioni intermedie scartate) e i vincoli dichiarati, li mostra in anteprima, e poi lo salva su Drive o lo scarica. QUALE conversazione: il programma si ferma al primo stacco di più di otto ore fra due messaggi — prima di quello stacco è un'altra conversazione, non questa — e dichiara nel pannello quanti messaggi userà e da quando. C'è anche un campo facoltativo «di cosa deve parlare»: se lo si riempie il documento riguarda solo quello; se è vuoto vale il percorso aperto, e se non c'è nemmeno quello si formalizza l'argomento dell'ultimo scambio, mai due discorsi mescolati. Agganciarlo a un percorso è FACOLTATIVO: serve solo per ritrovarlo dentro l'app: se il Ghost non sceglie nessun percorso il file viene comunque prodotto e consegnato, e il programma glielo dice. Quando il contenuto è una griglia — giorni per pasti, settimane per esercizi — nel documento diventa una TABELLA vera, con righe e colonne, non i trattini e le barrette che la simulano in chat.
 - Ripresa della richiesta interrotta: se il Ghost esce dall'app mentre una risposta sta arrivando, il telefono sospende la scheda e la richiesta muore (l'app non ha un server che la tenga in mano al posto suo). La richiesta però viene messa da parte prima di partire, e quando il Ghost torna sull'app riparte da sola, senza doverla riscrivere — solo se è morta per un guasto di RETE e solo entro quindici minuti. NON significa "la trovi già pronta al ritorno": per quello servirebbe un server che tenga la richiesta, non ancora costruito.
 - Backup e ripristino (Setup): scarica in un unico file tutto lo stato locale e sa rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo previa conferma.
 Capacità NON disponibili in questa app: notifiche push; promemoria o azioni che si attivano da soli senza che il Ghost apra l'app; invio automatico di messaggi, mail o post senza la sua conferma esplicita su quello specifico invio; MODIFICARE il titolo o la descrizione di un evento del calendario (spostarlo a un altro giorno o ora invece si può); pubblicazione automatica su social o piattaforme esterne; esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost.`;
@@ -6336,6 +6373,8 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   const [docText, setDocText] = useState("");
   const [docSummary, setDocSummary] = useState("");
   const [docTitle, setDocTitle] = useState("");
+  // 01/09/2026 — di cosa deve parlare il documento, quando la conversazione ne contiene piu' d'una.
+  const [docArgomento, setDocArgomento] = useState("");
   const [docTargetPillar, setDocTargetPillar] = useState("bio");
   const [docTargetId, setDocTargetId] = useState("");      // id percorso esistente, o "" = nuovo
   const [docNewTitle, setDocNewTitle] = useState("");       // titolo del nuovo percorso se docTargetId vuoto
@@ -7034,25 +7073,36 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     return () => document.removeEventListener("visibilitychange", alRitorno);
   }, []);
   // ── Flusso "genera documento da conversazione" (alternativa A) ──
-  const CONV_WINDOW = 30; // ultimi N messaggi usati come base per il documento
-  const conversationText = () => messages.slice(-CONV_WINDOW)
+  const CONV_WINDOW = 30; // tetto massimo di messaggi usati come base per il documento
+  const finestra = () => finestraConversazione(messages, CONV_WINDOW);
+  const conversationText = () => finestra().messaggi
     .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
     .map((m) => `${m.role === "user" ? "GHOST" : "SHELL"}: ${m.content}`).join("\n\n");
   const openDocPanel = () => {
     setDocPanel(true); setDocPhase("idle"); setDocText(""); setDocSummary(""); setDocTitle("");
-    setDocTargetPillar("bio"); setDocTargetId(""); setDocNewTitle(""); setDocMsg("");
+    setDocTargetPillar("bio"); setDocTargetId(""); setDocNewTitle(""); setDocMsg(""); setDocArgomento("");
   };
   const generateFromConversation = async () => {
     if (docPhase === "generating") return;
     setDocPhase("generating"); setDocMsg("");
     try {
       const convo = conversationText();
+      // 01/09/2026 — DI QUALE CONVERSAZIONE, ESATTAMENTE. Vedi finestraConversazione: la finestra e'
+      // gia' tagliata allo stacco temporale, ma dentro una stessa sessione possono convivere due
+      // discorsi. Se il Ghost lo dichiara, o se c'e' un percorso aperto, il documento sa cosa deve
+      // essere invece di doverlo indovinare — e la regola su cosa fare quando i discorsi sono due
+      // e' scritta, non lasciata al buon senso del modello.
+      const f = leggiFuoco();
+      const argomento = docArgomento.trim() || (f.tipo === "percorso" ? f.etichetta : "");
+      const bloccoArgomento = argomento
+        ? ` IL DOCUMENTO DEVE RIGUARDARE: ${argomento}. Se la conversazione contiene anche altri argomenti, ignorali completamente — non un accenno, non un'appendice.`
+        : ` Se la conversazione contiene PIU' DI UN argomento distinto, formalizza SOLO quello dell'ultimo scambio, e apri il documento con un titolo che lo nomini senza ambiguita'. Non mescolare due discorsi in un documento solo.`;
       // 29/08/2026 — le tabelle sono entrate in questo elenco, e non e' un dettaglio di stile: fin
       // qui il markup consentito erano solo titoli, elenchi e paragrafi, quindi un piano di
       // quattordici giorni per cinque pasti — che e' una griglia — veniva appiattito in una sequenza
       // di elenchi. Adesso generateDocxBlob sa stampare una tabella vera nel .docx, ma puo' farlo
       // solo se il documento ne contiene una.
-      const sysDoc = `Sei lo Shell del sistema Resonance. Dalla conversazione qui sotto tra GHOST e SHELL, estrai e formalizza il documento concordato (es. un piano). Riporta la versione FINALE emersa dalla negoziazione, non le versioni intermedie scartate. Rispetta ogni vincolo o esclusione dichiarato dal Ghost. Usa markup leggero: "# " titolo, "## " sezioni, "- " elenchi, righe normali per paragrafi. Quando il contenuto e' una griglia — giorni per pasti, settimane per esercizi, qualunque cosa abbia righe e colonne — usa una TABELLA markdown (prima riga di intestazione, poi la riga "|---|---|", poi le righe di dati): diventa una tabella vera nel documento finale, con le sue colonne. Non spezzare mai una griglia in elenchi. Solo il documento, nessuna premessa.`;
+      const sysDoc = `Sei lo Shell del sistema Resonance. Dalla conversazione qui sotto tra GHOST e SHELL, estrai e formalizza il documento concordato (es. un piano). Riporta la versione FINALE emersa dalla negoziazione, non le versioni intermedie scartate. Rispetta ogni vincolo o esclusione dichiarato dal Ghost. Usa markup leggero: "# " titolo, "## " sezioni, "- " elenchi, righe normali per paragrafi. Quando il contenuto e' una griglia — giorni per pasti, settimane per esercizi, qualunque cosa abbia righe e colonne — usa una TABELLA markdown (prima riga di intestazione, poi la riga "|---|---|", poi le righe di dati): diventa una tabella vera nel documento finale, con le sue colonne. Non spezzare mai una griglia in elenchi. Solo il documento, nessuna premessa.${bloccoArgomento}`;
       const sysSum = `Sei lo Shell del sistema Resonance. Dalla conversazione qui sotto, estrai in forma sintetica SOLO i vincoli, le esclusioni e le preferenze stabili che il Ghost ha dichiarato (es. "no zucchine", "calorie discontinue", "pranzi portatili lun/mer/ven"). Sono la memoria procedurale che guiderà le prossime versioni. Elenco secco, una riga per vincolo, niente altro.`;
       // 30/08/2026 — IL DOCUMENTO VUOTO. Il Ghost ha scaricato un .docx che conteneva solo il
       // titolo "Documento": il modello aveva restituito una risposta vuota, il pannello e' passato
@@ -8104,7 +8154,20 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     ${docPanel && html`<div class="r-card" style="margin-bottom:10px">
       <div class="r-hub-title" style="color:${C.core}">Documento da conversazione</div>
       ${docPhase === "idle" && html`<div>
-        <div class="r-hub-detail" style="margin-top:6px">Userò gli ultimi ${CONV_WINDOW} messaggi. Genererò il documento e una bozza dei vincoli emersi, da agganciare a un percorso.</div>
+        ${(() => {
+          const f = finestra();
+          const fuocoOra = leggiFuoco();
+          return html`<div>
+            <div class="r-hub-detail" style="margin-top:6px">Userò ${f.messaggi.length} messagg${f.messaggi.length === 1 ? "io" : "i"}${f.primoOrario ? `, da ${f.primoOrario}` : ""}.${f.tagliataPerStacco ? ` Mi fermo lì: prima c'è uno stacco di ${f.oreDiStacco} ore, quindi è un'altra conversazione.` : ""} Genererò il documento e una bozza dei vincoli emersi.</div>
+            <${Field} label="Di cosa deve parlare (facoltativo)">
+              <input class="r-input" value=${docArgomento} onInput=${(e) => setDocArgomento(e.target.value)}
+                placeholder=${fuocoOra.tipo === "percorso" ? fuocoOra.etichetta : "es. i testi dell'Atto I"} />
+            </${Field}>
+            <div class="r-hub-detail">${docArgomento.trim()
+              ? `Formalizzo solo questo, ignorando il resto.`
+              : (fuocoOra.tipo === "percorso" ? `Vuoto: uso il percorso aperto, "${fuocoOra.etichetta}".` : `Vuoto: se ci sono più argomenti prendo quello dell'ultimo scambio.`)}</div>
+          </div>`;
+        })()}
         <div style="display:flex;gap:8px;margin-top:10px">
           <button class="r-btn" style="background:${C.core}" onClick=${generateFromConversation}>Genera bozza</button>
           <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => setDocPanel(false)}>Annulla</button>
