@@ -279,3 +279,102 @@ describe("la guardia del compiuto: la nominalizzazione (01/09/2026)", () => {
     assert.doesNotMatch(tolto("Ho salvato la nota.").testo, /Ho salvato/);
   });
 });
+
+describe("salvare qualcosa detto PRIMA dell'ultimo messaggio (01/09/2026)", () => {
+  // Il Ghost: "Genera un percorso in vidya per questo concept, comprensivo dei file di testo
+  // elaborati a riguardo fin'ora". I testi dell'Atto I erano di due ore prima, non nel messaggio
+  // appena sopra. Prendere sempre il precedente vuol dire non poter mai salvare niente che non sia
+  // stato appena scritto — e ciò che vale la pena conservare quasi mai lo è.
+  const lungo = (s) => s.padEnd(app.LUNGHEZZA_MINIMA_SALVABILE + 10, " .");
+  const conversazione = [
+    { id: "a1", role: "assistant", content: lungo("ATTO I: Origine — Mitosi, Prima divisione, Colonia. Pulsazione, battito.") },
+    { id: "u1", role: "user", content: "bene, procedi" },
+    { id: "a2", role: "assistant", content: lungo("ATTO II: Complessità — Nervo, Occhio, Tempo, Voce. La rappresentazione.") },
+    { id: "u2", role: "user", content: "salva i testi dell'Atto I nel percorso" },
+    { id: "a3", role: "assistant", content: lungo("Va bene: ecco cosa metto dentro, dimmi se confermi il salvataggio.") },
+  ];
+
+  test("IL RIFERIMENTO VINCE SULLA POSIZIONE: «Atto I» pesca l'Atto I, non l'ultimo", () => {
+    const m = app.testoDaSalvare(conversazione, "a3", "Atto I — testi completi");
+    assert.equal(m.id, "a1");
+    assert.equal(m.perRiferimento, true);
+  });
+  test("«Atto II» pesca l'Atto II — lo spareggio funziona in entrambi i versi", () => {
+    assert.equal(app.testoDaSalvare(conversazione, "a3", "Atto II — testi completi").id, "a2");
+  });
+  test("senza riferimento utile vale il più recente, come prima: nessuna regressione", () => {
+    const m = app.testoDaSalvare(conversazione, "a3", "");
+    assert.equal(m.id, "a2");
+    assert.equal(m.perRiferimento, false);
+  });
+  test("un riferimento che non corrisponde a niente non impedisce il salvataggio", () => {
+    // Meglio salvare il più recente dichiarando che non è stato trovato per riferimento, che
+    // rifiutarsi e perdere il materiale.
+    const m = app.testoDaSalvare(conversazione, "a3", "la ricetta del pane");
+    assert.equal(m.id, "a2");
+    assert.equal(m.perRiferimento, false);
+  });
+});
+
+describe("nodoPerDocumento — sotto quale nodo finisce il materiale", () => {
+  const topics = [
+    { id: "t1", label: "Atto I: Origine — testi completi" },
+    { id: "t2", label: "Atto II: Complessità — testi completi" },
+    { id: "t3", label: "Struttura narrativa: tracce come capitoli di una metamorfosi" },
+  ];
+  test("«Atto I — testi» va sotto l'Atto I, non sotto l'Atto II", () => {
+    assert.equal(app.nodoPerDocumento(topics, "Atto I — testi completi"), "t1");
+  });
+  test("«Atto II» va sotto l'Atto II", () => {
+    assert.equal(app.nodoPerDocumento(topics, "Atto II — testi"), "t2");
+  });
+  test("un titolo che non corrisponde a nessun nodo NON viene messo sotto uno a caso", () => {
+    // Un documento senza nodo resta del percorso: meglio senza che sotto quello sbagliato.
+    assert.equal(app.nodoPerDocumento(topics, "Mappa sonora dell'album"), null);
+    assert.equal(app.nodoPerDocumento(topics, ""), null);
+    assert.equal(app.nodoPerDocumento([], "Atto I"), null);
+  });
+  test("se due nodi corrispondono allo stesso modo non si sceglie a caso", () => {
+    // Prima aspettativa scritta male e corretta dalla prova: avevo dato per scontato che il nodo
+    // "più specifico" vincesse. Non è così e non deve esserlo — le parole cercate ("testi",
+    // "completi") stanno in entrambe le etichette, quindi il punteggio è pari e il documento resta
+    // del percorso invece di finire sotto un nodo scelto a caso. È la stessa regola che vale per i
+    // percorsi e per gli eventi: a parità non si sceglie.
+    const ambigui = [{ id: "a", label: "Testi completi" }, { id: "b", label: "Testi completi rivisti" }];
+    assert.equal(app.nodoPerDocumento(ambigui, "testi completi"), null);
+    // Il numero invece separa: è l'unico spareggio ammesso.
+    const atti = [{ id: "a", label: "Atto I — testi completi" }, { id: "b", label: "Atto II — testi completi" }];
+    assert.equal(app.nodoPerDocumento(atti, "Atto II — testi completi"), "b");
+  });
+});
+
+describe("materialeDelNodo — cosa compare toccando un nodo", () => {
+  const percorso = {
+    topics: [{ id: "t1", label: "Atto I" }, { id: "t2", label: "Atto II" }],
+    documents: [
+      { id: "d1", title: "Atto I — testi", text: "Pulsazione.", nodoId: "t1", date: "2026-09-01T00:00:00Z" },
+      { id: "d2", title: "Mappa sonora", text: "…", nodoId: null, date: "2026-09-01T00:00:00Z" },
+    ],
+    sessions: [{ id: "s1", topicIds: ["t1"], summary: "provato i frammenti vocali", date: "2026-09-01T00:00:00Z" }],
+  };
+  test("il nodo mostra i suoi documenti e le sue sessioni", () => {
+    const m = app.materialeDelNodo(percorso, { id: "t1" });
+    assert.equal(m.documenti.length, 1);
+    assert.equal(m.documenti[0].id, "d1");
+    assert.equal(m.sessioni.length, 1);
+  });
+  test("un nodo senza niente non eredita il materiale degli altri", () => {
+    const m = app.materialeDelNodo(percorso, { id: "t2" });
+    assert.equal(m.documenti.length, 0);
+    assert.equal(m.sessioni.length, 0);
+  });
+  test("un documento senza nodo non compare sotto nessun nodo", () => {
+    for (const t of percorso.topics) {
+      assert.ok(!app.materialeDelNodo(percorso, t).documenti.some((d) => d.id === "d2"));
+    }
+  });
+  test("un percorso vuoto non fa esplodere niente", () => {
+    assert.deepEqual(app.materialeDelNodo({}, { id: "x" }), { documenti: [], sessioni: [] });
+    assert.deepEqual(app.materialeDelNodo(null, null), { documenti: [], sessioni: [] });
+  });
+});
