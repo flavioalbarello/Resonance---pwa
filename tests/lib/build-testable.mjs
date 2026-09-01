@@ -86,6 +86,7 @@ const EXPORT_NAMES = [
   "leggiDiagnosticaRicerca", "diagnosticaVuota", "detectPossibleHallucinatedSource",
   "memoriaEstesaPerMagi", "MAGI_FRAMMENTI_PER_PILASTRO", "MAGI_TETTO_FRAMMENTO",
   "nodoPerDocumento", "materialeDelNodo", "numeriDelTitolo",
+  "contaPercorso", "costruisciInventario",
 ];
 
 // Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.
