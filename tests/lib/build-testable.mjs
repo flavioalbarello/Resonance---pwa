@@ -102,6 +102,8 @@ const EXPORT_NAMES = [
   "nuovaVersioneDi", "impacchetta", "spacchetta", "PROVE_MINIME", "PLASMIDE_VERSIONE_FORMATO",
   "PLASMIDI_KEY", "leggiPlasmidi", "salvaPlasmide", "dimenticaPlasmide", "plasmidiPerAttacco",
   "segnaPlasmideUsato", "NOMI_DA_CHIUDERE", "SANDBOX_TETTO_MS",
+  "eRifacimento", "registraTrappola", "leggiTrappole", "dimenticaTrappola",
+  "TRAPPOLE_KEY", "TRAPPOLE_TETTO", "LUNGHEZZA_MINIMA_RIFATTA",
 ];
 
 // Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.
