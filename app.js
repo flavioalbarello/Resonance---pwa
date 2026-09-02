@@ -51,7 +51,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-09-02 · il-primo-plasmide";
+const APP_BUILD = "2026-09-02 · le-trappole-si-raccolgono";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -2943,6 +2943,65 @@ function diagnosiDegenerazione(text) {
 function isDegenerateOutput(text) { return diagnosiDegenerazione(text) !== null; }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// LE TRAPPOLE — i vicoli ciechi già pagati (02/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Da dove viene. Discutendo se un PROCESSO lungo (il posizionamento lavorativo di Marta: CV,
+// lettera, parole chiave per LinkedIn) valga la pena di essere estratto e trasferito, il conto sui
+// suoi numeri veri ha detto una cosa scomoda: il plasmide NON risparmia token. Marta-2 deve
+// comunque rispondere alle domande sulla propria vita, e quei turni costano uguale (misurato sul
+// suo registro del 24/08: 6 turni, $0,216, ~8.000 token in ingresso ciascuno).
+// Quello che si risparmia davvero sono i VICOLI CIECHI. Nel suo registro ce n'è uno, esplicito:
+//   «Il CV è aggiornato, ma non mi piace la lettera di presentazione che hai fatto»
+// La lettera era stata scritta PRIMA dell'inventario delle competenze, e si è dovuta rifare.
+// Quel giro è stato pagato una volta: non c'è ragione che venga ripagato da chiunque venga dopo.
+//
+// Questo blocco raccoglie quei momenti mentre capitano, a costo ZERO — nessuna chiamata al
+// modello, solo confronto di parole. È materia prima, non ancora una feature: serve a rispondere
+// con dei dati, fra una settimana, alla domanda "le trappole vere esistono, o le sto immaginando?".
+// Se non se ne accumulano, la seconda specie di plasmide non vale la candela e lo sapremo dai fatti.
+//
+// IL RILEVATORE È DELIBERATAMENTE STRETTO. Una trappola mancata non costa niente; una trappola
+// falsa sporca l'unica materia prima che abbiamo. Quindi tre famiglie chiuse, nessuna scorciatoia:
+//  A · verbi di rifacimento espliciti — possono riferirsi solo a ciò che è appena stato prodotto
+const RIFACIMENTO_ESPLICITO_RE = /\b(rifall[oa]|rifacciamo|rifai|rifamm?el[oa]|riscriv\w+|ricomincia|riprova\s+(?:da\s+capo|meglio))\b/i;
+//  B · giudizi che possono valere SOLO su un testo: nessun vincolo alimentare è "troppo prolisso"
+const GIUDIZIO_SUL_TESTO_RE = /\b(troppo\s+(?:lung[ao]|prolisso|verboso|generic[ao]|vag[ao]|corto|ripetitiv[ao])|non\s+si\s+capisce|è\s+illeggibile|e'\s+illeggibile)\b/i;
+//  C · giudizi generici — ammessi SOLO se la frase nomina ciò che il programma ha appena prodotto.
+//      Senza questa condizione "non mi piace il pesce" diventerebbe una trappola, e non lo è.
+const GIUDIZIO_GENERICO_RE = /\b(non\s+mi\s+piace|non\s+va\s+bene|non\s+mi\s+convince|non\s+ci\s+siamo|hai\s+sbagliato|non\s+è\s+quello|non\s+e'\s+quello|non\s+funziona)\b/i;
+const RIFERIMENTO_ALL_OUTPUT_RE = /\b((?:hai|avevi)\s+(?:fatto|scritto|generato|prodotto|proposto|dato|messo)|quello\s+che\s+hai|questo\s+testo|la\s+risposta|il\s+documento|la\s+lettera|il\s+piano|il\s+curriculum|il\s+cv)\b/i;
+// Sotto questa lunghezza il messaggio precedente non è "qualcosa che è stato prodotto": è uno
+// scambio di servizio, e un giudizio negativo su di esso non è un vicolo cieco.
+const LUNGHEZZA_MINIMA_RIFATTA = 200;
+function eRifacimento(frase, testoPrecedente) {
+  const f = String(frase || "");
+  if (!f.trim()) return false;
+  if (String(testoPrecedente || "").trim().length < LUNGHEZZA_MINIMA_RIFATTA) return false;
+  if (RIFACIMENTO_ESPLICITO_RE.test(f)) return true;
+  if (GIUDIZIO_SUL_TESTO_RE.test(f)) return true;
+  return GIUDIZIO_GENERICO_RE.test(f) && RIFERIMENTO_ALL_OUTPUT_RE.test(f);
+}
+const TRAPPOLE_KEY = "trappole";
+const TRAPPOLE_TETTO = 40;
+function leggiTrappole() { const t = loadKey(TRAPPOLE_KEY, []); return Array.isArray(t) ? t : []; }
+function dimenticaTrappola(id) { saveKey(TRAPPOLE_KEY, leggiTrappole().filter((t) => t.id !== id)); }
+// `turniSpesi` è il campo che vale più di tutti: misura QUANTO è costato il vicolo cieco. Un
+// rifacimento al secondo scambio è un aggiustamento; al quindicesimo è una direzione sbagliata
+// presa presto e pagata a lungo — ed è quella che un processo trasferibile deve evitare.
+function registraTrappola({ frase, testoRifatto, fuoco, turniSpesi }) {
+  const t = {
+    id: uid(), quando: new Date().toISOString(),
+    cosaNonHaFunzionato: String(frase || "").slice(0, 300),
+    suCosa: troncaAConfineDiParola(String(testoRifatto || "").replace(/\s+/g, " "), 220),
+    lunghezzaRifatta: String(testoRifatto || "").length,
+    percorso: fuoco?.tipo === "percorso" ? fuoco.etichetta : null,
+    turniSpesi: Number(turniSpesi) || 0,
+  };
+  saveKey(TRAPPOLE_KEY, [t, ...leggiTrappole()].slice(0, TRAPPOLE_TETTO));
+  return t;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // IL RECINTO — dove gira il codice che non esisteva quando l'app è stata scritta (02/09/2026)
 // ══════════════════════════════════════════════════════════════════════════════
 // MISURATO nell'origine vera di questa PWA, prima di scrivere una riga di progetto:
@@ -3830,6 +3889,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Interrogare la memoria cerca anche dentro i percorsi: "cosa ci eravamo detti su X" guarda nelle note correnti dei pilastri, nei frammenti di sedimento E nei documenti dei percorsi, nelle competenze accumulate e nella memoria specifica di ogni percorso. Ogni risultato dice da dove viene (quale documento, di quale percorso). Prima i documenti non venivano guardati affatto, quindi il materiale più lungo prodotto dal sistema era l'unico che la ricerca non trovava.
 - Forma delle risposte dell'Agorà Magi: ogni stadio risponde dentro un campo strutturato, in righe brevissime che cominciano con "· ", una idea per riga, con un tetto di parole dichiarato per ruolo (Balthasar 60, Melchior 60, Caspar 50, Sintesi 70). Serve a due cose insieme: risposte dense invece che prolisse, e soprattutto tenere fuori dallo schermo il ragionamento interno del modello, che il 01/09/2026 finiva stampato per intero al posto della risposta (conteggi di parole, "devo", versioni intermedie). Se il campo strutturato non arriva leggibile, il programma pota le righe di deliberazione e consegna il resto invece di perdere la chiamata.
 - Voce nell'Agorà Magi: ogni stadio ha un 🔊 accanto al nome, come i messaggi dello Shell. Legge quel solo stadio; ritoccarlo ferma la lettura. Vale anche per le sessioni già registrate.
+- Trappole: ogni volta che il Ghost chiede di rifare qualcosa che lo Shell aveva appena prodotto («non mi piace la lettera che hai fatto», «rifallo», «troppo prolisso»), il programma se lo segna da solo: la frase, l'inizio del testo rifatto, il percorso aperto e dopo quanti scambi è successo. Costa zero — nessuna chiamata al modello, solo confronto di parole. Non cambia niente nel turno in corso e non finisce (ancora) in nessun prompt: è materia prima, e serve a capire con dei dati se un PROCESSO lungo — un posizionamento lavorativo, un percorso di studio — abbia dentro dei vicoli ciechi ricorrenti che varrebbe la pena di non far ripercorrere a nessun altro. Si vedono in Setup, nel riquadro "Trappole", e si tolgono una per una se il rilevamento è sbagliato. Il rilevatore è deliberatamente stretto: preferisce mancare una trappola che segnarne una falsa.
 - Plasmidi (strumenti acquisiti): funzioni pure che l'app ha imparato DOPO essere stata scritta, e che si trasferiscono da un'app all'altra come un plasmide fra due batteri. Ognuna gira in un recinto senza rete, senza i dati del Ghost, senza interfaccia e con un tetto di tempo — misurato, non promesso. Ognuna porta con sé le proprie PROVE: quando un plasmide arriva da un'altra app le prove rigirano su QUESTO telefono prima che venga usato, e se non passano non entra. Arriva sempre SPENTO: lo accende il Ghost. Vivono in Setup, nel riquadro "Plasmidi", dove si legge il codice per intero, si riprovano le prove quando si vuole, si spengono e si tolgono. Un plasmide non porta MAI dati personali: il programma lo verifica prima di esportarlo, e blocca l'esportazione se trova indirizzi, numeri, cifre lunghe o i termini dell'identità professionale dichiarata. Oggi c'è un solo punto dell'app dove uno strumento acquisito può essere chiamato ("riconoscere una risposta guasta del modello"): l'app può crescere organi nuovi solo dove esiste già un attacco, e gli attacchi si scrivono a mano. Se il magazzino è vuoto — com'è appena installato — l'app si comporta e costa esattamente come prima.
 - Rinunce di parametro: l'app aggiunge alla richiesta al modello alcuni parametri facoltativi (spegnere il ragionamento interno per non pagarlo, la temperatura, i freni anti-ripetizione, la ricerca web). Non tutti i modelli li accettano. Se il fornitore ne rifiuta uno, il programma toglie QUEL parametro e rimanda la richiesta invece di lasciare il Ghost senza risposta, e da lì in poi a quel modello non lo manda più — la scoperta si paga una volta sola. Non ripiega su errori che non parlano di parametri (credito esaurito, modello inesistente): quelli si dichiarano. In Setup compare il riquadro "A cosa ho rinunciato per farti arrivare una risposta", con cosa è stato tolto e cosa costa. È importante: se è caduta la ricerca web, la risposta è arrivata SENZA cercare, e va detto invece di lasciar credere il contrario.
 - L'anello (accettore d'azione): quando il sistema compie un atto deliberato — una perturbazione Magi mirata a un pilastro, o un percorso proposto da Simbiosi e aperto davvero — dichiara SUBITO un bersaglio osservabile ("mi aspetto che entro 21 giorni un nodo di quel pilastro si muova dallo stato in cui è nato") e congela la misura di partenza. Dopo, è il programma a contare nei dati dell'app se quel movimento c'è stato: due conteggi e una sottrazione, nessun modello, nessun giudizio. Il risultato compare in Simbiosi nel riquadro "L'anello" ed entra nella valutazione successiva. Cosa NON è, e va detto se il Ghost lo chiede: non è un punteggio sulle previsioni del sistema, e non è un dato sul Ghost. Un atto che non muove niente vuol dire che la proposta era troppo prudente o troppo ovvia — mai che il Ghost non ha fatto la sua parte. Il gradiente è voluto in questo verso: una proposta cauta non smuove nulla e quindi qui risulta peggio di una audace.
@@ -7174,6 +7234,16 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     const userText = esplicito || input.trim() || (attachment?.kind === "image" ? "Guarda questa immagine." : "Guarda questo documento.");
     const currentAttachment = attachment;
     const history = messages.slice(-20).map((m) => ({ role: m.role, content: marcaPropostaNelloStorico(m) }));
+    // 02/09/2026 — LA TRAPPOLA SI REGISTRA QUI, nel momento in cui capita. Zero token: è confronto
+    // di parole fra ciò che il Ghost ha appena scritto e ciò che lo Shell aveva appena prodotto.
+    // `turniSpesi` conta gli scambi già fatti nella conversazione: è la misura di quanto è costato
+    // il vicolo cieco, e l'unico numero che distingue un aggiustamento da una direzione sbagliata.
+    try {
+      const precedente = [...messages].reverse().find((m) => m.role === "assistant");
+      if (eRifacimento(userText, precedente?.content)) {
+        registraTrappola({ frase: userText, testoRifatto: precedente.content, fuoco: leggiFuoco(), turniSpesi: messages.filter((m) => m.role === "user").length });
+      }
+    } catch { /* la raccolta non deve mai far fallire un turno */ }
     // (lastMsg non serve piu': era l'appiglio della conferma a parole, rimossa il 16/08/2026.)
     stopSpeaking(); setSpeakingId(null);
     // Id univoci per messaggio: voce/copia non dipendono più dall'indice (che sbagliava
@@ -9120,6 +9190,25 @@ function CostSummaryPanel({ debugLog }) {
     `}
   </${Card}>`;
 }
+// 02/09/2026 — DOVE SI VEDONO LE TRAPPOLE, cioè la materia prima di un processo trasferibile.
+// Non è una feature finita: è un raccoglitore. Serve a rispondere con dei dati, fra una settimana,
+// alla domanda che ha fatto nascere tutto — "le trappole vere esistono, o le sto immaginando?".
+// Si possono togliere una per una: un rilevamento sbagliato non deve restare a sporcare il conto.
+function TrappolePanel() {
+  const [lista, setLista] = useState(() => leggiTrappole());
+  if (!lista.length) return null;
+  return html`<${Card} accent=${C.core}>
+    <div class="r-hub-title" style="color:#3A4750">Trappole — i vicoli ciechi già pagati (${lista.length})</div>
+    <div class="r-hub-detail">Ogni volta che chiedi di rifare qualcosa che lo Shell aveva appena prodotto, il programma se lo segna: cosa non ha funzionato, su cosa, e dopo quanti scambi. Costa zero — nessuna chiamata al modello. È il materiale da cui un giorno si può estrarre un processo trasferibile: non il tuo CV, ma l'ordine giusto in cui farlo.</div>
+    <div style="margin-top:10px">${lista.map((t) => html`<div class="r-draft-card" key=${t.id} style="margin-bottom:8px">
+      <div class="r-entry-row"><div style="flex:1">
+        <div class="r-draft-label">${fmtDate(t.quando)}${t.percorso ? ` · percorso "${t.percorso}"` : ""} · dopo ${t.turniSpesi} scambi${t.turniSpesi === 1 ? "o" : ""}</div>
+        <div class="r-draft-body">«${t.cosaNonHaFunzionato}»</div>
+        <div class="r-hub-detail" style="margin-top:4px">su un testo di ${t.lunghezzaRifatta} caratteri che cominciava con: "${t.suCosa}"</div>
+      </div><button class="r-icon-btn" onClick=${() => { dimenticaTrappola(t.id); setLista(leggiTrappole()); }}>✕</button></div>
+    </div>`)}</div>
+  </${Card}>`;
+}
 // ── IL PANNELLO DEI PLASMIDI (02/09/2026) ───────────────────────────────────────────────────────
 // Tre cose che devono essere possibili senza aprire il codice: VEDERE cosa fa uno strumento,
 // RIPROVARLO quando si vuole (non solo quando è entrato), e TOGLIERLO.
@@ -9510,6 +9599,7 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
       ${logSyncMsg && html`<div class="r-hub-detail" style="margin-top:6px">${logSyncMsg}</div>`}
       <div class="r-hub-detail" style="margin-top:10px">Build: ${APP_BUILD}</div>
     </${Card}>
+    <${TrappolePanel} />
     <${PlasmidiPanel} ghostProfile=${ghostProfile} />
     <${NoteDiRetePanel} />
     <${Card} accent=${C.core}>
