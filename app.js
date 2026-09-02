@@ -42,7 +42,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-09-02 · il-ragionamento-non-si-spegne-ovunque";
+const APP_BUILD = "2026-09-02 · nessun-parametro-facoltativo-ferma-una-risposta";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -2380,35 +2380,144 @@ function segnaRagionamentoObbligatorio(model) {
   const salvati = loadKey(MODELLI_RAGIONAMENTO_OBBLIGATORIO_KEY, []);
   saveKey(MODELLI_RAGIONAMENTO_OBBLIGATORIO_KEY, [...(Array.isArray(salvati) ? salvati : []), m]);
 }
-// Il messaggio esatto osservato è "Reasoning is mandatory for this endpoint and cannot be disabled",
-// ma il rilevatore accetta le varianti vicine: un fornitore può cambiare la formulazione, e il costo
-// di un falso positivo qui è UN campo in meno in una richiesta, non un danno.
-const RIFIUTO_RAGIONAMENTO_RE = /reasoning is mandatory|reasoning.{0,30}cannot be (?:disabled|turned off)|cannot disable reasoning/i;
-function eRifiutoDelRagionamentoSpento(messaggio) { return RIFIUTO_RAGIONAMENTO_RE.test(String(messaggio || "")); }
-// Scrive nello stesso registro che il pannello di Setup mostra. Non passa da pushDebugLog perché
-// queste due funzioni di rete non lo ricevono, e infilarlo attraverso tutti i chiamanti per una
-// riga di diagnostica sarebbe una modifica più grande del difetto: stessa strada di registraAzione,
-// che scrive anche lei direttamente. Si vede alla riapertura del pannello.
+// ── 02/09/2026, secondo giro — «dovrebbe funzionare a prescindere dal modello utilizzato» ───────
+// Obiezione del Ghost alla mia prima correzione, ed è più forte della correzione. Avevo chiuso UN
+// parametro, quello che si era rotto. Ma `reasoning` non ha niente di speciale: è uno dei campi
+// FACOLTATIVI che l'app aggiunge alla richiesta perché migliorano qualcosa su UN modello, e ogni
+// modello nuovo può rifiutarne uno qualsiasi. Chiudere il caso osservato lascia in piedi la classe:
+// il prossimo modello che rifiuta `temperature` o `tools` rimette l'app di qualcuno a zero, e la
+// diagnosi ricomincerebbe da capo su un registro notturno.
+//
+// Il principio, che è quello che il Ghost ha chiesto: un parametro facoltativo non deve mai poter
+// impedire una risposta. Se il fornitore lo rifiuta, si rinuncia a quel parametro — non alla
+// risposta — e si dichiara a cosa si è rinunciato.
+//
+// Le regole del ripiego, tutte e tre necessarie:
+//  1. SI RINUNCIA SOLO AL FACOLTATIVO. model, messages e max_tokens non sono in questo elenco: senza
+//     di loro non c'è una richiesta, e ripiegare non avrebbe senso.
+//  2. NON SI RIPIEGA ALLA CIECA. Si toglie un campo solo se l'errore lo nomina o corrisponde a una
+//     forma nota. Un "credito esaurito" o un "modello inesistente" non si curano togliendo campi:
+//     riprovare a caso vorrebbe dire pagare tre chiamate per lo stesso errore.
+//  3. OGNI RINUNCIA SI PAGA UNA VOLTA SOLA. Quello che il fornitore ha detto viene scritto per quel
+//     modello, quindi dal turno dopo il campo non parte nemmeno.
+// Ogni rinuncia dichiara anche COSA COSTA, perché degradare in silenzio sarebbe peggio del guasto:
+// una risposta senza ricerca web che sembra averla fatta è la cosa che questo progetto teme di più.
+const MODELLI_RINUNCE_KEY = "modelli-rinunce";
+const RINUNCE_POSSIBILI = [
+  {
+    id: "reasoning",
+    campi: ["reasoning"],
+    // L'UNICA forma osservata dal vivo: dal registro di Marta, 02/09/2026, su
+    // google/gemini-3.1-pro-preview — "Reasoning is mandatory for this endpoint and cannot be disabled."
+    riconosce: /reasoning is mandatory|reasoning.{0,30}cannot be (?:disabled|turned off)|cannot disable reasoning/i,
+    costo: "il modello pensa internamente e quei token si pagano (era spento apposta dal 29/08)",
+  },
+  {
+    id: "temperatura",
+    campi: ["temperature"],
+    // Non osservata qui, ma è la rinuncia più probabile dopo la prima: diversi endpoint di
+    // ragionamento accettano solo la temperatura di default.
+    riconosce: /temperature.{0,40}(?:not supported|unsupported|is not allowed|must be|only.{0,15}default)|unsupported.{0,20}temperature/i,
+    costo: "la temperatura torna quella di default del modello: Caspar diventa meno rigido e Balthasar meno audace",
+  },
+  {
+    id: "penalita",
+    campi: ["repetition_penalty", "frequency_penalty"],
+    riconosce: /(?:repetition|frequency)[_ ]?penalty.{0,40}(?:not supported|unsupported|invalid|unknown)|unsupported.{0,25}penalt/i,
+    costo: "cade il freno anti-loop: resta la guardia che rilegge la risposta e riprova",
+  },
+  {
+    id: "ricerca_web",
+    campi: ["tools", "tool_choice", "max_tool_calls"],
+    riconosce: /(?:tool[_ ]?(?:use|choice|calls)|tools).{0,40}(?:not supported|unsupported|invalid|unknown)|does not support tool|no endpoints found that support tool/i,
+    costo: "la risposta arriva SENZA ricerca web: la diagnostica delle fonti lo dirà, perché legge le citazioni vere e non ne troverà",
+  },
+];
+// La forma generica di un rifiuto-di-parametro. Serve alla seconda via di riconoscimento: un
+// fornitore può cambiare la formulazione, e allora l'aggancio è che l'errore NOMINI un campo che
+// stiamo mandando davvero. Insieme, le due vie coprono sia le forme note sia quelle future, senza
+// mai autorizzare un ripiego su un errore che non parla di parametri.
+const ERRORE_DI_PARAMETRO_RE = /not supported|unsupported|is mandatory|cannot be (?:disabled|turned off|used|set)|is not allowed|invalid.{0,25}(?:parameter|argument|value|field|request)|unrecogni[sz]ed|unknown (?:parameter|field|argument)|no endpoints found/i;
+function rinunciaPerErrore(messaggio, corpo) {
+  const m = String(messaggio || "");
+  if (!m) return null;
+  for (const r of RINUNCE_POSSIBILI) {
+    if (!r.campi.some((c) => corpo?.[c] !== undefined)) continue; // non si rinuncia a un campo che non stiamo mandando
+    if (r.riconosce.test(m)) return r;
+    if (ERRORE_DI_PARAMETRO_RE.test(m) && r.campi.some((c) => new RegExp(c.replace(/_/g, "[_ ]?"), "i").test(m))) return r;
+  }
+  return null;
+}
+// Cosa il fornitore ha già rifiutato, per modello. Lo schema vecchio (un elenco di modelli che
+// pretendono il ragionamento, scritto stamattina) viene LETTO e non buttato: Legge 14, e chi ha già
+// aggiornato una volta non deve ripagare la scoperta.
+function rinunceDelModello(model) {
+  const m = String(model || "");
+  const mappa = loadKey(MODELLI_RINUNCE_KEY, {});
+  const nuove = (mappa && typeof mappa === "object" && Array.isArray(mappa[m])) ? mappa[m] : [];
+  const vecchie = ragionamentoObbligatorioPer(m) ? ["reasoning"] : [];
+  return [...new Set([...vecchie, ...nuove])];
+}
+function segnaRinuncia(model, rinunciaId) {
+  const m = String(model || "");
+  if (!m || !rinunciaId) return;
+  const mappa = loadKey(MODELLI_RINUNCE_KEY, {});
+  const base = (mappa && typeof mappa === "object" && !Array.isArray(mappa)) ? mappa : {};
+  const gia = Array.isArray(base[m]) ? base[m] : [];
+  if (gia.includes(rinunciaId)) return;
+  saveKey(MODELLI_RINUNCE_KEY, { ...base, [m]: [...gia, rinunciaId] });
+}
+function senzaRinuncia(corpo, rinuncia) {
+  const fuori = { ...corpo };
+  for (const c of rinuncia.campi) delete fuori[c];
+  return fuori;
+}
+function corpoPerIlModello(corpo) {
+  const ids = rinunceDelModello(corpo.model);
+  return ids.reduce((acc, id) => {
+    const r = RINUNCE_POSSIBILI.find((x) => x.id === id);
+    return r ? senzaRinuncia(acc, r) : acc;
+  }, corpo);
+}
+// LE NOTE VIVONO IN UNA CHIAVE LORO, e non è un dettaglio: la prima versione le scriveva dentro
+// "debug-log", e la verifica dal vivo ha mostrato che sparivano tutte. Il registro di debug è di
+// React, che lo riscrive PER INTERO dal proprio stato a ogni voce nuova — quindi una scrittura
+// fatta da qui, fuori dall'albero dei componenti, viene cancellata dalla prima voce successiva.
+// Il mio commento diceva "si vede alla riapertura del pannello": era falso, e l'ho scoperto solo
+// perché la prova cercava quelle righe e non le trovava.
+// Qui nessuno le calpesta: le rinunce sono la spiegazione di PERCHÉ una risposta è arrivata
+// diversa da come sarebbe arrivata, e sono esattamente il genere di cosa che non deve sparire.
+const NOTE_DI_RETE_KEY = "note-di-rete";
+function leggiNoteDiRete() { const n = loadKey(NOTE_DI_RETE_KEY, []); return Array.isArray(n) ? n : []; }
 function registraNotaDiRete(voce) {
-  try { saveKey("debug-log", [{ ...voce, time: new Date().toISOString() }, ...loadKey("debug-log", [])].slice(0, 50)); }
+  try { saveKey(NOTE_DI_RETE_KEY, [{ ...voce, time: new Date().toISOString() }, ...leggiNoteDiRete()].slice(0, 20)); }
   catch { /* la diagnostica non deve mai far fallire una chiamata */ }
 }
+// Un tetto ai ripieghi: ogni giro è una chiamata pagata. Tre bastano a coprire un modello che
+// rifiuta più campi diversi, e impediscono che un errore mal interpretato diventi una cascata —
+// che è esattamente il guasto costato caro il 27/07 con le trenta ricerche web.
+const TETTO_RIPIEGHI = 3;
 // Il punto unico da cui passano tutte e due le costruzioni del corpo. Prima erano due fetch scritti
-// a mano: è il motivo per cui una correzione come questa andava fatta due volte, e per cui il campo
-// incondizionato era finito in entrambe senza che nessuno lo vedesse come una scelta sola.
+// a mano: è il motivo per cui il campo incondizionato era finito in entrambe senza che nessuno lo
+// vedesse come una scelta sola, e per cui questa correzione sarebbe andata fatta due volte.
 async function inviaAOpenRouter(body, apiKey) {
-  const senzaRagionamento = (b) => { const { reasoning, ...resto } = b; return resto; };
   const spedisci = (corpo) => fetchConTetto("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify(corpo),
   }).then((r) => r.json());
-  const corpo = ragionamentoObbligatorioPer(body.model) ? senzaRagionamento(body) : body;
+  let corpo = corpoPerIlModello(body);
   let data = await spedisci(corpo);
-  if (data?.error && corpo.reasoning && eRifiutoDelRagionamentoSpento(data.error.message)) {
-    segnaRagionamentoObbligatorio(corpo.model);
-    registraNotaDiRete({ type: "ragionamento-obbligatorio", model: corpo.model, error: null, nota: "questo modello pretende il ragionamento interno: richiesta rimandata senza quel campo, e d'ora in poi non glielo mando più" });
-    data = await spedisci(senzaRagionamento(corpo));
+  for (let giro = 0; giro < TETTO_RIPIEGHI && data?.error; giro++) {
+    const rinuncia = rinunciaPerErrore(data.error.message, corpo);
+    if (!rinuncia) break; // regola 2: non si ripiega alla cieca
+    segnaRinuncia(corpo.model, rinuncia.id);
+    registraNotaDiRete({
+      type: "rinuncia-parametro", model: corpo.model, rinuncia: rinuncia.id, campi: rinuncia.campi,
+      messaggioDelFornitore: String(data.error.message || "").slice(0, 200), costo: rinuncia.costo, error: null,
+    });
+    corpo = senzaRinuncia(corpo, rinuncia);
+    data = await spedisci(corpo);
   }
   if (data?.error) throw new Error(data.error.message || "Errore OpenRouter");
   return data;
@@ -3555,6 +3664,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Interrogare la memoria cerca anche dentro i percorsi: "cosa ci eravamo detti su X" guarda nelle note correnti dei pilastri, nei frammenti di sedimento E nei documenti dei percorsi, nelle competenze accumulate e nella memoria specifica di ogni percorso. Ogni risultato dice da dove viene (quale documento, di quale percorso). Prima i documenti non venivano guardati affatto, quindi il materiale più lungo prodotto dal sistema era l'unico che la ricerca non trovava.
 - Forma delle risposte dell'Agorà Magi: ogni stadio risponde dentro un campo strutturato, in righe brevissime che cominciano con "· ", una idea per riga, con un tetto di parole dichiarato per ruolo (Balthasar 60, Melchior 60, Caspar 50, Sintesi 70). Serve a due cose insieme: risposte dense invece che prolisse, e soprattutto tenere fuori dallo schermo il ragionamento interno del modello, che il 01/09/2026 finiva stampato per intero al posto della risposta (conteggi di parole, "devo", versioni intermedie). Se il campo strutturato non arriva leggibile, il programma pota le righe di deliberazione e consegna il resto invece di perdere la chiamata.
 - Voce nell'Agorà Magi: ogni stadio ha un 🔊 accanto al nome, come i messaggi dello Shell. Legge quel solo stadio; ritoccarlo ferma la lettura. Vale anche per le sessioni già registrate.
+- Rinunce di parametro: l'app aggiunge alla richiesta al modello alcuni parametri facoltativi (spegnere il ragionamento interno per non pagarlo, la temperatura, i freni anti-ripetizione, la ricerca web). Non tutti i modelli li accettano. Se il fornitore ne rifiuta uno, il programma toglie QUEL parametro e rimanda la richiesta invece di lasciare il Ghost senza risposta, e da lì in poi a quel modello non lo manda più — la scoperta si paga una volta sola. Non ripiega su errori che non parlano di parametri (credito esaurito, modello inesistente): quelli si dichiarano. In Setup compare il riquadro "A cosa ho rinunciato per farti arrivare una risposta", con cosa è stato tolto e cosa costa. È importante: se è caduta la ricerca web, la risposta è arrivata SENZA cercare, e va detto invece di lasciar credere il contrario.
 - L'anello (accettore d'azione): quando il sistema compie un atto deliberato — una perturbazione Magi mirata a un pilastro, o un percorso proposto da Simbiosi e aperto davvero — dichiara SUBITO un bersaglio osservabile ("mi aspetto che entro 21 giorni un nodo di quel pilastro si muova dallo stato in cui è nato") e congela la misura di partenza. Dopo, è il programma a contare nei dati dell'app se quel movimento c'è stato: due conteggi e una sottrazione, nessun modello, nessun giudizio. Il risultato compare in Simbiosi nel riquadro "L'anello" ed entra nella valutazione successiva. Cosa NON è, e va detto se il Ghost lo chiede: non è un punteggio sulle previsioni del sistema, e non è un dato sul Ghost. Un atto che non muove niente vuol dire che la proposta era troppo prudente o troppo ovvia — mai che il Ghost non ha fatto la sua parte. Il gradiente è voluto in questo verso: una proposta cauta non smuove nulla e quindi qui risulta peggio di una audace.
 - Catena Printify → Etsy: uno dei modi in cui un Seme AIR può produrre qualcosa nel mondo. Va dal disegno all'anteprima del prodotto.
 - Postura e respiro: gli esercizi brevi che l'app propone, con il loro ritorno aptico.
@@ -8843,6 +8953,23 @@ function CostSummaryPanel({ debugLog }) {
     `}
   </${Card}>`;
 }
+// 02/09/2026 — DOVE SI VEDE A COSA IL PROGRAMMA HA RINUNCIATO PER FAR ARRIVARE UNA RISPOSTA.
+// Esiste perché degradare in silenzio sarebbe peggio del guasto che cura: se una risposta è arrivata
+// senza ricerca web o a una temperatura diversa da quella chiesta, quella risposta È DIVERSA, e chi
+// la legge ha diritto di saperlo. Compare solo quando c'è qualcosa da dire.
+function NoteDiRetePanel() {
+  const [note, setNote] = useState(() => leggiNoteDiRete());
+  if (!note.length) return null;
+  return html`<${Card} accent=${C.core}>
+    <div class="r-hub-title" style="color:#3A4750">A cosa ho rinunciato per farti arrivare una risposta</div>
+    <div class="r-hub-detail">Un parametro facoltativo che il fornitore ha rifiutato non impedisce la risposta: viene tolto, la richiesta riparte, e da lì in poi a quel modello non viene più mandato. Qui c'è cosa è stato tolto e cosa costa.</div>
+    <div style="margin-top:10px">${note.map((n) => html`<div class="r-draft-body" key=${n.time} style="margin-bottom:6px">
+      <b>${n.rinuncia || n.type}</b> · ${n.model || "—"} · ${fmtDate(n.time)}<br/>
+      <span class="r-hub-detail">costa: ${n.costo || "—"}${n.messaggioDelFornitore ? ` · il fornitore ha detto: "${n.messaggioDelFornitore}"` : ""}</span>
+    </div>`)}</div>
+    <button class="r-btn r-btn-ghost" style="margin-left:0;margin-top:6px" onClick=${() => { saveKey(NOTE_DI_RETE_KEY, []); setNote([]); }}>Svuota</button>
+  </${Card}>`;
+}
 function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDebugLog, pullAndMergeOnce, ghostProfile, saveGhostProfile }) {
   // FASE 2 (BRIEF_blocco1 12/08/2026, C.9) — chiude il gap per cui ghostProfile era scrivibile una
   // sola volta: OnboardingView (e quindi saveGhostProfile) era raggiungibile SOLO quando ghostProfile
@@ -9128,6 +9255,7 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
       ${logSyncMsg && html`<div class="r-hub-detail" style="margin-top:6px">${logSyncMsg}</div>`}
       <div class="r-hub-detail" style="margin-top:10px">Build: ${APP_BUILD}</div>
     </${Card}>
+    <${NoteDiRetePanel} />
     <${Card} accent=${C.core}>
       <div class="r-hub-title" style="color:#3A4750">Diagnostica JSON — ${jsonFailures.length} fallimenti recenti</div>
       <div class="r-hub-detail">Quando un modello (es. Llama, Kimi) risponde con un JSON non interpretabile nonostante l'istruzione, la risposta grezza viene salvata qui — utile per capire il motivo esatto invece di indovinare correzioni.</div>
