@@ -94,7 +94,9 @@ const EXPORT_NAMES = [
   "OSSERVABILI", "osservabileDi", "registraAtto", "leggiAtti", "statoAtto", "formatAnelloBlock",
   "ATTI_KEY", "ATTI_TETTO", "buildResonanceDigest",
   "DEGENERATE_QUOTA_NON_LATINA", "DEGENERATE_MIN_LETTERE_NON_LATINE",
-  "eRifiutoDelRagionamentoSpento", "ragionamentoObbligatorioPer", "segnaRagionamentoObbligatorio",
+  "ragionamentoObbligatorioPer", "segnaRagionamentoObbligatorio",
+  "RINUNCE_POSSIBILI", "rinunciaPerErrore", "rinunceDelModello", "segnaRinuncia",
+  "senzaRinuncia", "corpoPerIlModello", "TETTO_RIPIEGHI", "MODELLI_RINUNCE_KEY",
   "modelliConRagionamentoObbligatorio", "MODELLI_RAGIONAMENTO_OBBLIGATORIO_NOTI",
 ];
 
