@@ -42,7 +42,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-09-02 · l-anello-si-chiude";
+const APP_BUILD = "2026-09-02 · la-zuppa-non-arriva-a-schermo";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -2683,6 +2683,22 @@ const ANTI_LOOP_PENALTIES = { repetition_penalty: 1.05, frequency_penalty: 0.1 }
 const DEGENERATE_OUTPUT_WINDOW = 40;
 const DEGENERATE_OUTPUT_THRESHOLD = 16;      // era 8: tagliava i piani alimentari con le dosi
 const DEGENERATE_MIN_VOCABOLARIO = 8;        // parole diverse minime in una finestra perche' sia un testo
+// ── 02/09/2026 — IL TERZO CRITERIO, E PERCHE' I PRIMI DUE NON POTEVANO VEDERLO ──────────────────
+// Il Ghost ha mandato la schermata delle 11:46: Balthasar comincia coerente e poi collassa in
+// «Finecring deleteF delete allc ConferI'm walking 红点rash Home mode imagination defaultsFew ...
+// ObjectOutputStream machine gener_notifications forcan XT犯错Independ胆 ... 我爱你irected process
+// 银行账户». Zuppa di token fra alfabeti diversi.
+// MISURATO su quel testo esatto prima di scrivere questa riga: la guardia rispondeva FALSE.
+// Non e' una soglia da alzare — e' che i due criteri esistenti cercano l'esatto contrario di questo.
+// Cercano RIPETIZIONE e VOCABOLARIO POVERO, perche' erano stati costruiti sul guasto visto il 26/07
+// ("of 10 of 20 of 12..."). Qui: 132 parole, di cui 122 DIVERSE. Ricchezza massima. Invisibile per
+// costruzione, non per distrazione.
+// Il segnale vero, misurato sullo stesso testo: 71 lettere su 1015 non sono latine — il 7,0%.
+// Una risposta italiana di Balthasar ne ha zero. Le due condizioni insieme (quota E numero minimo)
+// servono a non far scattare la guardia su una citazione legittima: due ideogrammi citati apposta
+// dentro una risposta lunga non arrivano ne' al 2% ne' a otto caratteri.
+const DEGENERATE_QUOTA_NON_LATINA = 0.02;
+const DEGENERATE_MIN_LETTERE_NON_LATINE = 8;
 // 29/08/2026 — LA TERZA VOLTA CHE QUESTA GUARDIA TAGLIA UN PIANO ALIMENTARE, e stavolta la causa
 // non e' la soglia: e' la conta delle parole. RIPRODOTTO prima di toccare il codice, su una tabella
 // markdown a sei colonne come quelle che lo Shell scrive davvero:
@@ -2713,6 +2729,17 @@ function senzaFormattazioneMarkdown(testo) {
 // successo"). Senza la prova, ogni diagnosi resta un'ipotesi — ed e' costato due notti.
 function diagnosiDegenerazione(text) {
   if (!text) return null;
+  // Il terzo criterio va PRIMA degli altri due: e' l'unico che riconosce la zuppa di token, e la
+  // zuppa passerebbe indenne dagli altri due (vocabolario ricchissimo, nessuna ripetizione).
+  const lettere = String(text).match(/\p{L}/gu) || [];
+  const nonLatine = lettere.filter((c) => !/\p{Script=Latin}/u.test(c));
+  if (nonLatine.length >= DEGENERATE_MIN_LETTERE_NON_LATINE && nonLatine.length / lettere.length > DEGENERATE_QUOTA_NON_LATINA) {
+    return {
+      criterio: "scritture-miste", nonLatine: nonLatine.length, lettere: lettere.length,
+      quota: Number((nonLatine.length / lettere.length).toFixed(3)), soglia: DEGENERATE_QUOTA_NON_LATINA,
+      campione: [...new Set(nonLatine)].join("").slice(0, 60),
+    };
+  }
   const words = senzaFormattazioneMarkdown(text).trim().toLowerCase()
     .split(/\s+/).map((w) => w.replace(/[.,!?;:"'()«»]/g, "")).filter(Boolean);
   if (words.length < DEGENERATE_OUTPUT_WINDOW) return null; // troppo corto per giudicare: evita falsi positivi su risposte brevi legittime
@@ -2899,17 +2926,26 @@ function testoDelMagio(raw) {
 // Un solo punto di chiamata per tutti e quattro gli stadi. Prima erano quattro askModel scritti a
 // mano, ognuno con i suoi parametri: è il motivo per cui Caspar era l'unico senza guardia
 // anti-degenerazione e la Sintesi era rimasta a lungo senza tracciamento costi.
-// ANTI_LOOP_PENALTIES non si passa più: il commento sopra ANTI_LOOP_PENALTIES dice — e resta vero —
-// che quelle penalità non vanno MAI su chiamate che generano JSON, perché penalizzano anche la
-// ripetizione strutturale di virgolette e parentesi. Da adesso questi quattro stadi generano JSON.
-// Il freno contro i loop resta askWithDegenerateGuard, che ora copre anche Caspar.
+//
+// ── 02/09/2026 — LE PENALITÀ RIMESSE, DOPO AVERLE TOLTE IO IERI ─────────────────────────────────
+// Ieri le avevo tolte da questi quattro stadi, appoggiandomi alla regola scritta sopra
+// ANTI_LOOP_PENALTIES: mai su chiamate che generano JSON, perché penalizzano anche la ripetizione
+// STRUTTURALE di virgolette e parentesi. La regola resta sensata; la mia applicazione no.
+// Alle 11:46 di oggi Balthasar ha prodotto zuppa di token fra alfabeti diversi — il guasto per cui
+// quelle penalità erano state introdotte, su una chiamata che gira a temperatura 0,95-1,35.
+// Il confronto fra i due rischi non è alla pari: a 1,05/0,1 (valori già abbassati il 27/07, non i
+// 1,15/0,4 originali) il rischio su un JSON di UN SOLO campo è remoto — c'è una coppia di virgolette
+// e una di graffe — mentre il guasto che prevengono è successo davvero, oggi, ed è finito sullo
+// schermo del Ghost. E se il JSON si rompe non si perde niente: c'è il ripiego che pota e consegna.
+// Non è una scommessa nemmeno questa: `viaJson` è già nel registro (type: "magi-forma"), quindi se
+// le penalità cominciassero a rompere il JSON si vedrebbe dal calo, invece di doverlo indovinare.
 async function chiediAlMagio(nome, system, question, temperatura, settings, pushDebugLog, opts = {}) {
   const { webSearch = false, onRaw = null } = opts;
   const grezzo = await askWithDegenerateGuard(
     () => askModel(`${system}\n\n${MAGI_FORMA}`, question, temperatura, MAGI_TETTO_TOKEN, settings, webSearch, null, (raw) => {
       onRaw?.(raw);
       logAiCost(pushDebugLog, nome, settings.model, raw);
-    }),
+    }, ANTI_LOOP_PENALTIES),
     nome, pushDebugLog
   );
   const letto = testoDelMagio(grezzo);
