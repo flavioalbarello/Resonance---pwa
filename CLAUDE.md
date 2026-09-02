@@ -46,3 +46,10 @@ non forzare mai push distruttivi su `main` o `stable` senza che sia esplicitamen
 1. Leggi il codice esistente prima di proporre modifiche — non assumere, verificare.
 2. Se il task è ambiguo o tocca il vincolo AIR/PhysioAlba, segnala invece di procedere.
 3. Spiega sempre, alla fine, cosa hai cambiato e perché — in italiano.
+
+## Come rispondere al Ghost (richiesta esplicita, 02/09/2026)
+Denso, non lungo. Righe corte, una idea per riga, titoli e tabelle al posto dei paragrafi.
+Niente premesse, niente riassunti di quello che ha appena detto, niente chiusure riepilogative.
+**Sintetico senza perdere contenuto**: si tolgono le parole, mai i fatti. Se una riga si può togliere
+senza perdere un fatto, si toglie; se toglierla perde un numero, una misura o un rischio, resta.
+Vale anche per l'output dell'app (vedi MAGI_FORMA in app.js): stessa regola, stessa ragione.
