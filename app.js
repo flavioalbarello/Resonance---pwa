@@ -20,6 +20,15 @@ import {
   uid,
 } from "./lib/base.js";
 import {
+  ATTACCHI,
+  attaccoDi,
+  contieneDatiPersonali,
+  impacchetta,
+  improntaPlasmide,
+  spacchetta,
+  validaPlasmide,
+} from "./lib/plasmide.js";
+import {
   derivata,
   fattiDaLogBio,
   formatSerieBlock,
@@ -42,7 +51,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-09-02 · nessun-parametro-facoltativo-ferma-una-risposta";
+const APP_BUILD = "2026-09-02 · il-primo-plasmide";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -2927,7 +2936,160 @@ function diagnosiDegenerazione(text) {
   }
   return null;
 }
+// 02/09/2026 — nell'app non la chiama più nessuno: la guardia passa da diagnosiCompleta, che è
+// asincrona perché i criteri acquisiti girano nel recinto. Resta perché è il predicato puro su cui
+// poggiano le prove dei tre criteri scritti a mano. Dichiarato qui perché un audit futuro non la
+// scambi per il residuo che era azioneIrreversibile.
 function isDegenerateOutput(text) { return diagnosiDegenerazione(text) !== null; }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// IL RECINTO — dove gira il codice che non esisteva quando l'app è stata scritta (02/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// MISURATO nell'origine vera di questa PWA, prima di scrivere una riga di progetto:
+//   · un Worker creato da un Blob parte (nessuna CSP lo blocca, non c'è vercel.json)
+//   · dentro un Worker `localStorage` NON ESISTE — i dati del Ghost sono irraggiungibili, e non
+//     perché l'ho difeso io: la piattaforma non lo espone affatto nei worker
+//   · `document` non esiste — nessun accesso all'interfaccia
+//   · `fetch` INVECE C'È, ed è l'unico buco fra "recinto" e "recinto bucato": va chiuso a mano
+//   · un ciclo infinito viene ucciso dal tetto di tempo (misurato: 801ms su un tetto di 800)
+// Senza queste cinque righe misurate questo intero blocco sarebbe una scommessa.
+const SANDBOX_TETTO_MS = 1500;
+// L'involucro sterile. Chiude tutto ciò che permetterebbe a uno strumento di uscire dal recinto,
+// PRIMA di far girare una singola riga generata. Due passaggi per ogni nome, e non è ridondanza:
+// `delete` non basta quando la proprietà vive sul prototipo, e una semplice assegnazione a
+// undefined si può riassegnare. defineProperty non-configurabile chiude tutte e due le strade.
+const NOMI_DA_CHIUDERE = ["fetch", "XMLHttpRequest", "WebSocket", "EventSource", "importScripts", "indexedDB", "caches", "Notification", "BroadcastChannel", "SharedWorker", "Worker"];
+const INVOLUCRO_SANDBOX = `
+for (const nome of ${JSON.stringify(NOMI_DA_CHIUDERE)}) {
+  try { delete self[nome]; } catch (e) { /* sul prototipo: ci pensa defineProperty qui sotto */ }
+  try { Object.defineProperty(self, nome, { value: undefined, writable: false, configurable: false }); } catch (e) { /* già chiuso */ }
+}
+self.onmessage = (e) => {
+  const { codice, casi } = e.data;
+  let strumento;
+  try {
+    // Lo strumento è una ESPRESSIONE che vale una funzione: "(x) => ...", non un modulo. È il
+    // contratto più stretto che permetta ancora di scrivere qualcosa di utile.
+    strumento = (0, eval)("(" + codice + ")");
+    if (typeof strumento !== "function") throw new Error("il codice non vale una funzione");
+  } catch (err) { self.postMessage({ ok: false, errore: "non compila: " + String(err && err.message || err) }); return; }
+  const esiti = [];
+  for (const caso of casi) {
+    try { esiti.push({ ok: true, uscita: strumento(caso) }); }
+    catch (err) { esiti.push({ ok: false, errore: String(err && err.message || err) }); }
+  }
+  self.postMessage({ ok: true, esiti });
+};`;
+// Fa girare uno strumento su una lista di ingressi. UNA sola creazione di Worker per chiamata:
+// crearne uno per caso costerebbe su telefono, e non aggiungerebbe isolamento (i casi di uno stesso
+// strumento non hanno bisogno di essere isolati fra loro).
+// Non lancia MAI: un errore dentro il recinto è un dato, non un guasto dell'app.
+async function eseguiNelRecinto(codice, casi, tettoMs = SANDBOX_TETTO_MS) {
+  if (typeof Worker === "undefined" || typeof Blob === "undefined") {
+    return { ok: false, errore: "questo browser non ha i Worker: gli strumenti acquisiti non girano qui" };
+  }
+  let url = null, worker = null;
+  try {
+    url = URL.createObjectURL(new Blob([INVOLUCRO_SANDBOX], { type: "text/javascript" }));
+    worker = new Worker(url);
+    const w = worker;
+    return await new Promise((risolvi) => {
+      const taglia = setTimeout(() => {
+        w.terminate();
+        risolvi({ ok: false, errore: `lo strumento non ha finito entro ${tettoMs}ms: interrotto` });
+      }, tettoMs);
+      w.onmessage = (m) => { clearTimeout(taglia); risolvi(m.data); };
+      w.onerror = (er) => { clearTimeout(taglia); risolvi({ ok: false, errore: "errore nel recinto: " + (er?.message || "sconosciuto") }); };
+      w.postMessage({ codice, casi });
+    });
+  } catch (e) {
+    return { ok: false, errore: String(e?.message || e) };
+  } finally {
+    try { worker?.terminate(); } catch { /* già morto */ }
+    if (url) URL.revokeObjectURL(url);
+  }
+}
+// L'IMMUNITÀ. Un plasmide non viene creduto: le sue prove rigirano QUI, sul dispositivo che lo
+// riceve, prima che venga espresso. Vale sia quando nasce sia quando arriva da un'altra app —
+// stessa funzione, nessuna scorciatoia per i plasmidi "di casa".
+// Il confronto è su JSON: due oggetti uguali devono risultare uguali, e null diverso da un oggetto.
+async function provaPlasmide(plasmide, tettoMs = SANDBOX_TETTO_MS) {
+  const validazione = validaPlasmide(plasmide);
+  if (!validazione.valido) return { passato: false, motivo: validazione.errori.join("; "), dettagli: [] };
+  const casi = plasmide.prove.map((p) => p.ingresso);
+  const esito = await eseguiNelRecinto(plasmide.codice, casi, tettoMs);
+  if (!esito.ok) return { passato: false, motivo: esito.errore, dettagli: [] };
+  const dettagli = plasmide.prove.map((prova, i) => {
+    const r = esito.esiti[i];
+    if (!r?.ok) return { i, passata: false, perche: prova.perche, motivo: r?.errore || "nessun esito" };
+    const uguale = JSON.stringify(r.uscita ?? null) === JSON.stringify(prova.atteso ?? null);
+    return { i, passata: uguale, perche: prova.perche, ottenuto: r.uscita, atteso: prova.atteso };
+  });
+  const fallite = dettagli.filter((d) => !d.passata);
+  return {
+    passato: fallite.length === 0, dettagli,
+    motivo: fallite.length ? `${fallite.length} prove su ${dettagli.length} non passano` : "",
+  };
+}
+
+// ── IL MAGAZZINO DEI PLASMIDI ───────────────────────────────────────────────────────────────────
+// Separati dal cromosoma: chiave loro, non dentro nessuna struttura dell'app. Un plasmide entra
+// solo dopo che le sue prove sono passate SU QUESTO dispositivo, e lo stato lo registra.
+const PLASMIDI_KEY = "plasmidi";
+const PLASMIDI_TETTO = 30;
+function leggiPlasmidi() { const p = loadKey(PLASMIDI_KEY, []); return Array.isArray(p) ? p : []; }
+// DUE CONDIZIONI, non una. Acceso NON basta: serve che le prove siano passate SU QUESTO
+// dispositivo. Trovato dalla verifica del 02/09 e non dal ragionamento — nel banco di prova avevo
+// scritto un plasmide dritto in memoria saltando l'ammissione, e ha girato lo stesso dentro
+// un'Agorà vera. Se un plasmide può entrare senza passare dalla porta, la porta non serve: e in
+// memoria ci si finisce in tanti modi (un ripristino, una sincronizzazione, un file modificato).
+// Questa riga rende l'immunità una proprietà del magazzino invece che del momento dell'importazione.
+function plasmidiPerAttacco(attacco) {
+  return leggiPlasmidi().filter((p) => p.attacco === attacco && p.attivo !== false && p.ultimaProva?.passato === true);
+}
+function salvaPlasmide(plasmide) {
+  const altri = leggiPlasmidi().filter((p) => p.id !== plasmide.id);
+  saveKey(PLASMIDI_KEY, [{ ...plasmide, impronta: improntaPlasmide(plasmide) }, ...altri].slice(0, PLASMIDI_TETTO));
+  return plasmide;
+}
+function dimenticaPlasmide(id) { saveKey(PLASMIDI_KEY, leggiPlasmidi().filter((p) => p.id !== id)); }
+// L'anello, anche qui: uno strumento che non viene mai chiamato decade. Il conteggio è l'unica cosa
+// che distingue un magazzino vivo da un magazzino di cianfrusaglia.
+function segnaPlasmideUsato(id, haTrovatoQualcosa) {
+  const lista = leggiPlasmidi().map((p) => (p.id === id
+    ? { ...p, chiamate: (p.chiamate || 0) + 1, trovati: (p.trovati || 0) + (haTrovatoQualcosa ? 1 : 0), ultimoUso: new Date().toISOString() }
+    : p));
+  saveKey(PLASMIDI_KEY, lista);
+}
+
+// ── L'ATTACCO 1: I CRITERI ANTI-GUASTO ACQUISITI ────────────────────────────────────────────────
+// Perché proprio qui, prima di ogni altro punto dell'app. Oggi ho aggiunto DUE criteri
+// anti-guasto a mano (i marchi noti alle 09, le scritture miste alle 12), e tutti e due DOPO che il
+// Ghost aveva già visto la spazzatura sullo schermo. Questo attacco chiude quel ritardo: il caso di
+// prova esiste già nel momento in cui il guasto si manifesta — è il testo guasto stesso.
+// I criteri scritti a mano restano e vengono PRIMA: sono sincroni e gratis. Gli acquisiti girano
+// solo se i primi non hanno visto niente, e solo se ce n'è almeno uno — quindi il costo di default,
+// con il magazzino vuoto, è esattamente zero.
+async function diagnosiCompleta(text) {
+  const scrittaAMano = diagnosiDegenerazione(text);
+  if (scrittaAMano) return scrittaAMano;
+  const acquisiti = plasmidiPerAttacco("criterio-degenerazione");
+  if (!acquisiti.length || !text) return null;
+  for (const p of acquisiti) {
+    const esito = await eseguiNelRecinto(p.codice, [String(text)]);
+    const uscita = esito.ok ? esito.esiti[0] : null;
+    if (!uscita?.ok) {
+      // Uno strumento che esplode non blocca il turno e non viene creduto: si dichiara e si passa
+      // oltre. Il Ghost lo vede nel pannello e decide se toglierlo.
+      registraNotaDiRete({ type: "plasmide-in-errore", plasmide: p.nome, error: esito.errore || uscita?.errore || "nessun esito" });
+      continue;
+    }
+    const trovato = uscita.uscita && typeof uscita.uscita === "object";
+    segnaPlasmideUsato(p.id, trovato);
+    if (trovato) return { ...uscita.uscita, daPlasmide: p.nome };
+  }
+  return null;
+}
 // `call` è una funzione zero-argomenti che rifà la richiesta originale (closure sul chiamante) — nessuna
 // duplicazione della costruzione del prompt qui. Se degenerato anche al secondo tentativo, lancia un
 // errore onesto (i chiamanti esistenti lo mostrano già via i loro cicli try/catch — nessuna UI nuova).
@@ -2946,19 +3108,23 @@ async function askWithDegenerateGuard(call, functionTag, pushDebugLog = null) {
   if (rispostaNonArrivata(first)) {
     pushDebugLog?.({ type: "risposta-vuota-ritentata", functionTag, attempt: 1, error: null });
     const ritenta = await call();
-    if (!rispostaNonArrivata(ritenta) && !isDegenerateOutput(ritenta)) return ritenta;
+    if (!rispostaNonArrivata(ritenta) && !(await diagnosiCompleta(ritenta))) return ritenta;
     if (rispostaNonArrivata(ritenta)) {
       pushDebugLog?.({ type: "risposta-vuota-anche-al-secondo-tentativo", functionTag, attempt: 2, error: "il modello ha chiuso due volte senza scrivere" });
       return ""; // il chiamante lo dice al Ghost: qui non si inventa un testo che non c'e'
     }
     return ritenta;
   }
-  const diagnosiPrima = diagnosiDegenerazione(first);
+  // 02/09/2026 — da qui passano anche i criteri ACQUISITI (vedi diagnosiCompleta). I criteri
+  // scritti a mano restano primi e sincroni; gli acquisiti girano nel recinto solo se i primi non
+  // hanno visto niente. Con il magazzino vuoto — cioè oggi, su tutti e due i telefoni — il
+  // comportamento e il costo sono identici a prima.
+  const diagnosiPrima = await diagnosiCompleta(first);
   if (!diagnosiPrima) return first;
   pushDebugLog?.({ type: "degenerate-output", functionTag, attempt: 1, degenerateOutputDetected: true, ...diagnosiPrima, error: null });
   const second = await call();
   if (rispostaNonArrivata(second)) { pushDebugLog?.({ type: "risposta-vuota-dopo-degenerata", functionTag, attempt: 2, error: null }); return ""; }
-  const diagnosiSeconda = diagnosiDegenerazione(second);
+  const diagnosiSeconda = await diagnosiCompleta(second);
   if (!diagnosiSeconda) return second;
   // 29/08/2026 — NON SI BUTTA PIU' VIA UNA RISPOSTA PAGATA SULLA PAROLA DI UN'EURISTICA.
   // Fin qui questa riga lanciava un errore: il Ghost vedeva "Risposta non valida, riprova piu'
@@ -3664,6 +3830,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Interrogare la memoria cerca anche dentro i percorsi: "cosa ci eravamo detti su X" guarda nelle note correnti dei pilastri, nei frammenti di sedimento E nei documenti dei percorsi, nelle competenze accumulate e nella memoria specifica di ogni percorso. Ogni risultato dice da dove viene (quale documento, di quale percorso). Prima i documenti non venivano guardati affatto, quindi il materiale più lungo prodotto dal sistema era l'unico che la ricerca non trovava.
 - Forma delle risposte dell'Agorà Magi: ogni stadio risponde dentro un campo strutturato, in righe brevissime che cominciano con "· ", una idea per riga, con un tetto di parole dichiarato per ruolo (Balthasar 60, Melchior 60, Caspar 50, Sintesi 70). Serve a due cose insieme: risposte dense invece che prolisse, e soprattutto tenere fuori dallo schermo il ragionamento interno del modello, che il 01/09/2026 finiva stampato per intero al posto della risposta (conteggi di parole, "devo", versioni intermedie). Se il campo strutturato non arriva leggibile, il programma pota le righe di deliberazione e consegna il resto invece di perdere la chiamata.
 - Voce nell'Agorà Magi: ogni stadio ha un 🔊 accanto al nome, come i messaggi dello Shell. Legge quel solo stadio; ritoccarlo ferma la lettura. Vale anche per le sessioni già registrate.
+- Plasmidi (strumenti acquisiti): funzioni pure che l'app ha imparato DOPO essere stata scritta, e che si trasferiscono da un'app all'altra come un plasmide fra due batteri. Ognuna gira in un recinto senza rete, senza i dati del Ghost, senza interfaccia e con un tetto di tempo — misurato, non promesso. Ognuna porta con sé le proprie PROVE: quando un plasmide arriva da un'altra app le prove rigirano su QUESTO telefono prima che venga usato, e se non passano non entra. Arriva sempre SPENTO: lo accende il Ghost. Vivono in Setup, nel riquadro "Plasmidi", dove si legge il codice per intero, si riprovano le prove quando si vuole, si spengono e si tolgono. Un plasmide non porta MAI dati personali: il programma lo verifica prima di esportarlo, e blocca l'esportazione se trova indirizzi, numeri, cifre lunghe o i termini dell'identità professionale dichiarata. Oggi c'è un solo punto dell'app dove uno strumento acquisito può essere chiamato ("riconoscere una risposta guasta del modello"): l'app può crescere organi nuovi solo dove esiste già un attacco, e gli attacchi si scrivono a mano. Se il magazzino è vuoto — com'è appena installato — l'app si comporta e costa esattamente come prima.
 - Rinunce di parametro: l'app aggiunge alla richiesta al modello alcuni parametri facoltativi (spegnere il ragionamento interno per non pagarlo, la temperatura, i freni anti-ripetizione, la ricerca web). Non tutti i modelli li accettano. Se il fornitore ne rifiuta uno, il programma toglie QUEL parametro e rimanda la richiesta invece di lasciare il Ghost senza risposta, e da lì in poi a quel modello non lo manda più — la scoperta si paga una volta sola. Non ripiega su errori che non parlano di parametri (credito esaurito, modello inesistente): quelli si dichiarano. In Setup compare il riquadro "A cosa ho rinunciato per farti arrivare una risposta", con cosa è stato tolto e cosa costa. È importante: se è caduta la ricerca web, la risposta è arrivata SENZA cercare, e va detto invece di lasciar credere il contrario.
 - L'anello (accettore d'azione): quando il sistema compie un atto deliberato — una perturbazione Magi mirata a un pilastro, o un percorso proposto da Simbiosi e aperto davvero — dichiara SUBITO un bersaglio osservabile ("mi aspetto che entro 21 giorni un nodo di quel pilastro si muova dallo stato in cui è nato") e congela la misura di partenza. Dopo, è il programma a contare nei dati dell'app se quel movimento c'è stato: due conteggi e una sottrazione, nessun modello, nessun giudizio. Il risultato compare in Simbiosi nel riquadro "L'anello" ed entra nella valutazione successiva. Cosa NON è, e va detto se il Ghost lo chiede: non è un punteggio sulle previsioni del sistema, e non è un dato sul Ghost. Un atto che non muove niente vuol dire che la proposta era troppo prudente o troppo ovvia — mai che il Ghost non ha fatto la sua parte. Il gradiente è voluto in questo verso: una proposta cauta non smuove nulla e quindi qui risulta peggio di una audace.
 - Catena Printify → Etsy: uno dei modi in cui un Seme AIR può produrre qualcosa nel mondo. Va dal disegno all'anteprima del prodotto.
@@ -8953,6 +9120,94 @@ function CostSummaryPanel({ debugLog }) {
     `}
   </${Card}>`;
 }
+// ── IL PANNELLO DEI PLASMIDI (02/09/2026) ───────────────────────────────────────────────────────
+// Tre cose che devono essere possibili senza aprire il codice: VEDERE cosa fa uno strumento,
+// RIPROVARLO quando si vuole (non solo quando è entrato), e TOGLIERLO.
+// Il codice si legge per intero: uno strumento che gira sul tuo telefono e che non puoi leggere è
+// esattamente ciò che questo progetto non vuole essere.
+function PlasmidiPanel({ ghostProfile }) {
+  const [lista, setLista] = useState(() => leggiPlasmidi());
+  const [esiti, setEsiti] = useState({});
+  const [aperto, setAperto] = useState(null);
+  const [messaggio, setMessaggio] = useState("");
+  const ricarica = () => setLista(leggiPlasmidi());
+  const riprova = async (p) => {
+    setEsiti((e) => ({ ...e, [p.id]: { inCorso: true } }));
+    const r = await provaPlasmide(p);
+    setEsiti((e) => ({ ...e, [p.id]: r }));
+    salvaPlasmide({ ...p, ultimaProva: { quando: new Date().toISOString(), passato: r.passato, motivo: r.motivo } });
+    ricarica();
+  };
+  // I termini che non devono MAI uscire da questo telefono dentro un plasmide. Vengono dal profilo
+  // dichiarato dal Ghost, non da un elenco indovinato da me.
+  const terminiVietati = [CURRENT_GHOST_PROFILE.professionalIdentity, ...(ghostProfile?.hardConstraints || []).map((c) => c?.testo || "")].filter(Boolean);
+  const esporta = () => {
+    const daPortare = lista.filter((p) => p.attivo !== false);
+    if (!daPortare.length) { setMessaggio("Non c'è niente da esportare."); return; }
+    // IL GUARDIANO, PRIMA DEL FILE. Un plasmide che porta dati personali non esce: è il vincolo
+    // assoluto del progetto, e va fatto rispettare dal programma — non chiesto al modello.
+    const sporchi = daPortare.map((p) => ({ p, trovati: contieneDatiPersonali(p, terminiVietati) })).filter((x) => x.trovati.length);
+    if (sporchi.length) {
+      setMessaggio(`NON esportati: ${sporchi.map((x) => `"${x.p.nome}" (contiene ${x.trovati.join(", ")})`).join("; ")}. Un plasmide porta una funzione, mai un dato tuo.`);
+      return;
+    }
+    const pacchetto = impacchetta(daPortare, { app: APP_BUILD, quando: new Date().toISOString() });
+    const blob = new Blob([JSON.stringify(pacchetto, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `resonance-plasmidi-${todayISO()}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setMessaggio(`${daPortare.length} plasmid${daPortare.length === 1 ? "e" : "i"} esportat${daPortare.length === 1 ? "o" : "i"}.`);
+  };
+  const importa = async (file) => {
+    if (!file) return;
+    setMessaggio("Leggo e riprovo tutto qui…");
+    let pacchetto;
+    try { pacchetto = JSON.parse(await file.text()); }
+    catch { setMessaggio("Il file non è leggibile."); return; }
+    const { ok, motivo, plasmidi } = spacchetta(pacchetto);
+    if (!ok) { setMessaggio(motivo); return; }
+    const note = [];
+    for (const p of plasmidi) {
+      // L'IMMUNITÀ: le prove rigirano QUI. Chi manda non viene creduto sulla parola — nemmeno se è
+      // l'altra app della stessa coppia.
+      const r = await provaPlasmide(p);
+      if (!r.passato) { note.push(`"${p.nome}" RIFIUTATO: ${r.motivo}`); continue; }
+      salvaPlasmide({ ...p, attivo: false, arrivatoIl: new Date().toISOString(), ultimaProva: { quando: new Date().toISOString(), passato: true, motivo: "" } });
+      note.push(`"${p.nome}" ammesso — è SPENTO: accendilo tu.`);
+    }
+    ricarica();
+    setMessaggio(note.join(" · ") || "Il pacchetto non conteneva plasmidi.");
+  };
+  return html`<${Card} accent=${C.core}>
+    <div class="r-hub-title" style="color:#3A4750">Plasmidi — strumenti acquisiti (${lista.length})</div>
+    <div class="r-hub-detail">Funzioni pure che l'app ha acquisito dopo essere stata scritta. Girano in un recinto senza rete, senza i tuoi dati e senza interfaccia, con un tetto di tempo. Ognuno porta le proprie prove: quando arriva da un'altra app le prove rigirano QUI prima che venga usato.</div>
+    <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="r-btn" onClick=${esporta} disabled=${!lista.length}>Esporta (.json)</button>
+      <label class="r-btn r-btn-ghost" style="margin-left:0">Importa<input type="file" accept="application/json" style="display:none" onChange=${(e) => importa(e.target.files?.[0])} /></label>
+    </div>
+    ${messaggio && html`<div class="r-hub-detail" style="margin-top:8px">${messaggio}</div>`}
+    ${lista.length === 0
+      ? html`<div class="r-hub-detail" style="margin-top:10px">Nessuno ancora. Con il magazzino vuoto l'app si comporta e costa esattamente come prima.</div>`
+      : html`<div style="margin-top:10px">${lista.map((p) => html`<div class="r-draft-card" key=${p.id} style="margin-bottom:8px">
+        <div class="r-entry-row"><div style="flex:1">
+          <div class="r-draft-label">${p.attivo === false ? "SPENTO" : "ATTIVO"} · ${p.nome} · v${p.versione || 1} · ${p.impronta || improntaPlasmide(p)}</div>
+          <div class="r-draft-body">${p.problema}</div>
+          <div class="r-hub-detail">attacco: ${attaccoDi(p.attacco)?.etichetta || p.attacco} · chiamato ${p.chiamate || 0} volte, ha trovato qualcosa ${p.trovati || 0} volte${p.arrivatoIl ? ` · arrivato da un'altra app il ${fmtDate(p.arrivatoIl)}` : ""}</div>
+          ${p.ultimaProva && html`<div class="r-hub-detail">prove: ${p.ultimaProva.passato ? "passate" : `NON passate — ${p.ultimaProva.motivo}`} (${fmtDate(p.ultimaProva.quando)})</div>`}
+        </div>
+        <button class="r-icon-btn" onClick=${() => { dimenticaPlasmide(p.id); ricarica(); }}>✕</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+          <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => riprova(p)}>Riprova le prove</button>
+          <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => { salvaPlasmide({ ...p, attivo: p.attivo === false }); ricarica(); }}>${p.attivo === false ? "Accendi" : "Spegni"}</button>
+          <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => setAperto(aperto === p.id ? null : p.id)}>${aperto === p.id ? "Nascondi il codice" : "Leggi il codice"}</button>
+        </div>
+        ${esiti[p.id]?.inCorso && html`<div class="r-hub-detail" style="margin-top:6px">Provo…</div>`}
+        ${esiti[p.id]?.dettagli?.length > 0 && html`<div style="margin-top:6px">${esiti[p.id].dettagli.map((d) => html`<div class="r-hub-detail" key=${d.i}>${d.passata ? "✓" : "✗"} ${d.perche}${d.passata ? "" : ` — atteso ${JSON.stringify(d.atteso)}, ottenuto ${JSON.stringify(d.ottenuto ?? d.motivo)}`}</div>`)}</div>`}
+        ${aperto === p.id && html`<pre class="r-grezzo" style="margin-top:6px;white-space:pre-wrap;overflow-x:auto">${p.codice}</pre>`}
+      </div>`)}</div>`}
+  </${Card}>`;
+}
 // 02/09/2026 — DOVE SI VEDE A COSA IL PROGRAMMA HA RINUNCIATO PER FAR ARRIVARE UNA RISPOSTA.
 // Esiste perché degradare in silenzio sarebbe peggio del guasto che cura: se una risposta è arrivata
 // senza ricerca web o a una temperatura diversa da quella chiesta, quella risposta È DIVERSA, e chi
@@ -9255,6 +9510,7 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
       ${logSyncMsg && html`<div class="r-hub-detail" style="margin-top:6px">${logSyncMsg}</div>`}
       <div class="r-hub-detail" style="margin-top:10px">Build: ${APP_BUILD}</div>
     </${Card}>
+    <${PlasmidiPanel} ghostProfile=${ghostProfile} />
     <${NoteDiRetePanel} />
     <${Card} accent=${C.core}>
       <div class="r-hub-title" style="color:#3A4750">Diagnostica JSON — ${jsonFailures.length} fallimenti recenti</div>
