@@ -42,7 +42,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-09-02 · la-zuppa-non-arriva-a-schermo";
+const APP_BUILD = "2026-09-02 · il-ragionamento-non-si-spegne-ovunque";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -2343,6 +2343,76 @@ async function fetchConTetto(url, opzioni, tetto = TIMEOUT_MODELLO_MS) {
     throw e;
   } finally { clearTimeout(tagliaOra); }
 }
+// ══════════════════════════════════════════════════════════════════════════════
+// 02/09/2026 — L'APP DI MARTA ERA FERMA, NON DEGRADATA
+// ══════════════════════════════════════════════════════════════════════════════
+// Dal suo registro, stanotte, tre volte di fila la stessa cosa: selezione-azione, shell-turn e
+// simbiosi-proactive tutte fallite con
+//   "Reasoning is mandatory for this endpoint and cannot be disabled."
+// su model "google/gemini-3.1-pro-preview". Ha riscritto lo stesso messaggio tre volte in otto
+// minuti senza ottenere niente. Non una risposta peggiore: nessuna risposta.
+//
+// La causa è una riga che ho difeso e che resta giusta per il modello per cui è stata scritta.
+// Il 29/08 il registro aveva DIMOSTRATO che su Kimi `reasoning.max_tokens` non limita niente
+// (2500 token di output, 2500 di ragionamento, contenuto vuoto), e che `enabled:false` invece
+// funziona — porta i token di ragionamento a zero su ogni chiamata. Quindi è finito, giustamente,
+// in tutte e due le costruzioni del corpo.
+// L'errore non è il parametro: è averlo reso INCONDIZIONATO. Vale per il modello di Flavio e
+// rompe del tutto quello di Marta, che è un altro — e i due branch condividono il codice.
+//
+// Il rimedio è quello che l'app usa dappertutto: non si indovina, si prova e si impara. Se il
+// fornitore risponde che il ragionamento non si può spegnere, si rimanda la stessa richiesta senza
+// quel campo e si SCRIVE che quel modello lo pretende, così il giro doppio si paga una volta sola
+// e non a ogni turno. Non un elenco di modelli mantenuto a mano, che sarebbe vecchio al primo
+// modello nuovo: un elenco che si riempie da solo con quello che il fornitore ha detto davvero.
+const MODELLI_RAGIONAMENTO_OBBLIGATORIO_KEY = "modelli-ragionamento-obbligatorio";
+// Seminato con l'UNICO caso osservato dal vivo, non con una lista indovinata: così la prima
+// chiamata di Marta dopo l'aggiornamento funziona senza spendere un giro a scoprirlo di nuovo.
+const MODELLI_RAGIONAMENTO_OBBLIGATORIO_NOTI = ["google/gemini-3.1-pro-preview"];
+function modelliConRagionamentoObbligatorio() {
+  const salvati = loadKey(MODELLI_RAGIONAMENTO_OBBLIGATORIO_KEY, []);
+  return [...new Set([...MODELLI_RAGIONAMENTO_OBBLIGATORIO_NOTI, ...(Array.isArray(salvati) ? salvati : [])])];
+}
+function ragionamentoObbligatorioPer(model) { return modelliConRagionamentoObbligatorio().includes(String(model || "")); }
+function segnaRagionamentoObbligatorio(model) {
+  const m = String(model || "");
+  if (!m || ragionamentoObbligatorioPer(m)) return;
+  const salvati = loadKey(MODELLI_RAGIONAMENTO_OBBLIGATORIO_KEY, []);
+  saveKey(MODELLI_RAGIONAMENTO_OBBLIGATORIO_KEY, [...(Array.isArray(salvati) ? salvati : []), m]);
+}
+// Il messaggio esatto osservato è "Reasoning is mandatory for this endpoint and cannot be disabled",
+// ma il rilevatore accetta le varianti vicine: un fornitore può cambiare la formulazione, e il costo
+// di un falso positivo qui è UN campo in meno in una richiesta, non un danno.
+const RIFIUTO_RAGIONAMENTO_RE = /reasoning is mandatory|reasoning.{0,30}cannot be (?:disabled|turned off)|cannot disable reasoning/i;
+function eRifiutoDelRagionamentoSpento(messaggio) { return RIFIUTO_RAGIONAMENTO_RE.test(String(messaggio || "")); }
+// Scrive nello stesso registro che il pannello di Setup mostra. Non passa da pushDebugLog perché
+// queste due funzioni di rete non lo ricevono, e infilarlo attraverso tutti i chiamanti per una
+// riga di diagnostica sarebbe una modifica più grande del difetto: stessa strada di registraAzione,
+// che scrive anche lei direttamente. Si vede alla riapertura del pannello.
+function registraNotaDiRete(voce) {
+  try { saveKey("debug-log", [{ ...voce, time: new Date().toISOString() }, ...loadKey("debug-log", [])].slice(0, 50)); }
+  catch { /* la diagnostica non deve mai far fallire una chiamata */ }
+}
+// Il punto unico da cui passano tutte e due le costruzioni del corpo. Prima erano due fetch scritti
+// a mano: è il motivo per cui una correzione come questa andava fatta due volte, e per cui il campo
+// incondizionato era finito in entrambe senza che nessuno lo vedesse come una scelta sola.
+async function inviaAOpenRouter(body, apiKey) {
+  const senzaRagionamento = (b) => { const { reasoning, ...resto } = b; return resto; };
+  const spedisci = (corpo) => fetchConTetto("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(corpo),
+  }).then((r) => r.json());
+  const corpo = ragionamentoObbligatorioPer(body.model) ? senzaRagionamento(body) : body;
+  let data = await spedisci(corpo);
+  if (data?.error && corpo.reasoning && eRifiutoDelRagionamentoSpento(data.error.message)) {
+    segnaRagionamentoObbligatorio(corpo.model);
+    registraNotaDiRete({ type: "ragionamento-obbligatorio", model: corpo.model, error: null, nota: "questo modello pretende il ragionamento interno: richiesta rimandata senza quel campo, e d'ora in poi non glielo mando più" });
+    data = await spedisci(senzaRagionamento(corpo));
+  }
+  if (data?.error) throw new Error(data.error.message || "Errore OpenRouter");
+  return data;
+}
 function buildOpenRouterContent(text, image) {
   if (!image) return text;
   return [{ type: "text", text }, { type: "image_url", image_url: { url: `data:${image.mediaType};base64,${image.base64}` } }];
@@ -2423,11 +2493,7 @@ async function askOpenRouter(system, userText, temperature, maxTokens, apiKey, m
     body.repetition_penalty = penalties.repetition_penalty ?? 1.15;
     body.frequency_penalty = penalties.frequency_penalty ?? 0.4;
   }
-  const res = await fetchConTetto("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` }, body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message || "Errore OpenRouter");
+  const data = await inviaAOpenRouter(body, apiKey);
   if (onRaw) { try { onRaw(data); } catch { /* diagnostica best-effort: non deve mai far fallire la chiamata */ } }
   return (data.choices?.[0]?.message?.content || "").trim();
 }
@@ -2476,13 +2542,7 @@ async function askModelWithHistory(system, messages, temperature, maxTokens, set
     body.repetition_penalty = penalties.repetition_penalty ?? 1.15;
     body.frequency_penalty = penalties.frequency_penalty ?? 0.4;
   }
-  const res = await fetchConTetto("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.apiKey}` },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message || "Errore OpenRouter");
+  const data = await inviaAOpenRouter(body, settings.apiKey);
   if (onRaw) { try { onRaw(data); } catch { /* diagnostica best-effort: non deve mai far fallire il turno */ } }
   return (data.choices?.[0]?.message?.content || "").trim();
 }

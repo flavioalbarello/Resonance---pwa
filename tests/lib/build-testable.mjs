@@ -94,6 +94,8 @@ const EXPORT_NAMES = [
   "OSSERVABILI", "osservabileDi", "registraAtto", "leggiAtti", "statoAtto", "formatAnelloBlock",
   "ATTI_KEY", "ATTI_TETTO", "buildResonanceDigest",
   "DEGENERATE_QUOTA_NON_LATINA", "DEGENERATE_MIN_LETTERE_NON_LATINE",
+  "eRifiutoDelRagionamentoSpento", "ragionamentoObbligatorioPer", "segnaRagionamentoObbligatorio",
+  "modelliConRagionamentoObbligatorio", "MODELLI_RAGIONAMENTO_OBBLIGATORIO_NOTI",
 ];
 
 // Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.
