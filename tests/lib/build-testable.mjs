@@ -93,6 +93,7 @@ const EXPORT_NAMES = [
   "montaGriglia", "scegliMenoRecente", "DISTANZA_MINIMA_RIPETIZIONE", "MARCHI_NOTI",
   "OSSERVABILI", "osservabileDi", "registraAtto", "leggiAtti", "statoAtto", "formatAnelloBlock",
   "ATTI_KEY", "ATTI_TETTO", "buildResonanceDigest",
+  "DEGENERATE_QUOTA_NON_LATINA", "DEGENERATE_MIN_LETTERE_NON_LATINE",
 ];
 
 // Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.
