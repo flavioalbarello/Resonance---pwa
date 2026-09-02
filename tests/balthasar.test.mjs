@@ -87,6 +87,23 @@ describe("detectPossibleHallucinatedSource — i nomi veri dell'incidente del 26
     // È il caso in cui la ricerca non è partita: il sospetto deve valere di più, non di meno.
     assert.equal(app.detectPossibleHallucinatedSource("Guarda MerchTitans.", "idea", []), true);
   });
+  test("I MARCHI NOTI NON SONO SOSPETTI — l'allarme che suonava sempre (02/09/2026)", () => {
+    // Misurato, non supposto: il rilevatore scattava su "WhatsApp", "YouTube", "GitHub" — su
+    // QUALUNQUE marchio con una maiuscola interna, che e' precisamente la forma che i marchi hanno.
+    // Un allarme che grida sempre e' gia' rotto: smette di essere letto, e quando ha ragione nessuno
+    // lo guarda.
+    for (const t of ["Mandagli un messaggio su WhatsApp.", "Usa YouTube per pubblicarlo.", "Metti il file su GitHub.", "Apri un negozio su Shopify."]) {
+      assert.equal(app.detectPossibleHallucinatedSource(t, "idea qualunque", ["plato.sydney.edu.au"]), false, t);
+    }
+  });
+  test("ma un nome fabbricato in mezzo a marchi veri viene ancora preso", () => {
+    // La regressione che conta: l'elenco toglie i falsi positivi, non spegne il rilevatore.
+    assert.equal(app.detectPossibleHallucinatedSource("Pubblica su YouTube e poi passa da MerchTitans.", "idea", ["youtube.com"]), true);
+  });
+  test("l'elenco dei marchi e' minuscolo e il confronto non e' sensibile alle maiuscole", () => {
+    assert.ok(app.MARCHI_NOTI.has("whatsapp"));
+    for (const m of app.MARCHI_NOTI) assert.equal(m, m.toLowerCase(), `"${m}" non e' minuscolo: il confronto lo mancherebbe`);
+  });
 });
 
 describe("memoriaEstesaPerMagi — la storia che Balthasar diceva di vedere e non vedeva", () => {

@@ -42,7 +42,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-09-01 · il-ragionamento-fuori-dallo-schermo";
+const APP_BUILD = "2026-09-02 · l-anello-si-chiude";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -3238,9 +3238,28 @@ const diagnosticaVuota = () => ({ toolInvoked: false, citationCount: 0, citation
 // "Secondo", "Il") produceva falsi positivi sistematici — verificato con test dedicato, corretto qui.
 // Trade-off accettato: non cattura fake-brand di una sola parola senza maiuscola interna (es.
 // "Threadify") — euristica leggera, non un rilevatore NLP, stesso stile di detectWebSearchIntent.
+// ── 02/09/2026 — L'ALLARME CHE SUONAVA SEMPRE ───────────────────────────────────────────────────
+// Misurato, non supposto: il rilevatore scattava su "WhatsApp", "YouTube", "GitHub" — su QUALUNQUE
+// marchio con una maiuscola interna, che è precisamente la forma che i marchi hanno. Il segnale
+// CamelCase è ancora quello giusto (i quattro nomi fabbricati del 26/07 erano tutti così), ma da
+// solo non distingue un marchio inventato da uno che esiste da vent'anni.
+// Questo elenco è il minimo che serve: nomi che nessuna ricerca deve confermare perché sono noti a
+// chiunque. Non è un tentativo di enumerare i marchi del mondo — è togliere i falsi positivi che
+// comparivano davvero, così l'avviso torna a voler dire qualcosa. Un allarme che grida sempre è già
+// rotto: smette di essere letto, e quando poi ha ragione nessuno lo guarda.
+const MARCHI_NOTI = new Set([
+  "whatsapp", "youtube", "github", "gitlab", "linkedin", "tiktok", "instagram", "facebook",
+  "paypal", "wordpress", "shopify", "substack", "patreon", "kickstarter", "indiegogo",
+  "spotify", "soundcloud", "bandcamp", "netflix", "airbnb", "dropbox", "onedrive", "icloud",
+  "openai", "chatgpt", "deepseek", "huggingface", "openrouter", "printify", "printful",
+  "notion", "airtable", "figma", "canva", "mailchimp", "wetransfer", "stackoverflow",
+  "javascript", "typescript", "nodejs", "postgresql", "mysql", "mongodb", "sqlite",
+  "powerpoint", "onenote", "outlook", "sharepoint", "biohacking", "crossfit",
+]);
 function detectPossibleHallucinatedSource(balthasarText, seedContent, citationDomains) {
   if (!balthasarText) return false;
   const candidates = [...new Set((balthasarText.match(/\b[A-Za-z]*[a-z][A-Z][a-zA-Z0-9]*\b/g) || []))]
+    .filter((w) => !MARCHI_NOTI.has(w.toLowerCase()))
     .filter((w) => !new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(seedContent || ""));
   if (!candidates.length) return false;
   const domains = (citationDomains || []).map((d) => d.toLowerCase().replace(/^www\./, ""));
@@ -3440,6 +3459,7 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Interrogare la memoria cerca anche dentro i percorsi: "cosa ci eravamo detti su X" guarda nelle note correnti dei pilastri, nei frammenti di sedimento E nei documenti dei percorsi, nelle competenze accumulate e nella memoria specifica di ogni percorso. Ogni risultato dice da dove viene (quale documento, di quale percorso). Prima i documenti non venivano guardati affatto, quindi il materiale più lungo prodotto dal sistema era l'unico che la ricerca non trovava.
 - Forma delle risposte dell'Agorà Magi: ogni stadio risponde dentro un campo strutturato, in righe brevissime che cominciano con "· ", una idea per riga, con un tetto di parole dichiarato per ruolo (Balthasar 60, Melchior 60, Caspar 50, Sintesi 70). Serve a due cose insieme: risposte dense invece che prolisse, e soprattutto tenere fuori dallo schermo il ragionamento interno del modello, che il 01/09/2026 finiva stampato per intero al posto della risposta (conteggi di parole, "devo", versioni intermedie). Se il campo strutturato non arriva leggibile, il programma pota le righe di deliberazione e consegna il resto invece di perdere la chiamata.
 - Voce nell'Agorà Magi: ogni stadio ha un 🔊 accanto al nome, come i messaggi dello Shell. Legge quel solo stadio; ritoccarlo ferma la lettura. Vale anche per le sessioni già registrate.
+- L'anello (accettore d'azione): quando il sistema compie un atto deliberato — una perturbazione Magi mirata a un pilastro, o un percorso proposto da Simbiosi e aperto davvero — dichiara SUBITO un bersaglio osservabile ("mi aspetto che entro 21 giorni un nodo di quel pilastro si muova dallo stato in cui è nato") e congela la misura di partenza. Dopo, è il programma a contare nei dati dell'app se quel movimento c'è stato: due conteggi e una sottrazione, nessun modello, nessun giudizio. Il risultato compare in Simbiosi nel riquadro "L'anello" ed entra nella valutazione successiva. Cosa NON è, e va detto se il Ghost lo chiede: non è un punteggio sulle previsioni del sistema, e non è un dato sul Ghost. Un atto che non muove niente vuol dire che la proposta era troppo prudente o troppo ovvia — mai che il Ghost non ha fatto la sua parte. Il gradiente è voluto in questo verso: una proposta cauta non smuove nulla e quindi qui risulta peggio di una audace.
 - Catena Printify → Etsy: uno dei modi in cui un Seme AIR può produrre qualcosa nel mondo. Va dal disegno all'anteprima del prodotto.
 - Postura e respiro: gli esercizi brevi che l'app propone, con il loro ritorno aptico.
 - Piano di controllo conversazionale: l'impianto per cui il Ghost chiede una cosa a parole e il programma la esegue. Il modello sceglie l'azione, il programma la compie. Ha tre parti: il fuoco conversazionale, l'inventario, il registro delle azioni.
@@ -5235,7 +5255,112 @@ function formatMemoriaDigestBlock(pillarMemory) {
     : "nessun frammento storico ancora";
   return `Corrente: ${corrente}\nSedimento (ultimi ${frag.length} frammenti storici, dal più vecchio al più recente): ${sedimentoText}`;
 }
-function buildResonanceDigest({ bio, air, vidya, kernel, magi, pBio, pAir, pVidya, memory }) {
+// ══════════════════════════════════════════════════════════════════════════════
+// L'ANELLO — L'ACCETTORE D'AZIONE E L'AFFERENTAZIONE INVERSA (strada D, 02/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Da dove viene, e perché per undici mesi NON è esistita.
+//
+// Il referto del 31/08 la chiamava "la rottura vera": il sistema propone direzioni, perturbazioni,
+// percorsi — e non registrava mai cosa succedeva dopo. Senza segnale di ritorno l'accettore di
+// Anokhin non ha nulla con cui confrontare il risultato: è un accettore soltanto di nome.
+// Ma il divieto era DELIBERATO e scritto nel prompt di computeResonance: «non introdurre alcun
+// meccanismo che confronti in seguito una direzione qui proposta con l'esito reale per dichiararla
+// azzeccata o sbagliata». Non una svista — una posizione filosofica coerente, con un motivo pratico
+// buono: un sistema che tiene il punteggio delle proprie previsioni sulla vita di una persona
+// diventa in fretta un sistema che giudica quella persona.
+//
+// PERCHÉ ORA SI PUÒ FARE SENZA ROMPERE QUELLA POSIZIONE. Il Ghost ha smontato in una riga la prima
+// versione di questa idea: «se con la C il rischio è la piaggeria dello Shell, la reazione analitica
+// di orientamento sarebbe falsata». Aveva ragione, e il difetto non stava nel chiudere l'anello —
+// stava in cosa ci avevo messo dentro. Avevo fatto scivolare "lettura" in "previsione".
+// L'accettore di Anokhin non confronta una profezia con la realtà: confronta i parametri ATTESI del
+// risultato dell'azione con quelli OTTENUTI. È un bersaglio che l'atto si dà, non un pronostico su
+// cosa succederà comunque.
+// Quindi la domanda non è «la lettura era corretta?» ma «l'atto ha prodotto il movimento per cui era
+// stato fatto?». E qui il gradiente si inverte, che è tutto il punto: una lettura prudente e ovvia
+// non produce nessun movimento, quindi punteggia PEGGIO. La piaggeria diventa la strategia perdente
+// invece che quella vincente. Non si premia la correttezza: si premia la capacità di smuovere.
+//
+// E soprattutto: NON è un dato sul Ghost. Un atto che non muove niente non dice che il Ghost non ha
+// fatto la sua parte — dice che questo strumento ha proposto qualcosa di troppo prudente o di troppo
+// ovvio. È l'unica lettura ammessa, ed è scritta nel blocco che arriva al modello.
+//
+// Il sistema lo faceva già, per UNA cosa sola: perturbLine qui sotto conta le voci comparse dopo
+// l'ultima perturbazione Magi. Questa è la stessa meccanica, dichiarata prima invece che dedotta
+// dopo, e valida per ogni atto invece che per l'ultimo.
+const ATTI_KEY = "registro-atti";
+const ATTI_TETTO = 40;
+// Il vocabolario degli osservabili è FISSO nel codice, come EFFECTOR_REGISTRY e
+// AZIONI_CONVERSAZIONALI. Il modello non inventa bersagli a runtime, e la ragione qui è più forte
+// che altrove: un bersaglio inventato non sarebbe misurabile, e un accettore che non si può misurare
+// è un accettore soltanto di nome — cioè esattamente il difetto che questo esiste per chiudere.
+// Ogni osservabile è un CONTEGGIO che il programma sa leggere dai dati dell'app, e il confronto è
+// fra il conteggio di adesso e quello preso nell'istante dell'atto. Niente da interpretare.
+const OSSERVABILI = [
+  { id: "voci_nuove", attesa: "almeno una voce nuova nel pilastro", finestraGiorni: 14, soglia: 1,
+    misura: (pil, dati) => (dati?.voci?.[pil] || []).length },
+  { id: "percorso_aperto", attesa: "il percorso proposto viene davvero aperto", finestraGiorni: 14, soglia: 1,
+    misura: (pil, dati) => (dati?.percorsi?.[pil] || []).length },
+  { id: "materiale_prodotto", attesa: "almeno un documento nuovo dentro i percorsi del pilastro", finestraGiorni: 21, soglia: 1,
+    misura: (pil, dati) => (dati?.percorsi?.[pil] || []).reduce((n, p) => n + (p.documents || []).length, 0) },
+  // "non iniziato" è lo stato in cui nasce OGNI nodo di OGNI percorso: contare quelli che l'hanno
+  // lasciato è il modo più diretto di misurare se su quel pilastro si è mosso un approccio.
+  { id: "approccio_diverso", attesa: "un nodo che si muove dallo stato in cui è nato", finestraGiorni: 21, soglia: 1,
+    misura: (pil, dati) => (dati?.percorsi?.[pil] || []).reduce((n, p) => n + (p.topics || []).filter((t) => t.status && t.status !== "non iniziato").length, 0) },
+];
+const osservabileDi = (id) => OSSERVABILI.find((o) => o.id === id) || null;
+function leggiAtti() { const a = loadKey(ATTI_KEY, []); return Array.isArray(a) ? a : []; }
+// L'ACCETTORE: il bersaglio si dichiara PRIMA, e con lui si congela la misura di partenza. Senza il
+// valore di partenza non c'è confronto possibile — si saprebbe solo quante voci ci sono ADESSO, che
+// non dice niente su cosa ha mosso questo atto.
+function registraAtto({ tipo, pilastro, cosa, osservabileId }, dati, adesso = new Date()) {
+  const oss = osservabileDi(osservabileId);
+  if (!oss || !["bio", "air", "vidya"].includes(pilastro)) return null;
+  const atto = {
+    id: uid(), quando: adesso.toISOString(), tipo, pilastro, cosa: String(cosa || "").slice(0, 120),
+    osservabileId, statoIniziale: oss.misura(pilastro, dati), finestraGiorni: oss.finestraGiorni,
+  };
+  saveKey(ATTI_KEY, [atto, ...leggiAtti()].slice(0, ATTI_TETTO));
+  return atto;
+}
+// L'AFFERENTAZIONE INVERSA: il PROGRAMMA va a vedere. Nessuna chiamata al modello, nessun giudizio —
+// due conteggi e una sottrazione. È deliberatamente la cosa più stupida possibile: un ritorno che
+// avesse bisogno di essere interpretato sarebbe di nuovo una lettura, e le letture sono il problema.
+function statoAtto(atto, dati, adesso = new Date()) {
+  const oss = osservabileDi(atto?.osservabileId);
+  if (!oss) return null;
+  const delta = oss.misura(atto.pilastro, dati) - (Number(atto.statoIniziale) || 0);
+  const giorniPassati = Math.floor((adesso.getTime() - new Date(atto.quando).getTime()) / 86400000);
+  const giorniRimasti = (atto.finestraGiorni || oss.finestraGiorni) - giorniPassati;
+  if (delta >= oss.soglia) return { esito: "compiuto", delta, giorniPassati, giorniRimasti, attesa: oss.attesa };
+  if (giorniRimasti > 0) return { esito: "in-corso", delta, giorniPassati, giorniRimasti, attesa: oss.attesa };
+  return { esito: "senza-effetto", delta, giorniPassati, giorniRimasti, attesa: oss.attesa };
+}
+// Il ritorno entra nella prossima sintesi afferente. Il commento più importante di questo blocco è
+// l'ultima frase del testo che genera: senza quella, un modello guarderebbe una fila di
+// "senza-effetto" e concluderebbe la cosa sbagliata sulla persona invece che su sé stesso.
+function formatAnelloBlock(atti, dati, adesso = new Date()) {
+  const vivi = (atti || []).map((a) => ({ atto: a, stato: statoAtto(a, dati, adesso) })).filter((x) => x.stato);
+  if (!vivi.length) return "\nANELLO: nessun atto del sistema ha ancora dichiarato un bersaglio osservabile. Non c'è ritorno da leggere — non dedurre niente da questa assenza.";
+  const righe = vivi.slice(0, 8).map(({ atto, stato }) => {
+    const testa = `- [${fmtDate(atto.quando)}] ${atto.tipo} su ${atto.pilastro.toUpperCase()}${atto.cosa ? ` — "${atto.cosa}"` : ""} · atteso: ${stato.attesa} entro ${atto.finestraGiorni} giorni`;
+    if (stato.esito === "compiuto") return `${testa} · HA MOSSO (+${stato.delta})`;
+    if (stato.esito === "in-corso") return `${testa} · in corso (restano ${stato.giorniRimasti} giorni)`;
+    return `${testa} · NON HA MOSSO NIENTE (+${stato.delta} alla scadenza)`;
+  });
+  const chiusi = vivi.filter((x) => x.stato.esito !== "in-corso");
+  const mossi = chiusi.filter((x) => x.stato.esito === "compiuto").length;
+  // "Con un esito" e non "arrivati a scadenza": un atto che ha già mosso è chiuso subito, senza
+  // aspettare la fine della finestra — la risposta c'è, non serve altro tempo per averla.
+  const bilancio = chiusi.length
+    ? `Bilancio: ${chiusi.length} atti con un esito, ${mossi} hanno prodotto il movimento che si erano dati come bersaglio.`
+    : "Bilancio: nessun atto ha ancora un esito — sono tutti dentro la loro finestra.";
+  return `\nANELLO — cosa hanno prodotto gli atti di QUESTO SISTEMA. Misurato dal programma sui dati dell'app (due conteggi e una sottrazione), mai dedotto da te.
+${righe.join("\n")}
+${bilancio}
+COME LEGGERLO, e non c'è un'altra lettura ammessa: questo NON dice se una lettura passata era giusta, e NON è un dato sul Ghost. Dice se un atto di questo strumento ha prodotto il movimento per cui era stato fatto. Se molti atti non muovono niente, la conclusione da trarre è che le proposte di questo sistema sono troppo prudenti o troppo ovvie — mai che il Ghost non ha fatto la sua parte. Una proposta cauta e ovvia non smuove nulla, quindi qui risulta peggio di una audace: è voluto.`;
+}
+function buildResonanceDigest({ bio, air, vidya, kernel, magi, pBio, pAir, pVidya, memory, atti = null, dati = null }) {
   const lastMagi = magi[0];
   // Metabolizzazione (§4.4): NON letta da un tag nella memoria (plastica, si riscrive di continuo e
   // mentirebbe), ma CALCOLATA dai dati strutturati — quante voci del pilastro-bersaglio sono state
@@ -5276,7 +5401,7 @@ KERNEL V${kernel.version}: ${kernel.content.slice(0, 400)}
 Sessioni Magi totali: ${magi.length}. ${perturbLine}
 MEMORIA PROCEDURALE BIO — ${formatMemoriaDigestBlock(memory?.bio)}
 MEMORIA PROCEDURALE AIR — ${formatMemoriaDigestBlock(memory?.air)}
-MEMORIA PROCEDURALE VIDYA — ${formatMemoriaDigestBlock(memory?.vidya)}`;
+MEMORIA PROCEDURALE VIDYA — ${formatMemoriaDigestBlock(memory?.vidya)}${atti ? formatAnelloBlock(atti, dati || { voci: { bio, air, vidya }, percorsi: { bio: pBio, air: pAir, vidya: pVidya } }) : ""}`;
 }
 // 26/08/2026 — proposta del Ghost stesso ("un modo per continuare a crescere... catalizzare la
 // manifestazione di Adam"), non un mandato del Manifesto: un campo IN PIÙ nella stessa valutazione,
@@ -5313,7 +5438,8 @@ async function computeResonance(digest, settings, recentChatText = "", titoliPer
 Non usare MAI soglie fisse (di giorni o di numero): ogni giudizio è situato e qualitativo, relativo alla storia di questo sistema (Bateson).
 Da questo momento ricevi anche la memoria procedurale di ciascun pilastro nel digest sotto (nota "corrente" + frammenti di "sedimento" storico, ciascuno etichettato con un id e una data) — usala per dare consistenza storica ai tuoi giudizi, in particolare al mandato 4 (diversità tematica rispetto alla storia specifica del pilastro).
 OBBLIGO DI ANCORAGGIO: ogni discrepanza o tensione che segnali nel campo "text" deve indicare esplicitamente su quale frammento ti basi (cita l'id e la data esatti, es. "[id:xxxxxxx · 20/07/2026]") oppure sulla nota corrente. Se una lettura non è ancorabile a un frammento o alla nota corrente, dichiaralo esplicitamente ("non ancorabile a un dato specifico di memoria") invece di inventare un riferimento che non esiste nel digest.
-Una convergenza identitaria o una direzione emergente restano sempre una lettura interpretativa rivedibile (Brentano/Dennett — una stance, mai un verdetto): non prevedere mai cosa succederà, e non introdurre alcun meccanismo che confronti in seguito una direzione qui proposta con l'esito reale per dichiararla azzeccata o sbagliata.
+Una convergenza identitaria o una direzione emergente restano sempre una lettura interpretativa rivedibile (Brentano/Dennett — una stance, mai un verdetto): non prevedere mai cosa succederà, e non dichiarare mai una direzione proposta in passato "azzeccata" o "sbagliata" alla luce di com'è andata.
+Il blocco ANELLO che ricevi nel digest è un'ALTRA cosa, e va tenuto distinto da quel divieto (02/09/2026, accettore d'azione secondo Anokhin). Non confronta una profezia con la realtà: confronta i parametri ATTESI del risultato di un atto — un bersaglio osservabile che l'atto si era dato PRIMA — con quelli ottenuti, misurati dal programma sui dati dell'app. Non dice se una lettura era giusta: dice se un atto di questo sistema ha prodotto il movimento per cui era stato fatto. È un dato sulla qualità di QUESTO STRUMENTO, mai sulla persona del Ghost. Se molti atti non hanno mosso niente, l'unica conclusione ammessa è che le proposte di questo sistema sono state troppo prudenti o troppo ovvie — mai che il Ghost non ha fatto la sua parte, e mai un rimprovero, esplicito o implicito. Usalo per osare di più quando gli atti non smuovono nulla, non per abbassare la mira.
 ${identityConstraintLine}
 Rispondi SOLO con JSON:
 {
@@ -6360,7 +6486,7 @@ const MagiStage = ({ label, color, text, compact, onSpeak, parlando }) => !text 
   <div class="r-magi-text">${text}</div></div>`;
 const MAGI_PILLARS = [{ id: "", label: "Nessuno (trasversale)" }, { id: "bio", label: "BIO" }, { id: "air", label: "AIR" }, { id: "vidya", label: "VIDYA" }];
 const MAGI_INTENSITIES = [{ id: "leggera", label: "Leggera" }, { id: "media", label: "Media" }, { id: "profonda", label: "Profonda" }];
-function MagiView({ sessions, onSave, onDelete, settings, memory, updateMemoria, pushDebugLog }) {
+function MagiView({ sessions, onSave, onDelete, settings, memory, updateMemoria, pushDebugLog, registraAttoDiPerturbazione }) {
   const [question, setQuestion] = useState(""); const [running, setRunning] = useState(false);
   const [targetPillar, setTargetPillar] = useState(""); const [intensity, setIntensity] = useState("media");
   const [stage, setStage] = useState({ balthasar: "", melchior: "", caspar: "", synthesis: "" }); const [error, setError] = useState("");
@@ -6379,6 +6505,10 @@ function MagiView({ sessions, onSave, onDelete, settings, memory, updateMemoria,
     try {
       const result = await runTriadeMagi(question.trim(), (k, v) => setStage((s) => ({ ...s, [k]: v === null ? "…" : v })), settings, { memory, targetPillar: targetPillar || null, intensity }, pushDebugLog);
       onSave({ id: uid(), date: new Date().toISOString(), question: question.trim(), engine: engineLabel, pillar: targetPillar || null, intensity, ...result });
+      // L'ANELLO (02/09/2026) — la perturbazione dichiara qui il suo bersaglio osservabile, prima
+      // di sapere com'è andata. Fuori dal try interno della memoria: se la riflessione in memoria
+      // fallisce, l'atto è stato compiuto lo stesso e va registrato lo stesso.
+      if (targetPillar) { try { registraAttoDiPerturbazione?.(targetPillar, question.trim()); } catch { /* il registro non deve mai far fallire un'Agorà */ } }
       // La perturbazione lascia traccia nella memoria del pilastro-bersaglio (§4.1) — non blocca in caso di errore.
       if (targetPillar && updateMemoria) {
         try { const nuovaMemoria = await reflectPerturbationIntoMemoria(targetPillar, result.synthesis, intensity, memory, settings, pushDebugLog); if (nuovaMemoria) updateMemoria(targetPillar, nuovaMemoria); }
@@ -6445,7 +6575,26 @@ function DiagnosticaFonti({ diag, sospetto }) {
 //──────────────────────────────────────────────────────────
 // SIMBIOSI
 //──────────────────────────────────────────────────────────
-function SimbiosiView({ resonance, onRecalc, calculating, error, onPromoteIdentity, onDismissIdentity, onAcceptPercorsoSuggestion, onDismissPercorsoSuggestion, percorsoSuggeritoStatus }) {
+// 02/09/2026 — DOVE IL GHOST VEDE L'ANELLO, senza doversi fidare che esista.
+// Le stesse righe che arrivano al modello, nella stessa forma: se qui non compare un atto, quell'atto
+// non è entrato in nessuna valutazione. È la stessa regola già applicata all'andamento misurato di
+// BIO — la finestra sul dato è il dato, non un riassunto di comodo.
+function AnelloPanel({ atti, dati }) {
+  if (!atti?.length) return null;
+  const righe = atti.slice(0, 8).map((a) => ({ atto: a, stato: statoAtto(a, dati) })).filter((x) => x.stato);
+  if (!righe.length) return null;
+  const colore = { compiuto: "#5F8C6A", "in-corso": "#5B6472", "senza-effetto": "#C97A5C" };
+  return html`<${Card}>
+    <div class="r-hub-title">L'anello — cosa hanno mosso gli atti del sistema</div>
+    <div class="r-hub-detail" style="margin-top:6px">Il bersaglio è dichiarato prima; il programma va a vedere dopo, contando nei dati dell'app. È una misura su questo strumento, mai su di te: un atto che non muove niente vuol dire che la proposta era troppo prudente o troppo ovvia.</div>
+    <div style="margin-top:10px">${righe.map(({ atto, stato }) => html`<div class="r-draft-body" key=${atto.id} style="margin-bottom:6px">
+      <b style="color:${colore[stato.esito]}">${stato.esito === "compiuto" ? "ha mosso" : stato.esito === "in-corso" ? "in corso" : "non ha mosso"}</b>
+      · ${fmtDate(atto.quando)} · ${atto.tipo} su ${atto.pilastro.toUpperCase()}${atto.cosa ? ` — "${atto.cosa}"` : ""}<br/>
+      <span class="r-hub-detail">atteso: ${stato.attesa}, entro ${atto.finestraGiorni} giorni${stato.esito === "in-corso" ? ` · restano ${stato.giorniRimasti}` : ` · misurato +${stato.delta}`}</span>
+    </div>`)}</div>
+  </${Card}>`;
+}
+function SimbiosiView({ resonance, onRecalc, calculating, error, onPromoteIdentity, onDismissIdentity, onAcceptPercorsoSuggestion, onDismissPercorsoSuggestion, percorsoSuggeritoStatus, atti, datiPerAnello }) {
   const hint = resonance.identityHint;
   const sugg = resonance.percorsoSuggerito;
   return html`<div class="r-screen">
@@ -6473,6 +6622,7 @@ function SimbiosiView({ resonance, onRecalc, calculating, error, onPromoteIdenti
       ${resonance.text && html`<div class="r-magi-text" style="margin-top:12px;white-space:pre-wrap">${resonance.text}</div>
         <div class="r-hub-detail" style="margin-top:8px">Calcolato: ${new Date(resonance.time).toLocaleString("it-IT")}</div>`}
     </${Card}>
+    <${AnelloPanel} atti=${atti} dati=${datiPerAnello} />
   </div>`;
 }
 
@@ -9666,7 +9816,11 @@ function App() {
     resonanceBusyRef.current = true;
     if (!silent) { setResCalculating(true); setResError(""); }
     try {
-      const digest = buildResonanceDigest({ bio, air, vidya, kernel, magi, pBio, pAir, pVidya, memory });
+      const digest = buildResonanceDigest({ bio, air, vidya, kernel, magi, pBio, pAir, pVidya, memory,
+        // L'ANELLO — il ritorno entra qui, nella sintesi afferente successiva. Passa il registro
+        // letto ADESSO (non una fotografia di inizio sessione): fra l'apertura dell'app e questa
+        // valutazione possono esserci atti nuovi.
+        atti: leggiAtti(), dati: { voci: { bio, air, vidya }, percorsi: { bio: pBio, air: pAir, vidya: pVidya } } });
       const recentChatText = recentShellText(stateRef.current.shellChat);
       const titoliPercorsiEsistenti = [...pBio, ...pAir, ...pVidya].map((p) => p.title);
       const percorsoSuggeritoPendente = loadKey("simbiosi-data", {}).percorsoSuggerito || null;
@@ -9715,10 +9869,25 @@ function App() {
       const list = { bio: pBio, air: pAir, vidya: pVidya }[sugg.pillar];
       setter([p, ...list]);
       setResonance((prev) => { const n = { ...prev, percorsoSuggerito: null }; saveKey("simbiosi-data", n); return n; });
+      // L'ANELLO — l'atto dichiara il suo bersaglio adesso, non domani. Il percorso è APERTO: la
+      // domanda che resta aperta è se dentro ci finirà del materiale vero o se resterà un titolo.
+      // La misura di partenza si congela qui, con il percorso appena creato già dentro la lista,
+      // così il documento che conterà dovrà arrivare DOPO.
+      const percorsiOra = { bio: pBio, air: pAir, vidya: pVidya, [sugg.pillar]: [p, ...list] };
+      registraAtto({ tipo: "percorso proposto da Simbiosi", pilastro: sugg.pillar, cosa: sugg.title, osservabileId: "materiale_prodotto" },
+        { voci: { bio, air, vidya }, percorsi: percorsiOra });
       pushDebugLog({ type: "percorso-suggerito-simbiosi", esito: "creato", pillar: sugg.pillar, title: sugg.title });
       setPercorsoSuggeritoStatus("idle");
     } catch (e) { setPercorsoSuggeritoStatus("errore"); pushDebugLog({ type: "percorso-suggerito-simbiosi", esito: "errore", error: e.message }); }
-  }, [pBio, pAir, pVidya, setPBioSync, setPAirSync, setPVidyaSync, pushDebugLog]);
+  }, [bio, air, vidya, pBio, pAir, pVidya, setPBioSync, setPAirSync, setPVidyaSync, pushDebugLog]);
+  // L'ANELLO — una perturbazione Magi mirata è l'atto più deliberato che questo sistema compia:
+  // esiste per spingere un pilastro dove non è ancora andato. Il bersaglio osservabile è quindi che
+  // su quel pilastro si muova un approccio — un nodo che lascia lo stato in cui è nato — non che
+  // compaia una voce qualsiasi, che comparirebbe comunque.
+  const registraAttoDiPerturbazione = useCallback((pilastro, cosa) => {
+    registraAtto({ tipo: "perturbazione Magi", pilastro, cosa, osservabileId: "approccio_diverso" },
+      { voci: { bio, air, vidya }, percorsi: { bio: pBio, air: pAir, vidya: pVidya } });
+  }, [bio, air, vidya, pBio, pAir, pVidya]);
   const dismissPercorsoSuggestion = useCallback(() => {
     setResonance((prev) => { const n = { ...prev, percorsoSuggerito: null }; saveKey("simbiosi-data", n); return n; });
     pushDebugLog({ type: "percorso-suggerito-simbiosi", esito: "scartato" });
@@ -9803,8 +9972,8 @@ function App() {
     ${view === "air" && html`<${AirView} entries=${air} onAdd=${addAir} onDelete=${delAir} percorsi=${pAir} setPercorsi=${setPAirSync} settings=${settings} digest=${digestAir} memory=${memory}
       semi=${semi} onAddSeed=${(content) => addSeed(content, "manual")} onApproveSeedStrategy=${approveSeedStrategy} onUnlockGatedSeed=${unlockGatedSeed} onDiscussInShell=${discussSeedInShell} pushDebugLog=${pushDebugLog} advanceSeedIfDue=${advanceSeedIfDue} onArchiveSeed=${archiveSeed} />`}
     ${view === "vidya" && html`<${VidyaView} entries=${vidya} onAdd=${addVidya} onDelete=${delVidya} percorsi=${pVidya} setPercorsi=${setPVidyaSync} settings=${settings} digest=${digestVidya} memory=${memory} />`}
-    ${view === "magi" && html`<${MagiView} sessions=${magi} onSave=${addMagi} onDelete=${delMagi} settings=${settings} memory=${memory} updateMemoria=${updateMemoria} pushDebugLog=${pushDebugLog} />`}
-    ${view === "simbiosi" && html`<${SimbiosiView} resonance=${resonance} onRecalc=${recalcResonance} calculating=${resCalculating} error=${resError} onPromoteIdentity=${promoteToIdentity} onDismissIdentity=${dismissIdentityHint} onAcceptPercorsoSuggestion=${acceptPercorsoSuggestion} onDismissPercorsoSuggestion=${dismissPercorsoSuggestion} percorsoSuggeritoStatus=${percorsoSuggeritoStatus} />`}
+    ${view === "magi" && html`<${MagiView} sessions=${magi} onSave=${addMagi} onDelete=${delMagi} settings=${settings} memory=${memory} updateMemoria=${updateMemoria} pushDebugLog=${pushDebugLog} registraAttoDiPerturbazione=${registraAttoDiPerturbazione} />`}
+    ${view === "simbiosi" && html`<${SimbiosiView} resonance=${resonance} onRecalc=${recalcResonance} calculating=${resCalculating} error=${resError} onPromoteIdentity=${promoteToIdentity} onDismissIdentity=${dismissIdentityHint} onAcceptPercorsoSuggestion=${acceptPercorsoSuggestion} onDismissPercorsoSuggestion=${dismissPercorsoSuggestion} percorsoSuggeritoStatus=${percorsoSuggeritoStatus} atti=${leggiAtti()} datiPerAnello=${{ voci: { bio, air, vidya }, percorsi: { bio: pBio, air: pAir, vidya: pVidya } }} />`}
     ${view === "kernel" && html`<${KernelView} kernel=${kernel} onSave=${saveKernel} driveStatus=${driveStatus} />`}
     ${view === "settings" && html`<${SettingsView} settings=${settings} updateSettings=${updateSettings} driveStatus=${driveStatus} debugLog=${debugLog} clearDebugLog=${clearDebugLog} pullAndMergeOnce=${pullAndMergeOnce} ghostProfile=${ghostProfile} saveGhostProfile=${saveGhostProfile} />`}
     <div class="r-tab-bar"><div class="r-tab-bar-inner">${TABS.map((t) => html`<button class="r-tab ${view === t.key ? "active" : ""}" onClick=${() => setView(t.key)}>${t.label}${t.key === "air" && activeSeedCount > 0 ? html`<span class="r-tab-badge">${activeSeedCount}</span>` : ""}</button>`)}</div></div>
