@@ -27,7 +27,7 @@ const OUT_PATH = join(HERE, `.generated-app.${process.pid}.mjs`);
 
 // I moduli estratti da app.js: importati davvero, non ritagliati. L'elenco sta qui perche' la
 // generazione deve fallire subito e a voce alta se un modulo viene rinominato o sparisce.
-const MODULI = ["lib/base.js", "lib/misure.js", "lib/alimentare.js"];
+const MODULI = ["lib/base.js", "lib/misure.js", "lib/griglia.js", "lib/alimentare.js"];
 
 const STUB_HEADER = `// FILE GENERATO — non modificare a mano. Rigenerato da tests/lib/build-testable.mjs
 // da app.js ad ogni esecuzione dei test. Se lo modifichi qui, il prossimo test lo sovrascrive.
@@ -90,6 +90,9 @@ const EXPORT_NAMES = [
   "finestraConversazione", "ORE_DI_STACCO_CONVERSAZIONE", "titoloSuggeritoDaTesto",
   "senzaDeliberazione", "testoDelMagio", "LUNGHEZZA_MINIMA_MAGI", "MAGI_TETTO_PAROLE",
   "documentoDaContesto", "cercaNellaMemoria", "TETTO_DOCUMENTO_IN_RICERCA",
+  "montaGriglia", "scegliMenoRecente", "DISTANZA_MINIMA_RIPETIZIONE", "MARCHI_NOTI",
+  "OSSERVABILI", "osservabileDi", "registraAtto", "leggiAtti", "statoAtto", "formatAnelloBlock",
+  "ATTI_KEY", "ATTI_TETTO", "buildResonanceDigest",
 ];
 
 // Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.
