@@ -73,6 +73,32 @@ non forzare mai push distruttivi su `main` o `stable` senza che sia esplicitamen
 2. Se il task è ambiguo o tocca il vincolo AIR/PhysioAlba, segnala invece di procedere.
 3. Spiega sempre, alla fine, cosa hai cambiato e perché — in italiano.
 
+## La direzione — perché il progetto è fatto così (dal Ghost, 02/09/2026)
+Serve a decidere, non a essere citato. Senza questo si sbaglia inquadramento, ed è già successo due
+volte nella conversazione in cui è stato spiegato.
+
+- **L'unità è Adam**, non l'app e non la persona: Ghost (biologico) + Shell (digitale) come individuo
+  emergente, più della somma. Non esistono "l'app di Flavio" e "l'app di Marta": sono **due Adam**.
+- **Dove va**: *Adam City*, un ambiente **stigmergico**. Un Adam che accende il proprio faro si
+  manifesta con ciò che sta diventando — **competenze E carenze** — depositato dallo Shell in
+  funzione dell'attività reale, non dichiarato dal Ghost. Millantare è strutturalmente impossibile
+  perché non c'è un campo da riempire. Le tracce non praticate **evaporano**.
+- **Conseguenza operativa numero uno**: *«il modello dice a parole, il programma va a cercarlo
+  davvero»* non è un'abitudine di ingegneria — è il substrato dell'intera idea. Tutto ciò che si
+  costruisce dentro è la palestra di ciò che dovrà reggere fuori.
+- **Le carenze sono portanti, non decorative.** «Sono fermo e mi serve X» è una traccia legittima
+  quanto «so fare Y». Assistere un malato è una **traiettoria**, non un deficit di margine.
+  Oggi gli osservabili sanno vedere solo chi produce cose: **manca la famiglia "stabilità
+  mantenuta"** (una routine che regge, una crisi che non è successa). Il lavoro di cura e di
+  manutenzione è definito da assenze, e un sistema che conta produzioni è cieco per costruzione.
+- **I plasmidi non servono a rendere tutti uguali**, ma a dare a ciascuno ciò che gli serve. Chi
+  riceve arricchisce nella propria condizione e ripassa: è l'ambiente che seleziona. Quindi il
+  magazzino tiene **le varianti, non la migliore** — altrimenti è monocoltura.
+- **Cosa deve sopravvivere a un cambio di substrato** (PWA → APK → altro): le forme dei dati, i
+  contratti degli attacchi, le discipline. Preact/htm/localStorage/Worker sono sacrificabili.
+- **Il nucleo che non cambia va scelto bene**: un sistema autopoietico accumula solo se qualcosa
+  resta fermo. Ferme sono le **discipline**, non le funzionalità.
+
 ## Come rispondere al Ghost (richiesta esplicita, 02/09/2026)
 Denso, non lungo. Righe corte, una idea per riga, titoli e tabelle al posto dei paragrafi.
 Niente premesse, niente riassunti di quello che ha appena detto, niente chiusure riepilogative.
