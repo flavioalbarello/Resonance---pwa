@@ -51,7 +51,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-09-02 · le-trappole-si-raccolgono";
+const APP_BUILD = "2026-09-02 · il-nome-non-esce-il-dominio-si";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -9229,7 +9229,22 @@ function PlasmidiPanel({ ghostProfile }) {
   };
   // I termini che non devono MAI uscire da questo telefono dentro un plasmide. Vengono dal profilo
   // dichiarato dal Ghost, non da un elenco indovinato da me.
-  const terminiVietati = [CURRENT_GHOST_PROFILE.professionalIdentity, ...(ghostProfile?.hardConstraints || []).map((c) => c?.testo || "")].filter(Boolean);
+  // ── CORRETTO IL 02/09/2026, POCHE ORE DOPO AVERLO SCRITTO ────────────────────────────────────
+  // La prima versione passava `professionalIdentity` INTERA come un solo termine. Se il profilo dice
+  // "fisioterapista, PhysioAlba", cercava la stringa "fisioterapista, PhysioAlba" tutta insieme — e
+  // un plasmide che contiene solo "PhysioAlba" passava indenne. Cioè la guardia proteggeva dalla
+  // forma che nessuno avrebbe mai scritto, e lasciava passare quella vera.
+  // Trovato allentando il vincolo, non provandolo: parlare di dove il vincolo agisce ha fatto
+  // guardare il codice che lo applica, ed era sbagliato.
+  // La separazione giusta esisteva già dal 26/07 in redactProfessionalIdentity, e la riuso invece di
+  // rifarla: si spezza sui separatori e si tengono solo i token con una maiuscola interna — il
+  // marcatore di un nome proprio. "PhysioAlba" è un nome e non esce; "fisioterapista" è un dominio,
+  // è tutto minuscolo, e deve poter uscire — altrimenti nessuno strumento clinico è trasferibile
+  // (vedi CLAUDE.md, vincolo allentato il 02/09/2026).
+  const marchiDelGhost = String(CURRENT_GHOST_PROFILE.professionalIdentity || "")
+    .split(/[,;]/).map((t) => t.trim()).filter(Boolean).filter((t) => /[a-z][A-Z]/.test(t));
+  const nomeDelGhost = String(ghostProfile?.name || "").replace(/\([^)]*\)/g, "").split(/\s+/).map((t) => t.trim()).filter((t) => t.length >= 3);
+  const terminiVietati = [...new Set([...marchiDelGhost, ...nomeDelGhost, ...(ghostProfile?.hardConstraints || []).map((c) => c?.testo || "")])].filter(Boolean);
   const esporta = () => {
     const daPortare = lista.filter((p) => p.attivo !== false);
     if (!daPortare.length) { setMessaggio("Non c'è niente da esportare."); return; }

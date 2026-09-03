@@ -14,11 +14,37 @@ cognitiva/creativa). Implementato come PWA in uso reale da due utenti (Flavio/Gh
   progetti Vercel separati, merge sempre manuale **base: stable ← compare: main** (mai il
   contrario — errore già commesso in passato).
 
-## Vincolo assoluto, hard-stop, mai negoziabile
-**Nessuna integrazione o esposizione dell'identità professionale del Ghost (fisioterapista,
-"PhysioAlba") con il pilastro AIR, in nessuna forma di output.** Vale per codice, contenuti
-generati, commit message, nomi di variabili — qualunque cosa. Se un task tocca AIR e non sei
-sicuro se rispetta questo vincolo, fermati e segnala invece di procedere.
+## Identità professionale del Ghost — vincolo ALLENTATO il 02/09/2026
+
+**Cosa diceva prima** (Legge 14: non si cancella, si registra): *«Nessuna integrazione o esposizione
+dell'identità professionale del Ghost (fisioterapista, "PhysioAlba") con il pilastro AIR, in nessuna
+forma di output.»* Divieto in blocco, senza eccezioni. Serviva a impedire che **un bug di questa
+fase di sviluppo** producesse un danno reputazionale reale — non era una posizione, era un airbag.
+
+**Cosa il Ghost ha dichiarato il 02/09/2026**, allentandolo ed enunciando il criterio che stava
+sotto: *«finché non rischia di creare un danno reputazionale non ci sono problemi»*.
+
+Quindi il divieto in blocco è sostituito dal criterio. In pratica:
+
+**DENTRO — permesso.** Lo Shell può usare e nominare la competenza professionale. Si possono
+costruire strumenti clinici (analisi posturale, valutazione del movimento) dentro BIO. La memoria
+procedurale può tenerne traccia. Un plasmide può portare conoscenza di dominio fisioterapica.
+
+**FUORI — resta chiuso**, e non per prudenza mia: è esattamente il criterio del Ghost, perché **il
+danno reputazionale accade fuori**. Niente che leghi la sua identità professionale RICONOSCIBILE a
+un'uscita verso il mondo — pubblicazione, invio, esportazione, prodotto, contenuto firmato — senza
+un suo gesto esplicito su quella cosa precisa. Vale in particolare per gli **effettori AIR autonomi**
+(Semi in esecuzione, Printify/Etsy, invio mail): sono la via per cui un bug diventa un danno, ed è
+il motivo per cui il vincolo era nato. Quel motivo non è scaduto: l'app ha ancora difetti, e oggi
+ne abbiamo trovati diversi.
+
+**La distinzione operativa**, che il codice implementava già prima di questo documento (vedi
+`redactProfessionalIdentity`, e la riga di Caspar in `runSeedGateCheck`):
+- **"PhysioAlba"** — un NOME che identifica. Non esce.
+- **"fisioterapista"** — una PROFESSIONE, non identifica nessuno. Può uscire, altrimenti nessuno
+  strumento clinico sarebbe trasferibile e il pilastro AIR non potrebbe nemmeno nominare il dominio.
+
+Se un task porta l'identità professionale **verso l'esterno**: segnala, non procedere.
 
 ## Regole di versioning
 **Legge 14 — mai sovrascrittura distruttiva.** Ogni evoluzione documentale/strutturale importante

@@ -105,6 +105,33 @@ describe("contieneDatiPersonali — IL VINCOLO CHE CONTA PIÙ DI TUTTI", () => {
   test("un termine vietato troppo corto non fa scattare la guardia su mezza lingua italiana", () => {
     assert.deepEqual(app.contieneDatiPersonali(buono(), ["a", "il", ""]), []);
   });
+
+  // ── 02/09/2026, vincolo PhysioAlba ALLENTATO (vedi CLAUDE.md) ───────────────────────────────
+  // Il Ghost: «puoi allentare il vincolo PhysioAlba, finché non rischia di creare un danno
+  // reputazionale non ci sono problemi». Il divieto in blocco diventa una distinzione: il NOME che
+  // identifica non esce, la PROFESSIONE sì — altrimenti nessuno strumento clinico è trasferibile,
+  // e l'analisi posturale (il ramo che il Ghost vuole costruire) sarebbe bloccata in partenza.
+  test("IL NOME CHE IDENTIFICA non esce, in nessun campo", () => {
+    const p = buono(); p.problema = "un criterio sviluppato in PhysioAlba";
+    assert.ok(app.contieneDatiPersonali(p, ["PhysioAlba"]).length > 0);
+  });
+  test("LA PROFESSIONE PUÒ USCIRE — senza questo, un plasmide clinico non esisterebbe", () => {
+    // Un osservabile posturale nomina per forza il proprio dominio: se "fisioterapista" bloccasse
+    // l'esportazione, il trasferimento medico→caregiver sarebbe impossibile per costruzione.
+    const p = buono();
+    p.problema = "valutare l'evoluzione posturale di un paziente seguito da un fisioterapista";
+    p.nome = "Angolo di flessione dell'anca";
+    assert.deepEqual(app.contieneDatiPersonali(p, ["PhysioAlba"]), [], "il dominio non è un'identità");
+  });
+  test("LA GUARDIA VA CHIAMATA CON I MARCHI SEPARATI, non con la stringa intera del profilo", () => {
+    // È il difetto trovato il 02/09 poche ore dopo averlo scritto: passando l'intera
+    // "fisioterapista, PhysioAlba" come UN termine, la guardia cercava quella stringa tutta insieme
+    // e un plasmide contenente solo "PhysioAlba" passava indenne. Proteggeva dalla forma che
+    // nessuno scriverebbe mai e lasciava passare quella vera.
+    const p = buono(); p.problema = "sviluppato in PhysioAlba";
+    assert.deepEqual(app.contieneDatiPersonali(p, ["fisioterapista, PhysioAlba"]), [], "così NON protegge: è il difetto");
+    assert.ok(app.contieneDatiPersonali(p, ["PhysioAlba"]).length > 0, "spezzato in marchi, protegge");
+  });
 });
 
 describe("impronta e versioni — Legge 14 anche qui", () => {
