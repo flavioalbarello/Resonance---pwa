@@ -1,4 +1,4 @@
-const CACHE = "resonance-v14"; // bump di versione: invalida qualunque cache residua e serve il nuovo app.js
+const CACHE = "resonance-v15"; // bump di versione: invalida qualunque cache residua e serve il nuovo app.js
 // 31/08/2026 — I TRE MODULI ESTRATTI DEVONO STARE QUI DENTRO. app.js non e' piu' un file solo: se
 // lib/*.js non fosse precaricato, online non cambierebbe niente (la strategia e' rete-prima), ma la
 // prima apertura SENZA rete dopo un aggiornamento troverebbe app.js in cache e i suoi import no —
@@ -13,6 +13,7 @@ const SHELL = [
   "./lib/misure.js",
   "./lib/griglia.js",
   "./lib/plasmide.js",
+  "./lib/capitolato.js",
   "./lib/alimentare.js",
   "./config.js",
   "./vendor/preact.mjs",
