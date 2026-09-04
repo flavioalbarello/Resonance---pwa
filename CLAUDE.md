@@ -58,6 +58,26 @@ non forzare mai push distruttivi su `main` o `stable` senza che sia esplicitamen
   il parsing — verificare che extractJsonBlock/sanitizeJsonControlChars siano ancora in uso dove serve.
 - Qualsiasi funzione di generazione contenuti deve ricevere esplicitamente la memoria procedurale
   rilevante nel prompt (bug già capitato: piano alimentare generato senza accesso a memory.bio).
+- **Un banco trattenuto non si cita nella retroazione.** Se un controllo tiene da parte dei casi che
+  il modello non deve vedere, il messaggio di errore non può riportarne il testo: in tre giri glieli
+  consegna tutti. Si descrive la FORMA (`descriviForma`), mai il contenuto. Trovato dalla prova il
+  04/09/2026, un'ora dopo aver scritto il banco stesso.
+
+## Accettore ed effettore — la regola, non solo il codice (dal Ghost, 04/09/2026)
+*«devono avere una relazione biunivoca, un po' come accettore d'azione ed effettore d'azione in
+Anochin, altrimenti ognuno dei due diventa solo un orpello»*
+
+Vale per ogni futura coppia genera/controlla, non solo per i plasmidi:
+- Il controllo **non sta a valle**. Si forma PRIMA, insieme alla decisione di agire, e **specifica**
+  che forma dovrà avere il risultato. Un filtro a valle scarta e non insegna niente.
+- **Un oggetto solo, letto due volte** (`lib/capitolato.js`): `detta` (come si dice al modello) e
+  `verifica` (come si controlla) stanno nella stessa riga dello stesso array. Due scritture separate
+  divergono entro un mese — è già successo col piano alimentare.
+- **Held-out**: il requisito si dichiara, le prove si trattengono. Se il modello vede il banco, ci
+  scrive sopra invece di risolvere.
+- **Il disaccordo non si butta**: torna al modello come materia del giro seguente, e la rinuncia
+  dopo il tetto **resta registrata**. «Non so ancora fare X» è una traccia legittima.
+- Il guardiano dei dati personali sta **dove il dato entra** (`salvaPlasmide`), non dove esce.
 
 ## Checklist di consegna per ogni nuova feature
 - **Aggiorna `APP_CAPABILITIES_CONTEXT` in app.js** (blocco iniettato nel system prompt dello

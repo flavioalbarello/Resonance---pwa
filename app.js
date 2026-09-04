@@ -29,6 +29,15 @@ import {
   validaPlasmide,
 } from "./lib/plasmide.js";
 import {
+  briefDelCapitolato,
+  briefDelDisaccordo,
+  confrontaColCapitolato,
+  montaCapitolato,
+  descriviForma,
+  rispettaIlContratto,
+  TETTO_GENERAZIONE,
+} from "./lib/capitolato.js";
+import {
   derivata,
   fattiDaLogBio,
   formatSerieBlock,
@@ -51,7 +60,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-09-02 · il-nome-non-esce-il-dominio-si";
+const APP_BUILD = "2026-09-04 · accettore-ed-effettore-insieme";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -3106,10 +3115,39 @@ function leggiPlasmidi() { const p = loadKey(PLASMIDI_KEY, []); return Array.isA
 function plasmidiPerAttacco(attacco) {
   return leggiPlasmidi().filter((p) => p.attacco === attacco && p.attivo !== false && p.ultimaProva?.passato === true);
 }
-function salvaPlasmide(plasmide) {
+// I termini che non devono MAI finire dentro un plasmide. Vivevano dentro PlasmidiPanel, calcolati
+// al volo nel corpo del componente; sono saliti qui il 04/09/2026 per una ragione precisa, non per
+// ordine: da oggi servono anche a `salvaPlasmide`, cioè PRIMA e FUORI dall'interfaccia.
+// La separazione è quella del 26/07 in redactProfessionalIdentity, e la riuso invece di rifarla:
+// si spezza sui separatori e si tengono solo i token con una maiuscola interna — il marcatore di un
+// nome proprio. "PhysioAlba" è un nome e non esce; "fisioterapista" è un dominio, è tutto minuscolo,
+// e deve poter uscire, altrimenti nessuno strumento clinico è trasferibile (CLAUDE.md, 02/09/2026).
+function terminiVietatiDelGhost(ghostProfile) {
+  const prof = ghostProfile || CURRENT_GHOST_PROFILE;
+  const marchi = String(CURRENT_GHOST_PROFILE.professionalIdentity || "")
+    .split(/[,;]/).map((t) => t.trim()).filter(Boolean).filter((t) => /[a-z][A-Z]/.test(t));
+  const nome = String(prof?.name || "").replace(/\([^)]*\)/g, "").split(/\s+/).map((t) => t.trim()).filter((t) => t.length >= 3);
+  return [...new Set([...marchi, ...nome, ...(prof?.hardConstraints || []).map((c) => c?.testo || "")])].filter(Boolean);
+}
+// ── IL GUARDIANO, SPOSTATO A MONTE — 04/09/2026 ─────────────────────────────────────────────────
+// Fino a ieri `contieneDatiPersonali` girava in UN SOLO punto: l'esportazione (PlasmidiPanel). Era
+// difendibile finché i plasmidi li scrivevo io e li guardavo uno per uno prima di spedirli.
+// Da oggi non più: se è il modello a scriverli, un caso di prova ripreso da un log vero entra in
+// memoria PRIMA che un umano lo veda, e la prima cosa che lo tocca dopo può essere una
+// sincronizzazione su Drive — cioè un'uscita, senza che nessuno abbia deciso niente.
+// Quindi la porta si sposta dove il dato entra, non dove esce. È lo stesso spostamento fatto il
+// 02/09 con `plasmidiPerAttacco`: una proprietà del MAGAZZINO, non del momento buono.
+// Restituisce sempre un esito leggibile; non lancia. Un plasmide sporco NON viene scritto.
+function salvaPlasmide(plasmide, ghostProfile) {
+  const trovati = contieneDatiPersonali(plasmide, terminiVietatiDelGhost(ghostProfile));
+  if (trovati.length) {
+    registraNotaDiRete({ type: "plasmide-respinto-alla-scrittura", plasmide: plasmide?.nome || "senza nome", rinuncia: "dati personali", costo: trovati.join(", "), error: null });
+    return { ok: false, trovati, plasmide: null };
+  }
   const altri = leggiPlasmidi().filter((p) => p.id !== plasmide.id);
-  saveKey(PLASMIDI_KEY, [{ ...plasmide, impronta: improntaPlasmide(plasmide) }, ...altri].slice(0, PLASMIDI_TETTO));
-  return plasmide;
+  const scritto = { ...plasmide, impronta: improntaPlasmide(plasmide) };
+  saveKey(PLASMIDI_KEY, [scritto, ...altri].slice(0, PLASMIDI_TETTO));
+  return { ok: true, trovati: [], plasmide: scritto };
 }
 function dimenticaPlasmide(id) { saveKey(PLASMIDI_KEY, leggiPlasmidi().filter((p) => p.id !== id)); }
 // L'anello, anche qui: uno strumento che non viene mai chiamato decade. Il conteggio è l'unica cosa
@@ -3148,6 +3186,158 @@ async function diagnosiCompleta(text) {
     if (trovato) return { ...uscita.uscita, daPlasmide: p.nome };
   }
   return null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// L'EFFETTORE — l'app si scrive uno strumento da sola (04/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Fino a ieri il tubo dei plasmidi era in piedi e dentro non ci passava niente che non avessi scritto
+// io: origine periferica zero. Un tubo senza flusso non è un organo, è un ornamento — e lo stesso
+// vale per il guardiano da solo. Per questo effettore e accettore nascono nello stesso commit:
+// il capitolato (lib/capitolato.js) è l'accettore, questo è l'effettore, e sono la stessa cosa letta
+// da due lati. Vedi il commento in testa a quel file per il perché.
+
+// ── LA MATERIA PRIMA: I GUASTI CHE IL GHOST HA VISTO E L'APP NO ─────────────────────────────────
+// Non serve inventare un problema: esiste già, ed è raccolto da solo dal 02/09. Una TRAPPOLA è un
+// punto in cui il Ghost ha rifiutato ciò che era stato prodotto. Il sottoinsieme che interessa qui è
+// quello in cui il rifiuto dice che il testo era ROTTO — non semplicemente brutto o troppo lungo:
+// quelli sono giudizi di merito, e un criterio automatico non ha niente da dirci sopra.
+// Ogni parola di questo elenco descrive un testo ILLEGGIBILE, cioè esattamente ciò che un criterio
+// anti-guasto può riconoscere senza capire di cosa si parla.
+const TRAPPOLA_DA_GUASTO_RE = /\b(non\s+si\s+capisce|illeggibile|incomprensibile|caratteri\s+strani|non\s+è\s+italiano|non\s+e'\s+italiano|senza\s+senso|spazzatura|robaccia|tutto\s+attaccato|numeri\s+a\s+caso)\b/i;
+function guastiDaTrappole(trappole) {
+  return (trappole || leggiTrappole())
+    .filter((t) => TRAPPOLA_DA_GUASTO_RE.test(String(t?.cosaNonHaFunzionato || "")))
+    .map((t) => String(t?.suCosa || "").trim())
+    .filter((s) => s.length >= 40);
+}
+
+// ── IL BANCO TRATTENUTO ─────────────────────────────────────────────────────────────────────────
+// Testi SANI su cui lo strumento generato non deve accendersi. Il modello non li vede mai: sono la
+// parte del giudizio che l'effettore non può assecondare scrivendoci sopra.
+// Scritti a mano, e non presi dalla conversazione vera, per due ragioni che vanno insieme: (1) un
+// testo del Ghost qui dentro sarebbe un dato personale che entra in un giro che finisce in un file
+// esportabile; (2) un banco che cambia a ogni esecuzione non permette di confrontare due tentativi.
+// La varietà è scelta contro i criteri pigri che mi aspetto: il terzo ha una tabella (i separatori
+// non sono guasti), il quarto ha termini inglesi (una risposta può citare in inglese senza essere
+// rotta — è il falso positivo che ho già commesso a mano il 02/09 con i marchi noti), il quinto è
+// corto (la brevità non è un guasto), il sesto ha numeri fitti (una serie BIO è così).
+const CONTROLLI_SANI = [
+  "Il peso è sceso di 1,2 kg in undici giorni. La derivata resta negativa ma il passo si è dimezzato rispetto alla settimana scorsa: è il momento in cui di solito il piano si assesta, non quello in cui smette di funzionare.",
+  "Tre cose, in ordine di quanto costano. Primo: la sessione di forza salta se dormi meno di sei ore, e questa settimana è successo due volte. Secondo: il pranzo fuori casa è l'unico pasto senza struttura. Terzo: non c'è un terzo, e va bene così.",
+  "| voce | ieri | oggi |\n| --- | --- | --- |\n| peso | 124,8 | 124,5 |\n| ore di sonno | 6,0 | 7,5 |\n\nLa riga che conta è la seconda: il peso segue, non guida.",
+  "Il termine corretto è deload: una settimana a volume ridotto, non una pausa. In letteratura si trova come planned overreaching seguito da taper. Tradotto in pratica per te: stessi esercizi, stessa frequenza, metà delle serie.",
+  "Fatto. L'ho messo nel percorso.",
+  "Serie del peso, ultimi otto rilievi: 130,0 · 128,4 · 127,9 · 127,1 · 126,0 · 125,4 · 124,8 · 124,5. Media mobile a 3: 127,1 · 126,3 · 125,4 · 124,9. La discesa è continua, il ritmo cala.",
+];
+
+// Fa girare uno strumento sul banco e traduce ogni uscita in ciò che il capitolato sa giudicare:
+// si è acceso? rispetta il contratto? Non lancia mai — un errore qui è un dato, non un guasto.
+// `trattenuto` cambia UNA cosa sola, ed è la cosa che tiene in piedi il banco held-out: di un caso
+// trattenuto non esce mai il testo, esce solo la sua FORMA. Vedi descriviForma in lib/capitolato.js
+// — senza questa riga il disaccordo consegnava al modello, un pezzo per giro, il banco che serviva
+// a smascherarlo.
+async function provaSulBanco(codice, testi, trattenuto = false) {
+  if (!testi.length) return { compilata: true, erroreCompilazione: "", esiti: [] };
+  const esito = await eseguiNelRecinto(codice, testi.map((t) => String(t)));
+  if (!esito.ok) return { compilata: false, erroreCompilazione: esito.errore || "non compila", esiti: [] };
+  return {
+    compilata: true, erroreCompilazione: "",
+    esiti: esito.esiti.map((r, i) => ({
+      ...(trattenuto ? { forma: descriviForma(testi[i]) } : { inizio: String(testi[i]).slice(0, 160) }),
+      acceso: !!(r?.ok && r.uscita && typeof r.uscita === "object"),
+      fuoriContratto: !r?.ok || !rispettaIlContratto(r.uscita),
+      errore: r?.ok ? "" : (r?.errore || "nessun esito"),
+    })),
+  };
+}
+
+// ── IL REGISTRO DEI TENTATIVI ───────────────────────────────────────────────────────────────────
+// Legge 14 anche qui, e stavolta è la parte che vale di più: un tentativo fallito NON si cancella.
+// «Non so ancora fare X» è una traccia legittima quanto uno strumento riuscito — è il solo posto in
+// cui si legge dove il generatore è cieco, e senza di esso la quinta condizione (deve poter fallire,
+// e il fallimento deve vedersi) sarebbe una promessa invece che una proprietà.
+const GENERAZIONI_KEY = "generazioni";
+const GENERAZIONI_TETTO = 20;
+function leggiGenerazioni() { const g = loadKey(GENERAZIONI_KEY, []); return Array.isArray(g) ? g : []; }
+function registraGenerazione(voce) {
+  const v = { id: uid(), quando: new Date().toISOString(), ...voce };
+  saveKey(GENERAZIONI_KEY, [v, ...leggiGenerazioni()].slice(0, GENERAZIONI_TETTO));
+  return v;
+}
+function dimenticaGenerazione(id) { saveKey(GENERAZIONI_KEY, leggiGenerazioni().filter((g) => g.id !== id)); }
+
+const SISTEMA_GENERATORE = [
+  "Scrivi strumenti minimi in JavaScript puro per un'app che gira sul telefono di una persona.",
+  "Non stai parlando con un utente: stai consegnando un pezzo di codice a un programma che lo proverà",
+  "e lo rifiuterà senza pietà se non rispetta i requisiti alla lettera. Nessun preambolo, nessuna scusa,",
+  "nessuna spiegazione fuori dal JSON. Meglio uno strumento stretto che si accende poco di uno largo",
+  "che si accende sempre.",
+].join(" ");
+
+// ── L'ATTO ──────────────────────────────────────────────────────────────────────────────────────
+// `chiediJSON(system, user)` è fornito dal chiamante e restituisce l'oggetto già estratto (o null):
+// la costruzione del prompt di rete e il recupero dei JSON sporchi restano dove già stanno, e questa
+// funzione si può provare in Node passando un modello finto. Stesso schema di askWithDegenerateGuard.
+async function generaPlasmide({ chiediJSON, attacco = "criterio-degenerazione", problema, guasti, sani = CONTROLLI_SANI, ghostProfile, tetto = TETTO_GENERAZIONE }) {
+  const capitolato = montaCapitolato({
+    attacco, guasti, sani, terminiVietati: terminiVietatiDelGhost(ghostProfile),
+    problema: problema || "L'app non ha riconosciuto come guasti dei testi che il Ghost ha rifiutato perché illeggibili.",
+  });
+  if (!capitolato.contratto) return registraGenerazione({ attacco, esito: "errore", motivo: `l'attacco "${attacco}" non esiste`, giri: [] });
+  if (!capitolato.banco.guasti.length) {
+    return registraGenerazione({ attacco, esito: "niente-materia", motivo: "nessun guasto vero da cui partire: senza un caso reale non si scrive un criterio, si indovina", giri: [] });
+  }
+  const giri = [];
+  let messaggio = briefDelCapitolato(capitolato);
+  for (let giro = 1; giro <= tetto; giro++) {
+    let grezzo = null;
+    try { grezzo = await chiediJSON(SISTEMA_GENERATORE, messaggio); }
+    catch (e) { giri.push({ n: giro, disaccordi: [{ id: "rete", mancato: String(e?.message || e) }] }); break; }
+    if (!grezzo || typeof grezzo !== "object") {
+      giri.push({ n: giro, disaccordi: [{ id: "campi-dichiarati", mancato: "non è arrivato un oggetto JSON leggibile" }] });
+      messaggio = briefDelDisaccordo(giri[giri.length - 1].disaccordi, giro);
+      continue;
+    }
+    // L'identità la decide il programma, non il modello: un id inventato dal modello potrebbe
+    // sovrascrivere uno strumento esistente, ed è esattamente il genere di scrittura distruttiva
+    // che la Legge 14 vieta.
+    const plasmide = { ...grezzo, id: uid(), attacco, versione: 1, formato: 1, generato: true, attivo: false, natoIl: new Date().toISOString() };
+
+    // Le parti IMPURE, eseguite qui e passate all'accettore come risultati.
+    const validazione = validaPlasmide(plasmide);
+    const bancoGuasti = await provaSulBanco(plasmide.codice, capitolato.banco.guasti);
+    const bancoSani = bancoGuasti.compilata ? await provaSulBanco(plasmide.codice, capitolato.banco.sani, true) : { esiti: [] };
+    const esitoProve = validazione.valido ? await provaPlasmide(plasmide) : { passato: false, motivo: "il plasmide non è valido, le prove non sono state girate" };
+    const contesto = {
+      plasmide, capitolato, validazione, esitoProve,
+      compilata: bancoGuasti.compilata, erroreCompilazione: bancoGuasti.erroreCompilazione,
+      esitiBancoGuasti: bancoGuasti.esiti, esitiBancoSani: bancoSani.esiti,
+      datiPersonali: contieneDatiPersonali(plasmide, capitolato.terminiVietati),
+      casiReali: [...capitolato.banco.guasti, ...capitolato.banco.sani],
+    };
+    const { coincide, disaccordi } = confrontaColCapitolato(capitolato, contesto);
+    giri.push({ n: giro, nome: plasmide.nome || "senza nome", disaccordi: disaccordi.map((d) => ({ id: d.id, mancato: d.mancato })) });
+
+    if (coincide) {
+      // LA COINCIDENZA GENERA MEMORIA, NON CHIUDE IL CICLO. Lo strumento entra SPENTO: l'ultimo
+      // passo è un gesto del Ghost, come per un plasmide arrivato da un'altra app.
+      const scritto = salvaPlasmide({ ...plasmide, ultimaProva: { quando: new Date().toISOString(), passato: true, motivo: "" } }, ghostProfile);
+      if (!scritto.ok) {
+        // Il guardiano a monte ha l'ultima parola anche sul capitolato: se qui rifiuta qualcosa che
+        // il requisito aveva lasciato passare, è il requisito a essere troppo largo, e si vede.
+        return registraGenerazione({ attacco, esito: "respinto-alla-scrittura", motivo: scritto.trovati.join(", "), giri });
+      }
+      return registraGenerazione({ attacco, esito: "coincidenza", plasmideId: scritto.plasmide.id, nome: scritto.plasmide.nome, giri });
+    }
+    messaggio = briefDelDisaccordo(disaccordi, giro);
+  }
+  // LA RINUNCIA SI REGISTRA. È la traccia di una carenza, e in questo progetto le carenze sono
+  // portanti: dice a cosa il generatore non arriva ancora, con i motivi dell'ultimo giro.
+  return registraGenerazione({
+    attacco, esito: "rinuncia", giri,
+    motivo: (giri[giri.length - 1]?.disaccordi || []).map((d) => d.mancato).join("; ") || "nessun tentativo è arrivato in fondo",
+  });
 }
 // `call` è una funzione zero-argomenti che rifà la richiesta originale (closure sul chiamante) — nessuna
 // duplicazione della costruzione del prompt qui. Se degenerato anche al secondo tentativo, lancia un
@@ -3890,7 +4080,10 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Forma delle risposte dell'Agorà Magi: ogni stadio risponde dentro un campo strutturato, in righe brevissime che cominciano con "· ", una idea per riga, con un tetto di parole dichiarato per ruolo (Balthasar 60, Melchior 60, Caspar 50, Sintesi 70). Serve a due cose insieme: risposte dense invece che prolisse, e soprattutto tenere fuori dallo schermo il ragionamento interno del modello, che il 01/09/2026 finiva stampato per intero al posto della risposta (conteggi di parole, "devo", versioni intermedie). Se il campo strutturato non arriva leggibile, il programma pota le righe di deliberazione e consegna il resto invece di perdere la chiamata.
 - Voce nell'Agorà Magi: ogni stadio ha un 🔊 accanto al nome, come i messaggi dello Shell. Legge quel solo stadio; ritoccarlo ferma la lettura. Vale anche per le sessioni già registrate.
 - Trappole: ogni volta che il Ghost chiede di rifare qualcosa che lo Shell aveva appena prodotto («non mi piace la lettera che hai fatto», «rifallo», «troppo prolisso»), il programma se lo segna da solo: la frase, l'inizio del testo rifatto, il percorso aperto e dopo quanti scambi è successo. Costa zero — nessuna chiamata al modello, solo confronto di parole. Non cambia niente nel turno in corso e non finisce (ancora) in nessun prompt: è materia prima, e serve a capire con dei dati se un PROCESSO lungo — un posizionamento lavorativo, un percorso di studio — abbia dentro dei vicoli ciechi ricorrenti che varrebbe la pena di non far ripercorrere a nessun altro. Si vedono in Setup, nel riquadro "Trappole", e si tolgono una per una se il rilevamento è sbagliato. Il rilevatore è deliberatamente stretto: preferisce mancare una trappola che segnarne una falsa.
-- Plasmidi (strumenti acquisiti): funzioni pure che l'app ha imparato DOPO essere stata scritta, e che si trasferiscono da un'app all'altra come un plasmide fra due batteri. Ognuna gira in un recinto senza rete, senza i dati del Ghost, senza interfaccia e con un tetto di tempo — misurato, non promesso. Ognuna porta con sé le proprie PROVE: quando un plasmide arriva da un'altra app le prove rigirano su QUESTO telefono prima che venga usato, e se non passano non entra. Arriva sempre SPENTO: lo accende il Ghost. Vivono in Setup, nel riquadro "Plasmidi", dove si legge il codice per intero, si riprovano le prove quando si vuole, si spengono e si tolgono. Un plasmide non porta MAI dati personali: il programma lo verifica prima di esportarlo, e blocca l'esportazione se trova indirizzi, numeri, cifre lunghe o i termini dell'identità professionale dichiarata. Oggi c'è un solo punto dell'app dove uno strumento acquisito può essere chiamato ("riconoscere una risposta guasta del modello"): l'app può crescere organi nuovi solo dove esiste già un attacco, e gli attacchi si scrivono a mano. Se il magazzino è vuoto — com'è appena installato — l'app si comporta e costa esattamente come prima.
+- Plasmidi (strumenti acquisiti): funzioni pure che l'app ha imparato DOPO essere stata scritta, e che si trasferiscono da un'app all'altra come un plasmide fra due batteri. Ognuna gira in un recinto senza rete, senza i dati del Ghost, senza interfaccia e con un tetto di tempo — misurato, non promesso. Ognuna porta con sé le proprie PROVE: quando un plasmide arriva da un'altra app le prove rigirano su QUESTO telefono prima che venga usato, e se non passano non entra. Arriva sempre SPENTO: lo accende il Ghost. Vivono in Setup, nel riquadro "Plasmidi", dove si legge il codice per intero, si riprovano le prove quando si vuole, si spengono e si tolgono. Un plasmide non porta MAI dati personali: il programma lo verifica prima di esportarlo, e blocca l'esportazione se trova indirizzi, numeri, cifre lunghe o i termini dell'identità professionale dichiarata. Oggi c'è un solo punto dell'app dove uno strumento acquisito può essere chiamato ("riconoscere una risposta guasta del modello"): l'app può crescere organi nuovi solo dove esiste già un attacco, e gli attacchi si scrivono a mano. Se il magazzino è vuoto — com'è appena installato — l'app si comporta e costa esattamente come prima. Un plasmide non entra MAI nel magazzino se contiene dati personali: il controllo sta sulla SCRITTURA, non solo sull'esportazione, perché da quando un plasmide può nascere sul dispositivo un dato potrebbe entrare in memoria prima che un umano lo veda.
+- L'app che si scrive uno strumento da sola (il generatore): nel riquadro "Plasmidi" c'è un pulsante "Prova a scrivertene uno". Compare con un numero: quanti guasti VERI ha a disposizione per partire. Quei guasti vengono dalle Trappole — ma solo quelle in cui il Ghost ha detto che il testo era ROTTO ("non si capisce", "illeggibile", "caratteri strani"), non quelle in cui era solo brutto o troppo lungo: su un giudizio di merito un criterio automatico non ha niente da dire. Senza nemmeno un caso vero il pulsante è spento, e lo dichiara: senza un guasto reale un criterio non si scrive, si indovina.
+  Come funziona, e perché è fatto così: il programma monta un CAPITOLATO — l'elenco dei requisiti — e lo usa DUE VOLTE, per la stessa identica cosa: come istruzioni date al modello, e come giudizio sul risultato. Sono lo stesso oggetto, quindi non possono divergere. Dentro il capitolato c'è un BANCO TRATTENUTO: dei testi SANI su cui lo strumento non deve accendersi e che il modello non vede mai. Il requisito gli viene detto («non devi scattare su una risposta normale»), le prove no. Se sbaglia, gli viene detto CHE FORMA aveva il testo su cui ha sbagliato ("una tabella, 180 caratteri") ma non il testo: altrimenti in tre giri si porterebbe a casa il banco.
+  Cosa succede quando non ce la fa: il motivo torna al modello e riprova, al massimo tre volte — ogni giro è una chiamata pagata. Se non ci arriva, la RINUNCIA resta scritta, con cosa è mancato. I tentativi non riusciti si vedono sotto, nel riquadro "Cosa ha provato a scriversi", e non si cancellano da soli: dicono a cosa il generatore non arriva ancora, ed è l'unico posto in cui si legge. Uno strumento ammesso entra SPENTO, esattamente come uno arrivato da un'altra app: l'ultimo passo è un gesto del Ghost, dopo aver letto il codice.
 - Rinunce di parametro: l'app aggiunge alla richiesta al modello alcuni parametri facoltativi (spegnere il ragionamento interno per non pagarlo, la temperatura, i freni anti-ripetizione, la ricerca web). Non tutti i modelli li accettano. Se il fornitore ne rifiuta uno, il programma toglie QUEL parametro e rimanda la richiesta invece di lasciare il Ghost senza risposta, e da lì in poi a quel modello non lo manda più — la scoperta si paga una volta sola. Non ripiega su errori che non parlano di parametri (credito esaurito, modello inesistente): quelli si dichiarano. In Setup compare il riquadro "A cosa ho rinunciato per farti arrivare una risposta", con cosa è stato tolto e cosa costa. È importante: se è caduta la ricerca web, la risposta è arrivata SENZA cercare, e va detto invece di lasciar credere il contrario.
 - L'anello (accettore d'azione): quando il sistema compie un atto deliberato — una perturbazione Magi mirata a un pilastro, o un percorso proposto da Simbiosi e aperto davvero — dichiara SUBITO un bersaglio osservabile ("mi aspetto che entro 21 giorni un nodo di quel pilastro si muova dallo stato in cui è nato") e congela la misura di partenza. Dopo, è il programma a contare nei dati dell'app se quel movimento c'è stato: due conteggi e una sottrazione, nessun modello, nessun giudizio. Il risultato compare in Simbiosi nel riquadro "L'anello" ed entra nella valutazione successiva. Cosa NON è, e va detto se il Ghost lo chiede: non è un punteggio sulle previsioni del sistema, e non è un dato sul Ghost. Un atto che non muove niente vuol dire che la proposta era troppo prudente o troppo ovvia — mai che il Ghost non ha fatto la sua parte. Il gradiente è voluto in questo verso: una proposta cauta non smuove nulla e quindi qui risulta peggio di una audace.
 - Catena Printify → Etsy: uno dei modi in cui un Seme AIR può produrre qualcosa nel mondo. Va dal disegno all'anteprima del prodotto.
@@ -9214,37 +9407,53 @@ function TrappolePanel() {
 // RIPROVARLO quando si vuole (non solo quando è entrato), e TOGLIERLO.
 // Il codice si legge per intero: uno strumento che gira sul tuo telefono e che non puoi leggere è
 // esattamente ciò che questo progetto non vuole essere.
-function PlasmidiPanel({ ghostProfile }) {
+function PlasmidiPanel({ ghostProfile, settings }) {
   const [lista, setLista] = useState(() => leggiPlasmidi());
   const [esiti, setEsiti] = useState({});
   const [aperto, setAperto] = useState(null);
   const [messaggio, setMessaggio] = useState("");
+  const [generazioni, setGenerazioni] = useState(() => leggiGenerazioni());
+  const [inGenerazione, setInGenerazione] = useState(false);
   const ricarica = () => setLista(leggiPlasmidi());
+  // Il guardiano può rifiutare la SCRITTURA, non solo l'esportazione: se rifiuta, si dice — un
+  // pulsante che non fa niente in silenzio è peggio di un pulsante che non c'è.
+  const scrivi = (p) => {
+    const r = salvaPlasmide(p, ghostProfile);
+    if (!r.ok) setMessaggio(`NON salvato: contiene ${r.trovati.join(", ")}. Uno strumento porta una funzione, mai un dato tuo.`);
+    ricarica();
+    return r.ok;
+  };
   const riprova = async (p) => {
     setEsiti((e) => ({ ...e, [p.id]: { inCorso: true } }));
     const r = await provaPlasmide(p);
     setEsiti((e) => ({ ...e, [p.id]: r }));
-    salvaPlasmide({ ...p, ultimaProva: { quando: new Date().toISOString(), passato: r.passato, motivo: r.motivo } });
-    ricarica();
+    scrivi({ ...p, ultimaProva: { quando: new Date().toISOString(), passato: r.passato, motivo: r.motivo } });
+  };
+  // ── L'ATTO: l'app prova a scriversi uno strumento ──────────────────────────────────────────────
+  const guasti = guastiDaTrappole();
+  const generaOra = async () => {
+    setInGenerazione(true);
+    setMessaggio(`Parto da ${guasti.length} guast${guasti.length === 1 ? "o" : "i"} vero. Al massimo ${TETTO_GENERAZIONE} tentativi: ogni giro è una chiamata pagata.`);
+    try {
+      const esito = await generaPlasmide({
+        chiediJSON: (system, user) => askModelJSON(system, user, 0.4, 2200, settings),
+        guasti, ghostProfile,
+      });
+      setGenerazioni(leggiGenerazioni());
+      ricarica();
+      setMessaggio(esito.esito === "coincidenza"
+        ? `Ammesso: "${esito.nome}", dopo ${esito.giri.length} tentativ${esito.giri.length === 1 ? "o" : "i"}. È SPENTO: accendilo tu dopo aver letto il codice.`
+        : `Non ammesso (${esito.esito}) dopo ${esito.giri.length} tentativ${esito.giri.length === 1 ? "o" : "i"}. Sotto c'è cosa è mancato, e resta lì.`);
+    } catch (e) {
+      setMessaggio(`Il tentativo si è interrotto: ${String(e?.message || e)}`);
+    } finally { setInGenerazione(false); }
   };
   // I termini che non devono MAI uscire da questo telefono dentro un plasmide. Vengono dal profilo
-  // dichiarato dal Ghost, non da un elenco indovinato da me.
-  // ── CORRETTO IL 02/09/2026, POCHE ORE DOPO AVERLO SCRITTO ────────────────────────────────────
-  // La prima versione passava `professionalIdentity` INTERA come un solo termine. Se il profilo dice
-  // "fisioterapista, PhysioAlba", cercava la stringa "fisioterapista, PhysioAlba" tutta insieme — e
-  // un plasmide che contiene solo "PhysioAlba" passava indenne. Cioè la guardia proteggeva dalla
-  // forma che nessuno avrebbe mai scritto, e lasciava passare quella vera.
-  // Trovato allentando il vincolo, non provandolo: parlare di dove il vincolo agisce ha fatto
-  // guardare il codice che lo applica, ed era sbagliato.
-  // La separazione giusta esisteva già dal 26/07 in redactProfessionalIdentity, e la riuso invece di
-  // rifarla: si spezza sui separatori e si tengono solo i token con una maiuscola interna — il
-  // marcatore di un nome proprio. "PhysioAlba" è un nome e non esce; "fisioterapista" è un dominio,
-  // è tutto minuscolo, e deve poter uscire — altrimenti nessuno strumento clinico è trasferibile
-  // (vedi CLAUDE.md, vincolo allentato il 02/09/2026).
-  const marchiDelGhost = String(CURRENT_GHOST_PROFILE.professionalIdentity || "")
-    .split(/[,;]/).map((t) => t.trim()).filter(Boolean).filter((t) => /[a-z][A-Z]/.test(t));
-  const nomeDelGhost = String(ghostProfile?.name || "").replace(/\([^)]*\)/g, "").split(/\s+/).map((t) => t.trim()).filter((t) => t.length >= 3);
-  const terminiVietati = [...new Set([...marchiDelGhost, ...nomeDelGhost, ...(ghostProfile?.hardConstraints || []).map((c) => c?.testo || "")])].filter(Boolean);
+  // dichiarato dal Ghost, non da un elenco indovinato da me. Il calcolo viveva QUI dentro fino al
+  // 04/09; è salito in `terminiVietatiDelGhost` perché ora serve anche alla SCRITTURA, cioè prima e
+  // fuori dall'interfaccia — vedi il commento sul guardiano spostato a monte. Il motivo per cui la
+  // separazione è quella (il nome non esce, il dominio sì) è scritto lì e non si ripete qui.
+  const terminiVietati = terminiVietatiDelGhost(ghostProfile);
   const esporta = () => {
     const daPortare = lista.filter((p) => p.attivo !== false);
     if (!daPortare.length) { setMessaggio("Non c'è niente da esportare."); return; }
@@ -9277,8 +9486,10 @@ function PlasmidiPanel({ ghostProfile }) {
       // l'altra app della stessa coppia.
       const r = await provaPlasmide(p);
       if (!r.passato) { note.push(`"${p.nome}" RIFIUTATO: ${r.motivo}`); continue; }
-      salvaPlasmide({ ...p, attivo: false, arrivatoIl: new Date().toISOString(), ultimaProva: { quando: new Date().toISOString(), passato: true, motivo: "" } });
-      note.push(`"${p.nome}" ammesso — è SPENTO: accendilo tu.`);
+      const scritto = salvaPlasmide({ ...p, attivo: false, arrivatoIl: new Date().toISOString(), ultimaProva: { quando: new Date().toISOString(), passato: true, motivo: "" } }, ghostProfile);
+      note.push(scritto.ok
+        ? `"${p.nome}" ammesso — è SPENTO: accendilo tu.`
+        : `"${p.nome}" RIFIUTATO alla scrittura: contiene ${scritto.trovati.join(", ")}.`);
     }
     ricarica();
     setMessaggio(note.join(" · ") || "Il pacchetto non conteneva plasmidi.");
@@ -9289,7 +9500,11 @@ function PlasmidiPanel({ ghostProfile }) {
     <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
       <button class="r-btn" onClick=${esporta} disabled=${!lista.length}>Esporta (.json)</button>
       <label class="r-btn r-btn-ghost" style="margin-left:0">Importa<input type="file" accept="application/json" style="display:none" onChange=${(e) => importa(e.target.files?.[0])} /></label>
+      <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${generaOra} disabled=${inGenerazione || !guasti.length}>${inGenerazione ? "Sto provando…" : `Prova a scrivertene uno (${guasti.length})`}</button>
     </div>
+    <div class="r-hub-detail" style="margin-top:6px">${guasti.length
+      ? `L'app può provare a scriversi da sola un criterio, partendo da ${guasti.length} test${guasti.length === 1 ? "o" : "i"} che hai rifiutato perché illeggibil${guasti.length === 1 ? "e" : "i"}. Viene giudicata da un capitolato che include dei testi SANI che il modello non vede: un criterio che si accende su tutto non entra.`
+      : "Per scriversene uno da sola serve almeno un caso vero: un testo che hai rifiutato dicendo che non si capiva. Senza, non si scrive un criterio — si indovina, e non si parte."}</div>
     ${messaggio && html`<div class="r-hub-detail" style="margin-top:8px">${messaggio}</div>`}
     ${lista.length === 0
       ? html`<div class="r-hub-detail" style="margin-top:10px">Nessuno ancora. Con il magazzino vuoto l'app si comporta e costa esattamente come prima.</div>`
@@ -9303,13 +9518,25 @@ function PlasmidiPanel({ ghostProfile }) {
         <button class="r-icon-btn" onClick=${() => { dimenticaPlasmide(p.id); ricarica(); }}>✕</button></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
           <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => riprova(p)}>Riprova le prove</button>
-          <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => { salvaPlasmide({ ...p, attivo: p.attivo === false }); ricarica(); }}>${p.attivo === false ? "Accendi" : "Spegni"}</button>
+          <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => scrivi({ ...p, attivo: p.attivo === false })}>${p.attivo === false ? "Accendi" : "Spegni"}</button>
           <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => setAperto(aperto === p.id ? null : p.id)}>${aperto === p.id ? "Nascondi il codice" : "Leggi il codice"}</button>
         </div>
         ${esiti[p.id]?.inCorso && html`<div class="r-hub-detail" style="margin-top:6px">Provo…</div>`}
         ${esiti[p.id]?.dettagli?.length > 0 && html`<div style="margin-top:6px">${esiti[p.id].dettagli.map((d) => html`<div class="r-hub-detail" key=${d.i}>${d.passata ? "✓" : "✗"} ${d.perche}${d.passata ? "" : ` — atteso ${JSON.stringify(d.atteso)}, ottenuto ${JSON.stringify(d.ottenuto ?? d.motivo)}`}</div>`)}</div>`}
         ${aperto === p.id && html`<pre class="r-grezzo" style="margin-top:6px;white-space:pre-wrap;overflow-x:auto">${p.codice}</pre>`}
       </div>`)}</div>`}
+    ${generazioni.length > 0 && html`<div style="margin-top:14px">
+      <div class="r-hub-title" style="color:#3A4750">Cosa ha provato a scriversi (${generazioni.length})</div>
+      <div class="r-hub-detail">I tentativi non riusciti restano qui: dicono a cosa il generatore non arriva ancora, ed è l'unico posto in cui si legge. Non si cancellano da soli.</div>
+      ${generazioni.map((g) => html`<div class="r-draft-card" key=${g.id} style="margin-top:8px">
+        <div class="r-entry-row"><div style="flex:1">
+          <div class="r-draft-label">${g.esito === "coincidenza" ? `AMMESSO · ${g.nome || ""}` : `NON AMMESSO · ${g.esito}`} · ${fmtDate(g.quando)} · ${g.giri?.length || 0} tentativ${(g.giri?.length || 0) === 1 ? "o" : "i"}</div>
+          ${g.motivo && html`<div class="r-draft-body">${g.motivo}</div>`}
+          ${(g.giri || []).map((giro) => html`<div class="r-hub-detail" key=${giro.n}>tentativo ${giro.n}${giro.nome ? ` ("${giro.nome}")` : ""}: ${giro.disaccordi?.length ? giro.disaccordi.map((d) => `${d.id} — ${d.mancato}`).join(" · ") : "tutto a posto"}</div>`)}
+        </div>
+        <button class="r-icon-btn" onClick=${() => { dimenticaGenerazione(g.id); setGenerazioni(leggiGenerazioni()); }}>✕</button></div>
+      </div>`)}
+    </div>`}
   </${Card}>`;
 }
 // 02/09/2026 — DOVE SI VEDE A COSA IL PROGRAMMA HA RINUNCIATO PER FAR ARRIVARE UNA RISPOSTA.
@@ -9615,7 +9842,7 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
       <div class="r-hub-detail" style="margin-top:10px">Build: ${APP_BUILD}</div>
     </${Card}>
     <${TrappolePanel} />
-    <${PlasmidiPanel} ghostProfile=${ghostProfile} />
+    <${PlasmidiPanel} ghostProfile=${ghostProfile} settings=${settings} />
     <${NoteDiRetePanel} />
     <${Card} accent=${C.core}>
       <div class="r-hub-title" style="color:#3A4750">Diagnostica JSON — ${jsonFailures.length} fallimenti recenti</div>
