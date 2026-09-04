@@ -27,7 +27,7 @@ const OUT_PATH = join(HERE, `.generated-app.${process.pid}.mjs`);
 
 // I moduli estratti da app.js: importati davvero, non ritagliati. L'elenco sta qui perche' la
 // generazione deve fallire subito e a voce alta se un modulo viene rinominato o sparisce.
-const MODULI = ["lib/base.js", "lib/misure.js", "lib/griglia.js", "lib/plasmide.js", "lib/alimentare.js"];
+const MODULI = ["lib/base.js", "lib/misure.js", "lib/griglia.js", "lib/plasmide.js", "lib/capitolato.js", "lib/alimentare.js"];
 
 const STUB_HEADER = `// FILE GENERATO — non modificare a mano. Rigenerato da tests/lib/build-testable.mjs
 // da app.js ad ogni esecuzione dei test. Se lo modifichi qui, il prossimo test lo sovrascrive.
@@ -104,6 +104,13 @@ const EXPORT_NAMES = [
   "segnaPlasmideUsato", "NOMI_DA_CHIUDERE", "SANDBOX_TETTO_MS",
   "eRifacimento", "registraTrappola", "leggiTrappole", "dimenticaTrappola",
   "TRAPPOLE_KEY", "TRAPPOLE_TETTO", "LUNGHEZZA_MINIMA_RIFATTA",
+  "REQUISITI", "montaCapitolato", "briefDelCapitolato", "confrontaColCapitolato",
+  "briefDelDisaccordo", "frammentoCopiato", "rispettaIlContratto", "TETTO_GENERAZIONE",
+  "COPIATURA_MINIMA", "CASI_MOSTRATI", "CASO_MAX_CARATTERI",
+  "terminiVietatiDelGhost", "TRAPPOLA_DA_GUASTO_RE", "guastiDaTrappole", "CONTROLLI_SANI",
+  "generaPlasmide", "registraGenerazione", "leggiGenerazioni", "dimenticaGenerazione",
+  "GENERAZIONI_KEY", "GENERAZIONI_TETTO", "SISTEMA_GENERATORE",
+  "leggiNoteDiRete", "registraNotaDiRete", "provaSulBanco",
 ];
 
 // Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.
