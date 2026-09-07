@@ -17,7 +17,7 @@ Chi lavora su questo codice li rompe per distrazione, non per scelta. Sono tutti
 
 | vincolo | conseguenza pratica |
 |---|---|
-| **Nessun build step** | Preact + htm da file vendored. Niente JSX, niente bundler, niente dipendenza che compili. Si modifica `app.js` e si ricarica. |
+| **Nessun build step** *(stato attuale, non vincolo fisso)* | Preact + htm da file vendored, nessun bundler in uso oggi: si modifica `app.js` e si ricarica. **G.8, emendato il 12/08/2026**: la scelta è caso per caso e motivata, non una regola cablata — introdurre un build step chiede una proposta motivata, non un'eccezione a un divieto. Nessun test, lint o controllo CI lo impedisce (verificato il 07/09). Ciò che si romperebbe è elencato in §13. |
 | **Mai `<>...</>`** | Fragment non è importato: rompe il render **in silenzio**. Sempre `<div>`. |
 | **Legge 14** | Nessuna sovrascrittura distruttiva. Le evoluzioni sono V+1, il precedente resta. Vale per documenti, kernel, voci di log, plasmidi, e per i rami git. |
 | **Merge** | Sempre **base `stable` ← compare `main`**. Mai il contrario. Errore già commesso. |
@@ -527,6 +527,23 @@ mano**: un costo inventato che si spaccia per reale è peggio di nessun dato.
 | **Causa a monte del collasso di Balthasar** | La ricerca web che parte su una query storpiata è **intercettata**, non **impedita**. |
 | **Stati del Seme sparsi** | I sei valori di `status` sono stringhe confrontate in una decina di punti, senza una costante o un elenco dichiarato come per `AZIONI_CONVERSAZIONALI` e `OSSERVABILI`. Rinominarne uno oggi significa cercarlo a mano. |
 | **Analisi posturale** | Ferma in attesa degli occhiali Meta. Il problema nuovo non è tecnico: è il **consenso di terzi** — finora tutti i dati riguardavano il Ghost. |
+| **`CLAUDE.md` contraddice G.8** | `CLAUDE.md` righe 9–10 elenca «NESSUN build step. Non introdurre bundler…» sotto *«vincoli non negoziabili»*. G.8 è stato emendato il 12/08/2026 e quella riga non è stata aggiornata. Non è codice, ma è **il file che istruisce ogni sessione futura**: finché resta così, la libertà che G.8 ha aperto è chiusa in pratica. Segnalato, non toccato — non è una correzione editoriale. |
+| **`README.md` riga 3 dice il falso** | «Preact + htm **da CDN**»: sono vendored in `vendor/` dal momento in cui la CDN è stata tolta. Difetto preesistente, fuori dal brief che ha fatto trovare l'altro. |
+
+---
+
+### Cosa si romperebbe introducendo un build step, se un giorno lo si decide
+
+Non è un argomento contro: è il conto, perché una scelta motivata ha bisogno del prezzo.
+
+| cosa | perché |
+|---|---|
+| **Il banco di prova (551 prove)** | `tests/lib/build-testable.mjs` ricostruisce il modulo testabile **filtrando le righe di `app.js` con delle espressioni regolari** e poi importandolo come modulo ES vero. Con un bundler o con JSX quel meccanismo non esiste più: va riscritto per intero prima che una sola prova torni verde. |
+| **Il controllo CI** | `node --input-type=module --check < app.js` presuppone che `app.js` sia JavaScript caricabile così com'è. |
+| **`sw.js`** | Precarica percorsi scritti a mano (`./app.js`, `./lib/*.js`). Nomi di file con impronta li rompono. |
+| **Il ciclo di lavoro** | Oggi: modifica, ricarica, guarda. È il motivo per cui i difetti si trovano in minuti. |
+
+Cosa **non** costerebbe: i moduli `lib/*.js` sono puri e già importabili da qualunque cosa.
 
 ---
 
