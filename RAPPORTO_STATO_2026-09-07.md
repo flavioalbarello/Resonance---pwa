@@ -1,8 +1,8 @@
 # Resonance — rapporto di stato del codice
 
-**Data**: 07/09/2026 · **Build**: `2026-09-04 · accettore-ed-effettore-insieme` · **Service worker**: `resonance-v15`
+**Data**: 07/09/2026 · **Build**: `2026-09-07 · le-tracce-viaggiano-gli-stati-si-dichiarano` · **Service worker**: `resonance-v16`
 **Rami**: `main` (Flavio/Ghost) e `stable` (Marta), allineati — `git diff origin/main origin/stable` vuoto.
-**Prove**: 529 verdi, 104 suite, 23 file.
+**Prove**: 551 verdi, 107 suite, 24 file.
 
 Documento pensato per essere caricato come conoscenza in un Claude Project. Descrive **cosa c'è
 adesso**, non cosa dovrebbe esserci. Ogni numero qui dentro è letto dal codice o misurato, mai stimato.
@@ -118,6 +118,7 @@ Tutto in `localStorage`. Nessun database, nessun server di stato.
 `percorsi-bio` · `percorsi-air` · `percorsi-vidya` — i percorsi
 `magi-data` · `semi-data` · `shell-chat` · `shell-memory` · `shell-style-memory`
 `kernel-data` · `simbiosi-data` · `ghost-profile`
+`registro-atti` · `trappole` · `generazioni` — **le tracce**, aggiunte il 07/09/2026
 
 **Politica di merge**: i log sono **additivi** (nessuna voce si perde mai). Gli altri bundle sono
 **vince-il-più-recente in blocco**, con `lastModified` lato client — limite dichiarato: un orologio
@@ -125,18 +126,33 @@ sballato può far vincere il dispositivo sbagliato, ma mai sui log.
 
 ### Solo sul dispositivo — NON vanno su Drive
 
-`plasmidi` · `generazioni` · `trappole` · `registro-atti` · `note-di-rete`
-`modelli-rinunce` · `modelli-ragionamento-obbligatorio` · `registro-azioni` · `azioni-esecuzioni`
+`plasmidi` · `note-di-rete` · `modelli-rinunce` · `modelli-ragionamento-obbligatorio` · `registro-azioni` · `azioni-esecuzioni`
 `azioni-interruttori` · `fuoco-conversazionale` · `debug-log` · `app-settings`
 `richiesta-in-sospeso` · `json-parse-failures` · `effettori-prova-a-vuoto`
 `selezione-modello-capace` · `ultime-chiamate-google`
 
-> **Questa è la cosa più importante di tutto il paragrafo, ed è un rischio aperto.**
-> `registro-atti` (l'anello), `trappole` e `generazioni` sono **le tracce che il progetto accumula
-> nel tempo** — la materia prima del generatore e la sola misura di cosa muove il sistema. Oggi
-> vivono solo nel browser di un telefono: un ripristino, un cambio dispositivo o uno svuotamento
-> della cache le cancella, e non c'è copia. Il resto (impostazioni, chiavi API, registri di rete)
-> è giusto che resti locale. Quelle tre no.
+**Merge delle tracce**: additivo per id, poi **il tetto si riapplica** (`mergeTracce`) — due
+dispositivi con 40 trappole a testa farebbero 80, e il limite smetterebbe di essere un limite. Non
+guardano `lastModified`: il dispositivo con il timestamp più vecchio perde i bundle, mai le tracce.
+
+> **Perché i plasmidi NON si sincronizzano, ed è una scelta.** Due ragioni strutturali: il
+> trasferimento di un plasmide è **orizzontale** e passa da un gesto (esporta → importa), e farlo
+> scivolare nella sincronizzazione lo renderebbe verticale, cioè la cosa che i plasmidi esistono per
+> non essere; e `ultimaProva.passato` è una proprietà **di quel dispositivo** — sincronizzarla
+> porterebbe il verdetto di un telefono su un altro, e l'immunità diventerebbe una formalità.
+
+### Backup completo — elenco esplicito, non enumerazione
+
+`BACKUP_KEYS` è un elenco scritto a mano (enumerare `localStorage` prenderebbe chiavi di altri siti
+sullo stesso dominio). Include tutto il sincronizzato **più** `simbiosi-eval-signature`,
+`app-settings` (senza la chiave API, esclusa apposta), `debug-log`, `json-parse-failures`,
+`sync-last-modified`, e le chiavi di archivio della chat per prefisso. Dal 07/09 anche le tre tracce.
+
+> **Resta fuori dal backup: `plasmidi`.** È una domanda aperta, non una decisione presa. Sono lavoro
+> vero e perderli su un cambio di telefono è una perdita reale — ma `restoreFullBackup` riscrive le
+> chiavi tali e quali, quindi un plasmide ripristinato arriverebbe con `ultimaProva.passato === true`
+> su un dispositivo dove le prove non sono mai girate. Includerli chiede prima di decidere se il
+> ripristino debba **ri-provarli**: è una scelta del Ghost.
 
 ### Forma delle strutture principali
 
@@ -461,14 +477,14 @@ node --input-type=module --check < app.js        # sintassi
 node --test "tests/*.test.mjs"                   # le virgolette SERVONO: `node --test tests/` fallisce
 ```
 
-**529 prove, 104 suite, 23 file.** Nessuna dipendenza esterna: solo `node:test`.
+**551 prove, 107 suite, 24 file.** Nessuna dipendenza esterna: solo `node:test`.
 
 ```
 anello · balthasar · calendario · capitolato · degenerazione · documenti-nel-contesto
 finestra-conversazione · generatore · griglia · magi-forma · meta-narrazione
 percorsi-da-chat · piano-montato · plasmide · quickwin-motoko · richiesta-in-sospeso
-rinunce-parametri · serie-derivate · tabelle-docx · tetto-token · trappole
-trigger-robustness · voci-gemelle
+rinunce-parametri · serie-derivate · tabelle-docx · tetto-token · tracce-e-stati
+trappole · trigger-robustness · voci-gemelle
 ```
 
 **`tests/lib/build-testable.mjs`** rigenera **sempre** il modulo testabile dal vero `app.js` corrente,

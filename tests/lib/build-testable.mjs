@@ -111,6 +111,9 @@ const EXPORT_NAMES = [
   "generaPlasmide", "registraGenerazione", "leggiGenerazioni", "dimenticaGenerazione",
   "GENERAZIONI_KEY", "GENERAZIONI_TETTO", "SISTEMA_GENERATORE",
   "leggiNoteDiRete", "registraNotaDiRete", "provaSulBanco",
+  "STATI_SEME", "statoSeme", "semeVivo", "semeAvanzabile", "semeInEsecuzione", "SEME_STATUS_LABELS",
+  "mergeTracce", "mergeById", "mergeSyncState", "SYNC_DEFAULTS", "buildFullBackup",
+  "restoreFullBackup", "BACKUP_KEYS",
 ];
 
 // Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.
