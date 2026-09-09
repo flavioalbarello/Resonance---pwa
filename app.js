@@ -60,7 +60,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-09-04 · accettore-ed-effettore-insieme";
+const APP_BUILD = "2026-09-07 · le-tracce-viaggiano-gli-stati-si-dichiarano";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -195,16 +195,51 @@ function contaPercorso(p) {
   const docs = (p?.documents || []).length;
   return `${nodi} nod${nodi === 1 ? "o" : "i"}, ${fatti} consolidat${fatti === 1 ? "o" : "i"}, ${docs ? `${docs} document${docs === 1 ? "o" : "i"} salvat${docs === 1 ? "o" : "i"}` : "NESSUN documento salvato"}`;
 }
+// ── GLI STATI DI UN SEME — registro, non stringhe sparse (07/09/2026) ───────────────────────────
+// Perché è nato, e la prova che serviva. Fino a oggi i sette stati vivevano come stringhe confrontate
+// a mano in una dozzina di punti, e l'unico elenco (SEME_STATUS_LABELS) stava dentro la regione dei
+// componenti — troppo in basso per essere usato dalla logica. Scrivendo il rapporto di stato del
+// codice ho sbagliato QUESTA cosa due volte di fila: ho scritto che gli stati erano cinque con
+// etichette italiane (sono sette con identificatori inglesi), e ho contato "cancelled" fra loro
+// quando è lo stato di un evento di Google Calendar. Se un elenco non esiste, chi lo ricostruisce
+// leggendo il codice lo ricostruisce sbagliato — ed è successo a me, con il codice davanti.
+//
+// Sta QUI, in alto, di proposito: `costruisciInventario` qui sotto aveva un commento che diceva di
+// non poter dipendere dall'elenco perché era dichiarato più in basso, e duplicava il confronto a
+// mano. Un commento che spiega perché ci si ripete è il segnale che la dichiarazione sta nel posto
+// sbagliato, non che la ripetizione era necessaria.
+//
+// Le due bandiere non sono descrittive, sono LETTE:
+//  · `vivo: false` — l'unico stato che non chiede attenzione (usato in 5 punti).
+//  · `avanzabile` — se l'avanzamento automatico può prenderlo in carico. Gli stati non avanzabili e
+//    vivi (`proposing`, `awaiting_approval`, `gated`) aspettano un gesto del Ghost.
+const STATI_SEME = [
+  { id: "seed", etichetta: "nuovo", fase: "ricerca", vivo: true, avanzabile: true },
+  { id: "researching", etichetta: "in ricerca", fase: "ricerca", vivo: true, avanzabile: true },
+  { id: "proposing", etichetta: "proposte in stallo", fase: "ricerca", vivo: true, avanzabile: false },
+  { id: "awaiting_approval", etichetta: "in attesa di approvazione", fase: "ricerca", vivo: true, avanzabile: false },
+  { id: "executing", etichetta: "in sviluppo", fase: "esecuzione", vivo: true, avanzabile: true },
+  { id: "gated", etichetta: "bloccato", fase: "esecuzione", vivo: true, avanzabile: false },
+  { id: "archived", etichetta: "archiviato", fase: null, vivo: false, avanzabile: false },
+];
+const statoSeme = (id) => STATI_SEME.find((s) => s.id === id) || null;
+// Uno stato sconosciuto (un dato vecchio, un file di ripristino di un'altra versione) conta come
+// VIVO: nasconderlo sarebbe la perdita silenziosa di un Seme del Ghost. Meglio mostrarlo e basta.
+const semeVivo = (s) => statoSeme(s?.status)?.vivo !== false;
+const semeAvanzabile = (s) => statoSeme(s?.status)?.avanzabile === true;
+const semeInEsecuzione = (s) => statoSeme(s?.status)?.fase === "esecuzione";
+
 function costruisciInventario({ pBio, pAir, pVidya, semi }) {
   const riga = (p) => `${p.title}${p.kind === "identitario" ? " [identitario]" : ""} (id:${p.id} · ${contaPercorso(p)})`;
   const perPilastro = (lista, nome) => {
     const attivi = (lista || []).slice(0, INVENTARIO_TETTO_PER_PILASTRO);
     return `${nome}: ${attivi.length ? attivi.map(riga).join(" · ") : "nessun percorso aperto"}`;
   };
-  // Stato in forma grezza e non tradotto di proposito: SEME_STATUS_LABELS e' un const dichiarato
-  // piu' in basso nel file, e dipenderne da qui creerebbe un ordine fragile. Il vocabolario degli
-  // stati e' gia' spiegato al modello in APP_CAPABILITIES_CONTEXT, quindi la traduzione e' inutile.
-  const semiAttivi = (semi || []).filter((s) => s.status !== "archived").slice(0, INVENTARIO_TETTO_PER_PILASTRO);
+  // Stato in forma grezza e non tradotto di proposito: il vocabolario degli stati e' gia' spiegato
+  // al modello in APP_CAPABILITIES_CONTEXT, quindi la traduzione qui sarebbe rumore. (Il commento
+  // che stava qui diceva di non poter usare l'elenco perche' dichiarato piu' in basso: non e' piu'
+  // vero, STATI_SEME sta sopra questa funzione proprio per questo.)
+  const semiAttivi = (semi || []).filter(semeVivo).slice(0, INVENTARIO_TETTO_PER_PILASTRO);
   return `Percorsi e Semi che esistono ORA in questo sistema — quando il Ghost si riferisce a uno di essi, anche in modo vago ("quello sul sonno"), e' uno di questi e nessun altro. Non inventarne, non ricordarne di vecchi: se non e' in questo elenco, non esiste.
 Fra parentesi c'e' anche COSA CONTIENE ciascun percorso, ed e' un conteggio vero letto adesso dai dati. Regola che ne discende, e non ha eccezioni: se un percorso e' dichiarato con NESSUN documento salvato, allora NON contiene niente di cio' che avete prodotto parlando — dillo, invece di supporre che ci sia. Un percorso puo' avere il nome giusto ed essere vuoto: e' anzi il caso normale appena viene creato. Per far entrare qualcosa in un percorso serve che il Ghost tocchi il pulsante di salvataggio; finche' non succede, li' dentro non c'e' niente.
 ${perPilastro(pBio, "BIO")}
@@ -546,7 +581,7 @@ function recuperoGrado0(frase, { pBio, pAir, pVidya, semi }) {
     ...(pBio || []).map((p) => ({ tipo: "percorso", pilastro: "bio", id: p.id, etichetta: p.title, testo: `${p.title} ${p.identityGoal || ""} ${(p.topics || []).map((t) => t.label).join(" ")}` })),
     ...(pAir || []).map((p) => ({ tipo: "percorso", pilastro: "air", id: p.id, etichetta: p.title, testo: `${p.title} ${p.identityGoal || ""} ${(p.topics || []).map((t) => t.label).join(" ")}` })),
     ...(pVidya || []).map((p) => ({ tipo: "percorso", pilastro: "vidya", id: p.id, etichetta: p.title, testo: `${p.title} ${p.identityGoal || ""} ${(p.topics || []).map((t) => t.label).join(" ")}` })),
-    ...(semi || []).filter((s) => s.status !== "archived").map((s) => ({ tipo: "seme", pilastro: "air", id: s.id, etichetta: String(s.content).slice(0, 60), testo: String(s.content) })),
+    ...(semi || []).filter(semeVivo).map((s) => ({ tipo: "seme", pilastro: "air", id: s.id, etichetta: String(s.content).slice(0, 60), testo: String(s.content) })),
   ];
   // Un identificativo scritto per esteso vince su tutto: e' un riferimento esatto, non una ricerca.
   const perId = oggetti.find((o) => normalizzaTesto(frase).includes(normalizzaTesto(o.id)));
@@ -2270,7 +2305,23 @@ const BACKUP_KEYS = [
   "magi-data", "semi-data", "shell-chat", "shell-memory", "shell-style-memory",
   "kernel-data", "simbiosi-data", "simbiosi-eval-signature", "ghost-profile",
   "app-settings", "debug-log", "json-parse-failures", "sync-last-modified",
+  // 07/09/2026 — LE TRACCE. Non erano ne' qui ne' nel file su Drive: un ripristino su un telefono
+  // nuovo riportava log, percorsi, memoria e kernel, e lasciava indietro il bersaglio dichiarato
+  // prima di ogni atto, i vicoli ciechi gia' pagati e i tentativi del generatore. Sono dati inerti
+  // (nessun codice dentro), quindi rientrano in un backup senza nessuna cautela in piu'.
+  // Scritte come stringhe e non come le costanti ATTI_KEY/TRAPPOLE_KEY/GENERAZIONI_KEY, che pure
+  // esistono: questo array e' valutato al CARICAMENTO del modulo e quelle costanti sono dichiarate
+  // piu' in basso, quindi riferirle qui lancia "Cannot access before initialization" e l'app non
+  // parte affatto. Trovato dalla prova nello stesso minuto in cui l'ho scritto — e non da me.
+  // Tutte le altre voci di questo elenco sono gia' stringhe, quindi resta anche coerente.
+  "registro-atti", "trappole", "generazioni",
 ];
+// COSA RESTA FUORI, e perche' e' una domanda aperta e non una decisione presa: i PLASMIDI. Sono
+// lavoro vero e perderli su un cambio di telefono e' una perdita reale — ma `restoreFullBackup`
+// riscrive le chiavi tali e quali, quindi un plasmide ripristinato arriverebbe con
+// `ultimaProva.passato === true` su un dispositivo dove le prove non sono mai girate, e l'immunita'
+// («l'ospite non si fida, rigira le prove qui») diventerebbe una formalita'. Includerli chiede prima
+// di decidere se il ripristino debba ri-provarli, ed e' una scelta del Ghost, non mia.
 const BACKUP_ARCHIVE_PREFIX = "shell-chat-archive-";
 function buildFullBackup() {
   const dati = {};
@@ -2296,6 +2347,12 @@ function buildFullBackup() {
   // con resonance-sync-state.json senza doverlo tradurre.
   const j = (k, fb) => { try { return dati[k] ? JSON.parse(dati[k]) : fb; } catch { return fb; } };
   const syncState = {
+    // 07/09/2026 — aggiunte insieme a SYNC_DEFAULTS e a BACKUP_KEYS. Avevo scritto, sia in un
+    // rapporto sia nel commento che stava qui, che il backup le conteneva già perché "copia tutte le
+    // chiavi di localStorage": FALSO, BACKUP_KEYS è un elenco esplicito e non le nominava. Quindi le
+    // tracce non erano in nessuno dei due posti in cui i dati del Ghost sopravvivono, e la cosa era
+    // peggiore di come l'avevo descritta. Trovata da una prova che cercava questo specchio.
+    atti: j(ATTI_KEY, []), trappole: j(TRAPPOLE_KEY, []), generazioni: j(GENERAZIONI_KEY, []),
     bio: j("bio-data", []), air: j("air-data", []), vidya: j("vidya-data", []),
     pBio: j("percorsi-bio", []), pAir: j("percorsi-air", []), pVidya: j("percorsi-vidya", []),
     magi: j("magi-data", []), semi: j("semi-data", []), shellChat: j("shell-chat", []),
@@ -6362,7 +6419,40 @@ function mergeById(localArr, remoteArr) {
   (localArr || []).forEach((item) => item?.id && map.set(item.id, item)); // a parità di id, vince la versione locale
   return Array.from(map.values()).sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || ""));
 }
+// ── LE TRACCE — unione additiva con il tetto RIAPPLICATO dopo (07/09/2026) ──────────────────────
+// Perché serve una funzione diversa da mergeById, e non basta riusare quella:
+//  1. mergeById ordina su `date`/`createdAt`. Le tracce datano su `quando`: con mergeById
+//     finirebbero tutte a pari merito e l'ordine sarebbe quello del caso.
+//  2. Le tracce hanno un TETTO. Due dispositivi con 40 trappole a testa fanno 80 dopo l'unione: se
+//     il tetto non si riapplica QUI, il registro cresce oltre il proprio limite a ogni giro di
+//     sincronizzazione, e il limite smette di essere un limite.
+// A parità di id vince il locale, come per i log: stessa regola, per non doverne ricordare due.
+function mergeTracce(localArr, remoteArr, tetto) {
+  const map = new Map();
+  (remoteArr || []).forEach((t) => t?.id && map.set(t.id, t));
+  (localArr || []).forEach((t) => t?.id && map.set(t.id, t));
+  return Array.from(map.values())
+    .sort((a, b) => String(b.quando || "").localeCompare(String(a.quando || "")))
+    .slice(0, tetto);
+}
+// ── COSA VIENE SINCRONIZZATO, E LA COSA CHE NON VIENE SINCRONIZZATA APPOSTA ─────────────────────
+// 07/09/2026 — atti, trappole e generazioni aggiunti qui. Erano rimasti fuori per omissione, non per
+// scelta, e la differenza conta: sono LE TRACCE CHE IL PROGETTO ACCUMULA NEL TEMPO — il bersaglio
+// dichiarato prima di un atto e il suo esito, i vicoli ciechi già pagati, i tentativi del generatore
+// e le sue rinunce. Vivevano solo nel browser di un telefono: un ripristino, un cambio dispositivo o
+// uno svuotamento della cache le cancellava, senza copia. Sono additive e con un tetto, quindi si
+// uniscono come i log: nessuna traccia si perde per un push concorrente.
+//
+// I PLASMIDI RESTANO FUORI, E NON È UNA DIMENTICANZA. Due ragioni, tutte e due strutturali:
+//  · Il trasferimento di un plasmide è ORIZZONTALE e passa da un gesto (esporta → importa). Farlo
+//    scivolare dentro la sincronizzazione lo renderebbe verticale, cioè la cosa che i plasmidi
+//    esistono per non essere.
+//  · `ultimaProva.passato` è una proprietà DI QUESTO DISPOSITIVO: dice che le prove sono girate qui.
+//    Sincronizzarlo porterebbe il verdetto di un telefono su un altro, e l'immunità — «l'ospite non
+//    si fida, rigira le prove» — diventerebbe una formalità.
+// Restano fuori anche impostazioni, chiavi API e registri di rete: sono del dispositivo, non di Adam.
 const SYNC_DEFAULTS = () => ({
+  atti: [], trappole: [], generazioni: [],
   bio: [], air: [], vidya: [], pBio: [], pAir: [], pVidya: [], magi: [], semi: [],
   shellChat: [], memory: { bio: { corrente: "", sedimento: [] }, air: { corrente: "", sedimento: [] }, vidya: { corrente: "", sedimento: [] } }, styleMemory: "",
   kernel: { content: DEFAULT_KERNEL, version: 1, history: [] }, resonance: { text: "", time: null },
@@ -6386,12 +6476,25 @@ function mergeSyncState(local, remote) {
   const l = { ...SYNC_DEFAULTS(), ...local };
   l.memory = migrateMemoryShape(l.memory);
   l.ghostProfile = normalizeGhostProfile(l.ghostProfile); // stesso motivo di l.memory sopra: mai perpetuare lo schema hardConstraints vecchio via re-upload
-  if (!remote) return { ...l, lastModified: l.lastModified || Date.now() };
+  // Anche senza file remoto le tracce passano dal tetto: un registro locale gonfiato da una versione
+  // precedente non deve poter salire su Drive più grande del proprio limite.
+  if (!remote) return {
+    ...l, lastModified: l.lastModified || Date.now(),
+    atti: mergeTracce(l.atti, [], ATTI_TETTO),
+    trappole: mergeTracce(l.trappole, [], TRAPPOLE_TETTO),
+    generazioni: mergeTracce(l.generazioni, [], GENERAZIONI_TETTO),
+  };
   const r = { ...SYNC_DEFAULTS(), ...remote }; // difesa: bundle mancanti nel file remoto non diventano undefined
   r.memory = migrateMemoryShape(r.memory);
   r.ghostProfile = normalizeGhostProfile(r.ghostProfile);
   const remoteWins = (r.lastModified || 0) > (l.lastModified || 0);
   return {
+    // Le tracce non guardano remoteWins: sono additive, quindi si uniscono sempre. Un dispositivo
+    // con il timestamp più vecchio non perde le proprie — sarebbe il modo più stupido di cancellare
+    // proprio ciò che il progetto accumula.
+    atti: mergeTracce(l.atti, r.atti, ATTI_TETTO),
+    trappole: mergeTracce(l.trappole, r.trappole, TRAPPOLE_TETTO),
+    generazioni: mergeTracce(l.generazioni, r.generazioni, GENERAZIONI_TETTO),
     bio: mergeById(l.bio, r.bio), air: mergeById(l.air, r.air), vidya: mergeById(l.vidya, r.vidya),
     pBio: mergeById(l.pBio, r.pBio), pAir: mergeById(l.pAir, r.pAir), pVidya: mergeById(l.pVidya, r.pVidya),
     magi: mergeById(l.magi, r.magi), semi: mergeById(l.semi, r.semi),
@@ -6985,24 +7088,22 @@ const AIR_STATUSES = ["idea", "in corso", "attivo", "bloccato"];
 // Sezione "Semi" — vive nello stesso sotto-tab Percorsi di AIR (brief 1.B/1.C: "non creare una
 // sezione nuova separata"). Un Seme non è un Percorso: niente PercorsiPanel/PercorsoDetail qui,
 // stati e contatori diversi (vedi runSeedResearch/proposeSeedExecutionStep/runSeedGateCheck).
-const SEME_STATUS_LABELS = {
-  seed: "nuovo", researching: "in ricerca", proposing: "proposte in stallo",
-  awaiting_approval: "in attesa di approvazione", executing: "in sviluppo",
-  gated: "bloccato", archived: "archiviato",
-};
+// Derivate dal registro (STATI_SEME, in cima al file): l'elenco esiste una volta sola. Prima erano
+// una seconda scrittura degli stessi sette stati, ed e' il modo in cui due elenchi divergono.
+const SEME_STATUS_LABELS = Object.fromEntries(STATI_SEME.map((s) => [s.id, s.etichetta]));
 function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGatedSeed, onDiscussInShell, onAdvance, onArchiveSeed }) {
   const [newContent, setNewContent] = useState("");
   const [advancing, setAdvancing] = useState(false);
   const submit = () => { if (!newContent.trim()) return; vibra("air"); onAddSeed(newContent.trim()); setNewContent(""); };
   const lastLogNote = (s) => {
-    const log = (s.status === "executing" || s.status === "gated") ? s.executionLog : s.researchLog;
+    const log = semeInEsecuzione(s) ? s.executionLog : s.researchLog;
     return (log && log.length) ? log[log.length - 1].note : "Nessun avanzamento ancora — attende l'apertura della prossima sessione Shell.";
   };
   // FASE 2 (BRIEF_fase1_memoria_sedimento 27/07/2026) — prima un Seme che esauriva il tetto
   // (researchIterationCount/executionIterationCount) smetteva di avanzare senza alcun segnale in
   // UI. Mostra il contatore corrente rispetto al tetto fisso del codice, così il blocco è leggibile.
   const seedCounterInfo = (s) => {
-    const isExecPhase = s.status === "executing" || s.status === "gated";
+    const isExecPhase = semeInEsecuzione(s);
     const count = isExecPhase ? s.executionIterationCount : s.researchIterationCount;
     const cap = isExecPhase ? SEME_EXECUTION_ITERATION_CAP : SEME_RESEARCH_ITERATION_CAP;
     const atCap = count >= cap;
@@ -7027,13 +7128,13 @@ function SemiPanel({ color, semi, onAddSeed, onApproveSeedStrategy, onUnlockGate
         <div class="r-hub-detail" style="margin-top:4px">Stato: <span class="r-badge" style="border-color:${color};color:${color}">${SEME_STATUS_LABELS[s.status] || s.status}</span> · origine: ${s.originSource === "manual" ? "manuale" : "conversazione"} · ${counter.label}</div>
         <div class="r-magi-text" style="margin-top:6px">${lastLogNote(s)}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-          ${s.status !== "archived" && html`<button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${handleAdvance} disabled=${advancing || counter.atCap}>${advancing ? "Avanzo…" : counter.atCap ? "Tetto raggiunto" : "Avanza ora"}</button>`}
+          ${semeVivo(s) && html`<button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${handleAdvance} disabled=${advancing || counter.atCap}>${advancing ? "Avanzo…" : counter.atCap ? "Tetto raggiunto" : "Avanza ora"}</button>`}
           ${/* FASE 5 (brief 14/08/2026) — lo stato "archiviato" esisteva fra le etichette ma niente
                 lo impostava: un Seme non poteva essere fermato in nessun modo. E' C.15 applicata al
                 caso piu' semplice — il sistema deve poter togliere, non solo aggiungere. Archiviare
                 non cancella: il Seme resta leggibile con tutta la sua storia, smette solo di
                 avanzare e di consumare round. Da archiviato si puo' tornare indietro. */ ""}
-          ${s.status !== "archived"
+          ${semeVivo(s)
             ? html`<button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => onArchiveSeed?.(s.id, true)}>Archivia</button>`
             : html`<button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => onArchiveSeed?.(s.id, false)}>Riattiva</button>`}
         </div>
@@ -10315,6 +10416,13 @@ function App() {
     setKernel(merged.kernel); saveKey("kernel-data", merged.kernel);
     setResonance(merged.resonance); saveKey("simbiosi-data", merged.resonance);
     setGhostProfileRaw(merged.ghostProfile); saveKey("ghost-profile", merged.ghostProfile); setGhostProfile(merged.ghostProfile);
+    // Le tracce non sono stato di React: nessun setState, nessun componente da avvisare. Si scrivono
+    // e basta, e i pannelli che le mostrano le rileggono alla prossima apertura. È anche il motivo
+    // per cui non entrano nell'effetto che timbra `sync-last-modified`: registrare una trappola non
+    // è una modifica che deve far vincere questo dispositivo sui bundle degli altri.
+    saveKey(ATTI_KEY, merged.atti || []);
+    saveKey(TRAPPOLE_KEY, merged.trappole || []);
+    saveKey(GENERAZIONI_KEY, merged.generazioni || []);
     stateRef.current = { bio: merged.bio, air: merged.air, vidya: merged.vidya, pBio: merged.pBio, pAir: merged.pAir, pVidya: merged.pVidya, magi: merged.magi, semi: merged.semi, shellChat: merged.shellChat, memory: merged.memory, styleMemory: merged.styleMemory, kernel: merged.kernel, resonance: merged.resonance, ghostProfile: merged.ghostProfile };
     saveKey("sync-last-modified", merged.lastModified);
   };
@@ -10366,7 +10474,12 @@ function App() {
     syncFileIdRef.current = fileId;
     const remote = fileId ? await downloadSyncState(fileId) : null;
     if (fileId && remote === null) { fileId = null; syncFileIdRef.current = null; } // file cancellato a mano: si ricrea
-    const local = { ...stateRef.current, lastModified: loadKey("sync-last-modified", 0) };
+    // Le tracce si leggono da localStorage al momento della salita, non da stateRef: non sono stato
+    // di React, quindi stateRef non le contiene e leggerle qui è la versione più fresca che esiste.
+    const local = {
+      ...stateRef.current, lastModified: loadKey("sync-last-modified", 0),
+      atti: leggiAtti(), trappole: leggiTrappole(), generazioni: leggiGenerazioni(),
+    };
     const merged = mergeSyncState(local, remote);
     if (applyLocally) applyMergedState(merged);
     const written = await uploadSyncState(merged, fileId); // { id, modifiedTime } REALI dalla risposta di Google
@@ -10548,9 +10661,9 @@ function App() {
       return;
     }
     const s = stateRef.current;
-    const target = s.semi.find((x) => x.status === "seed" || x.status === "researching" || x.status === "executing");
+    const target = s.semi.find(semeAvanzabile);
     if (!target) return;
-    if (target.status === "seed" || target.status === "researching") {
+    if (statoSeme(target.status)?.fase === "ricerca") {
       if (target.researchIterationCount >= SEME_RESEARCH_ITERATION_CAP) return;
       try {
         const { balthasar, approvedStrategies, rejectedStrategies, webSearchDiag, possibleHallucinatedSource } = await runSeedResearch(target, s.memory.air?.corrente, settingsRef.current, pushDebugLog);
@@ -10764,7 +10877,7 @@ function App() {
   const digestVidya = `Kernel: ${kernel.content.slice(0, 300)}\nUltimi log VIDYA: ${vidya.slice(0, 5).map((e) => e.title).join("; ")}\nPercorsi esistenti: ${pVidya.map((p) => p.title).join(", ") || "nessuno"}`;
   // PUNTO 2 (BRIEF_correzioni_post_test 26/07/2026): badge sul tab AIR — "c'è qualcosa che avanza"
   // visibile senza dover entrare in Percorsi. "archived" è l'unico stato che non richiede attenzione.
-  const activeSeedCount = semi.filter((s) => s.status !== "archived").length;
+  const activeSeedCount = semi.filter(semeVivo).length;
 
   return html`<div>
     <div class="r-ghost-texture"></div>
