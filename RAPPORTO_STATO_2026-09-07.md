@@ -51,7 +51,7 @@ forma prima e non a valle** (§10).
 ## 3 · Mappa dei file
 
 ```
-app.js                 10.796 righe · 908 KB · monolite, tutto il resto è supporto
+app.js                 10.909 righe · monolite, tutto il resto è supporto
 lib/base.js               31  primitive: date, uid, senza-accenti          (puro)
 lib/misure.js            161  serie BIO, derivate, freschezza              (puro)
 lib/griglia.js           119  montaggio di griglie senza ripetizioni       (puro)
@@ -62,7 +62,7 @@ sw.js                     57  cache, precarica app.js + tutti i lib/*.js
 index.html · styles.css · config.js · manifest.json
 vendor/{preact,preact-hooks,htm}.mjs     — nessuna CDN a runtime
 api/                                     — 5 funzioni serverless Vercel
-tests/                          23 file di prova + 3 di supporto
+tests/                          24 file di prova + 3 di supporto
 ```
 
 **I moduli `lib/*.js` sono puri**: nessun `localStorage`, nessun `document`, nessuna rete. Non è
@@ -98,7 +98,7 @@ trova `app.js` in cache e i suoi import no, e l'app non si disegna affatto.
 | 5768–5880 | Percorsi (motore generico BIO/AIR/VIDYA) |
 | 5867–6100 | Simbiosi e **l'anello** |
 | 6110–6420 | Drive: OAuth, sincronizzazione, `.docx` |
-| 6420–10796 | **Componenti** (29) |
+| 6420–10909 | **Componenti** (29) |
 
 I 29 componenti, in ordine: `PercorsiPanel` `PercorsoDetail` `AnochinRing` `PosturaIndicator` `Hub`
 `StoricoVoce` `BioView` `VidyaView` `SemiPanel` `AirView` `MagiView` `DiagnosticaFonti` `AnelloPanel`
@@ -162,9 +162,12 @@ topic      { id, label, status: "non iniziato" | ... }
 documento  { id, title, text, date, nodeId? }
 voce log   { id, date, text, versioni[]?, peso?, sonno? }
 seme       { id, content, status, strategie[], round, tetto, researchLog, executionLog }
-           status memorizzato (identificatori inglesi, ≠ etichette a schermo):
-             "seed" → nuovo · "researching" → in ricerca · "awaiting_approval" → in attesa
-             "executing" → in sviluppo · "gated" → bloccato dal gate · "cancelled" → scartato
+           I SETTE stati sono dichiarati in STATI_SEME (in cima ad app.js), con etichetta,
+           fase, `vivo` e `avanzabile`. SEME_STATUS_LABELS ne deriva: un elenco solo.
+             "seed" nuovo · "researching" in ricerca · "proposing" proposte in stallo
+             "awaiting_approval" in attesa · "executing" in sviluppo · "gated" bloccato
+             "archived" archiviato  ← l'unico NON vivo
+           "cancelled" NON e' uno stato del Seme: e' di un evento di Google Calendar.
 atto       { id, quando, tipo, pilastro, cosa, osservabileId, partenza, finestraGiorni, soglia }
 plasmide   { id, nome, problema, attacco, codice, prove[], versione, formato, impronta,
              derivaDa?, attivo, generato?, natoIl?, arrivatoIl?, ultimaProva, chiamate, trovati }
@@ -251,8 +254,12 @@ Voce (🔊) su ogni stadio, anche sulle sessioni registrate.
 
 ### Semi (solo AIR)
 Un'idea grezza buttata in chat, o dal pulsante. Macchina a stati:
-`seed` → `researching` → `awaiting_approval` → `executing` → (`gated` se un gate ferma un passo).
-Le etichette italiane che il Ghost vede a schermo sono una traduzione: **nel dato c'è l'inglese**. Un passo di sviluppo sceglie un effettore reale dal registro e **lo
+`seed` → `researching` → `awaiting_approval` → `executing`, più `gated` (un gate ha fermato un
+passo), `proposing` (la ricerca è finita in stallo) e `archived` (l'unico che non chiede attenzione).
+Le etichette italiane a schermo sono una traduzione: **nel dato c'è l'inglese**. Tre stati vivi non
+sono avanzabili in automatico — `proposing`, `awaiting_approval`, `gated` — perché aspettano un
+gesto del Ghost. Uno stato sconosciuto conta come **vivo**: nascondere un Seme sarebbe la perdita
+peggiore. Un passo di sviluppo sceglie un effettore reale dal registro e **lo
 esegue davvero**, producendo dati veri (id di prodotto, file su Drive). Contatore round/tetto,
 pulsante «Avanza ora», avanza una sola volta per gesto.
 
@@ -521,11 +528,10 @@ mano**: un costo inventato che si spaccia per reale è peggio di nessun dato.
 | **Origine periferica = 0** | Il tubo dei plasmidi ha motore e valvola, ma nessuno strumento è mai nato su un telefono vero. |
 | **Un attacco solo** | L'app cresce solo dove esiste già un innesto, e gli innesti si scrivono a mano. Finché nessun plasmide circola fra i due telefoni, quel contratto è **ancora gratis da cambiare**. |
 | **Osservabile "stabilità mantenuta"** | Manca. Gli osservabili sanno vedere solo chi **produce**: una routine che regge, una crisi che non è successa, il lavoro di cura sono invisibili per costruzione. |
-| **Tracce non sincronizzate** | `registro-atti`, `trappole`, `generazioni` vivono solo nel browser. Un ripristino le cancella. (§5) |
 | **N = 2** | Due utenti non sono una popolazione. |
 | **Costo d'uscita non misurato** | Quanto costa davvero portare i dati altrove. |
 | **Causa a monte del collasso di Balthasar** | La ricerca web che parte su una query storpiata è **intercettata**, non **impedita**. |
-| **Stati del Seme sparsi** | I sei valori di `status` sono stringhe confrontate in una decina di punti, senza una costante o un elenco dichiarato come per `AZIONI_CONVERSAZIONALI` e `OSSERVABILI`. Rinominarne uno oggi significa cercarlo a mano. |
+| **Plasmidi fuori dal backup** | Domanda aperta, non decisione presa: `restoreFullBackup` riscrive le chiavi tali e quali, quindi un plasmide ripristinato arriverebbe marcato «prove passate» dove non sono mai girate. Includerli chiede prima di decidere se il ripristino debba **ri-provarli**. (§5) |
 | **Analisi posturale** | Ferma in attesa degli occhiali Meta. Il problema nuovo non è tecnico: è il **consenso di terzi** — finora tutti i dati riguardavano il Ghost. |
 | **`CLAUDE.md` contraddice G.8** | `CLAUDE.md` righe 9–10 elenca «NESSUN build step. Non introdurre bundler…» sotto *«vincoli non negoziabili»*. G.8 è stato emendato il 12/08/2026 e quella riga non è stata aggiornata. Non è codice, ma è **il file che istruisce ogni sessione futura**: finché resta così, la libertà che G.8 ha aperto è chiusa in pratica. Segnalato, non toccato — non è una correzione editoriale. |
 | **`README.md` riga 3 dice il falso** | «Preact + htm **da CDN**»: sono vendored in `vendor/` dal momento in cui la CDN è stata tolta. Difetto preesistente, fuori dal brief che ha fatto trovare l'altro. |
