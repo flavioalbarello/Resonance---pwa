@@ -6,13 +6,23 @@ organizzato in tre pilastri: BIO (salute), AIR (autonomia economica), VIDYA (cre
 cognitiva/creativa). Implementato come PWA in uso reale da due utenti (Flavio/Ghost e Marta).
 
 ## Stack tecnico — vincoli non negoziabili
-- Preact + htm, **NESSUN build step**. Non introdurre bundler, non usare JSX che richiede
-  transpilazione, non aggiungere dipendenze che richiedono compilazione.
 - Storage: localStorage + Google Drive OAuth sync (drive.file, calendar, gmail.send scope).
 - AI routing: OpenRouter multi-modello (produzione: Llama 3.3 70B).
 - Deploy: Vercel via GitHub. Due branch: `main` (utente primario) e `stable` (secondo utente),
   progetti Vercel separati, merge sempre manuale **base: stable ← compare: main** (mai il
   contrario — errore già commesso in passato).
+
+## Build step — una scelta, non un divieto (G.8, emendato il 12/08/2026)
+**Nessun bundler in uso oggi**: Preact + htm da file vendored, si modifica `app.js` e si ricarica.
+
+Da G.8 la scelta è **caso per caso e motivata, non una regola cablata**: introdurre un build step
+richiede una proposta motivata, non un'eccezione a un divieto. Il conto di cosa si romperebbe —
+il banco di prova per primo — è in `RAPPORTO_STATO` §13.
+
+Questa voce stava fra i vincoli non negoziabili come *«NESSUN build step, non introdurre bundler»*
+fino al 09/09/2026, quasi un mese dopo l'emendamento. Nessun test, lint o controllo CI l'ha mai
+imposta: era cablata **solo qui**, ed è il file che istruisce ogni sessione. Finché è rimasta, la
+libertà aperta da G.8 è stata chiusa in pratica.
 
 ## Identità professionale del Ghost — vincolo ALLENTATO il 02/09/2026
 

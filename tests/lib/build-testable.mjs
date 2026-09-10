@@ -114,6 +114,15 @@ const EXPORT_NAMES = [
   "STATI_SEME", "statoSeme", "semeVivo", "semeAvanzabile", "semeInEsecuzione", "SEME_STATUS_LABELS",
   "mergeTracce", "mergeById", "mergeSyncState", "SYNC_DEFAULTS", "buildFullBackup",
   "restoreFullBackup", "BACKUP_KEYS",
+  // 09/09/2026 — i tre nomi che il report del mattino ha misurato IRRAGGIUNGIBILI dal banco, ed
+  // erano i tre punti in cui il sistema tocca il mondo. L'export da solo non difende niente: il
+  // valore sta nelle prove che lo fanno fallire (identita-e-recinto.test.mjs).
+  "INVOLUCRO_SANDBOX", "redactProfessionalIdentity", "APP_CAPABILITIES_CONTEXT",
+  "normalizeGhostProfile", "DEFAULT_GHOST_PROFILE",
+  // 10/09/2026 — il caso «non esistono»: la ricerca che non vedeva i numeri romani, e il filtro
+  // sulle negazioni che non c'era.
+  "TETTO_FRAMMENTI_RICERCA", "SEQUENZA_NEL_TITOLO_PUNTI", "coppieContigueNelTitolo",
+  "rilevaNegazioneDiMateriale", "smentisciAssenzaDiMateriale", "NEGA_ESISTENZA_RE",
 ];
 
 // Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.

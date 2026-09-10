@@ -60,7 +60,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-09-07 · le-tracce-viaggiano-gli-stati-si-dichiarano";
+const APP_BUILD = "2026-09-10 · non-esiste-non-e-piu-una-risposta";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -422,8 +422,19 @@ function normalizzaTesto(s) {
     .replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 const PAROLE_VUOTE = new Set(["il","lo","la","i","gli","le","un","uno","una","di","a","da","in","con","su","per","tra","fra","e","o","che","quello","questa","questo","quella","sul","sulla","sui","del","della","dei","delle","mio","mia","riprendi","apri","continua","vai","al","allo","alla","ai","agli","alle","nel","nella"]);
+// 10/09/2026 — I NUMERI ROMANI NON ERANO CERCABILI, ED È COSTATO UN DOCUMENTO DATO PER PERSO.
+// Il Ghost: «Dimmi i temi dell'atto IV e dell'atto V». Lo Shell: «Non esistono». Esistevano, e da
+// otto giorni: ATTO IV Proiezione.md (4269 caratteri) e ATTO V Trasformazione.md (4340).
+// La causa sta in questa riga: `p.length > 2` scartava "IV" e "V" prima ancora di cercare. Restavano
+// "dimmi", "temi", "atto" — cioè la ricerca non poteva distinguere l'Atto IV dall'Atto I.
+// I numeri corti sono spesso l'UNICA cosa che distingue due documenti fratelli, e in un percorso
+// fatto di atti sono la chiave, non rumore.
+// "i" resta filtrato perché è in PAROLE_VUOTE (articolo). Passa "vi", che in italiano è anche un
+// pronome: falso positivo dichiarato e accettato — costa un frammento in più, non uno in meno.
+const NUMERO_CORTO_RE = /^(?:[ivxlcdm]{1,4}|\d{1,4})$/;
 function paroleUtili(testo) {
-  return normalizzaTesto(testo).split(" ").filter((p) => p.length > 2 && !PAROLE_VUOTE.has(p));
+  return normalizzaTesto(testo).split(" ")
+    .filter((p) => p && !PAROLE_VUOTE.has(p) && (p.length > 2 || NUMERO_CORTO_RE.test(p)));
 }
 // ══════════════════════════════════════════════════════════════════════════════
 // LE VOCI GEMELLE — una voce di log non si duplica nello stesso giorno (31/08/2026)
@@ -522,6 +533,22 @@ const CONTIGUITA_TETTO = 2; // pochi, e dichiarati come tali: e' un accostamento
 // sotto il migliaio di caratteri per costruzione; un documento di percorso puo' essere lungo quanto
 // si vuole, e riversato intero qui coprirebbe tutti gli altri risultati.
 const TETTO_DOCUMENTO_IN_RICERCA = 600;
+// Quanti frammenti si consegnano. Era un 5 scritto dentro `slice()`: un numero senza nome non si
+// puo' ne' discutere ne' provare.
+const TETTO_FRAMMENTI_RICERCA = 5;
+// Quanto pesa una coppia di parole contigue ritrovata nel titolo. Alto di proposito: deve battere
+// qualunque somma di parole sparse, perche' e' il segnale piu' forte che esista qui.
+const SEQUENZA_NEL_TITOLO_PUNTI = 10;
+// Le coppie contigue della domanda che ricompaiono, contigue, nel titolo. "atto iv" conta, "atto"
+// da solo no, "iv atto" no: l'ordine e' parte del segnale.
+function coppieContigueNelTitolo(parole, chiaviNormalizzate) {
+  if (!chiaviNormalizzate || parole.length < 2) return 0;
+  let n = 0;
+  for (let i = 0; i + 1 < parole.length; i++) {
+    if (chiaviNormalizzate.includes(`${parole[i]} ${parole[i + 1]}`)) n++;
+  }
+  return n;
+}
 // 01/09/2026 — LA RICERCA CHE NON GUARDAVA DOVE C'ERA PIU' ROBA.
 // interroga_memoria cercava nelle note correnti e nel sedimento dei tre pilastri, e basta. I testi
 // prodotti dentro i percorsi — gli Atti dell'opera, cioe' il materiale piu' lungo e piu' lavorato
@@ -558,20 +585,44 @@ function cercaNellaMemoria(argomento, memory, percorsi = null) {
       if (t.includes(p)) punti += 3;          // la parola c'e' davvero nel testo
       else if (k && k.includes(p)) punti += 2; // c'e' fra le chiavi dedotte (strato 1)
     }
+    // 10/09/2026 — LA SEQUENZA NEL TITOLO VALE PIU' DI OGNI PAROLA SPARSA, e senza questo il caso
+    // del 09/09 restava rotto anche dopo aver reso cercabili i numeri. Con dieci documenti che
+    // cominciano tutti per "Atto", "atto" da solo li pareggia tutti: il punteggio diventa piatto,
+    // l'ordinamento stabile lascia vincere l'ordine di INSERIMENTO, e `slice(0, 5)` consegna i
+    // cinque piu' vecchi. I due chiesti erano gli ultimi due, e non arrivavano mai.
+    // Una coppia contigua della domanda ritrovata nel TITOLO ("atto iv") non e' una coincidenza:
+    // e' il modo in cui una persona nomina una cosa precisa.
+    punti += SEQUENZA_NEL_TITOLO_PUNTI * coppieContigueNelTitolo(parole, k);
     return { ...f, punti, viaChiavi: punti > 0 && !parole.some((p) => normalizzaTesto(f.text).includes(p)) };
-  }).filter((f) => f.punti > 0).sort((a, b) => b.punti - a.punti);
-  const trovati = punteggiati.slice(0, 5);
+  }).filter((f) => f.punti > 0)
+    // A parita' di punti vince il PIU' RECENTE, non il primo inserito. L'ordine di un array non e'
+    // un criterio di pertinenza, ed era quello che decideva.
+    .sort((a, b) => b.punti - a.punti || String(b.date || "").localeCompare(String(a.date || "")));
+  const trovati = punteggiati.slice(0, TETTO_FRAMMENTI_RICERCA);
   // Strato 2 — contiguita': stessa data di uno trovato, ma NON gia' fra i trovati.
   const giorniTrovati = new Set(trovati.map((f) => (f.date || "").slice(0, 10)).filter(Boolean));
   const idTrovati = new Set(trovati.map((f) => f.id));
   const perContiguita = tutti
     .filter((f) => f.date && giorniTrovati.has(f.date.slice(0, 10)) && !idTrovati.has(f.id))
     .slice(0, CONTIGUITA_TETTO);
+  // 10/09/2026 — SI DICHIARA ANCHE COSA NON E' PASSATO. Prima si diceva quanti se ne erano
+  // esaminati e si mostravano i primi cinque, senza mai nominare il taglio: chi legge (il Ghost o
+  // il modello) non aveva modo di sapere che fra "esaminati" e "mostrati" c'era una forbice.
+  // E' la differenza fra «non c'e'» e «non me l'hanno dato», che il 09/09 ha prodotto un «non
+  // esistono» su due documenti presenti.
+  const pertinenti = punteggiati.length;
+  const esclusi = Math.max(0, pertinenti - trovati.length);
+  const taglio = esclusi
+    ? ` — te ne mostro ${trovati.length}, gli altri ${esclusi} NON li hai visti: un'assenza qui non prova che non esistano`
+    : "";
   return {
     frammenti: trovati,
     perContiguita,
-    doveHoGuardato: `nelle note correnti, nei frammenti dei tre pilastri e nei documenti dei percorsi (${tutti.length} in tutto)`,
+    doveHoGuardato: `nelle note correnti, nei frammenti dei tre pilastri e nei documenti dei percorsi (${tutti.length} in tutto, ${pertinenti} pertinenti${taglio})`,
     totaleEsaminati: tutti.length,
+    pertinenti,
+    consegnati: trovati.length,
+    esclusi,
   };
 }
 function recuperoGrado0(frase, { pBio, pAir, pVidya, semi }) {
@@ -1731,6 +1782,61 @@ function paroleComuniMaiuscole() {
 // se il modello si sbaglia sullo stato dell'interruttore, e il vincolo gemello (rilevaDomandaDiConferma)
 // se promette un pulsante senza che una proposta sia nata davvero. Qui resta solo "modificare": il
 // titolo o la descrizione di un evento esistente non si possono cambiare, e non e' cambiato oggi.
+// ══════════════════════════════════════════════════════════════════════════════
+// IL FILTRO CHE MANCAVA: LE NEGAZIONI (10/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Gli otto filtri scritti fin qui cercano tutti la stessa cosa: il modello che dichiara COMPIUTO
+// qualcosa che non è avvenuto. Nessuno guarda il verso opposto — il modello che dichiara ASSENTE
+// qualcosa che c'è. Il sistema era blindato sul falso positivo e spalancato sul falso negativo.
+//
+// Il caso, dallo schermo del Ghost del 09/09. «Dimmi i temi dell'atto IV e dell'atto V» →
+// «Non esistono. Atto IV e V non sono nei documenti, né nelle note, né nelle bozze.» Detto due
+// volte, con l'elenco dei documenti che conteneva ATTO IV: Proiezione.md e ATTO V:
+// Trasformazione.md, salvati otto giorni prima.
+//
+// Perché è più pericoloso del falso positivo, e va detto: un «l'ho messo in calendario» falso si
+// scopre aprendo il calendario. Un «non esiste» falso fa credere di aver perso del lavoro, e chi
+// lo legge non ha nessun motivo di andare a controllare — è la risposta che chiude la ricerca.
+//
+// LA FORMA È QUELLA DI smentisciCapacitaSpenta, e non per simmetria estetica: è lo stesso identico
+// ragionamento. Se il modello dice «non c'è» e il PROGRAMMA HA IN MANO l'elenco che dice il
+// contrario, non è un'opinione da rispettare: è una frase falsa su un dato verificabile.
+//
+// Non si cancella la frase: si aggiunge accanto la smentita col titolo vero. Cancellare lascerebbe
+// una risposta monca su una domanda legittima, e il Ghost non saprebbe perché.
+const NEGA_ESISTENZA_RE = /\b(?:non\s+esistono?|non\s+ci\s+sono|non\s+c['’]e['è]|non\s+sono\s+(?:nei|nelle|nel|presenti)|nessun\s+documento|nessuna\s+traccia|non\s+risultano?|non\s+ho\s+trovato\s+null\w*|non\s+compaiono)\b/i;
+// Il secondo criterio, senza cui il filtro sparerebbe su mezza conversazione: la frase deve parlare
+// di MATERIALE, non di qualunque cosa. «Non ci sono controindicazioni» non riguarda i documenti.
+const PARLA_DI_MATERIALE_RE = /\b(?:document\w+|bozz\w+|test\w+|note|appunt\w+|material\w+|file|percors\w+|atto|atti|capitol\w+|salvat\w+|scritt\w+)\b/i;
+// Quanti caratteri di un titolo bastano a dire "il modello sta parlando di QUESTO". Sotto, un
+// titolo cortissimo produrrebbe accostamenti casuali.
+const TITOLO_MINIMO_PER_SMENTITA = 4;
+
+// Le frasi in cui il modello nega l'esistenza di materiale. Restituisce le frasi, non un booleano:
+// finiscono nel registro di debug, come per ogni altro filtro.
+function rilevaNegazioneDiMateriale(testo) {
+  return String(testo || "")
+    .split(/(?<=[.!?\n])\s+/)
+    .map((f) => f.trim())
+    .filter((f) => f && NEGA_ESISTENZA_RE.test(f) && PARLA_DI_MATERIALE_RE.test(f));
+}
+
+// `titoli` è ciò che il programma SA di avere: i titoli dei documenti del percorso aperto, o di
+// quelli che la ricerca ha esaminato. Se è vuoto, il filtro tace — non ha nessun dato con cui
+// smentire, e un filtro che smentisce senza dato è peggio della frase che corregge.
+function smentisciAssenzaDiMateriale(testo, titoli) {
+  const originale = String(testo || "");
+  const noti = (titoli || []).map((t) => String(t || "").trim()).filter((t) => t.length >= TITOLO_MINIMO_PER_SMENTITA);
+  if (!noti.length) return { testo: originale, negazioni: [], titoli: [] };
+  const negazioni = rilevaNegazioneDiMateriale(originale);
+  if (!negazioni.length) return { testo: originale, negazioni: [], titoli: [] };
+  // Si nominano al massimo tre titoli: servono a far ricontrollare, non a rifare l'elenco.
+  const elenco = noti.slice(0, 3).map((t) => `"${t}"`).join(", ");
+  const altri = noti.length > 3 ? ` e altri ${noti.length - 3}` : "";
+  const smentita = `\n\n[Il programma controlla e corregge: del materiale conservato ESISTE — ${elenco}${altri}. Se non compare qui sopra è perché non è arrivato in questo turno, non perché non ci sia. Apri il percorso e rileggilo prima di darlo per perso.]`;
+  return { testo: originale + smentita, negazioni, titoli: noti.slice(0, 3) };
+}
+
 const OFFERTA_INESISTENTE_RE = new RegExp(
   "(" +
   `${CONF_S}(?:posso|potrei|riesco a|so)\\s+(?:solo\\s+)?(?:aiutarti\\s+a\\s+)?modificar\\w*` +
@@ -4133,6 +4239,9 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Controllo del piano alimentare: quando lo Shell genera un piano con più giorni, il programma lo rilegge e confronta con i vincoli dichiarati. Segnala in un riquadro, senza toccare il piano: alimenti esclusi che compaiono lo stesso (sa che il salmone è un pesce), giorni dichiarati che non ci sono, giorni identici fra loro, la stessa fonte proteica a pranzo e a cena, dosi assenti quando erano state chieste, colazioni dolci quando erano state chieste salate. Non giudica il piano: elenca fatti verificabili, con il giorno preciso.
 - Il vincolo AIR chiede, non decide: quando una lettura destinata ad AIR sembra legare l'identità professionale del Ghost al pilastro, il programma non la scrive e non la butta. Compare una card che mostra il dato, dice quale dei due rilevatori ha segnalato — il codice, deterministico sui termini dichiarati; il modello, come seconda opinione — e perché. Due pulsanti: "Va bene, procedi" scrive il dato, "No, lascialo fuori" lo lascia fuori. La risposta resta scritta nel messaggio, quindi la domanda non ricompare domani.
 - Il documento si apre da solo se la frase lo nomina: quando c'è un percorso aperto e il Ghost dice qualcosa che nomina un suo documento ("riprendiamo l'Atto III", "quel pezzo sul Divenire"), il programma trova il documento confrontando le parole della frase con i titoli e lo mette davanti allo Shell PER INTERO prima che risponda — senza aspettare che l'apertura venga riconosciuta come un comando. Se nessun titolo corrisponde davvero non allega niente: una domanda generica non trascina dentro il testo di un documento. È diverso da "rileggimi l'Atto I", che è una richiesta esplicita: questo è il caso in cui il Ghost non chiede di riaprirlo e semplicemente continua a lavorarci.
+- Quando lo Shell dice che una cosa NON esiste: dal 10/09/2026 il programma controlla anche questo. Prima controllava solo il verso opposto — il modello che dichiara FATTA una cosa non avvenuta — e un "non esiste" falso passava indisturbato. È più pericoloso: un "l'ho messo in calendario" sbagliato si scopre aprendo il calendario, un "non esiste" sbagliato fa credere di aver perso del lavoro e non invita nessuno a controllare. Ora, se il modello nega che ci sia del materiale MENTRE il programma ha in mano l'elenco dei documenti del percorso aperto, sotto la risposta compare la smentita con i titoli veri. La frase del modello non viene cancellata: resta, con accanto il fatto. Se non c'è nessun percorso aperto il controllo tace, perché senza elenco non avrebbe niente con cui smentire.
+- Cercare fra i documenti riconosce i numeri: "atto IV", "capitolo 9". Fino al 09/09/2026 le parole di due lettere o meno venivano scartate prima ancora di cercare, quindi "IV" e "V" sparivano dalla domanda e la ricerca non sapeva distinguere l'Atto IV dall'Atto I. In più, una coppia di parole della domanda ritrovata NEL TITOLO ("atto iv") pesa più di qualunque parola sparsa nel testo, e a pari punteggio vince il documento più recente invece del primo che era stato salvato. Difetto trovato dal Ghost il 09/09: aveva chiesto i temi dell'Atto IV e dell'Atto V e si è sentito rispondere che non esistevano, mentre erano nel percorso da otto giorni.
+- Quando la ricerca taglia, lo dice: se i documenti pertinenti sono più di quelli che entrano nella risposta, la riga "ho guardato" dichiara quanti ne ha esaminati, quanti ne mostra e quanti NON sono passati — con la frase esplicita che un'assenza lì non prova che il documento non esista. Serve a distinguere "non c'è" da "non me l'hanno dato": è la confusione fra le due che ha prodotto il difetto del 09/09.
 - Interrogare la memoria cerca anche dentro i percorsi: "cosa ci eravamo detti su X" guarda nelle note correnti dei pilastri, nei frammenti di sedimento E nei documenti dei percorsi, nelle competenze accumulate e nella memoria specifica di ogni percorso. Ogni risultato dice da dove viene (quale documento, di quale percorso). Prima i documenti non venivano guardati affatto, quindi il materiale più lungo prodotto dal sistema era l'unico che la ricerca non trovava.
 - Forma delle risposte dell'Agorà Magi: ogni stadio risponde dentro un campo strutturato, in righe brevissime che cominciano con "· ", una idea per riga, con un tetto di parole dichiarato per ruolo (Balthasar 60, Melchior 60, Caspar 50, Sintesi 70). Serve a due cose insieme: risposte dense invece che prolisse, e soprattutto tenere fuori dallo schermo il ragionamento interno del modello, che il 01/09/2026 finiva stampato per intero al posto della risposta (conteggi di parole, "devo", versioni intermedie). Se il campo strutturato non arriva leggibile, il programma pota le righe di deliberazione e consegna il resto invece di perdere la chiamata.
 - Voce nell'Agorà Magi: ogni stadio ha un 🔊 accanto al nome, come i messaggi dello Shell. Legge quel solo stadio; ritoccarlo ferma la lettura. Vale anche per le sessioni già registrate.
@@ -7408,7 +7517,10 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   const fuocoConDossier = () => {
     const f = leggiFuoco();
     const p = percorsoDelFuoco(f);
-    return p ? { ...f, dossier: dossierPercorso(p) } : f;
+    // `titoliDocumenti` accanto al dossier, e non dentro: il dossier e' PROSA per il modello, questo
+    // e' un DATO per il programma. Il filtro sulle negazioni ha bisogno del secondo — con la prosa
+    // dovrebbe ri-estrarre i titoli da un testo che li ha gia' impaginati (10/09/2026).
+    return p ? { ...f, dossier: dossierPercorso(p), titoliDocumenti: (p.documents || []).map((d) => d?.title || d?.name || "").filter(Boolean) } : f;
   };
   const [input, setInput] = useState("");
   // Trigger di avanzamento Seme (Parte 3 del brief): una sola volta per apertura di questa tab —
@@ -7853,7 +7965,14 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // Ora chi ha la spiegazione giusta parla per primo: togliOfferteInesistenti toglie la frase e
       // ci mette la riga onesta ("spostare un evento non lo so fare"), e al filtro del calendario
       // arriva un testo in cui quella frase non c'e' piu'.
-      const offertePrima = togliOfferteInesistenti(senzaSmentite.testo);
+      // 10/09/2026 — IL FILTRO SULLE NEGAZIONI. Gemello esatto di quello qui sopra: li' il modello
+      // dichiara SPENTA una capacita' accesa, qui dichiara ASSENTE del materiale presente. In
+      // entrambi i casi il programma ha il dato in mano e la frase e' falsa, non opinabile.
+      // Tace da solo quando non c'e' un percorso aperto: senza titoli non ha niente con cui
+      // smentire, e non inventa una smentita per riempire il vuoto.
+      const senzaAssenzeFalse = smentisciAssenzaDiMateriale(senzaSmentite.testo, fuoco?.titoliDocumenti);
+      if (senzaAssenzeFalse.negazioni.length) pushDebugLog?.({ type: "assenza-di-materiale-smentita", frasi: senzaAssenzeFalse.negazioni, titoli: senzaAssenzeFalse.titoli, model: settings.model, userText: userText.slice(0, 100) });
+      const offertePrima = togliOfferteInesistenti(senzaAssenzeFalse.testo);
       if (offertePrima.offerte.length) pushDebugLog?.({ type: "offerta-di-capacita-inesistente", frasi: offertePrima.offerte, model: settings.model });
       const senzaCalendario = ripulisciContenutiDiCalendario(offertePrima.testo, letturaPerIlFiltro);
       // E il gemello: se la lettura e' fallita e il modello non l'ha detto, lo dice il programma.
