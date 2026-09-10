@@ -4,7 +4,7 @@
 **Prove:** 601 verdi (erano 582) · **Commit:** `df14a9f`
 
 Documento da caricare come conoscenza in un Claude Project, insieme a
-`RAPPORTO_STATO_2026-09-07.md` e `CLAUDE.md`.
+`RAPPORTO_STATO_2026-09-10.md` e `CLAUDE.md`.
 
 ---
 
@@ -204,7 +204,5 @@ dell'inventario era corretta nel suo scopo e dannosa nel suo effetto collaterale
   insegna a negare è ancora nel prompt. Correggerla è un giro diverso.
 - **`TETTO_DOCUMENTO_IN_RICERCA = 600`**: un documento di 4269 caratteri arriva al **14%**. Per
   «dimmi i temi» può bastare, per lavorarci no. Non toccato in questo giro.
-- **`RAPPORTO_STATO` dice dieci azioni conversazionali, sono quindici** — dal report del 09/09,
-  ancora da correggere alla prossima revisione del rapporto.
 - **`vi`** passa ora il filtro delle parole come numero romano, ed è anche un pronome italiano.
   Falso positivo dichiarato e accettato: costa un frammento in più, non uno in meno.
