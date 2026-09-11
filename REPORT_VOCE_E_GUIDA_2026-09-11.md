@@ -9,7 +9,7 @@ Ordine eseguito: **B → A → C → E → D**, come da §I.
 
 ## 1. Le prove
 
-**627 verdi, 133 suite, 27 file** — erano 601. **+26.**
+**627 verdi, 122 suite, 27 file** — erano 601. **+26.**
 `node --input-type=module --check < app.js`: verde. Nessuna delle 601 è diventata rossa.
 
 | file | cosa |
