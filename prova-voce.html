@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Resonance — banco microfono in auto</title>
+<!--
+  BANCO, NON UNA FEATURE (10/09/2026).
+  Serve a misurare una cosa sola e non deducibile: se il microfono in vivavoce dell'auto arriva al
+  browser, o se il browser prende invece quello del telefono — che sta in tasca, a due metri, col
+  rumore della strada.
+  Sta sullo stesso dominio della PWA di proposito: i permessi del microfono sono PER ORIGINE, e una
+  prova fatta altrove non direbbe niente su cosa succede dentro Resonance.
+  Nessuna integrazione con l'app, nessuna dipendenza, nessun dato che esce dal telefono.
+-->
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; font: 16px/1.5 system-ui, -apple-system, sans-serif;
+         background: #F4F2EE; color: #22282C; max-width: 820px; margin-inline: auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: #6B7780;
+       margin: 22px 0 8px; }
+  .scheda { background: #fff; border: 1px solid #E2DED6; border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+  .grande { font-size: 30px; line-height: 1.3; font-weight: 600; min-height: 2.2em; }
+  .piccolo { font-size: 13px; color: #6B7780; }
+  button { font: inherit; font-weight: 600; padding: 14px 18px; border-radius: 9px;
+           border: 1px solid #C9C2B6; background: #fff; cursor: pointer; margin: 0 8px 8px 0; }
+  button.principale { background: #C9A227; border-color: #A8861F; color: #1B1F22; }
+  button:disabled { opacity: .45; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { text-align: left; padding: 5px 6px; border-bottom: 1px solid #EEE9E0; vertical-align: top; }
+  th { color: #6B7780; font-weight: 600; }
+  code { background: #F0EDE6; padding: 1px 4px; border-radius: 4px; font-size: 13px; }
+  .attivo { color: #0B7A3B; font-weight: 700; }
+  .assente { color: #A33; font-weight: 700; }
+  ol { padding-left: 20px; } li { margin-bottom: 6px; }
+  textarea { width: 100%; height: 120px; font: 12px/1.4 ui-monospace, monospace; }
+</style>
+</head>
+<body>
+
+<h1>Banco microfono in auto</h1>
+<p class="piccolo">Non è una funzione dell'app. Serve a raccogliere tre fatti e basta.</p>
+
+<div class="scheda">
+  <h2 style="margin-top:0">Come si esegue</h2>
+  <ol>
+    <li><b>Da fermo, motore acceso, telefono collegato come sempre.</b> Non guidando: questa pagina
+      va guardata.</li>
+    <li>Tocca <b>Comincia</b> e leggi la frase di prova ad alta voce, come parleresti allo Shell.</li>
+    <li>Ripeti in <b>tre condizioni</b>, toccando <b>Segna il tentativo</b> ogni volta:
+      <b>1)</b> telefono in mano · <b>2)</b> telefono in tasca · <b>3)</b> telefono in tasca col
+      finestrino aperto.</li>
+    <li>Alla fine tocca <b>Copia il registro</b> e incollalo in chat.</li>
+  </ol>
+  <p class="piccolo">Frase di prova consigliata, sempre la stessa:
+    <b>«Apri il percorso del concept album e leggimi l'atto quarto.»</b>
+    Contiene un numero ordinale e un titolo lungo: sono i due casi che contano.</p>
+</div>
+
+<div class="scheda">
+  <h2 style="margin-top:0">Fatto 1 · quale microfono sta usando</h2>
+  <div id="dispositivo" class="grande" style="font-size:19px">—</div>
+  <div id="elenco" class="piccolo"></div>
+  <p class="piccolo"><b>Limite dichiarato:</b> il riconoscimento vocale del browser sceglie da sé
+    l'ingresso predefinito e non si può puntare su un dispositivo preciso. Qui si misura
+    <i>quale sia</i> il predefinito quando l'auto è collegata — che è il fatto che serve.</p>
+</div>
+
+<div class="scheda">
+  <h2 style="margin-top:0">Fatto 2 · quanto capisce</h2>
+  <div>
+    <button id="via" class="principale">Comincia</button>
+    <button id="stop" disabled>Ferma</button>
+  </div>
+  <div id="capito" class="grande">—</div>
+  <div id="parziale" class="piccolo" style="min-height:1.4em"></div>
+</div>
+
+<div class="scheda">
+  <h2 style="margin-top:0">Fatto 3 · da dove esce la voce</h2>
+  <p class="piccolo">Tocca e ascolta <b>dove</b> suona: casse dell'auto o altoparlante del telefono.
+    Il secondo pulsante legge un testo con markdown e tabella, per sentire la spogliatura nuova.</p>
+  <button id="parla">Leggi una frase</button>
+  <button id="parlaMd">Leggi un testo con tabella</button>
+</div>
+
+<div class="scheda">
+  <h2 style="margin-top:0">Il registro</h2>
+  <div>
+    <button id="segna">Segna il tentativo</button>
+    <button id="copia">Copia il registro</button>
+    <button id="pulisci">Svuota</button>
+  </div>
+  <table id="tabella"><thead><tr>
+    <th>#</th><th>condizione</th><th>microfono</th><th>capito</th>
+  </tr></thead><tbody></tbody></table>
+  <textarea id="grezzo" readonly placeholder="Qui compare il registro da copiare."></textarea>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const CONDIZIONI = ["1 · in mano", "2 · in tasca", "3 · in tasca, finestrino aperto"];
+const registro = [];
+let condizione = 0;
+let ultimoCapito = "";
+let microfonoInUso = "(non ancora chiesto)";
+
+// ── Fatto 1 · quale dispositivo di ingresso sta davvero usando ────────────────────────────────
+// getUserMedia restituisce la traccia VERA: le sue impostazioni dicono quale dispositivo il
+// sistema ha scelto. E' l'unico modo di saperlo — l'elenco da solo non dice quale sia il
+// predefinito quando l'auto e' collegata.
+async function leggiDispositivi() {
+  try {
+    const flusso = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const traccia = flusso.getAudioTracks()[0];
+    const s = traccia?.getSettings?.() || {};
+    const elenco = await navigator.mediaDevices.enumerateDevices();
+    const ingressi = elenco.filter((d) => d.kind === "audioinput");
+    const usato = ingressi.find((d) => d.deviceId === s.deviceId);
+    microfonoInUso = (usato?.label || traccia?.label || "etichetta non fornita dal browser")
+      + "  ·  id " + String(s.deviceId || "?").slice(0, 12);
+    $("dispositivo").textContent = microfonoInUso;
+    $("dispositivo").className = "grande attivo";
+    $("dispositivo").style.fontSize = "19px";
+    $("elenco").innerHTML = "<b>Tutti gli ingressi visti dal browser (" + ingressi.length + "):</b><br>"
+      + ingressi.map((d, i) => (i + 1) + ". " + (d.label || "(senza etichetta)")).join("<br>");
+    flusso.getTracks().forEach((t) => t.stop());
+  } catch (e) {
+    microfonoInUso = "PERMESSO NEGATO o nessun microfono: " + e.name;
+    $("dispositivo").textContent = microfonoInUso;
+    $("dispositivo").className = "grande assente";
+  }
+}
+
+// ── Fatto 2 · quanto capisce ──────────────────────────────────────────────────────────────────
+const Riconoscitore = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+if (!Riconoscitore) {
+  $("capito").textContent = "Questo browser non ha il riconoscimento vocale.";
+  $("capito").className = "grande assente";
+  $("via").disabled = true;
+}
+$("via").onclick = async () => {
+  await leggiDispositivi();
+  if (!Riconoscitore) return;
+  rec = new Riconoscitore();
+  rec.lang = "it-IT";
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.onresult = (ev) => {
+    let finale = "", parziale = "";
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const t = ev.results[i][0].transcript;
+      if (ev.results[i].isFinal) finale += t; else parziale += t;
+    }
+    if (finale) { ultimoCapito = finale.trim(); $("capito").textContent = ultimoCapito; }
+    $("parziale").textContent = parziale ? "… " + parziale : "";
+  };
+  rec.onerror = (ev) => {
+    $("capito").textContent = "Errore: " + ev.error;
+    $("capito").className = "grande assente";
+    ultimoCapito = "ERRORE: " + ev.error;
+  };
+  rec.onend = () => { $("via").disabled = false; $("stop").disabled = true; };
+  try { rec.start(); $("via").disabled = true; $("stop").disabled = false;
+        $("capito").textContent = "Parla pure…"; $("capito").className = "grande"; }
+  catch (e) { $("capito").textContent = "Non parte: " + e.message; }
+};
+$("stop").onclick = () => { try { rec && rec.stop(); } catch (e) {} };
+
+// ── Fatto 3 · da dove esce la voce ────────────────────────────────────────────────────────────
+// La seconda prova usa la STESSA spogliatura di app.js (perLaVoce), copiata qui nella sua forma
+// essenziale: serve a farla SENTIRE, non a essere l'implementazione. Quella vera sta in app.js,
+// dentro speakText, ed e' provata in tests/voce.test.mjs.
+function parla(testo) {
+  if (!window.speechSynthesis) { alert("Questo browser non sa parlare."); return; }
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(testo);
+  const voci = window.speechSynthesis.getVoices() || [];
+  const it = voci.find((v) => (v.lang || "").toLowerCase().startsWith("it"));
+  if (it) u.voice = it;
+  u.lang = it?.lang || "it-IT";
+  window.speechSynthesis.speak(u);
+}
+$("parla").onclick = () => parla(
+  "Prova della voce. Se mi senti dalle casse dell'auto, l'audio esce dal profilo giusto.");
+$("parlaMd").onclick = () => {
+  const grezzo = [
+    "## Andamento misurato",
+    "Il **peso** è sceso di *1,2* kg in undici giorni.",
+    "- prima voce dell'elenco",
+    "- seconda voce",
+    "| Pasto | Piatto | kcal |",
+    "|---|---|---|",
+    "| Colazione | Uova e pane | 420 |",
+    "| Pranzo | Pollo e riso | 650 |",
+  ].join("\n");
+  parla(spogliaPerLaVoce(grezzo));
+};
+function spogliaPerLaVoce(testo) {
+  const righe = String(testo || "").split("\n"), fuori = [];
+  let blocco = [];
+  const eTabella = (r) => /^\s*\|.*\|\s*$/.test(r);
+  const eSeparatrice = (r) => /^\s*\|[\s:|-]+\|\s*$/.test(r);
+  const celle = (r) => r.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+  const scarica = () => {
+    if (!blocco.length) return;
+    const dati = blocco.filter((r) => !eSeparatrice(r)).map(celle);
+    const conTesta = blocco.some(eSeparatrice);
+    const testa = conTesta ? dati[0] : null;
+    (conTesta ? dati.slice(1) : dati).forEach((r) => {
+      const f = r.map((c, i) => (testa && testa[i] ? testa[i] + ": " + c : c))
+                 .filter((x) => x && !/^[^:]*:\s*$/.test(x)).join(", ");
+      if (f) fuori.push(/[.!?]$/.test(f) ? f : f + ".");
+    });
+    blocco = [];
+  };
+  for (const riga of righe) {
+    if (eTabella(riga)) { blocco.push(riga); continue; }
+    scarica();
+    if (/^\s*[-_=*]{3,}\s*$/.test(riga)) continue;
+    const eraElenco = /^\s*(?:[-*+]|\d{1,2}[.)])\s+/.test(riga);
+    let r = riga.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/^\s*#{1,6}\s*/, "")
+      .replace(/^\s*(?:[-*+]|\d{1,2}[.)])\s+/, "").replace(/\*\*|__|\*|`|_/g, "")
+      .replace(/^\s*>\s?/, "").replace(/[ \t]{2,}/g, " ").trim();
+    if (r && eraElenco && !/[.!?:;,]$/.test(r)) r += ".";
+    fuori.push(r);
+  }
+  scarica();
+  return fuori.join("\n").trim();
+}
+
+// ── Il registro ───────────────────────────────────────────────────────────────────────────────
+function disegna() {
+  $("tabella").querySelector("tbody").innerHTML = registro.map((r, i) =>
+    "<tr><td>" + (i + 1) + "</td><td>" + r.condizione + "</td><td>" + r.microfono
+    + "</td><td>" + (r.capito || "(niente)") + "</td></tr>").join("");
+  $("grezzo").value = registro.length
+    ? "BANCO MICROFONO IN AUTO — " + new Date().toLocaleString("it-IT") + "\n\n"
+      + registro.map((r, i) => (i + 1) + ") " + r.condizione + "\n   microfono: " + r.microfono
+        + "\n   capito:    " + (r.capito || "(niente)")).join("\n\n")
+    : "";
+}
+$("segna").onclick = () => {
+  registro.push({ condizione: CONDIZIONI[condizione % CONDIZIONI.length], microfono: microfonoInUso, capito: ultimoCapito });
+  condizione++;
+  ultimoCapito = "";
+  disegna();
+};
+$("copia").onclick = async () => {
+  try { await navigator.clipboard.writeText($("grezzo").value); $("copia").textContent = "Copiato"; }
+  catch (e) { $("grezzo").select(); $("copia").textContent = "Selezionato: copia a mano"; }
+  setTimeout(() => { $("copia").textContent = "Copia il registro"; }, 2000);
+};
+$("pulisci").onclick = () => { registro.length = 0; condizione = 0; disegna(); };
+
+// Alcuni browser popolano le voci in ritardo: senza questo, il primo tocco parla in inglese.
+if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = () => {};
+</script>
+</body>
+</html>
