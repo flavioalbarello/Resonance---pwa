@@ -60,7 +60,7 @@ import {
 const html = htm.bind(h);
 
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
-const APP_BUILD = "2026-09-10 · non-esiste-non-e-piu-una-risposta";
+const APP_BUILD = "2026-09-11 · la-voce-non-legge-gli-asterischi";
 
 const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
@@ -109,10 +109,100 @@ function pickItalianVoice() {
   const voices = window.speechSynthesis?.getVoices() || [];
   return voices.find((v) => v.lang?.toLowerCase().startsWith("it")) || voices[0] || null;
 }
+// ══════════════════════════════════════════════════════════════════════════════
+// IL TESTO CHE VA ALLA VOCE VA SPOGLIATO (10/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost usa Resonance in macchina, e il costo non e' il tocco: e' guardare lo schermo mentre
+// guida. Oggi la sintesi riceve il markdown grezzo e PRONUNCIA I MARCATORI — lo schermo disegna il
+// grassetto, la voce legge gli asterischi.
+//
+// DOVE STA, E PERCHE' PROPRIO QUI. Il 🔊 parte da tre posti diversi (i Magi, la chat, la Simbiosi
+// proattiva) e solo UNO dei tre spogliava, in linea, con una regex scritta sul posto. Gli altri due
+// mandavano il testo come veniva. Questa funzione sta DENTRO speakText, che e' l'imbuto di tutti e
+// tre: non si puo' aggiungere un quarto chiamante che se ne dimentichi.
+//
+// E NON TOCCA MAI LO SCHERMO. E' il difetto che si sta evitando: spogliare anche la chat
+// toglierebbe la formattazione che sullo schermo serve. Una prova apposta difende questo.
+
+// LE TABELLE — scelta di progetto, non dettaglio (richiesta esplicita del brief).
+// Togliere le barre produce una colata di parole senza confini: "Atto Temi I Mitosi Prima del nome
+// Pulsazione II Differenziazione..." e' illeggibile ad alta voce quanto la tabella grezza.
+// Dichiararle non leggibili sarebbe peggio: il piano alimentare E' una tabella, e saltarlo vorrebbe
+// dire che la voce tace proprio dove servirebbe di piu' (in macchina, il menu della settimana).
+// Quindi si PARLANO: ogni riga diventa una frase con le intestazioni davanti ai valori —
+// "Atto: I, Temi: Mitosi." — perche' ad alta voce l'intestazione e' l'unica cosa che rende un
+// valore comprensibile: senza, "124,5" non si sa se sono chili o calorie.
+// Senza riga d'intestazione si ripiega sui soli valori separati da virgole: almeno il confine di
+// riga resta, segnato dal punto finale.
+function tabellaParlata(righe) {
+  const t = parseTabellaMarkdown(righe);
+  if (!t) return "";
+  const frase = (cella, i) => {
+    const nome = t.intestazione?.[i];
+    return nome ? `${nome}: ${cella}` : cella;
+  };
+  return t.corpo
+    .map((r) => r.map(frase).filter((x) => x && !/^\s*[^:]*:\s*$/.test(x)).join(", "))
+    .filter(Boolean)
+    .map((r) => (/[.!?]$/.test(r) ? r : r + "."))
+    .join("\n");
+}
+// Gli emoji e i simboli decorativi: la sintesi li legge per nome o li salta con una pausa storta.
+// Non si tocca la punteggiatura vera, che serve.
+const DECORATIVI_RE = /[\u{1F300}-\u{1FAFF}\u{2190}-\u{21FF}\u{2600}-\u{27BF}\u{FE0F}\u{2022}\u{00B7}\u{25A0}-\u{25FF}]/gu;
+// Un link markdown: si legge il TESTO, mai l'indirizzo. Un URL letto per intero e' mezzo minuto di
+// caratteri pronunciati uno per uno.
+const LINK_MD_RE = /\[([^\]]*)\]\([^)]*\)/g;
+// Righe fatte di soli trattini, underscore o uguali: sono righelli, non testo.
+const RIGHELLO_RE = /^\s*[-_=*]{3,}\s*$/;
+// Cosa apre una voce di elenco: trattino, asterisco, piu', oppure "1." / "1)".
+const VOCE_DI_ELENCO_RE = /^\s*(?:[-*+]|\d{1,2}[.)])\s+/;
+
+function perLaVoce(testo) {
+  const righe = String(testo || "").split("\n");
+  const fuori = [];
+  let blocco = [];
+  const scaricaTabella = () => {
+    if (!blocco.length) return;
+    const parlata = tabellaParlata(blocco);
+    if (parlata) fuori.push(parlata);
+    blocco = [];
+  };
+  for (const riga of righe) {
+    // Le tabelle si raccolgono per blocchi contigui: una riga da sola non e' una tabella, e la riga
+    // separatrice per conto suo non dice niente.
+    if (eRigaDiTabella(riga)) { blocco.push(riga); continue; }
+    scaricaTabella();
+    if (RIGHELLO_RE.test(riga)) continue;
+    const eraVoceDiElenco = VOCE_DI_ELENCO_RE.test(riga);
+    let r = riga
+      .replace(LINK_MD_RE, "$1")
+      .replace(/^\s*#{1,6}\s*/, "")          // i cancelletti di titolo
+      .replace(VOCE_DI_ELENCO_RE, "")         // GLI ELENCHI: il trattino va via, la pausa resta (sotto)
+      .replace(/\*\*|__|\*|`|_/g, "")        // grassetto, corsivo, apici inversi
+      .replace(/^\s*>\s?/, "")               // citazioni
+      .replace(DECORATIVI_RE, " ")
+      .replace(/[ \t]{2,}/g, " ")
+      .trim();
+    // LA PAUSA FRA LE VOCI. La sintesi del browser mette una pausa sulla punteggiatura di fine
+    // frase, non sull'a capo: un elenco senza punti diventa una frase unica lunghissima. Quindi
+    // ogni voce che non finisce gia' con un segno ne riceve uno.
+    // Nota onesta: la DURATA della pausa non l'ho misurata — qui non c'e' audio. La pagina di prova
+    // (prova-voce.html) la fa sentire su questi stessi casi.
+    if (r && eraVoceDiElenco && !/[.!?:;,]$/.test(r)) r += ".";
+    fuori.push(r);
+  }
+  scaricaTabella();
+  return fuori.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function speakText(text, onEnd) {
   if (!window.speechSynthesis || !text) return;
+  // L'imbuto: qualunque chiamante, presente o futuro, passa di qui.
+  const daLeggere = perLaVoce(text);
+  if (!daLeggere) return;
   window.speechSynthesis.cancel(); // sincrono, nello stesso istante del tocco: un ritardo qui fa bloccare l'audio ai browser mobili
-  const utter = new SpeechSynthesisUtterance(text);
+  const utter = new SpeechSynthesisUtterance(daLeggere);
   const voice = pickItalianVoice();
   if (voice) utter.voice = voice;
   utter.lang = voice?.lang || "it-IT";
@@ -2209,7 +2299,7 @@ const DEFAULT_GHOST_PROFILE = {
     // Perche' proprio per questo Ghost: canale uditivo-cinestesico e pensiero configurazionale, gia'
     // dichiarati qui sopra. Un muro di testo su uno schermo di telefono, per lui, e' informazione che
     // non arriva.
-    responseFormat: "Risposte molto BREVI. Attenzione: qui sopra il profilo dice 'densita\' densa' e 'linguaggio denso'. Denso NON vuol dire lungo — vuol dire ad alta densita' di informazione, cioe' CORTO E PIENO. Se ti trovi a scrivere un paragrafo dove basta una riga, stai facendo il contrario di quello che questo Ghost ha chiesto. Frasi corte, punti separati. Nessun preambolo, nessuna ripetizione di cio' che e' gia' stato detto, nessun esempio ridondante. La prima riga va dritta al punto. Grassetto solo sulle parole che portano informazione. TAGLIARE PAROLE, MAI CONTENUTO: se devi scegliere, di' la cosa vera in meno parole — mai dire meno cose. Un vincolo, un rischio o un'incertezza non si omettono mai per stare corti: una risposta breve che nasconde un limite e' peggio di una lunga. Risposte lunghe solo se il Ghost le chiede esplicitamente.",
+    responseFormat: "Risposte molto BREVI. Attenzione: qui sopra il profilo dice 'densita\' densa' e 'linguaggio denso'. Denso NON vuol dire lungo — vuol dire ad alta densita' di informazione, cioe' CORTO E PIENO. Se ti trovi a scrivere un paragrafo dove basta una riga, stai facendo il contrario di quello che questo Ghost ha chiesto. Frasi corte, punti separati. Nessun preambolo, nessuna ripetizione di cio' che e' gia' stato detto, nessun esempio ridondante. La prima riga va dritta al punto. FORMA PREDEFINITA: PROSA BREVE, una idea per frase. In una risposta di conversazione NON servono intestazioni, non servono tabelle, e il grassetto si usa solo dove una parola porta un dato che si perderebbe (un numero, un nome, un rischio) — mai per dare ritmo. La struttura si usa SOLO quando il contenuto E' davvero un elenco, o quando il Ghost ha chiesto una tabella: allora si', ed e' giusta. Il motivo non e' estetico: il Ghost ascolta le risposte a voce mentre guida, e i marcatori letti ad alta voce sono rumore. Un titolo in mezzo a tre righe di risposta e' rumore anche sullo schermo. Non ti riguarda invece la struttura che compone il PROGRAMMA (la griglia del piano alimentare, i riquadri, le tabelle dei documenti): quella e' una capacita' dichiarata, non decorazione tua. TAGLIARE PAROLE, MAI CONTENUTO: se devi scegliere, di' la cosa vera in meno parole — mai dire meno cose. Un vincolo, un rischio o un'incertezza non si omettono mai per stare corti: una risposta breve che nasconde un limite e' peggio di una lunga. Risposte lunghe solo se il Ghost le chiede esplicitamente.",
     notes: "Profilo cognitivo emisfero-destro dominante, elaborazione configurazionale non lineare; canale uditivo-cinestesico prioritario e, come secondo canale, riferimenti culturali concreti come ponte verso intuizioni astratte — privilegia esercizi pratici/all'orecchio rispetto alla teoria scritta pura. Linguaggio denso ma sempre traducibile in azione concreta.",
   },
   freeform: {
@@ -4244,6 +4334,8 @@ const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nom
 - Quando la ricerca taglia, lo dice: se i documenti pertinenti sono più di quelli che entrano nella risposta, la riga "ho guardato" dichiara quanti ne ha esaminati, quanti ne mostra e quanti NON sono passati — con la frase esplicita che un'assenza lì non prova che il documento non esista. Serve a distinguere "non c'è" da "non me l'hanno dato": è la confusione fra le due che ha prodotto il difetto del 09/09.
 - Interrogare la memoria cerca anche dentro i percorsi: "cosa ci eravamo detti su X" guarda nelle note correnti dei pilastri, nei frammenti di sedimento E nei documenti dei percorsi, nelle competenze accumulate e nella memoria specifica di ogni percorso. Ogni risultato dice da dove viene (quale documento, di quale percorso). Prima i documenti non venivano guardati affatto, quindi il materiale più lungo prodotto dal sistema era l'unico che la ricerca non trovava.
 - Forma delle risposte dell'Agorà Magi: ogni stadio risponde dentro un campo strutturato, in righe brevissime che cominciano con "· ", una idea per riga, con un tetto di parole dichiarato per ruolo (Balthasar 60, Melchior 60, Caspar 50, Sintesi 70). Serve a due cose insieme: risposte dense invece che prolisse, e soprattutto tenere fuori dallo schermo il ragionamento interno del modello, che il 01/09/2026 finiva stampato per intero al posto della risposta (conteggi di parole, "devo", versioni intermedie). Se il campo strutturato non arriva leggibile, il programma pota le righe di deliberazione e consegna il resto invece di perdere la chiamata.
+- La voce non legge i marcatori: dal 10/09/2026 il testo che va alla sintesi viene spogliato prima di essere pronunciato — grassetti, corsivi, cancelletti di titolo, trattini di elenco, righelli, emoji, e l'indirizzo dei link (si legge il testo del link, non l'URL). Vale per TUTTI i punti da cui parte il 🔊 — i Magi, la chat, la lettura proattiva della Simbiosi — perché la spogliatura sta dentro la funzione che parla, non nei chiamanti. Il testo sullo schermo NON cambia: resta formattato com'è sempre stato. Le TABELLE non vengono spianate ma parlate: ogni riga diventa una frase con l'intestazione davanti al valore ("Pasto: Colazione, Piatto: uova e pane, kcal: 420"), perché ad alta voce senza l'intestazione un numero non si sa cosa sia. Serve perché il Ghost ascolta le risposte in macchina.
+- Banco microfono in auto: c'è una pagina di prova separata dall'app, all'indirizzo /prova-voce.html, che misura quale microfono usa il browser quando il telefono è collegato all'auto, quanto capisce il riconoscimento vocale in tre condizioni, e da dove esce l'audio. Non è una funzione dell'app e non tocca nessun dato: è un banco di misura. Se il Ghost la nomina, parla di quello.
 - Voce nell'Agorà Magi: ogni stadio ha un 🔊 accanto al nome, come i messaggi dello Shell. Legge quel solo stadio; ritoccarlo ferma la lettura. Vale anche per le sessioni già registrate.
 - Trappole: ogni volta che il Ghost chiede di rifare qualcosa che lo Shell aveva appena prodotto («non mi piace la lettera che hai fatto», «rifallo», «troppo prolisso»), il programma se lo segna da solo: la frase, l'inizio del testo rifatto, il percorso aperto e dopo quanti scambi è successo. Costa zero — nessuna chiamata al modello, solo confronto di parole. Non cambia niente nel turno in corso e non finisce (ancora) in nessun prompt: è materia prima, e serve a capire con dei dati se un PROCESSO lungo — un posizionamento lavorativo, un percorso di studio — abbia dentro dei vicoli ciechi ricorrenti che varrebbe la pena di non far ripercorrere a nessun altro. Si vedono in Setup, nel riquadro "Trappole", e si tolgono una per una se il rilevamento è sbagliato. Il rilevatore è deliberatamente stretto: preferisce mancare una trappola che segnarne una falsa.
 - Plasmidi (strumenti acquisiti): funzioni pure che l'app ha imparato DOPO essere stata scritta, e che si trasferiscono da un'app all'altra come un plasmide fra due batteri. Ognuna gira in un recinto senza rete, senza i dati del Ghost, senza interfaccia e con un tetto di tempo — misurato, non promesso. Ognuna porta con sé le proprie PROVE: quando un plasmide arriva da un'altra app le prove rigirano su QUESTO telefono prima che venga usato, e se non passano non entra. Arriva sempre SPENTO: lo accende il Ghost. Vivono in Setup, nel riquadro "Plasmidi", dove si legge il codice per intero, si riprovano le prove quando si vuole, si spengono e si tolgono. Un plasmide non porta MAI dati personali: il programma lo verifica prima di esportarlo, e blocca l'esportazione se trova indirizzi, numeri, cifre lunghe o i termini dell'identità professionale dichiarata. Oggi c'è un solo punto dell'app dove uno strumento acquisito può essere chiamato ("riconoscere una risposta guasta del modello"): l'app può crescere organi nuovi solo dove esiste già un attacco, e gli attacchi si scrivono a mano. Se il magazzino è vuoto — com'è appena installato — l'app si comporta e costa esattamente come prima. Un plasmide non entra MAI nel magazzino se contiene dati personali: il controllo sta sulla SCRITTURA, non solo sull'esportazione, perché da quando un plasmide può nascere sul dispositivo un dato potrebbe entrare in memoria prima che un umano lo veda.
@@ -7334,7 +7426,9 @@ function MagiView({ sessions, onSave, onDelete, settings, memory, updateMemoria,
   const alternaVoce = (id, testo) => {
     if (parlanteId === id) { stopSpeaking(); setParlanteId(null); return; }
     setParlanteId(id);
-    speakText(senzaFormattazioneMarkdown(String(testo || "")).replace(/^[ \t]*[·•\-*]\s*/gm, ""), () => setParlanteId((cur) => (cur === id ? null : cur)));
+    // 10/09/2026 — la spogliatura in linea che stava qui e' sparita: adesso la fa speakText per
+    // tutti e tre i chiamanti. Era l'unico dei tre che la faceva, ed era una regex scritta sul posto.
+    speakText(String(testo || ""), () => setParlanteId((cur) => (cur === id ? null : cur)));
   };
   const voce = (id, testo) => ({ onSpeak: () => alternaVoce(id, testo), parlando: parlanteId === id });
   const start = async () => { if (!question.trim() || running) return; setRunning(true); setError(""); setStage({ balthasar: "", melchior: "", caspar: "", synthesis: "" });

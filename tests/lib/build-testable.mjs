@@ -123,6 +123,8 @@ const EXPORT_NAMES = [
   // sulle negazioni che non c'era.
   "TETTO_FRAMMENTI_RICERCA", "SEQUENZA_NEL_TITOLO_PUNTI", "coppieContigueNelTitolo",
   "rilevaNegazioneDiMateriale", "smentisciAssenzaDiMateriale", "NEGA_ESISTENZA_RE",
+  // 10/09/2026 — il testo che va alla voce.
+  "perLaVoce", "tabellaParlata", "VOCE_DI_ELENCO_RE", "RIGHELLO_RE", "PILLAR_CTX",
 ];
 
 // Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.
