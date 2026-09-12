@@ -2403,7 +2403,42 @@ function redactProfessionalIdentity(text, profile) {
 // STORAGE (locale, sul dispositivo)
 //──────────────────────────────────────────────────────────
 function loadKey(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } }
-function saveKey(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; } }
+// ══════════════════════════════════════════════════════════════════════════════
+// QUANDO LA MEMORIA DEL DISPOSITIVO DICE NO — 12/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// `saveKey` restituiva `false` e nessuno lo guardava: 76 chiamate, zero controlli. Dimostrato a
+// quota simulata: `registraTrappola` restituiva la traccia come se fosse salvata, in memoria non
+// c'era niente, nessun errore, nessuna riga di registro. E il caso peggiore era la compattazione
+// della chat (vedi compactShellChatIfNeeded): la chat si accorciava comunque e il segnaposto
+// dichiarava "archiviati alla chiave X" indicando una chiave che non esisteva.
+//
+// Correggere 76 chiamanti uno per uno sarebbe la strada sbagliata: il prossimo chiamante se ne
+// dimenticherebbe. La firma non cambia — cambia il fatto che il fallimento non è più muto.
+//
+// La bandiera vive in memoria di processo e NON in localStorage: il posto dove la si scriverebbe è
+// esattamente quello che ha appena detto no. Si perde al ricaricamento della pagina, ed è corretto:
+// dice "in questa sessione una scrittura è andata perduta", non "il dispositivo è pieno per sempre".
+let _memoriaPiena = null;
+let _avvisoMemoriaPiena = null;
+function saveKey(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); return true; }
+  catch (e) {
+    _memoriaPiena = {
+      quando: new Date().toISOString(),
+      chiave: key,
+      errore: e?.name || "sconosciuto",
+      scritturePerse: (_memoriaPiena?.scritturePerse || 0) + 1,
+    };
+    // Differito: saveKey è chiamata anche DENTRO gli aggiornatori di setState, e chiamare un
+    // setState lì dentro in modo sincrono sarebbe rientranza. Un giro di coda basta.
+    if (_avvisoMemoriaPiena) { const stato = _memoriaPiena; setTimeout(() => _avvisoMemoriaPiena?.(stato), 0); }
+    return false;
+  }
+}
+function memoriaPiena() { return _memoriaPiena; }
+function quandoLaMemoriaSiRiempie(fn) { _avvisoMemoriaPiena = fn; }
+// Solo per le prove: azzera la bandiera fra un caso e l'altro.
+function dimenticaMemoriaPiena() { _memoriaPiena = null; }
 // FASE 1.1 (BRIEF_fase1_memoria_sedimento 27/07/2026) — migrazione retrocompatibile obbligatoria:
 // la memoria procedurale era una stringa unica per pilastro, ora è { corrente, sedimento: [{id,date,text}] }.
 // Converte il formato vecchio senza perdere nulla (necessario anche per Marta, che ha dati propri già
@@ -2465,6 +2500,8 @@ function normalizeGhostProfile(profile) {
 // Legge 14 (versioning atomico, mai sovrascrittura distruttiva): i messaggi rimossi dalla vista attiva
 // NON vengono mai cancellati, solo archiviati in una chiave locale separata e sostituiti da un
 // system-note visibile che rende esplicito cosa è successo — nessuna sparizione silenziosa.
+// Il passo della chat verso Drive (vedi l'effetto 3b in App): due minuti, non due secondi.
+const CHAT_SYNC_INTERVALLO_MS = 120000;
 const SHELL_CHAT_COMPACT_TRIGGER = 40; // sopra questa soglia scatta la compattazione
 const SHELL_CHAT_KEEP_RECENT = 24;     // messaggi recenti sempre tenuti per intero, in chiaro
 function compactShellChatIfNeeded(shellChat) {
@@ -2473,12 +2510,74 @@ function compactShellChatIfNeeded(shellChat) {
   const kept = shellChat.slice(shellChat.length - SHELL_CHAT_KEEP_RECENT);
   if (!overflow.length) return null;
   const archiveKey = `shell-chat-archive-${todayISO()}-${uid()}`;
-  saveKey(archiveKey, overflow); // archiviato, non distrutto — recuperabile da localStorage con questa chiave
+  // 12/09/2026 — QUI IL RITORNO SI GUARDA, ED E' L'UNICO POSTO DOVE CAMBIA LA DECISIONE.
+  // Se l'archivio non si scrive (memoria piena) e si compatta comunque, i messaggi escono dalla
+  // vista attiva e non sono da nessuna parte: è la sovrascrittura distruttiva che la Legge 14
+  // vieta, con un segnaposto che dichiara il falso indicando una chiave inesistente.
+  // Fra i due mali l'ordine è questo: NON compattare è meglio che compattare perdendo. La chat
+  // resta lunga, il bundle resta pesante, e la striscia in cima dice che la memoria è piena.
+  if (!saveKey(archiveKey, overflow)) return null;
   const marker = {
     id: uid(), role: "system-note", time: new Date().toISOString(),
     content: `— ${overflow.length} messaggi più vecchi compattati e archiviati localmente il ${fmtDate(new Date())} (chiave: ${archiveKey}). La memoria procedurale dei pilastri resta intatta e non dipende da questi messaggi grezzi; nulla è andato perso, solo alleggerito dalla vista attiva. —`,
   };
   return [marker, ...kept];
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// GLI ARCHIVI DELLA CHAT VANNO DOVE C'E' POSTO — 12/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// Misurato: `removeItem` compariva ZERO volte in tutta l'app, e le chiavi `shell-chat-archive-*`
+// si accumulavano per sempre. La compattazione scatta ogni 40 messaggi e ne archivia ~16. Proiezione
+// sui dati veri: 71% della quota da 5 MB a sei mesi, 156% a dodici — e chat+archivi sono il 48% del
+// consumo. Il muro cade fra il sesto e il dodicesimo mese, e cade in silenzio.
+//
+// La soluzione NON è cancellarli: è spostarli dove c'è spazio. Il sync su Drive esiste già.
+// IL PUNTO CHE RENDE LA COSA LEGGE 14 E NON UNA PERDITA: la copia locale si toglie SOLO dopo che
+// Drive ha restituito un `id`. `createDriveFile` lancia se la scrittura non è verificabile, quindi
+// un `id` in mano è una consegna avvenuta, non una speranza. Se il sync è spento, o se la rete non
+// va, non si cancella niente: gli archivi restano dove sono e la striscia della memoria piena parla.
+// L'indice locale resta: senza, il segnaposto in chat («chiave: X») indicherebbe una chiave sparita.
+const ARCHIVI_LOCALI_DA_TENERE = 3;
+const ARCHIVI_SU_DRIVE_KEY = "archivi-chat-su-drive";
+function chiaviArchivioChat() {
+  const chiavi = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(BACKUP_ARCHIVE_PREFIX)) chiavi.push(k);
+    }
+  } catch { return []; }
+  // Il nome porta la data (shell-chat-archive-AAAA-MM-GG-xxxx): l'ordine alfabetico è l'ordine
+  // cronologico. Decrescente = i più recenti davanti, cioè quelli che restano sul dispositivo.
+  return chiavi.sort().reverse();
+}
+function leggiArchiviSuDrive() { const v = loadKey(ARCHIVI_SU_DRIVE_KEY, []); return Array.isArray(v) ? v : []; }
+// `carica` è iniettata (createDriveFile nell'app, una finta nelle prove): questa funzione non deve
+// sapere niente di Drive, solo che qualcuno le restituisce un id verificato.
+async function sfollaArchiviSuDrive({ carica, tieniLocali = ARCHIVI_LOCALI_DA_TENERE, pushDebugLog = null } = {}) {
+  if (typeof carica !== "function") return { spostati: 0, falliti: 0 };
+  const daSpostare = chiaviArchivioChat().slice(tieniLocali);
+  let spostati = 0, falliti = 0;
+  for (const chiave of daSpostare) {
+    const contenuto = localStorage.getItem(chiave);
+    if (contenuto === null) continue;
+    try {
+      const file = await carica(`Resonance – archivio chat – ${chiave}.json`, contenuto, "application/json");
+      if (!file?.id) { falliti++; continue; } // nessun id = nessuna prova di consegna: non si tocca niente
+      const indice = [{ chiave, driveId: file.id, quando: new Date().toISOString(), byte: contenuto.length }, ...leggiArchiviSuDrive()];
+      // L'indice si scrive PRIMA della cancellazione: se la scrittura dell'indice fallisce (memoria
+      // piena) l'archivio resta locale, e un archivio in doppio è un problema che non esiste.
+      if (!saveKey(ARCHIVI_SU_DRIVE_KEY, indice)) { falliti++; continue; }
+      localStorage.removeItem(chiave);
+      spostati++;
+    } catch (e) {
+      falliti++;
+      pushDebugLog?.({ type: "archivio-chat-su-drive", chiave, error: e?.message || String(e) });
+    }
+  }
+  if (spostati || falliti) pushDebugLog?.({ type: "archivio-chat-su-drive", spostati, falliti, error: null });
+  return { spostati, falliti };
 }
 
 //──────────────────────────────────────────────────────────
@@ -2511,6 +2610,15 @@ const BACKUP_KEYS = [
   // parte affatto. Trovato dalla prova nello stesso minuto in cui l'ho scritto — e non da me.
   // Tutte le altre voci di questo elenco sono gia' stringhe, quindi resta anche coerente.
   "registro-atti", "trappole", "generazioni",
+  // 12/09/2026 — il totalizzatore di spesa. Stringa e non SPESA_KEY per lo stesso motivo di sopra
+  // (questo array e' valutato al caricamento, quella costante e' dichiarata piu' in basso).
+  // NON entra nel file di sync tra dispositivi, deliberatamente: due totalizzatori fusi si
+  // sommerebbero o si sovrascriverebbero, e in entrambi i casi il numero che governa un tetto
+  // diventerebbe sbagliato. Il consumo e' del dispositivo; il backup serve a non perderne la storia.
+  "spesa-mensile",
+  // 12/09/2026 — l'indice di dove sono finiti gli archivi della chat saliti su Drive. Senza, un
+  // ripristino su un telefono nuovo non saprebbe piu' che esistono. Vedi ARCHIVI_SU_DRIVE_KEY.
+  "archivi-chat-su-drive",
 ];
 // COSA RESTA FUORI, e perche' e' una domanda aperta e non una decisione presa: i PLASMIDI. Sono
 // lavoro vero e perderli su un cambio di telefono e' una perdita reale — ma `restoreFullBackup`
@@ -3042,6 +3150,81 @@ function extractUsageForLog(raw) {
 //   senza avvicinarsi al costo osservato del bug.
 const PROMPT_TOKEN_CEILING = 50000;
 const COST_CEILING_USD = 0.05;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// IL TOTALIZZATORE DI SPESA — 12/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// Il difetto che chiude, misurato il giorno prima: `spesaDelMeseCorrente` sommava le voci `ai-cost`
+// dentro `debug-log`, e `debug-log` tiene 50 voci. Un turno di chat ne produce fino a sei. La
+// finestra DICHIARATA era un mese, quella VERA era sei turni; il massimo che la funzione potesse
+// riportare era 0,14 $ contro una soglia di 5. Simulato su trenta giorni: al quindicesimo la spesa
+// reale supera il tetto e non succede niente. Un presidio di sicurezza che non poteva scattare.
+//
+// Questo non è un log: è un totalizzatore. Non ha tetto perché non cresce — una riga per mese, più
+// uno storico di dodici. Il conto non dipende più da quanto vive una voce di diagnostica.
+//
+// PERCHE' DUE TETTI, E PERCHE' UNO E' IN TOKEN.
+// Il commento sopra `extractUsageForLog` porta una richiesta esplicita del brief del 26/07: il costo
+// NON va mai stimato da un prezzario cablato, perché un costo inventato che si spaccia per reale è
+// peggio di nessun dato. Quella regola resta, alla lettera: `usd` qui accumula SOLO i valori che il
+// fornitore manda davvero (`usage.cost`), mai una stima.
+// Ma quella regola vieta di inventare un COSTO, non di avere un TETTO. I token sono un numero
+// misurato, non stimato: arrivano da `usage.prompt_tokens` in ogni risposta. Quindi il tetto è
+// doppio e scatta su quello che si sa: i dollari quando il fornitore li dichiara, i token sempre.
+// Il TETTO IN TOKEN è un BUDGET DICHIARATO, non la conversione di un prezzo in un costo: 40 Mtoken
+// è l'ordine di grandezza di 5 $ sul modello di produzione di oggi (Llama 3.3 70B). Cambiando
+// modello va rivisto — e il pannello Setup dice sempre quale dei due tetti sta lavorando, così non
+// si scopre a posteriori che il conto girava su una scala sbagliata.
+const TETTO_MENSILE_USD = 5;
+const TETTO_MENSILE_TOKEN = 40000000;
+const SPESA_KEY = "spesa-mensile";
+const SPESA_STORICO_MESI = 12;
+const meseISO = () => todayISO().slice(0, 7);
+const totaleVuoto = (mese) => ({ mese, usd: 0, chiamate: 0, chiamateConCosto: 0, tokenIn: 0, tokenOut: 0 });
+// Rollover al cambio di mese: il mese chiuso non si cancella, scivola nello storico (Legge 14 —
+// il totale di agosto è un dato, non uno scarto). Idempotente: leggere due volte non muove niente.
+function leggiSpesa() {
+  const mese = meseISO();
+  const v = loadKey(SPESA_KEY, null);
+  if (!v || typeof v !== "object") return { ...totaleVuoto(mese), storico: [] };
+  const storico = Array.isArray(v.storico) ? v.storico : [];
+  if (v.mese === mese) return { ...totaleVuoto(mese), ...v, storico };
+  const { storico: _ignora, ...chiuso } = v;
+  return { ...totaleVuoto(mese), storico: [chiuso, ...storico].slice(0, SPESA_STORICO_MESI) };
+}
+// Chiamata da logAiCost, cioè dall'UNICO punto che tutte le chiamate al modello attraversano.
+// `costUsd` null non è un errore: è il caso normale se l'account non ha l'usage accounting acceso.
+// In quel caso i token continuano a contare, ed è esattamente il motivo per cui il tetto è doppio.
+function registraSpesa(usage) {
+  const t = leggiSpesa();
+  const n = {
+    mese: t.mese,
+    usd: t.usd + (typeof usage?.costUsd === "number" ? usage.costUsd : 0),
+    chiamate: t.chiamate + 1,
+    chiamateConCosto: t.chiamateConCosto + (typeof usage?.costUsd === "number" ? 1 : 0),
+    tokenIn: t.tokenIn + (typeof usage?.tokensIn === "number" ? usage.tokensIn : 0),
+    tokenOut: t.tokenOut + (typeof usage?.tokensOut === "number" ? usage.tokensOut : 0),
+    storico: t.storico,
+  };
+  saveKey(SPESA_KEY, n);
+  return n;
+}
+function spesaDelMeseCorrente() { return leggiSpesa().usd; }
+function tokenDelMeseCorrente() { const t = leggiSpesa(); return t.tokenIn + t.tokenOut; }
+// Il fornitore manda il costo? Si sa solo dopo la prima chiamata del mese. Serve al pannello per
+// dire quale tetto sta davvero lavorando, invece di mostrare "0,00 $" e lasciar credere a zero spesa.
+function ilFornitoreMandaIlCosto() { const t = leggiSpesa(); return t.chiamate > 0 && t.chiamateConCosto > 0; }
+// null = si può procedere. Altrimenti dice QUALE tetto ha morso, con i numeri: il messaggio va nel
+// registro, e un tetto che scatta senza dire su quale scala ha scattato è il difetto di ieri.
+function motivoTettoRaggiunto() {
+  const t = leggiSpesa();
+  if (t.usd >= TETTO_MENSILE_USD) return { quale: "usd", valore: Number(t.usd.toFixed(4)), tetto: TETTO_MENSILE_USD };
+  const token = t.tokenIn + t.tokenOut;
+  if (token >= TETTO_MENSILE_TOKEN) return { quale: "token", valore: token, tetto: TETTO_MENSILE_TOKEN };
+  return null;
+}
+function operazioniAutomaticheConsentite() { return motivoTettoRaggiunto() === null; }
+
 // functionTag: SOLO i tag fissi previsti dal brief ("shell","balthasar","melchior","caspar",
 // "airAgent","webSearchSnapshot","seme_ricerca","seme_esecuzione") — scelta di scope esplicita del
 // brief (Shell, Magi/Balthasar/Melchior/Caspar, Seme, Agente AIR, ricerca web on-demand), non ogni
@@ -3055,6 +3238,8 @@ function logAiCost(pushDebugLog, functionTag, model, raw) {
     // Visibile anche fuori dal pannello Setup (console), non solo nel rolling debug log.
     console.warn(`[Resonance] Allarme costo/token AI su "${functionTag}"`, { promptTokenCeilingExceeded, costCeilingExceeded, ...usage });
   }
+  // Il totale va nel totalizzatore PRIMA del log: il log ha un tetto di 50 voci, il totale no.
+  registraSpesa(usage);
   pushDebugLog({ type: "ai-cost", functionTag, model, ...usage, promptTokenCeilingExceeded, costCeilingExceeded, error: null });
 }
 
@@ -4299,81 +4484,179 @@ Se nessuna delle 4 condizioni scatta, via libera. Rispondi SOLO "VIA LIBERA" opp
 //  · 22/08/2026, sera — "prossimi 7 giorni" non veniva capito e la card chiedeva un giorno preciso,
 //    cioe' un'informazione gia' data; e una card senza pulsante bloccava per venti minuti ogni
 //    altra richiesta di calendario, in silenzio.
-const APP_CAPABILITIES_CONTEXT = `Features attive dell'app che il Ghost può nominare in conversazione. Servono a distinguere "sto parlando di una funzionalità di Resonance" da "sto parlando della mia vita o del mio lavoro". Se il Ghost nomina una di queste parole, parla dell'app.
-- Percorsi: competenze o percorsi identitari tracciati per pilastro (BIO/AIR/VIDYA), con nodi, sessioni e quiz di verifica. Si aprono da un pilastro o dicendo "apri un percorso su X".
-- Semi (solo AIR): un'idea grezza non ancora sviluppata. Si crea buttandola lì in chat, oppure con un pulsante in AIR → Percorsi. Stati: "nuovo/in ricerca" (lo Shell la sta ricercando e traducendo in strategie), "in attesa di approvazione" (2-3 strategie pronte, il Ghost ne sceglie una), "in sviluppo" (esecuzione sorvegliata passo per passo), "bloccato" (un gate di sicurezza ha fermato un passo e serve la conferma del Ghost). Un passo di sviluppo sceglie un effettore reale da un registro — genera un'immagine, crea un prodotto nel catalogo Printify — e lo esegue davvero, producendo dati veri: identificativi di prodotto, file su Drive. Ogni Seme ha un pulsante "Avanza ora" e mostra il contatore round/tetto.
-- Agorà Magi: una perturbazione deliberata generata su richiesta, in tre stadi (Balthasar → Melchior → Caspar) più una sintesi. Si avvia dalla sua schermata, si sceglie pilastro e intensità.
-- Kernel: il documento di stato del sistema, versionato. Ogni salvataggio crea una versione nuova e conserva la precedente nello storico.
-- Simbiosi: la valutazione periodica di quanto l'app e il Ghost siano allineati. Vive nella sua schermata.
-- Percorso proposto da Simbiosi: quando valuta lo stato del sistema, Simbiosi può proporre — mai creare da sola — un percorso NUOVO (non uno già esistente), collegato esplicitamente a un percorso già attivo che nomina per titolo, come modo di continuare a crescere sui pilastri. Compare come card in Simbiosi con due pulsanti: "Sì, aprilo" lo crea davvero (stessa scomposizione in nodi di ogni altro percorso), "Non ora" lo scarta. Al massimo una proposta alla volta: finché quella in sospeso non viene decisa, Simbiosi non ne propone un'altra.
-- Lunghezza massima di una risposta: ogni risposta ha un tetto di spazio. Per la conversazione normale è basso; quando il Ghost chiede un contenuto strutturato lungo (un piano, un menu, un programma, un elenco di più giorni) il programma lo riconosce dalla richiesta e alza il tetto da solo, senza che serva chiedere. Se il tetto viene raggiunto lo stesso, la risposta si interrompe dov'era e compare la card "questa risposta è tagliata a metà" con il pulsante "Continua da dove ti sei fermato": ciò che è già scritto resta valido, manca solo il seguito.
-- Vincoli dichiarati: i vincoli che il Ghost ha dichiarato in Onboarding, uno per riga, rieditabili. Quello sull'identità professionale è un hard-stop e vale su tutto ciò che riguarda AIR.
-- Vincoli alimentari dichiarati parlando: quando il Ghost dice una regola alimentare in chat («escludi il pesce che non sia crostacei», «le colazioni le voglio salate», «1600 kcal»), compare una card «Questo lo tengo come regola fissa?» con due pulsanti. Tenuto, il vincolo entra nell'elenco dei Vincoli dichiarati di BIO e da lì nel prompt di ogni turno, per sempre; lasciato, vale solo per la conversazione in corso. Serve perché la conversazione che lo Shell rivede è tagliata agli ultimi venti messaggi: una regola detta e non tenuta sparisce dopo una decina di scambi.
-- Piano alimentare montato dal programma: quando il Ghost chiede un piano/menu alimentare, il modello NON scrive il piano. Inventa solo un repertorio di piatti con grammature e calorie (una chiamata corta), e poi è il programma a montare la griglia dei giorni: ruota i piatti in modo che nessuno ricompaia prima di aver esaurito la sua categoria, mette i pranzi da asporto nei giorni chiesti, sceglie la cena che avvicina il totale al bersaglio calorico del giorno, fa le somme e dichiara la media VERA con lo scarto rispetto a quella chiesta. Serve perché una griglia di 14 giorni per 5 pasti è un problema combinatorio, non un testo: chiedendola al modello come testo continuo collassava a metà (osservato il 28-29/08) e comunque non poteva garantire né la media né l'assenza di ripetizioni. La variazione calorica fra i giorni è voluta, non un errore.
-- Creare un percorso parlando: "genera un percorso in vidya su X", "creiamone uno nuovo su Y". Compare una card che mostra il TITOLO che nascerà — non la frase detta — e il percorso nasce solo quando il Ghost tocca il pulsante. Poi diventa da solo quello aperto, così quello che si genera subito dopo si può salvare lì dentro. Tre rifiuti espliciti invece di creare qualcosa di sbagliato: se il pilastro non è uno dei tre, se il titolo è un pezzo di frase invece del nome di una cosa, e se un percorso con quel titolo esiste già (in quel caso dice di dire "riprendi X"). Distinta da "aprire un percorso", che sposta il fuoco su uno che esiste già e non crea niente.
-- Salvare un testo con un gesto, senza dire niente: ogni risposta dello Shell abbastanza lunga ha accanto a 🔊 un pulsante 💾. Toccarlo apre un pannello con il titolo già proposto dal testo, il pilastro e il percorso di destinazione (preselezionato su quello aperto, se c'è), e un pulsante che salva. Non passa dal modello, non richiede una frase particolare, non richiede che un percorso sia aperto: è la strada che funziona sempre. Il testo salvato è quello INTERO e finisce sotto il nodo giusto se il titolo corrisponde a uno.
-- Salvare nel percorso quello che lo Shell ha appena prodotto: "salvalo nel percorso", "tienilo", "mettilo nel percorso attivo". Il testo NON viene riscritto dal modello: lo copia il programma dalla conversazione, per intero, e finisce nei documenti del percorso aperto. La card mostra prima quanto è lungo e come comincia, così si vede se sta per salvare il messaggio giusto. Serve perché la conversazione ha due limiti: lo Shell rivede solo gli ultimi sei messaggi, e sopra i quaranta messaggi i più vecchi escono dalla vista e finiscono in un archivio locale. Un contenuto lungo che resta solo in chat, fra un mese, non è più raggiungibile né dal Ghost né dallo Shell; dentro il percorso sì.
-- Rileggere un documento del percorso: "rileggimi l'Atto I", "riprendi i testi che abbiamo salvato", "mostrami quel pezzo". Il programma va a prendere il testo COMPLETO dal percorso aperto e lo mette davanti allo Shell PRIMA che risponda, così ci lavora sopra davvero invece di ricordarlo. Non chiede conferma: leggere non cambia niente. Se più di un documento corrisponde chiede quale, e se non lo trova lo dichiara invece di rispondere a memoria. Un documento molto lungo viene tagliato e la cosa viene detta.
-- Il percorso aperto viaggia con il suo fascicolo: quando c'è un percorso aperto (il fuoco), lo Shell riceve a ogni turno i suoi nodi con lo stato, le competenze, la memoria del percorso e l'indice dei documenti. È per questo che "continuiamo con l'Atto III" funziona senza dover rispiegare cos'è stato fatto. Il fuoco scade da solo dopo otto ore.
-- Voci gemelle nel log: quando lo Shell scrive da solo una voce in un pilastro e quella voce dice sostanzialmente la stessa cosa di un'altra dello STESSO GIORNO, non ne crea una seconda: aggiorna quella che c'è già, e il testo precedente scende nello storico della voce invece di essere perso. Nel log la voce mostra "N versioni di questa voce" e si tocca per rileggerle tutte. Sotto il messaggio in chat il segno dice "→ VIDYA · 3ª versione" invece di "→ VIDYA", così è visibile che ha aggiornato e non aggiunto. Le voci che contengono una misura (peso, sonno) non vengono mai fuse: due pesate nello stesso giorno sono due dati, non un doppione. Le voci scritte a mano dal Ghost non passano da qui e non vengono mai toccate.
-- Fonti di Balthasar, controllate dal programma: quando l'Agorà Magi gira su OpenRouter, Balthasar ha la ricerca web. Sotto la sua risposta compare una riga che dice se la ricerca è stata eseguita DAVVERO — letta dalle citazioni che la risposta porta con sé, non dichiarata dal modello — quante citazioni e da quali domini. Se Balthasar nomina un servizio o un sito che non trova riscontro in nessun dominio realmente citato, compare un avviso di possibile fonte inventata: non blocca niente, è un sospetto da verificare. Esisteva già per la ricerca dei Semi dal 26/07/2026 e da oggi vale anche per l'Agorà. Le sessioni Magi precedenti a oggi non hanno questa riga: non è un errore, quel dato allora non veniva raccolto.
-- Cosa vede Balthasar della memoria: la nota corrente di tutti e tre i pilastri PIÙ gli ultimi quattro frammenti di sedimento per pilastro, datati e tagliati a 220 caratteri. Prima vedeva solo le note correnti, quindi non aveva nessuna storia su cui appoggiarsi mentre il suo compito è proprio spingere dove il sistema non è ancora andato.
-- Eliminare un percorso dalla lista: in ogni pilastro, sotto Percorsi, ogni percorso ha una ✕ di fianco. Non elimina subito: chiede una volta e dice cosa sta per sparire, contato (quanti nodi, quante sessioni, quanti documenti col loro testo, se ci sono competenze e memoria del percorso). Serve perché da quando i documenti contengono il testo intero, un percorso vale molto più di una voce di log. Resta anche il pulsante "Elimina percorso" dentro il percorso stesso.
-- L'inventario dice anche cosa contiene un percorso: accanto al nome di ogni percorso lo Shell riceve quanti nodi ha, quanti sono consolidati e quanti documenti ci sono dentro — conteggi veri, letti dai dati in quel momento. Se un percorso ha "NESSUN documento salvato", allora non contiene niente di quello che è stato prodotto parlando, e lo Shell deve dirlo invece di supporre il contrario. Un percorso può avere il nome giusto ed essere vuoto: è il caso normale appena viene creato, perché per farci entrare qualcosa serve toccare il pulsante di salvataggio.
-- Nodi del percorso: ogni nodo si tocca e si apre, mostrando il materiale che gli è stato legato — i documenti col loro testo intero e le sessioni che lo nominano. Un nodo senza niente lo dichiara invece di aprirsi vuoto. La verifica (il quiz) è diventata un pulsante DENTRO il nodo aperto: prima era l'effetto obbligato del tocco, ora è una scelta.
-- Sotto quale nodo finisce quello che si salva: quando il Ghost dice "salvalo nel percorso", il programma confronta il titolo del materiale con le etichette dei nodi e lo lega a quello giusto — con lo spareggio sui numeri, così "Atto I" non finisce sotto "Atto II". Se nessun nodo corrisponde o se due corrispondono allo stesso modo, il documento resta del percorso senza nodo: meglio senza che sotto quello sbagliato.
-- Salvare qualcosa detto PRIMA dell'ultimo messaggio: il titolo che si dà al materiale fa anche da riferimento. "Salva i testi dell'Atto I nel percorso" fa cercare al programma, dentro la conversazione, il messaggio che parla dell'Atto I — non prende ciecamente il precedente. Se il riferimento non corrisponde a niente vale il più recente, e la card mostra sempre come comincia ciò che sta per essere salvato.
-- Quando manca il percorso aperto: se il Ghost chiede a voce di salvare qualcosa ma non c'è nessun percorso nel fuoco, l'azione non si rifiuta più — si apre lo stesso pannello del pulsante 💾, con il testo già trovato, e il percorso lo si sceglie lì. Serve perché il fuoco non c'è in due casi comunissimi: un percorso creato dal pannello del pilastro invece che dalla chat, e le otto ore di scadenza passate.
-- Documenti del percorso: nel percorso, sotto "Documenti del percorso", ognuno si tocca e si riapre per intero. Quando il Ghost riapre un percorso, lo Shell riceve l'indice di questo materiale — nome, data, lunghezza, come comincia — non i testi interi: sa che esistono e riparte da lì invece di ricominciare da capo. I documenti creati prima del 31/08/2026 hanno solo il nome, non il testo.
-- Andamento misurato (BIO): il programma calcola da solo le serie di peso e sonno dalle voci del log BIO — ultima misura, quanti giorni ha, variazione totale, variazione per settimana, quante misure — e le passa allo Shell e a Simbiosi già calcolate. Compaiono anche in BIO → Log, in un riquadro "Andamento misurato", nella stessa identica forma in cui le riceve il modello. Regola: se una tendenza non è in quel riquadro, il modello non l'ha ricevuta e non deve parlarne. Una misura sola non fa tendenza e viene dichiarata tale; una serie la cui ultima misura ha più di 7 giorni viene marcata "stantia", più di 30 "vecchia", e va detto invece di parlarne come se fosse di oggi. Non serve fare niente per attivarlo: legge i campi Peso e Sonno che le voci BIO hanno già, comprese quelle scritte dallo Shell durante una conversazione.
-- Controllo del piano alimentare: quando lo Shell genera un piano con più giorni, il programma lo rilegge e confronta con i vincoli dichiarati. Segnala in un riquadro, senza toccare il piano: alimenti esclusi che compaiono lo stesso (sa che il salmone è un pesce), giorni dichiarati che non ci sono, giorni identici fra loro, la stessa fonte proteica a pranzo e a cena, dosi assenti quando erano state chieste, colazioni dolci quando erano state chieste salate. Non giudica il piano: elenca fatti verificabili, con il giorno preciso.
-- Il vincolo AIR chiede, non decide: quando una lettura destinata ad AIR sembra legare l'identità professionale del Ghost al pilastro, il programma non la scrive e non la butta. Compare una card che mostra il dato, dice quale dei due rilevatori ha segnalato — il codice, deterministico sui termini dichiarati; il modello, come seconda opinione — e perché. Due pulsanti: "Va bene, procedi" scrive il dato, "No, lascialo fuori" lo lascia fuori. La risposta resta scritta nel messaggio, quindi la domanda non ricompare domani.
-- Il documento si apre da solo se la frase lo nomina: quando c'è un percorso aperto e il Ghost dice qualcosa che nomina un suo documento ("riprendiamo l'Atto III", "quel pezzo sul Divenire"), il programma trova il documento confrontando le parole della frase con i titoli e lo mette davanti allo Shell PER INTERO prima che risponda — senza aspettare che l'apertura venga riconosciuta come un comando. Se nessun titolo corrisponde davvero non allega niente: una domanda generica non trascina dentro il testo di un documento. È diverso da "rileggimi l'Atto I", che è una richiesta esplicita: questo è il caso in cui il Ghost non chiede di riaprirlo e semplicemente continua a lavorarci.
-- Quando lo Shell dice che una cosa NON esiste: dal 10/09/2026 il programma controlla anche questo. Prima controllava solo il verso opposto — il modello che dichiara FATTA una cosa non avvenuta — e un "non esiste" falso passava indisturbato. È più pericoloso: un "l'ho messo in calendario" sbagliato si scopre aprendo il calendario, un "non esiste" sbagliato fa credere di aver perso del lavoro e non invita nessuno a controllare. Ora, se il modello nega che ci sia del materiale MENTRE il programma ha in mano l'elenco dei documenti del percorso aperto, sotto la risposta compare la smentita con i titoli veri. La frase del modello non viene cancellata: resta, con accanto il fatto. Se non c'è nessun percorso aperto il controllo tace, perché senza elenco non avrebbe niente con cui smentire.
-- Cercare fra i documenti riconosce i numeri: "atto IV", "capitolo 9". Fino al 09/09/2026 le parole di due lettere o meno venivano scartate prima ancora di cercare, quindi "IV" e "V" sparivano dalla domanda e la ricerca non sapeva distinguere l'Atto IV dall'Atto I. In più, una coppia di parole della domanda ritrovata NEL TITOLO ("atto iv") pesa più di qualunque parola sparsa nel testo, e a pari punteggio vince il documento più recente invece del primo che era stato salvato. Difetto trovato dal Ghost il 09/09: aveva chiesto i temi dell'Atto IV e dell'Atto V e si è sentito rispondere che non esistevano, mentre erano nel percorso da otto giorni.
-- Quando la ricerca taglia, lo dice: se i documenti pertinenti sono più di quelli che entrano nella risposta, la riga "ho guardato" dichiara quanti ne ha esaminati, quanti ne mostra e quanti NON sono passati — con la frase esplicita che un'assenza lì non prova che il documento non esista. Serve a distinguere "non c'è" da "non me l'hanno dato": è la confusione fra le due che ha prodotto il difetto del 09/09.
-- Interrogare la memoria cerca anche dentro i percorsi: "cosa ci eravamo detti su X" guarda nelle note correnti dei pilastri, nei frammenti di sedimento E nei documenti dei percorsi, nelle competenze accumulate e nella memoria specifica di ogni percorso. Ogni risultato dice da dove viene (quale documento, di quale percorso). Prima i documenti non venivano guardati affatto, quindi il materiale più lungo prodotto dal sistema era l'unico che la ricerca non trovava.
-- Forma delle risposte dell'Agorà Magi: ogni stadio risponde dentro un campo strutturato, in righe brevissime che cominciano con "· ", una idea per riga, con un tetto di parole dichiarato per ruolo (Balthasar 60, Melchior 60, Caspar 50, Sintesi 70). Serve a due cose insieme: risposte dense invece che prolisse, e soprattutto tenere fuori dallo schermo il ragionamento interno del modello, che il 01/09/2026 finiva stampato per intero al posto della risposta (conteggi di parole, "devo", versioni intermedie). Se il campo strutturato non arriva leggibile, il programma pota le righe di deliberazione e consegna il resto invece di perdere la chiamata.
-- La voce non legge i marcatori: dal 10/09/2026 il testo che va alla sintesi viene spogliato prima di essere pronunciato — grassetti, corsivi, cancelletti di titolo, trattini di elenco, righelli, emoji, e l'indirizzo dei link (si legge il testo del link, non l'URL). Vale per TUTTI i punti da cui parte il 🔊 — i Magi, la chat, la lettura proattiva della Simbiosi — perché la spogliatura sta dentro la funzione che parla, non nei chiamanti. Il testo sullo schermo NON cambia: resta formattato com'è sempre stato. Le TABELLE non vengono spianate ma parlate: ogni riga diventa una frase con l'intestazione davanti al valore ("Pasto: Colazione, Piatto: uova e pane, kcal: 420"), perché ad alta voce senza l'intestazione un numero non si sa cosa sia. Serve perché il Ghost ascolta le risposte in macchina.
-- Banco microfono in auto: c'è una pagina di prova separata dall'app, all'indirizzo /prova-voce.html, che misura quale microfono usa il browser quando il telefono è collegato all'auto, quanto capisce il riconoscimento vocale in tre condizioni, e da dove esce l'audio. Non è una funzione dell'app e non tocca nessun dato: è un banco di misura. Se il Ghost la nomina, parla di quello.
-- Voce nell'Agorà Magi: ogni stadio ha un 🔊 accanto al nome, come i messaggi dello Shell. Legge quel solo stadio; ritoccarlo ferma la lettura. Vale anche per le sessioni già registrate.
-- Trappole: ogni volta che il Ghost chiede di rifare qualcosa che lo Shell aveva appena prodotto («non mi piace la lettera che hai fatto», «rifallo», «troppo prolisso»), il programma se lo segna da solo: la frase, l'inizio del testo rifatto, il percorso aperto e dopo quanti scambi è successo. Costa zero — nessuna chiamata al modello, solo confronto di parole. Non cambia niente nel turno in corso e non finisce (ancora) in nessun prompt: è materia prima, e serve a capire con dei dati se un PROCESSO lungo — un posizionamento lavorativo, un percorso di studio — abbia dentro dei vicoli ciechi ricorrenti che varrebbe la pena di non far ripercorrere a nessun altro. Si vedono in Setup, nel riquadro "Trappole", e si tolgono una per una se il rilevamento è sbagliato. Il rilevatore è deliberatamente stretto: preferisce mancare una trappola che segnarne una falsa.
-- Plasmidi (strumenti acquisiti): funzioni pure che l'app ha imparato DOPO essere stata scritta, e che si trasferiscono da un'app all'altra come un plasmide fra due batteri. Ognuna gira in un recinto senza rete, senza i dati del Ghost, senza interfaccia e con un tetto di tempo — misurato, non promesso. Ognuna porta con sé le proprie PROVE: quando un plasmide arriva da un'altra app le prove rigirano su QUESTO telefono prima che venga usato, e se non passano non entra. Arriva sempre SPENTO: lo accende il Ghost. Vivono in Setup, nel riquadro "Plasmidi", dove si legge il codice per intero, si riprovano le prove quando si vuole, si spengono e si tolgono. Un plasmide non porta MAI dati personali: il programma lo verifica prima di esportarlo, e blocca l'esportazione se trova indirizzi, numeri, cifre lunghe o i termini dell'identità professionale dichiarata. Oggi c'è un solo punto dell'app dove uno strumento acquisito può essere chiamato ("riconoscere una risposta guasta del modello"): l'app può crescere organi nuovi solo dove esiste già un attacco, e gli attacchi si scrivono a mano. Se il magazzino è vuoto — com'è appena installato — l'app si comporta e costa esattamente come prima. Un plasmide non entra MAI nel magazzino se contiene dati personali: il controllo sta sulla SCRITTURA, non solo sull'esportazione, perché da quando un plasmide può nascere sul dispositivo un dato potrebbe entrare in memoria prima che un umano lo veda.
-- L'app che si scrive uno strumento da sola (il generatore): nel riquadro "Plasmidi" c'è un pulsante "Prova a scrivertene uno". Compare con un numero: quanti guasti VERI ha a disposizione per partire. Quei guasti vengono dalle Trappole — ma solo quelle in cui il Ghost ha detto che il testo era ROTTO ("non si capisce", "illeggibile", "caratteri strani"), non quelle in cui era solo brutto o troppo lungo: su un giudizio di merito un criterio automatico non ha niente da dire. Senza nemmeno un caso vero il pulsante è spento, e lo dichiara: senza un guasto reale un criterio non si scrive, si indovina.
-  Come funziona, e perché è fatto così: il programma monta un CAPITOLATO — l'elenco dei requisiti — e lo usa DUE VOLTE, per la stessa identica cosa: come istruzioni date al modello, e come giudizio sul risultato. Sono lo stesso oggetto, quindi non possono divergere. Dentro il capitolato c'è un BANCO TRATTENUTO: dei testi SANI su cui lo strumento non deve accendersi e che il modello non vede mai. Il requisito gli viene detto («non devi scattare su una risposta normale»), le prove no. Se sbaglia, gli viene detto CHE FORMA aveva il testo su cui ha sbagliato ("una tabella, 180 caratteri") ma non il testo: altrimenti in tre giri si porterebbe a casa il banco.
-  Cosa succede quando non ce la fa: il motivo torna al modello e riprova, al massimo tre volte — ogni giro è una chiamata pagata. Se non ci arriva, la RINUNCIA resta scritta, con cosa è mancato. I tentativi non riusciti si vedono sotto, nel riquadro "Cosa ha provato a scriversi", e non si cancellano da soli: dicono a cosa il generatore non arriva ancora, ed è l'unico posto in cui si legge. Uno strumento ammesso entra SPENTO, esattamente come uno arrivato da un'altra app: l'ultimo passo è un gesto del Ghost, dopo aver letto il codice.
-- Rinunce di parametro: l'app aggiunge alla richiesta al modello alcuni parametri facoltativi (spegnere il ragionamento interno per non pagarlo, la temperatura, i freni anti-ripetizione, la ricerca web). Non tutti i modelli li accettano. Se il fornitore ne rifiuta uno, il programma toglie QUEL parametro e rimanda la richiesta invece di lasciare il Ghost senza risposta, e da lì in poi a quel modello non lo manda più — la scoperta si paga una volta sola. Non ripiega su errori che non parlano di parametri (credito esaurito, modello inesistente): quelli si dichiarano. In Setup compare il riquadro "A cosa ho rinunciato per farti arrivare una risposta", con cosa è stato tolto e cosa costa. È importante: se è caduta la ricerca web, la risposta è arrivata SENZA cercare, e va detto invece di lasciar credere il contrario.
-- L'anello (accettore d'azione): quando il sistema compie un atto deliberato — una perturbazione Magi mirata a un pilastro, o un percorso proposto da Simbiosi e aperto davvero — dichiara SUBITO un bersaglio osservabile ("mi aspetto che entro 21 giorni un nodo di quel pilastro si muova dallo stato in cui è nato") e congela la misura di partenza. Dopo, è il programma a contare nei dati dell'app se quel movimento c'è stato: due conteggi e una sottrazione, nessun modello, nessun giudizio. Il risultato compare in Simbiosi nel riquadro "L'anello" ed entra nella valutazione successiva. Cosa NON è, e va detto se il Ghost lo chiede: non è un punteggio sulle previsioni del sistema, e non è un dato sul Ghost. Un atto che non muove niente vuol dire che la proposta era troppo prudente o troppo ovvia — mai che il Ghost non ha fatto la sua parte. Il gradiente è voluto in questo verso: una proposta cauta non smuove nulla e quindi qui risulta peggio di una audace.
-- Catena Printify → Etsy: uno dei modi in cui un Seme AIR può produrre qualcosa nel mondo. Va dal disegno all'anteprima del prodotto.
-- Postura e respiro: gli esercizi brevi che l'app propone, con il loro ritorno aptico.
-- Piano di controllo conversazionale: l'impianto per cui il Ghost chiede una cosa a parole e il programma la esegue. Il modello sceglie l'azione, il programma la compie. Ha tre parti: il fuoco conversazionale, l'inventario, il registro delle azioni.
-- Fuoco conversazionale: il percorso o il Seme su cui si sta lavorando adesso. Compare in una barra sopra la chat, sopravvive a ricarica e riapertura, e scade da solo dopo otto ore. Si chiude con un gesto sulla barra, oppure a parole (vedi chiudi_percorso qui sotto).
-- Inventario: l'elenco di percorsi e Semi che lo Shell riceve a ogni turno, così sa cosa esiste davvero senza doverlo indovinare.
-- Registro delle azioni: ogni proposta, conferma, esecuzione ed esito, con l'orario. Si legge in Setup. È il posto dove si scopre dopo perché una cosa è andata storta.
-- Azioni parlando: dodici azioni che il Ghost può far partire dicendole. Sei interne (aprire o riprendere un percorso, chiudere il percorso aperto, scrivere su un pilastro, creare un Seme, interrogare la memoria, avanzare un percorso) e sei che toccano il mondo fuori (creare un evento, leggere il calendario, trovare quando è un appuntamento preciso, cancellare un evento, spostare un evento a un altro giorno o ora, inviare una mail). Le sei esterne nascono spente e si accendono in Setup, una per una; le sei interne nascono accese.
-- Aprire, chiudere e riprendere un percorso, tutto a parole: "apri X" o "riprendi X" porta il fuoco su un percorso o un Seme che esiste già (non ne crea uno nuovo); "chiudi questo", "chiudiamo qui", "basta per oggi" chiude il fuoco senza cancellare né archiviare niente — il percorso resta intatto con tutta la sua storia, smette solo di essere quello su cui si sta lavorando adesso; "e adesso?", "andiamo avanti" chiede il prossimo passo su quello aperto. Ogni comando mostra una card di conferma prima di eseguire, con l'etichetta di ciò che è davvero aperto in quel momento.
-- Interruttori: gli accendi-e-spegni delle capacità che toccano il mondo fuori, in Setup. Lo Shell riceve a ogni turno l'elenco vero di cosa è acceso e cosa è spento adesso, quindi non deve indovinarlo. Se dichiara spenta una capacità che è accesa, il programma toglie la frase e avvisa il Ghost.
-- Leggere il calendario: lo Shell va a leggere davvero gli impegni dal Calendar del Ghost. Non chiede conferma — leggere non cambia niente — e l'unico gate è l'interruttore. Il programma sceglie l'azione, legge, e solo dopo genera la risposta, così parla di impegni che ha in mano. Se la lettura fallisce lo dichiara con il motivo tecnico invece di indovinare.
-- Trovare quando è un appuntamento preciso: diversa da "leggere il calendario" (quella legge un periodo intero). Questa cerca UN evento per nome — stessa ricerca già usata per cancellare e spostare — e dice solo quando è, senza offrire di toccarlo. Se ne trova più d'uno chiede di essere più preciso; se non lo trova lo dice. Anche qui la data la scrive il programma dopo averla letta, non il modello a memoria.
-- L'elenco degli impegni lo compone il programma: quando c'è stata una lettura, l'elenco che compare nel messaggio lo scrive il codice dagli eventi letti, non lo Shell. Allo Shell resta la cornice: introdurre, collegare, commentare. Un evento che non è nella lettura non può comparire; uno che c'è non può mancare.
-- Contenuti di calendario senza lettura: se in un turno non c'è stata una lettura, il programma toglie dalla risposta qualunque appuntamento, orario o affermazione del tipo "non hai altri impegni", e un riquadro elenca cosa ha tolto. Se una lettura c'è stata, toglie solo ciò che non proviene da quella lettura.
-- Periodi in parole: "prossimi 7 giorni", "nei prossimi tre giorni", "questo weekend", "questa settimana" vengono risolti a partire da oggi, e il numero di giorni detto vale.
-- Creare un evento sul calendario: si conferma con un pulsante prima che accada. La data la calcola il programma dalle parole del Ghost, e la mostra per esteso.
-- L'ora si ricava due volte: il programma la calcola dal testo, il modello la riporta per conto suo. Se coincidono l'evento si può creare; se divergono la card non ha nessun pulsante e non si scrive niente. Le forme parlate sono capite: "16 e 30", "le quattro e mezza del pomeriggio", "le otto meno un quarto", "a mezzogiorno e mezzo".
-- Verifica dopo la scrittura: creato un evento, il sistema lo rilegge e confronta ciò che ha mandato con ciò che trova. Il confronto è fra istanti, non fra stringhe. Tre esiti: verificata, non-combacia (e viene detto cosa: atteso X, trovato Y), non-verificabile.
-- Cancellare un evento: il Ghost dice quale a parole, il programma lo cerca sul calendario e mostra su una card l'evento trovato con giorno, ora e titolo letti da Google, più un pulsante. Se ne trova più d'uno chiede quale; se non ne trova nessuno lo dice. Dopo, rilegge per verificare che sia sparito. Cancellare non si disfa, quindi il pulsante serve sempre.
-- Spostare un evento a un altro giorno o ora: il Ghost dice quale evento e a quando a parole, il programma lo cerca sul calendario (stessa ricerca della cancellazione) e mostra su una card il bersaglio trovato con giorno/ora attuali e il nuovo giorno/ora proposto, letti da Google, più un pulsante. Il nuovo orario si ricava due volte come nella creazione — dal testo e dal modello — e se divergono la card non ha pulsante. Se trova più eventi che corrispondono chiede quale; se non ne trova nessuno lo dice. Dopo, rilegge per verificare che il nuovo orario sia quello confermato. MODIFICARE il titolo o la descrizione di un evento resta invece impossibile: quello si fa cancellando il vecchio e creandone uno nuovo.
-- Inviare una mail: si conferma dopo aver visto il testo integrale e l'indirizzo per esteso. Una mail inviata non torna indietro. Un invio senza risposta resta "incerto" e non viene mai rispedito da solo.
-- Proposte senza pulsante: una card che non ha un pulsante che esegue non conta come proposta in attesa, quindi non impedisce alle richieste successive di produrre la loro card. Se il Ghost risponde a una card scrivendo in chat invece di premere, il programma glielo dice indicando la card: una parola scritta non fa partire niente, mai.
-- Il registro delle azioni dichiara per ogni azione che effetto ha (lettura o scrittura), se richiede un gate e se è reversibile, e il programma legge davvero quei tre campi. Una scrittura chiede sempre conferma; una lettura può non chiederla.
-- Riquadro tecnico grezzo: sotto ogni card che tocca Google compare il codice HTTP, l'identificativo restituito e l'eventuale errore. Lo stesso in Setup. Serve al Ghost per mandare un fatto invece di un'impressione.
-- Forma delle risposte: la lunghezza e il registro vengono dal profilo cognitivo del Ghost, non da una regola generale del sistema.
-- Memoria procedurale: la nota che ogni pilastro accumula sugli scambi, riscritta per intero a ogni aggiornamento e non aggiunta in coda. Ha un sedimento storico e delle parole chiave per ritrovarla.
-- Tetto di spesa (Setup): raggiunti 5 dollari nel mese si fermano solo le cose che partono da sole — Semi che avanzano, Simbiosi. La chat resta utilizzabile.
-- Genera documento da questa conversazione: un pulsante sopra la chat trasforma quanto concordato parlando in un file .docx vero. Il programma rilegge la conversazione, ne estrae la versione FINALE (non le versioni intermedie scartate) e i vincoli dichiarati, li mostra in anteprima, e poi lo salva su Drive o lo scarica. QUALE conversazione: il programma si ferma al primo stacco di più di otto ore fra due messaggi — prima di quello stacco è un'altra conversazione, non questa — e dichiara nel pannello quanti messaggi userà e da quando. C'è anche un campo facoltativo «di cosa deve parlare»: se lo si riempie il documento riguarda solo quello; se è vuoto vale il percorso aperto, e se non c'è nemmeno quello si formalizza l'argomento dell'ultimo scambio, mai due discorsi mescolati. Agganciarlo a un percorso è FACOLTATIVO: serve solo per ritrovarlo dentro l'app: se il Ghost non sceglie nessun percorso il file viene comunque prodotto e consegnato, e il programma glielo dice. Quando il contenuto è una griglia — giorni per pasti, settimane per esercizi — nel documento diventa una TABELLA vera, con righe e colonne, non i trattini e le barrette che la simulano in chat.
-- Ripresa della richiesta interrotta: se il Ghost esce dall'app mentre una risposta sta arrivando, il telefono sospende la scheda e la richiesta muore (l'app non ha un server che la tenga in mano al posto suo). La richiesta però viene messa da parte prima di partire, e quando il Ghost torna sull'app riparte da sola, senza doverla riscrivere — solo se è morta per un guasto di RETE e solo entro quindici minuti. NON significa "la trovi già pronta al ritorno": per quello servirebbe un server che tenga la richiesta, non ancora costruito.
-- Backup e ripristino (Setup): scarica in un unico file tutto lo stato locale e sa rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo previa conferma.
-Capacità NON disponibili in questa app: notifiche push; promemoria o azioni che si attivano da soli senza che il Ghost apra l'app; invio automatico di messaggi, mail o post senza la sua conferma esplicita su quello specifico invio; MODIFICARE il titolo o la descrizione di un evento del calendario (spostarlo a un altro giorno o ora invece si può); pubblicazione automatica su social o piattaforme esterne; esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost.`;
+// ══════════════════════════════════════════════════════════════════════════════
+// LE CAPACITA' DELL'APP: L'INDICE SEMPRE, LA SCHEDA QUANDO SERVE (12/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Misurato il giorno prima: questo blocco pesava 34.446 caratteri, ≈9.842 token, il 79% dei 12.384
+// token FISSI che partivano a ogni turno — e il 59% dell'ingresso totale di un turno magro. Ogni
+// turno, per sempre, identico. Sul modello di produzione di oggi sono 1,42 $ al mese: non è
+// un'emergenza di cassa e non la spaccio per tale. Sono due altre cose: 12.384 token di finestra di
+// contesto occupati prima che il Ghost abbia detto una parola, e un conto che si moltiplica per
+// venticinque il giorno in cui il modello cambia, senza che nessuno tocchi una riga.
+//
+// IL BLOCCO ESISTE PER UN MOTIVO SOLO: distinguere «il Ghost nomina una funzionalità di Resonance»
+// da «il Ghost parla della sua vita o del suo lavoro» (difetto del 26/07/2026: scrisse "sto testando
+// i Semi nel pilastro AIR" e lo Shell rispose della vecchia strategia contenuti).
+// Per RICONOSCERE basta il NOME. La scheda serve solo quando il nome è stato davvero nominato.
+// Quindi: l'indice dei nomi sempre; il nucleo — le capacità che lo Shell deve poter PROPORRE senza
+// essere interrogato — sempre; le altre schede solo se il turno le chiama.
+// Misura della sostituzione: da 9.842 token a ~2.300-2.800, cioè fra il 72% e il 77% in meno.
+//
+// IL TESTO DELLE SCHEDE NON E' STATO RISCRITTO DI UN CARATTERE: è lo stesso di prima, spostato dal
+// dentro di un template literal al dentro di un array. Cambia il contenitore, non il contenuto —
+// altrimenti un'ottimizzazione si porterebbe via del sapere in silenzio, che è il difetto che
+// l'ottimizzazione dovrebbe evitare.
+//
+// E QUI STA L'ACCETTORE, non a valle: le prove in tests/capacita.test.mjs verificano le due
+// direzioni insieme. RICHIAMO — ogni scheda si fa trovare dal PROPRIO nome, altrimenti il richiamo
+// perde pezzi in silenzio. PRECISIONE — una frase sulla vita reale ("oggi ho dormito male e mi fa
+// male la schiena") non deve tirare dentro niente, altrimenti il risparmio è finto. Una sola delle
+// due direzioni non basta: un richiamo che prende tutto passerebbe la prima e fallirebbe la seconda.
+const CAPACITA_INTESTAZIONE = `Features attive dell'app che il Ghost può nominare in conversazione. Servono a distinguere "sto parlando di una funzionalità di Resonance" da "sto parlando della mia vita o del mio lavoro". Se il Ghost nomina una di queste parole, parla dell'app.`;
+const CAPACITA_CHIUSURA = `Capacità NON disponibili in questa app: notifiche push; promemoria o azioni che si attivano da soli senza che il Ghost apra l'app; invio automatico di messaggi, mail o post senza la sua conferma esplicita su quello specifico invio; MODIFICARE il titolo o la descrizione di un evento del calendario (spostarlo a un altro giorno o ora invece si può); pubblicazione automatica su social o piattaforme esterne; esecuzione di un passo di un Seme oltre il gate di sicurezza senza sblocco manuale del Ghost.`;
+const CAPACITA = [
+  { n: `Percorsi`, nucleo: true, s: `Percorsi: competenze o percorsi identitari tracciati per pilastro (BIO/AIR/VIDYA), con nodi, sessioni e quiz di verifica. Si aprono da un pilastro o dicendo "apri un percorso su X".` },
+  { n: `Semi (solo AIR)`, nucleo: true, k: ["seme", "semi"], s: `Semi (solo AIR): un'idea grezza non ancora sviluppata. Si crea buttandola lì in chat, oppure con un pulsante in AIR → Percorsi. Stati: "nuovo/in ricerca" (lo Shell la sta ricercando e traducendo in strategie), "in attesa di approvazione" (2-3 strategie pronte, il Ghost ne sceglie una), "in sviluppo" (esecuzione sorvegliata passo per passo), "bloccato" (un gate di sicurezza ha fermato un passo e serve la conferma del Ghost). Un passo di sviluppo sceglie un effettore reale da un registro — genera un'immagine, crea un prodotto nel catalogo Printify — e lo esegue davvero, producendo dati veri: identificativi di prodotto, file su Drive. Ogni Seme ha un pulsante "Avanza ora" e mostra il contatore round/tetto.` },
+  { n: `Agorà Magi`, k: ["magi", "agora", "balthasar", "melchior", "caspar", "perturbazione"], s: `Agorà Magi: una perturbazione deliberata generata su richiesta, in tre stadi (Balthasar → Melchior → Caspar) più una sintesi. Si avvia dalla sua schermata, si sceglie pilastro e intensità.` },
+  { n: `Kernel`, k: ["kernel"], s: `Kernel: il documento di stato del sistema, versionato. Ogni salvataggio crea una versione nuova e conserva la precedente nello storico.` },
+  { n: `Simbiosi`, k: ["simbiosi"], s: `Simbiosi: la valutazione periodica di quanto l'app e il Ghost siano allineati. Vive nella sua schermata.` },
+  { n: `Percorso proposto da Simbiosi`, k: ["percorso proposto"], s: `Percorso proposto da Simbiosi: quando valuta lo stato del sistema, Simbiosi può proporre — mai creare da sola — un percorso NUOVO (non uno già esistente), collegato esplicitamente a un percorso già attivo che nomina per titolo, come modo di continuare a crescere sui pilastri. Compare come card in Simbiosi con due pulsanti: "Sì, aprilo" lo crea davvero (stessa scomposizione in nodi di ogni altro percorso), "Non ora" lo scarta. Al massimo una proposta alla volta: finché quella in sospeso non viene decisa, Simbiosi non ne propone un'altra.` },
+  { n: `Lunghezza massima di una risposta`, nucleo: true, s: `Lunghezza massima di una risposta: ogni risposta ha un tetto di spazio. Per la conversazione normale è basso; quando il Ghost chiede un contenuto strutturato lungo (un piano, un menu, un programma, un elenco di più giorni) il programma lo riconosce dalla richiesta e alza il tetto da solo, senza che serva chiedere. Se il tetto viene raggiunto lo stesso, la risposta si interrompe dov'era e compare la card "questa risposta è tagliata a metà" con il pulsante "Continua da dove ti sei fermato": ciò che è già scritto resta valido, manca solo il seguito.` },
+  { n: `Vincoli dichiarati`, s: `Vincoli dichiarati: i vincoli che il Ghost ha dichiarato in Onboarding, uno per riga, rieditabili. Quello sull'identità professionale è un hard-stop e vale su tutto ciò che riguarda AIR.` },
+  { n: `Vincoli alimentari dichiarati parlando`, k: ["vincolo alimentare", "regola fissa"], s: `Vincoli alimentari dichiarati parlando: quando il Ghost dice una regola alimentare in chat («escludi il pesce che non sia crostacei», «le colazioni le voglio salate», «1600 kcal»), compare una card «Questo lo tengo come regola fissa?» con due pulsanti. Tenuto, il vincolo entra nell'elenco dei Vincoli dichiarati di BIO e da lì nel prompt di ogni turno, per sempre; lasciato, vale solo per la conversazione in corso. Serve perché la conversazione che lo Shell rivede è tagliata agli ultimi venti messaggi: una regola detta e non tenuta sparisce dopo una decina di scambi.` },
+  { n: `Piano alimentare montato dal programma`, k: ["piano alimentare", "menu", "dieta", "kcal", "calorie", "pasti"], s: `Piano alimentare montato dal programma: quando il Ghost chiede un piano/menu alimentare, il modello NON scrive il piano. Inventa solo un repertorio di piatti con grammature e calorie (una chiamata corta), e poi è il programma a montare la griglia dei giorni: ruota i piatti in modo che nessuno ricompaia prima di aver esaurito la sua categoria, mette i pranzi da asporto nei giorni chiesti, sceglie la cena che avvicina il totale al bersaglio calorico del giorno, fa le somme e dichiara la media VERA con lo scarto rispetto a quella chiesta. Serve perché una griglia di 14 giorni per 5 pasti è un problema combinatorio, non un testo: chiedendola al modello come testo continuo collassava a metà (osservato il 28-29/08) e comunque non poteva garantire né la media né l'assenza di ripetizioni. La variazione calorica fra i giorni è voluta, non un errore.` },
+  { n: `Creare un percorso parlando`, k: ["crea un percorso", "genera un percorso", "creiamone"], s: `Creare un percorso parlando: "genera un percorso in vidya su X", "creiamone uno nuovo su Y". Compare una card che mostra il TITOLO che nascerà — non la frase detta — e il percorso nasce solo quando il Ghost tocca il pulsante. Poi diventa da solo quello aperto, così quello che si genera subito dopo si può salvare lì dentro. Tre rifiuti espliciti invece di creare qualcosa di sbagliato: se il pilastro non è uno dei tre, se il titolo è un pezzo di frase invece del nome di una cosa, e se un percorso con quel titolo esiste già (in quel caso dice di dire "riprendi X"). Distinta da "aprire un percorso", che sposta il fuoco su uno che esiste già e non crea niente.` },
+  { n: `Salvare un testo con un gesto, senza dire niente`, nucleo: true, s: `Salvare un testo con un gesto, senza dire niente: ogni risposta dello Shell abbastanza lunga ha accanto a 🔊 un pulsante 💾. Toccarlo apre un pannello con il titolo già proposto dal testo, il pilastro e il percorso di destinazione (preselezionato su quello aperto, se c'è), e un pulsante che salva. Non passa dal modello, non richiede una frase particolare, non richiede che un percorso sia aperto: è la strada che funziona sempre. Il testo salvato è quello INTERO e finisce sotto il nodo giusto se il titolo corrisponde a uno.` },
+  { n: `Salvare nel percorso quello che lo Shell ha appena prodotto`, k: ["salvalo nel percorso", "tienilo", "mettilo nel percorso", "salvare nel percorso"], s: `Salvare nel percorso quello che lo Shell ha appena prodotto: "salvalo nel percorso", "tienilo", "mettilo nel percorso attivo". Il testo NON viene riscritto dal modello: lo copia il programma dalla conversazione, per intero, e finisce nei documenti del percorso aperto. La card mostra prima quanto è lungo e come comincia, così si vede se sta per salvare il messaggio giusto. Serve perché la conversazione ha due limiti: lo Shell rivede solo gli ultimi sei messaggi, e sopra i quaranta messaggi i più vecchi escono dalla vista e finiscono in un archivio locale. Un contenuto lungo che resta solo in chat, fra un mese, non è più raggiungibile né dal Ghost né dallo Shell; dentro il percorso sì.` },
+  { n: `Rileggere un documento del percorso`, s: `Rileggere un documento del percorso: "rileggimi l'Atto I", "riprendi i testi che abbiamo salvato", "mostrami quel pezzo". Il programma va a prendere il testo COMPLETO dal percorso aperto e lo mette davanti allo Shell PRIMA che risponda, così ci lavora sopra davvero invece di ricordarlo. Non chiede conferma: leggere non cambia niente. Se più di un documento corrisponde chiede quale, e se non lo trova lo dichiara invece di rispondere a memoria. Un documento molto lungo viene tagliato e la cosa viene detta.` },
+  { n: `Il percorso aperto viaggia con il suo fascicolo`, nucleo: true, s: `Il percorso aperto viaggia con il suo fascicolo: quando c'è un percorso aperto (il fuoco), lo Shell riceve a ogni turno i suoi nodi con lo stato, le competenze, la memoria del percorso e l'indice dei documenti. È per questo che "continuiamo con l'Atto III" funziona senza dover rispiegare cos'è stato fatto. Il fuoco scade da solo dopo otto ore.` },
+  { n: `Voci gemelle nel log`, s: `Voci gemelle nel log: quando lo Shell scrive da solo una voce in un pilastro e quella voce dice sostanzialmente la stessa cosa di un'altra dello STESSO GIORNO, non ne crea una seconda: aggiorna quella che c'è già, e il testo precedente scende nello storico della voce invece di essere perso. Nel log la voce mostra "N versioni di questa voce" e si tocca per rileggerle tutte. Sotto il messaggio in chat il segno dice "→ VIDYA · 3ª versione" invece di "→ VIDYA", così è visibile che ha aggiornato e non aggiunto. Le voci che contengono una misura (peso, sonno) non vengono mai fuse: due pesate nello stesso giorno sono due dati, non un doppione. Le voci scritte a mano dal Ghost non passano da qui e non vengono mai toccate.` },
+  { n: `Fonti di Balthasar, controllate dal programma`, s: `Fonti di Balthasar, controllate dal programma: quando l'Agorà Magi gira su OpenRouter, Balthasar ha la ricerca web. Sotto la sua risposta compare una riga che dice se la ricerca è stata eseguita DAVVERO — letta dalle citazioni che la risposta porta con sé, non dichiarata dal modello — quante citazioni e da quali domini. Se Balthasar nomina un servizio o un sito che non trova riscontro in nessun dominio realmente citato, compare un avviso di possibile fonte inventata: non blocca niente, è un sospetto da verificare. Esisteva già per la ricerca dei Semi dal 26/07/2026 e da oggi vale anche per l'Agorà. Le sessioni Magi precedenti a oggi non hanno questa riga: non è un errore, quel dato allora non veniva raccolto.` },
+  { n: `Cosa vede Balthasar della memoria`, s: `Cosa vede Balthasar della memoria: la nota corrente di tutti e tre i pilastri PIÙ gli ultimi quattro frammenti di sedimento per pilastro, datati e tagliati a 220 caratteri. Prima vedeva solo le note correnti, quindi non aveva nessuna storia su cui appoggiarsi mentre il suo compito è proprio spingere dove il sistema non è ancora andato.` },
+  { n: `Eliminare un percorso dalla lista`, k: ["eliminare un percorso", "cancellare un percorso"], s: `Eliminare un percorso dalla lista: in ogni pilastro, sotto Percorsi, ogni percorso ha una ✕ di fianco. Non elimina subito: chiede una volta e dice cosa sta per sparire, contato (quanti nodi, quante sessioni, quanti documenti col loro testo, se ci sono competenze e memoria del percorso). Serve perché da quando i documenti contengono il testo intero, un percorso vale molto più di una voce di log. Resta anche il pulsante "Elimina percorso" dentro il percorso stesso.` },
+  { n: `L'inventario dice anche cosa contiene un percorso`, s: `L'inventario dice anche cosa contiene un percorso: accanto al nome di ogni percorso lo Shell riceve quanti nodi ha, quanti sono consolidati e quanti documenti ci sono dentro — conteggi veri, letti dai dati in quel momento. Se un percorso ha "NESSUN documento salvato", allora non contiene niente di quello che è stato prodotto parlando, e lo Shell deve dirlo invece di supporre il contrario. Un percorso può avere il nome giusto ed essere vuoto: è il caso normale appena viene creato, perché per farci entrare qualcosa serve toccare il pulsante di salvataggio.` },
+  { n: `Nodi del percorso`, s: `Nodi del percorso: ogni nodo si tocca e si apre, mostrando il materiale che gli è stato legato — i documenti col loro testo intero e le sessioni che lo nominano. Un nodo senza niente lo dichiara invece di aprirsi vuoto. La verifica (il quiz) è diventata un pulsante DENTRO il nodo aperto: prima era l'effetto obbligato del tocco, ora è una scelta.` },
+  { n: `Sotto quale nodo finisce quello che si salva`, s: `Sotto quale nodo finisce quello che si salva: quando il Ghost dice "salvalo nel percorso", il programma confronta il titolo del materiale con le etichette dei nodi e lo lega a quello giusto — con lo spareggio sui numeri, così "Atto I" non finisce sotto "Atto II". Se nessun nodo corrisponde o se due corrispondono allo stesso modo, il documento resta del percorso senza nodo: meglio senza che sotto quello sbagliato.` },
+  { n: `Salvare qualcosa detto PRIMA dell'ultimo messaggio`, k: ["salva i testi", "salva quello di prima", "salvare un messaggio vecchio"], s: `Salvare qualcosa detto PRIMA dell'ultimo messaggio: il titolo che si dà al materiale fa anche da riferimento. "Salva i testi dell'Atto I nel percorso" fa cercare al programma, dentro la conversazione, il messaggio che parla dell'Atto I — non prende ciecamente il precedente. Se il riferimento non corrisponde a niente vale il più recente, e la card mostra sempre come comincia ciò che sta per essere salvato.` },
+  { n: `Quando manca il percorso aperto`, s: `Quando manca il percorso aperto: se il Ghost chiede a voce di salvare qualcosa ma non c'è nessun percorso nel fuoco, l'azione non si rifiuta più — si apre lo stesso pannello del pulsante 💾, con il testo già trovato, e il percorso lo si sceglie lì. Serve perché il fuoco non c'è in due casi comunissimi: un percorso creato dal pannello del pilastro invece che dalla chat, e le otto ore di scadenza passate.` },
+  { n: `Documenti del percorso`, nucleo: true, s: `Documenti del percorso: nel percorso, sotto "Documenti del percorso", ognuno si tocca e si riapre per intero. Quando il Ghost riapre un percorso, lo Shell riceve l'indice di questo materiale — nome, data, lunghezza, come comincia — non i testi interi: sa che esistono e riparte da lì invece di ricominciare da capo. I documenti creati prima del 31/08/2026 hanno solo il nome, non il testo.` },
+  { n: `Andamento misurato (BIO)`, k: ["andamento misurato", "andamento", "peso", "sonno", "serie di peso", "serie di sonno"], s: `Andamento misurato (BIO): il programma calcola da solo le serie di peso e sonno dalle voci del log BIO — ultima misura, quanti giorni ha, variazione totale, variazione per settimana, quante misure — e le passa allo Shell e a Simbiosi già calcolate. Compaiono anche in BIO → Log, in un riquadro "Andamento misurato", nella stessa identica forma in cui le riceve il modello. Regola: se una tendenza non è in quel riquadro, il modello non l'ha ricevuta e non deve parlarne. Una misura sola non fa tendenza e viene dichiarata tale; una serie la cui ultima misura ha più di 7 giorni viene marcata "stantia", più di 30 "vecchia", e va detto invece di parlarne come se fosse di oggi. Non serve fare niente per attivarlo: legge i campi Peso e Sonno che le voci BIO hanno già, comprese quelle scritte dallo Shell durante una conversazione.` },
+  { n: `Controllo del piano alimentare`, k: ["controllo del piano", "vincoli del piano"], s: `Controllo del piano alimentare: quando lo Shell genera un piano con più giorni, il programma lo rilegge e confronta con i vincoli dichiarati. Segnala in un riquadro, senza toccare il piano: alimenti esclusi che compaiono lo stesso (sa che il salmone è un pesce), giorni dichiarati che non ci sono, giorni identici fra loro, la stessa fonte proteica a pranzo e a cena, dosi assenti quando erano state chieste, colazioni dolci quando erano state chieste salate. Non giudica il piano: elenca fatti verificabili, con il giorno preciso.` },
+  { n: `Il vincolo AIR chiede, non decide`, s: `Il vincolo AIR chiede, non decide: quando una lettura destinata ad AIR sembra legare l'identità professionale del Ghost al pilastro, il programma non la scrive e non la butta. Compare una card che mostra il dato, dice quale dei due rilevatori ha segnalato — il codice, deterministico sui termini dichiarati; il modello, come seconda opinione — e perché. Due pulsanti: "Va bene, procedi" scrive il dato, "No, lascialo fuori" lo lascia fuori. La risposta resta scritta nel messaggio, quindi la domanda non ricompare domani.` },
+  { n: `Il documento si apre da solo se la frase lo nomina`, s: `Il documento si apre da solo se la frase lo nomina: quando c'è un percorso aperto e il Ghost dice qualcosa che nomina un suo documento ("riprendiamo l'Atto III", "quel pezzo sul Divenire"), il programma trova il documento confrontando le parole della frase con i titoli e lo mette davanti allo Shell PER INTERO prima che risponda — senza aspettare che l'apertura venga riconosciuta come un comando. Se nessun titolo corrisponde davvero non allega niente: una domanda generica non trascina dentro il testo di un documento. È diverso da "rileggimi l'Atto I", che è una richiesta esplicita: questo è il caso in cui il Ghost non chiede di riaprirlo e semplicemente continua a lavorarci.` },
+  { n: `Quando lo Shell dice che una cosa NON esiste`, k: ["non esiste", "non esistono"], s: `Quando lo Shell dice che una cosa NON esiste: dal 10/09/2026 il programma controlla anche questo. Prima controllava solo il verso opposto — il modello che dichiara FATTA una cosa non avvenuta — e un "non esiste" falso passava indisturbato. È più pericoloso: un "l'ho messo in calendario" sbagliato si scopre aprendo il calendario, un "non esiste" sbagliato fa credere di aver perso del lavoro e non invita nessuno a controllare. Ora, se il modello nega che ci sia del materiale MENTRE il programma ha in mano l'elenco dei documenti del percorso aperto, sotto la risposta compare la smentita con i titoli veri. La frase del modello non viene cancellata: resta, con accanto il fatto. Se non c'è nessun percorso aperto il controllo tace, perché senza elenco non avrebbe niente con cui smentire.` },
+  { n: `Cercare fra i documenti riconosce i numeri`, k: ["atto", "capitolo", "cercare"], s: `Cercare fra i documenti riconosce i numeri: "atto IV", "capitolo 9". Fino al 09/09/2026 le parole di due lettere o meno venivano scartate prima ancora di cercare, quindi "IV" e "V" sparivano dalla domanda e la ricerca non sapeva distinguere l'Atto IV dall'Atto I. In più, una coppia di parole della domanda ritrovata NEL TITOLO ("atto iv") pesa più di qualunque parola sparsa nel testo, e a pari punteggio vince il documento più recente invece del primo che era stato salvato. Difetto trovato dal Ghost il 09/09: aveva chiesto i temi dell'Atto IV e dell'Atto V e si è sentito rispondere che non esistevano, mentre erano nel percorso da otto giorni.` },
+  { n: `Quando la ricerca taglia, lo dice`, s: `Quando la ricerca taglia, lo dice: se i documenti pertinenti sono più di quelli che entrano nella risposta, la riga "ho guardato" dichiara quanti ne ha esaminati, quanti ne mostra e quanti NON sono passati — con la frase esplicita che un'assenza lì non prova che il documento non esista. Serve a distinguere "non c'è" da "non me l'hanno dato": è la confusione fra le due che ha prodotto il difetto del 09/09.` },
+  { n: `Interrogare la memoria cerca anche dentro i percorsi`, k: ["interrogare la memoria", "cosa ci eravamo detti"], s: `Interrogare la memoria cerca anche dentro i percorsi: "cosa ci eravamo detti su X" guarda nelle note correnti dei pilastri, nei frammenti di sedimento E nei documenti dei percorsi, nelle competenze accumulate e nella memoria specifica di ogni percorso. Ogni risultato dice da dove viene (quale documento, di quale percorso). Prima i documenti non venivano guardati affatto, quindi il materiale più lungo prodotto dal sistema era l'unico che la ricerca non trovava.` },
+  { n: `Forma delle risposte dell'Agorà Magi`, k: ["forma delle risposte dei magi", "righe brevissime", "tetto di parole"], s: `Forma delle risposte dell'Agorà Magi: ogni stadio risponde dentro un campo strutturato, in righe brevissime che cominciano con "· ", una idea per riga, con un tetto di parole dichiarato per ruolo (Balthasar 60, Melchior 60, Caspar 50, Sintesi 70). Serve a due cose insieme: risposte dense invece che prolisse, e soprattutto tenere fuori dallo schermo il ragionamento interno del modello, che il 01/09/2026 finiva stampato per intero al posto della risposta (conteggi di parole, "devo", versioni intermedie). Se il campo strutturato non arriva leggibile, il programma pota le righe di deliberazione e consegna il resto invece di perdere la chiamata.` },
+  { n: `La voce non legge i marcatori`, k: ["voce", "sintesi", "leggere ad alta voce", "asterischi"], s: `La voce non legge i marcatori: dal 10/09/2026 il testo che va alla sintesi viene spogliato prima di essere pronunciato — grassetti, corsivi, cancelletti di titolo, trattini di elenco, righelli, emoji, e l'indirizzo dei link (si legge il testo del link, non l'URL). Vale per TUTTI i punti da cui parte il 🔊 — i Magi, la chat, la lettura proattiva della Simbiosi — perché la spogliatura sta dentro la funzione che parla, non nei chiamanti. Il testo sullo schermo NON cambia: resta formattato com'è sempre stato. Le TABELLE non vengono spianate ma parlate: ogni riga diventa una frase con l'intestazione davanti al valore ("Pasto: Colazione, Piatto: uova e pane, kcal: 420"), perché ad alta voce senza l'intestazione un numero non si sa cosa sia. Serve perché il Ghost ascolta le risposte in macchina.` },
+  { n: `Banco microfono in auto`, k: ["microfono", "auto", "macchina", "prova-voce"], s: `Banco microfono in auto: c'è una pagina di prova separata dall'app, all'indirizzo /prova-voce.html, che misura quale microfono usa il browser quando il telefono è collegato all'auto, quanto capisce il riconoscimento vocale in tre condizioni, e da dove esce l'audio. Non è una funzione dell'app e non tocca nessun dato: è un banco di misura. Se il Ghost la nomina, parla di quello.` },
+  { n: `Voce nell'Agorà Magi`, k: ["voce nei magi"], s: `Voce nell'Agorà Magi: ogni stadio ha un 🔊 accanto al nome, come i messaggi dello Shell. Legge quel solo stadio; ritoccarlo ferma la lettura. Vale anche per le sessioni già registrate.` },
+  { n: `Trappole`, k: ["trappola", "trappole", "rifare", "rifallo"], s: `Trappole: ogni volta che il Ghost chiede di rifare qualcosa che lo Shell aveva appena prodotto («non mi piace la lettera che hai fatto», «rifallo», «troppo prolisso»), il programma se lo segna da solo: la frase, l'inizio del testo rifatto, il percorso aperto e dopo quanti scambi è successo. Costa zero — nessuna chiamata al modello, solo confronto di parole. Non cambia niente nel turno in corso e non finisce (ancora) in nessun prompt: è materia prima, e serve a capire con dei dati se un PROCESSO lungo — un posizionamento lavorativo, un percorso di studio — abbia dentro dei vicoli ciechi ricorrenti che varrebbe la pena di non far ripercorrere a nessun altro. Si vedono in Setup, nel riquadro "Trappole", e si tolgono una per una se il rilevamento è sbagliato. Il rilevatore è deliberatamente stretto: preferisce mancare una trappola che segnarne una falsa.` },
+  { n: `Plasmidi (strumenti acquisiti)`, k: ["plasmide", "plasmidi", "strumento acquisito"], s: `Plasmidi (strumenti acquisiti): funzioni pure che l'app ha imparato DOPO essere stata scritta, e che si trasferiscono da un'app all'altra come un plasmide fra due batteri. Ognuna gira in un recinto senza rete, senza i dati del Ghost, senza interfaccia e con un tetto di tempo — misurato, non promesso. Ognuna porta con sé le proprie PROVE: quando un plasmide arriva da un'altra app le prove rigirano su QUESTO telefono prima che venga usato, e se non passano non entra. Arriva sempre SPENTO: lo accende il Ghost. Vivono in Setup, nel riquadro "Plasmidi", dove si legge il codice per intero, si riprovano le prove quando si vuole, si spengono e si tolgono. Un plasmide non porta MAI dati personali: il programma lo verifica prima di esportarlo, e blocca l'esportazione se trova indirizzi, numeri, cifre lunghe o i termini dell'identità professionale dichiarata. Oggi c'è un solo punto dell'app dove uno strumento acquisito può essere chiamato ("riconoscere una risposta guasta del modello"): l'app può crescere organi nuovi solo dove esiste già un attacco, e gli attacchi si scrivono a mano. Se il magazzino è vuoto — com'è appena installato — l'app si comporta e costa esattamente come prima. Un plasmide non entra MAI nel magazzino se contiene dati personali: il controllo sta sulla SCRITTURA, non solo sull'esportazione, perché da quando un plasmide può nascere sul dispositivo un dato potrebbe entrare in memoria prima che un umano lo veda.` },
+  { n: `L'app che si scrive uno strumento da sola (il generatore)`, k: ["generatore", "scriversi", "scrivertene"], s: `L'app che si scrive uno strumento da sola (il generatore): nel riquadro "Plasmidi" c'è un pulsante "Prova a scrivertene uno". Compare con un numero: quanti guasti VERI ha a disposizione per partire. Quei guasti vengono dalle Trappole — ma solo quelle in cui il Ghost ha detto che il testo era ROTTO ("non si capisce", "illeggibile", "caratteri strani"), non quelle in cui era solo brutto o troppo lungo: su un giudizio di merito un criterio automatico non ha niente da dire. Senza nemmeno un caso vero il pulsante è spento, e lo dichiara: senza un guasto reale un criterio non si scrive, si indovina.
+Come funziona, e perché è fatto così: il programma monta un CAPITOLATO — l'elenco dei requisiti — e lo usa DUE VOLTE, per la stessa identica cosa: come istruzioni date al modello, e come giudizio sul risultato. Sono lo stesso oggetto, quindi non possono divergere. Dentro il capitolato c'è un BANCO TRATTENUTO: dei testi SANI su cui lo strumento non deve accendersi e che il modello non vede mai. Il requisito gli viene detto («non devi scattare su una risposta normale»), le prove no. Se sbaglia, gli viene detto CHE FORMA aveva il testo su cui ha sbagliato ("una tabella, 180 caratteri") ma non il testo: altrimenti in tre giri si porterebbe a casa il banco.
+Cosa succede quando non ce la fa: il motivo torna al modello e riprova, al massimo tre volte — ogni giro è una chiamata pagata. Se non ci arriva, la RINUNCIA resta scritta, con cosa è mancato. I tentativi non riusciti si vedono sotto, nel riquadro "Cosa ha provato a scriversi", e non si cancellano da soli: dicono a cosa il generatore non arriva ancora, ed è l'unico posto in cui si legge. Uno strumento ammesso entra SPENTO, esattamente come uno arrivato da un'altra app: l'ultimo passo è un gesto del Ghost, dopo aver letto il codice.` },
+  { n: `Rinunce di parametro`, k: ["rinuncia", "rinunce", "parametro"], s: `Rinunce di parametro: l'app aggiunge alla richiesta al modello alcuni parametri facoltativi (spegnere il ragionamento interno per non pagarlo, la temperatura, i freni anti-ripetizione, la ricerca web). Non tutti i modelli li accettano. Se il fornitore ne rifiuta uno, il programma toglie QUEL parametro e rimanda la richiesta invece di lasciare il Ghost senza risposta, e da lì in poi a quel modello non lo manda più — la scoperta si paga una volta sola. Non ripiega su errori che non parlano di parametri (credito esaurito, modello inesistente): quelli si dichiarano. In Setup compare il riquadro "A cosa ho rinunciato per farti arrivare una risposta", con cosa è stato tolto e cosa costa. È importante: se è caduta la ricerca web, la risposta è arrivata SENZA cercare, e va detto invece di lasciar credere il contrario.` },
+  { n: `L'anello (accettore d'azione)`, k: ["anello", "accettore", "bersaglio osservabile"], s: `L'anello (accettore d'azione): quando il sistema compie un atto deliberato — una perturbazione Magi mirata a un pilastro, o un percorso proposto da Simbiosi e aperto davvero — dichiara SUBITO un bersaglio osservabile ("mi aspetto che entro 21 giorni un nodo di quel pilastro si muova dallo stato in cui è nato") e congela la misura di partenza. Dopo, è il programma a contare nei dati dell'app se quel movimento c'è stato: due conteggi e una sottrazione, nessun modello, nessun giudizio. Il risultato compare in Simbiosi nel riquadro "L'anello" ed entra nella valutazione successiva. Cosa NON è, e va detto se il Ghost lo chiede: non è un punteggio sulle previsioni del sistema, e non è un dato sul Ghost. Un atto che non muove niente vuol dire che la proposta era troppo prudente o troppo ovvia — mai che il Ghost non ha fatto la sua parte. Il gradiente è voluto in questo verso: una proposta cauta non smuove nulla e quindi qui risulta peggio di una audace.` },
+  { n: `Catena Printify → Etsy`, k: ["printify", "etsy"], s: `Catena Printify → Etsy: uno dei modi in cui un Seme AIR può produrre qualcosa nel mondo. Va dal disegno all'anteprima del prodotto.` },
+  { n: `Postura e respiro`, k: ["postura", "respiro"], s: `Postura e respiro: gli esercizi brevi che l'app propone, con il loro ritorno aptico.` },
+  { n: `Piano di controllo conversazionale`, s: `Piano di controllo conversazionale: l'impianto per cui il Ghost chiede una cosa a parole e il programma la esegue. Il modello sceglie l'azione, il programma la compie. Ha tre parti: il fuoco conversazionale, l'inventario, il registro delle azioni.` },
+  { n: `Fuoco conversazionale`, nucleo: true, s: `Fuoco conversazionale: il percorso o il Seme su cui si sta lavorando adesso. Compare in una barra sopra la chat, sopravvive a ricarica e riapertura, e scade da solo dopo otto ore. Si chiude con un gesto sulla barra, oppure a parole (vedi chiudi_percorso qui sotto).` },
+  { n: `Inventario`, nucleo: true, s: `Inventario: l'elenco di percorsi e Semi che lo Shell riceve a ogni turno, così sa cosa esiste davvero senza doverlo indovinare.` },
+  { n: `Registro delle azioni`, k: ["registro", "registro delle azioni"], s: `Registro delle azioni: ogni proposta, conferma, esecuzione ed esito, con l'orario. Si legge in Setup. È il posto dove si scopre dopo perché una cosa è andata storta.` },
+  { n: `Azioni parlando`, nucleo: true, s: `Azioni parlando: dodici azioni che il Ghost può far partire dicendole. Sei interne (aprire o riprendere un percorso, chiudere il percorso aperto, scrivere su un pilastro, creare un Seme, interrogare la memoria, avanzare un percorso) e sei che toccano il mondo fuori (creare un evento, leggere il calendario, trovare quando è un appuntamento preciso, cancellare un evento, spostare un evento a un altro giorno o ora, inviare una mail). Le sei esterne nascono spente e si accendono in Setup, una per una; le sei interne nascono accese.` },
+  { n: `Aprire, chiudere e riprendere un percorso, tutto a parole`, k: ["apri", "riprendi", "chiudi"], s: `Aprire, chiudere e riprendere un percorso, tutto a parole: "apri X" o "riprendi X" porta il fuoco su un percorso o un Seme che esiste già (non ne crea uno nuovo); "chiudi questo", "chiudiamo qui", "basta per oggi" chiude il fuoco senza cancellare né archiviare niente — il percorso resta intatto con tutta la sua storia, smette solo di essere quello su cui si sta lavorando adesso; "e adesso?", "andiamo avanti" chiede il prossimo passo su quello aperto. Ogni comando mostra una card di conferma prima di eseguire, con l'etichetta di ciò che è davvero aperto in quel momento.` },
+  { n: `Interruttori`, nucleo: true, s: `Interruttori: gli accendi-e-spegni delle capacità che toccano il mondo fuori, in Setup. Lo Shell riceve a ogni turno l'elenco vero di cosa è acceso e cosa è spento adesso, quindi non deve indovinarlo. Se dichiara spenta una capacità che è accesa, il programma toglie la frase e avvisa il Ghost.` },
+  { n: `Leggere il calendario`, nucleo: true, s: `Leggere il calendario: lo Shell va a leggere davvero gli impegni dal Calendar del Ghost. Non chiede conferma — leggere non cambia niente — e l'unico gate è l'interruttore. Il programma sceglie l'azione, legge, e solo dopo genera la risposta, così parla di impegni che ha in mano. Se la lettura fallisce lo dichiara con il motivo tecnico invece di indovinare.` },
+  { n: `Trovare quando è un appuntamento preciso`, k: ["quando è", "appuntamento"], s: `Trovare quando è un appuntamento preciso: diversa da "leggere il calendario" (quella legge un periodo intero). Questa cerca UN evento per nome — stessa ricerca già usata per cancellare e spostare — e dice solo quando è, senza offrire di toccarlo. Se ne trova più d'uno chiede di essere più preciso; se non lo trova lo dice. Anche qui la data la scrive il programma dopo averla letta, non il modello a memoria.` },
+  { n: `L'elenco degli impegni lo compone il programma`, k: ["elenco degli impegni", "lista degli impegni"], s: `L'elenco degli impegni lo compone il programma: quando c'è stata una lettura, l'elenco che compare nel messaggio lo scrive il codice dagli eventi letti, non lo Shell. Allo Shell resta la cornice: introdurre, collegare, commentare. Un evento che non è nella lettura non può comparire; uno che c'è non può mancare.` },
+  { n: `Contenuti di calendario senza lettura`, s: `Contenuti di calendario senza lettura: se in un turno non c'è stata una lettura, il programma toglie dalla risposta qualunque appuntamento, orario o affermazione del tipo "non hai altri impegni", e un riquadro elenca cosa ha tolto. Se una lettura c'è stata, toglie solo ciò che non proviene da quella lettura.` },
+  { n: `Periodi in parole`, s: `Periodi in parole: "prossimi 7 giorni", "nei prossimi tre giorni", "questo weekend", "questa settimana" vengono risolti a partire da oggi, e il numero di giorni detto vale.` },
+  { n: `Creare un evento sul calendario`, nucleo: true, s: `Creare un evento sul calendario: si conferma con un pulsante prima che accada. La data la calcola il programma dalle parole del Ghost, e la mostra per esteso.` },
+  { n: `L'ora si ricava due volte`, s: `L'ora si ricava due volte: il programma la calcola dal testo, il modello la riporta per conto suo. Se coincidono l'evento si può creare; se divergono la card non ha nessun pulsante e non si scrive niente. Le forme parlate sono capite: "16 e 30", "le quattro e mezza del pomeriggio", "le otto meno un quarto", "a mezzogiorno e mezzo".` },
+  { n: `Verifica dopo la scrittura`, s: `Verifica dopo la scrittura: creato un evento, il sistema lo rilegge e confronta ciò che ha mandato con ciò che trova. Il confronto è fra istanti, non fra stringhe. Tre esiti: verificata, non-combacia (e viene detto cosa: atteso X, trovato Y), non-verificabile.` },
+  { n: `Cancellare un evento`, k: ["cancellare", "cancella", "disdire"], s: `Cancellare un evento: il Ghost dice quale a parole, il programma lo cerca sul calendario e mostra su una card l'evento trovato con giorno, ora e titolo letti da Google, più un pulsante. Se ne trova più d'uno chiede quale; se non ne trova nessuno lo dice. Dopo, rilegge per verificare che sia sparito. Cancellare non si disfa, quindi il pulsante serve sempre.` },
+  { n: `Spostare un evento a un altro giorno o ora`, k: ["spostare", "sposta"], s: `Spostare un evento a un altro giorno o ora: il Ghost dice quale evento e a quando a parole, il programma lo cerca sul calendario (stessa ricerca della cancellazione) e mostra su una card il bersaglio trovato con giorno/ora attuali e il nuovo giorno/ora proposto, letti da Google, più un pulsante. Il nuovo orario si ricava due volte come nella creazione — dal testo e dal modello — e se divergono la card non ha pulsante. Se trova più eventi che corrispondono chiede quale; se non ne trova nessuno lo dice. Dopo, rilegge per verificare che il nuovo orario sia quello confermato. MODIFICARE il titolo o la descrizione di un evento resta invece impossibile: quello si fa cancellando il vecchio e creandone uno nuovo.` },
+  { n: `Inviare una mail`, k: ["mail", "email", "inviare"], s: `Inviare una mail: si conferma dopo aver visto il testo integrale e l'indirizzo per esteso. Una mail inviata non torna indietro. Un invio senza risposta resta "incerto" e non viene mai rispedito da solo.` },
+  { n: `Proposte senza pulsante`, s: `Proposte senza pulsante: una card che non ha un pulsante che esegue non conta come proposta in attesa, quindi non impedisce alle richieste successive di produrre la loro card. Se il Ghost risponde a una card scrivendo in chat invece di premere, il programma glielo dice indicando la card: una parola scritta non fa partire niente, mai.` },
+  { n: `Il registro delle azioni dichiara per ogni azione che effetto ha (lettura o scrittura), se richiede un gate e se è reversibile, e il programma legge davvero quei tre campi. Una scrittura chiede sempre conferma; una lettura può non chiederla.`, k: ["effetto di una azione", "azione reversibile", "gate di una azione"], s: `Il registro delle azioni dichiara per ogni azione che effetto ha (lettura o scrittura), se richiede un gate e se è reversibile, e il programma legge davvero quei tre campi. Una scrittura chiede sempre conferma; una lettura può non chiederla.` },
+  { n: `Riquadro tecnico grezzo`, s: `Riquadro tecnico grezzo: sotto ogni card che tocca Google compare il codice HTTP, l'identificativo restituito e l'eventuale errore. Lo stesso in Setup. Serve al Ghost per mandare un fatto invece di un'impressione.` },
+  { n: `Forma delle risposte`, k: ["forma delle risposte", "quanto lunghe", "registro della risposta"], nucleo: true, s: `Forma delle risposte: la lunghezza e il registro vengono dal profilo cognitivo del Ghost, non da una regola generale del sistema.` },
+  { n: `Memoria procedurale`, nucleo: true, s: `Memoria procedurale: la nota che ogni pilastro accumula sugli scambi, riscritta per intero a ogni aggiornamento e non aggiunta in coda. Ha un sedimento storico e delle parole chiave per ritrovarla.` },
+  { n: `Tetto di spesa (Setup)`, k: ["tetto di spesa", "quanto costa", "quanto sto spendendo", "costi", "budget"], s: `Tetto di spesa (Setup): ci sono DUE tetti mensili e basta che uno morda perche' si fermino le cose che partono da sole (Semi che avanzano, Simbiosi proattiva) — la chat resta sempre utilizzabile. Il primo tetto e' in dollari (5 al mese) e vale solo se il fornitore dichiara davvero il costo di ogni chiamata: un costo non viene MAI stimato da un prezzario, perche' un numero inventato che si spaccia per reale sarebbe peggio di nessun numero. Il secondo e' in token (40 milioni al mese), e i token sono misurati in ogni risposta: e' il tetto che lavora quando il costo non arriva, che e' il caso normale. Il pannello in Setup dice sempre quale dei due sta lavorando, il totale del mese, le chiamate e i mesi chiusi. Il conto NON viene dal registro di debug: e' un totalizzatore a se', perche' il registro tiene 50 voci e fino all'11/09/2026 il tetto leggeva proprio quelle — dichiarava un mese e vedeva sei turni, quindi non poteva scattare.` },
+  { n: `Genera documento da questa conversazione`, k: ["documento", "docx", "formalizza"], s: `Genera documento da questa conversazione: un pulsante sopra la chat trasforma quanto concordato parlando in un file .docx vero. Il programma rilegge la conversazione, ne estrae la versione FINALE (non le versioni intermedie scartate) e i vincoli dichiarati, li mostra in anteprima, e poi lo salva su Drive o lo scarica. QUALE conversazione: il programma si ferma al primo stacco di più di otto ore fra due messaggi — prima di quello stacco è un'altra conversazione, non questa — e dichiara nel pannello quanti messaggi userà e da quando. C'è anche un campo facoltativo «di cosa deve parlare»: se lo si riempie il documento riguarda solo quello; se è vuoto vale il percorso aperto, e se non c'è nemmeno quello si formalizza l'argomento dell'ultimo scambio, mai due discorsi mescolati. Agganciarlo a un percorso è FACOLTATIVO: serve solo per ritrovarlo dentro l'app: se il Ghost non sceglie nessun percorso il file viene comunque prodotto e consegnato, e il programma glielo dice. Quando il contenuto è una griglia — giorni per pasti, settimane per esercizi — nel documento diventa una TABELLA vera, con righe e colonne, non i trattini e le barrette che la simulano in chat.` },
+  { n: `Ripresa della richiesta interrotta`, k: ["richiesta interrotta", "ripresa"], s: `Ripresa della richiesta interrotta: se il Ghost esce dall'app mentre una risposta sta arrivando, il telefono sospende la scheda e la richiesta muore (l'app non ha un server che la tenga in mano al posto suo). La richiesta però viene messa da parte prima di partire, e quando il Ghost torna sull'app riparte da sola, senza doverla riscrivere — solo se è morta per un guasto di RETE e solo entro quindici minuti. NON significa "la trovi già pronta al ritorno": per quello servirebbe un server che tenga la richiesta, non ancora costruito.` },
+  { n: `Memoria del dispositivo piena`, nucleo: true, k: ["memoria piena", "memoria del dispositivo", "striscia rossa", "non salva"], s: `Memoria del dispositivo piena: se lo spazio locale si esaurisce, in cima all'app compare una striscia rossa che lo dice, quante scritture sono andate perdute in questa sessione e su quale chiave l'ultima, con un pulsante che porta al backup. Prima dell'11/09/2026 il fallimento era muto: la funzione di salvataggio restituiva "non fatto" e nessuno dei 76 punti che la chiamano guardava quella risposta. Finche' la striscia c'e', la chat NON viene piu' compattata: non compattare e' meglio che archiviare messaggi in un posto che non c'e'. La striscia sparisce ricaricando l'app, perche' dice "in questa sessione una scrittura e' andata perduta", non "il dispositivo e' pieno per sempre".` },
+  { n: `Archivi della chat su Drive`, k: ["archivi della chat", "archivio della chat", "messaggi archiviati", "messaggi compattati"], s: `Archivi della chat su Drive: quando la chat supera i 40 messaggi i piu' vecchi finiscono in un archivio locale (e' la compattazione). Dal 12/09/2026 gli archivi oltre i tre piu' recenti salgono su Drive e lasciano il dispositivo, cosi' non riempiono lo spazio locale — che e' circa 5 MB e senza questo si sarebbe esaurito fra il sesto e il dodicesimo mese di uso. La copia locale viene cancellata SOLO dopo che Drive ha restituito l'identificativo del file: senza quella prova non si cancella niente, e con il sync spento non si sposta niente. Un indice locale tiene il conto di dove sono finiti, e l'indice sta nel backup.` },
+  { n: `Quando la chat arriva su Drive`, k: ["quando si sincronizza", "sincronizzazione della chat", "passo del sync"], s: `Quando la chat arriva su Drive: i dati dei pilastri, i percorsi, la memoria e il kernel salgono due secondi dopo ogni modifica, come sempre. La CHAT ha un passo suo, piu' lento: ogni due minuti, e comunque appena l'app va in secondo piano — cioe' quando il Ghost la chiude. Fino all'11/09/2026 ogni singolo messaggio faceva scaricare e ricaricare lo stato intero: con un anno di dati sono 1,1 MB di rete per messaggio, circa cinque secondi in 4G, ed era la ragione per cui l'app sembrava lenta in macchina senza che niente fosse lento. I messaggi sono comunque sul dispositivo appena scritti: il ritardo riguarda solo la copia su Drive.` },
+  { n: `Backup e ripristino (Setup)`, k: ["backup", "ripristino"], s: `Backup e ripristino (Setup): scarica in un unico file tutto lo stato locale e sa rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo previa conferma.` },
+];
+// Il tetto sulle schede richiamate. Non è prudenza: è il numero oltre il quale il richiamo
+// smetterebbe di essere un richiamo e tornerebbe a essere il blocco intero.
+const CAPACITA_RICHIAMATE_MAX = 8;
+// I nomi si normalizzano una volta al caricamento, non a ogni turno: sono fissi.
+// `k` è un OVERRIDE, non un'aggiunta alle parole del nome: dove c'è, le parole del nome non valgono
+// più da sole. Serve dove il nome è fatto di parole comuni ("Cosa vede Balthasar della memoria"),
+// che altrimenti si farebbero richiamare da qualunque frase e il risparmio sarebbe finto.
+// Le parole che sopravvivono alla normalizzazione e non identificano niente. PAROLE_VUOTE serve alla
+// ricerca fra i documenti e non basta qui: le forme elise ("dell'", "nell'", "all'") diventano
+// "dell", "nell", "all" — quattro lettere, quindi passavano il filtro di lunghezza. Misurato: con
+// "dimmi i temi dell'atto IV" si accendevano DUE schede che non avevano niente a che fare col turno,
+// entrambe sulla parola "dell". È il tipo di rumore che rende finto il risparmio.
+const CAPACITA_PAROLE_INUTILI = new Set([
+  "dell", "nell", "sull", "dall", "all", "coll", "anch", "quest", "quell", "cosa", "come", "dove",
+  "quando", "mentre", "perche", "piu", "meno", "ogni", "altro", "altra", "altre", "altri", "stesso",
+  "stessa", "prima", "dopo", "sempre", "ancora", "vede", "dice", "deve", "essere", "sono", "fatto",
+  "tutto", "tutta", "tutte", "tutti", "solo", "anche", "senza", "proprio", "propria", "suo", "sua",
+  "loro", "viene", "vengono", "resta", "restano", "serve", "servono", "dentro", "fuori", "sopra",
+  "sotto", "adesso", "oggi", "ieri", "domani",
+]);
+// LA DERIVAZIONE AUTOMATICA VALE SOLO PER I NOMI CORTI. Alcune voci si chiamano con una frase
+// intera ("Il registro delle azioni dichiara per ogni azione che effetto ha..."): spezzarla dava
+// diciotto chiavi fra cui "lettura", "conferma", "davvero", "legge" — parole di italiano comune che
+// si accendono su qualunque discorso. Sopra le quattro parole significative la derivazione si ferma
+// e serve un `k` scritto a mano: è l'unico pezzo che chiede giudizio, e il banco dice quando manca.
+const CAPACITA_PAROLE_DA_NOME_MAX = 4;
+const CAPACITA_INDICIZZATE = CAPACITA.map((c, i) => {
+  const nomeNorm = normalizzaTesto(c.n);
+  const daNome = nomeNorm.split(" ").filter((p) => p.length > 3 && !PAROLE_VUOTE.has(p) && !CAPACITA_PAROLE_INUTILI.has(p));
+  const automatiche = daNome.length <= CAPACITA_PAROLE_DA_NOME_MAX ? daNome : [];
+  const chiavi = Array.from(new Set([nomeNorm, ...(c.k ? c.k.map(normalizzaTesto) : automatiche)].filter(Boolean)));
+  return { ...c, i, chiavi };
+});
+// Una chiave combacia solo su confine di parola: "seme" non deve accendersi dentro "sembra".
+// Il testo si imbottisce di spazi ai lati una volta sola, così il confine vale anche in testa e in coda.
+function capacitaRichiamate(testo, tetto = CAPACITA_RICHIAMATE_MAX) {
+  const t = ` ${normalizzaTesto(testo)} `;
+  if (t.trim() === "") return [];
+  return CAPACITA_INDICIZZATE
+    .map((c) => ({ c, colpi: c.chiavi.filter((k) => t.includes(` ${k} `)).length }))
+    .filter((x) => x.colpi > 0 && !x.c.nucleo) // il nucleo c'è già: richiamarlo sarebbe un doppione
+    .sort((a, b) => b.colpi - a.colpi || a.c.i - b.c.i) // più chiavi colpite = più pertinente
+    .slice(0, tetto)
+    .map((x) => x.c);
+}
+// `testo` null o vuoto = il blocco INTERO. È il caso di chi non ha un turno da guardare (le prove, e
+// chiunque voglia leggere tutto), e resta la definizione di APP_CAPABILITIES_CONTEXT più sotto.
+function costruisciBloccoCapacita(testo) {
+  const intero = testo == null || String(testo).trim() === "";
+  const scelte = intero ? CAPACITA_INDICIZZATE : [...CAPACITA_INDICIZZATE.filter((c) => c.nucleo), ...capacitaRichiamate(testo)].sort((a, b) => a.i - b.i);
+  const righe = [CAPACITA_INTESTAZIONE];
+  if (!intero) {
+    // L'indice: i nomi di TUTTE le capacità, anche di quelle la cui scheda non è in questo turno.
+    // È il pezzo che fa funzionare il riconoscimento — «se il Ghost nomina una di queste parole,
+    // parla dell'app» — e costa ~700 token contro i 9.842 delle schede intere.
+    righe.push(`Elenco completo dei nomi (di queste sai almeno che esistono e che sono funzionalità dell'app; se il Ghost ne nomina una di cui non hai la scheda qui sotto, dillo e chiedi invece di indovinare cosa fa): ${CAPACITA_INDICIZZATE.map((c) => c.n).join("; ")}.`);
+  }
+  for (const c of scelte) righe.push(`- ${c.s}`);
+  righe.push(CAPACITA_CHIUSURA);
+  return righe.join("\n");
+}
+// Il blocco intero resta disponibile con lo stesso nome di prima: lo usano le prove che difendono la
+// forma (niente intestazioni, niente tabelle, niente grassetti) e chiunque voglia leggere tutto.
+// Il turno di chat NON usa più questo: usa costruisciBloccoCapacita(testo del turno).
+const APP_CAPABILITIES_CONTEXT = costruisciBloccoCapacita(null);
 
 //──────────────────────────────────────────────────────────
 // SHELL — ciclo di percezione-azione (Manifesto V3 §3: accoppiamento continuo, non predici-e-verifica)
@@ -5025,8 +5308,8 @@ function hashStabile(s) {
   return h.toString(36);
 }
 function chiaveIdempotenza(tipo, parti) {
-  const corpo = (parti || []).map((p) => String(p == null ? "" : p).trim().toLowerCase().replace(/\s+/g, " ")).join(" ");
-  return `${tipo}-${hashStabile(tipo + " " + corpo)}`;
+  const corpo = (parti || []).map((p) => String(p == null ? "" : p).trim().toLowerCase().replace(/\s+/g, " ")).join("\u0000");
+  return `${tipo}-${hashStabile(tipo + "\u0000" + corpo)}`;
 }
 // L'indirizzo si aggiunge alla chiave solo al momento dell'esecuzione: lo stesso testo mandato a
 // due persone diverse sono due invii legittimi, non un doppione.
@@ -5868,10 +6151,14 @@ async function runShellTurn(history, userMessage, settings, handlers, memory, st
   const dialecticNote = effectiveDialectic
     ? " In questo turno il Ghost preferisce essere messo alla prova: non limitarti a confermare, offri un'angolazione critica o una contro-domanda dove ha senso."
     : " In questo turno il Ghost preferisce conferme dirette: evita di generare attrito cognitivo non richiesto, resta di supporto.";
+  // 12/09/2026 — l'indice sempre, la scheda quando serve. Vedi "LE CAPACITA' DELL'APP".
+  // Si guarda la FINESTRA RECENTE, non il solo messaggio: "riprendiamo quello" dopo aver nominato
+  // l'Atto IV due messaggi prima deve ancora trovare la scheda della ricerca fra i documenti.
+  const bloccoCapacitaDelTurno = costruisciBloccoCapacita(recentText);
   const system = `${nowContext()} Sei lo Shell del sistema Resonance: estensione esecutiva digitale del Ghost (Flavio), in accoppiamento strutturale continuo con lui — non hai coscienza né volontà propria, non sei un partner autonomo. Ogni messaggio del Ghost non ti istruisce, ti perturba: è la tua struttura interna (memoria procedurale) a determinare come ti riorganizzi.
 ${PILLAR_CTX.bio} ${PILLAR_CTX.air} ${PILLAR_CTX.vidya}
 ${PILLAR_CTX.formato}
-${APP_CAPABILITIES_CONTEXT}
+${bloccoCapacitaDelTurno}
 ${inventario || "Inventario dei percorsi non disponibile in questo turno — non fare finta di sapere quali esistono: chiedi."}
 ${formatFuocoBlock(fuoco)}${formatDocumentoAperto(documentoAperto)}
 ${formatAzioniBlock(azioniAttive())}
@@ -6451,6 +6738,54 @@ async function createDriveFile(name, content, mimeType = "text/plain") {
   });
   if (!res.ok) throw new Error(`Errore Drive (${res.status})`);
   return res.json();
+}
+// ══════════════════════════════════════════════════════════════════════════════
+// I FILE VERSIONATI SU DRIVE — UNO AL MESE, NON UNO PER SCRITTURA (12/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Misurato il giorno prima: `syncIfEnabled` chiamava `createDriveFile` a ogni scrittura, con un nome
+// che portava la data AL SECONDO, e il contenuto era `formatBioLog(n)` — la lista INTERA, non la voce
+// aggiunta. Ogni file conteneva il precedente più una riga: crescita col quadrato.
+// A 3 scritture al giorno su UN SOLO pilastro: 1.095 file e 69,8 MB dopo un anno, 2.190 file e
+// 279,2 MB dopo due. Da moltiplicare per i pilastri attivi. E `aggiungiDaLettura` passa di qui, che
+// è automatica: un file nuovo a ogni lettura che lo Shell scrive da solo.
+//
+// PERCHE' AL MESE E NON UNO SOLO PER SEMPRE. Un file solo, riscritto sempre, sarebbe ~60 kB in
+// totale — ma la storia più vecchia di trenta giorni sparirebbe, perché è quanto Drive tiene le
+// revisioni di un file non-Google. La Legge 14 dice mai sovrascrittura distruttiva: un'istantanea
+// mensile che resta per sempre la rispetta, e dentro il mese ci pensano le revisioni di Drive.
+// Conto: 12 file l'anno per etichetta invece di 1.095, e ~857 kB invece di 69,8 MB — ottanta volte
+// meno. Il dato autorevole non è mai stato questo file: è `bio-data`, che non viene mai troncato ed
+// è nel bundle di sync e nel backup. Questi file sono l'export leggibile da un umano.
+const nomeFileVersionato = (label) => `Resonance – ${label} – ${meseISO()}`;
+async function trovaFileDrivePerNome(name) {
+  const params = new URLSearchParams({
+    q: `name='${String(name).replace(/'/g, "\\'")}' and trashed=false`,
+    spaces: "drive", orderBy: "modifiedTime desc", fields: "files(id,modifiedTime)", pageSize: "1",
+  });
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`);
+  if (!res.ok) throw new Error(`Errore ricerca file Drive (${res.status})`);
+  const data = await res.json();
+  return data.files?.[0] || null;
+}
+// Una coda per nome: senza, due scritture ravvicinate sulla stessa etichetta (una a mano e una da
+// `aggiungiDaLettura`) troverebbero entrambe "nessun file" e ne creerebbero due. La coda non serve
+// a essere veloci, serve a non duplicare.
+const _codaFileVersionati = new Map();
+function aggiornaOCreaFileDiTesto(name, content) {
+  const precedente = _codaFileVersionati.get(name) || Promise.resolve();
+  const mio = precedente.catch(() => {}).then(async () => {
+    const trovato = await trovaFileDrivePerNome(name);
+    if (!trovato) return createDriveFile(name, content);
+    const res = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${trovato.id}?uploadType=media&fields=id,modifiedTime`, {
+      method: "PATCH", headers: { "Content-Type": "text/plain" }, body: content,
+    });
+    if (res.status === 404) return createDriveFile(name, content); // cancellato a mano nel frattempo
+    if (!res.ok) throw new Error(`Errore aggiornamento file Drive (${res.status})`);
+    return res.json();
+  });
+  _codaFileVersionati.set(name, mio);
+  mio.catch(() => {}).finally(() => { if (_codaFileVersionati.get(name) === mio) _codaFileVersionati.delete(name); });
+  return mio;
 }
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 // ── Sync tra dispositivi: UN SOLO file, sempre aggiornato — distinto dai file versionati (Legge 14) ──
@@ -8394,7 +8729,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // D4/C.16 — questa parte da sola, quindi si ferma al tetto di spesa come ogni cosa automatica.
       if (!operazioniAutomaticheConsentite()) {
         chiudiRichiestaInSospeso();
-        pushDebugLog?.({ type: "tetto-raggiunto", operazione: "ripresa-richiesta-interrotta", spesaMese: Number(spesaDelMeseCorrente().toFixed(4)), tetto: TETTO_MENSILE_USD });
+        pushDebugLog?.({ type: "tetto-raggiunto", operazione: "ripresa-richiesta-interrotta", ...(motivoTettoRaggiunto() || {}), spesaMese: Number(spesaDelMeseCorrente().toFixed(4)), tokenMese: tokenDelMeseCorrente() });
         return;
       }
       chiudiRichiestaInSospeso();                          // tolta PRIMA di ripartire: mai due giri per lo stesso testo
@@ -9618,24 +9953,20 @@ function KernelView({ kernel, onSave, driveStatus }) {
 // Legge le entry type:"ai-cost" dal debug log esistente (nessun nuovo storage). LIMITE DICHIARATO:
 // pushDebugLog tiene un rolling log di SOLO 50 voci totali, condivise fra TUTTI i tipi di entry (non
 // solo ai-cost) — con uso attivo, "ultimi 7 giorni" in pratica mostra molto meno di 7 giorni reali,
-// perché le voci più vecchie vengono scartate ben prima. Non risolto qui deliberatamente: il brief
-// chiede di riusare la struttura esistente, non di crearne una parallela senza tetto.
-// §12 — tetto di spesa dichiarato dal Ghost il 15/08/2026. Un tetto che non si vede non esiste
-// (C.16), quindi il contatore mensile e la distanza dal tetto stanno in Setup insieme al resto.
-const TETTO_MENSILE_USD = 5;
+// perché le voci più vecchie vengono scartate ben prima. Il ripartito per tag e le finestre
+// "oggi"/"7 giorni" restano su questa base, e con questo limite: sono una fotografia recente.
+// 12/09/2026 — IL TOTALE DEL MESE NON VIENE PIU' DA QUI. Era il difetto misurato ieri: la stessa
+// riga da 50 voci serviva sia a "ripartito per tag" (dove un troncamento è accettabile) sia al
+// TETTO DI SPESA (dove rende il tetto inerte). Adesso il totale del mese e il tetto leggono
+// `leggiSpesa()` — il totalizzatore accanto a logAiCost, che non ha tetto perché non cresce.
 // D4 (approvata dal Ghost, 16/08/2026) — al raggiungimento del tetto si fermano SOLO le operazioni
 // automatiche: Semi che avanzano da soli, Simbiosi proattiva, qualunque cosa parta senza che il
 // Ghost la stia chiedendo in quel momento. La chat resta utilizzabile.
 // Ragione: il tetto protegge dalle spese che il Ghost non vede partire, non da quelle che sta
 // decidendo lui adesso — ed e' la lettura corretta di C.16, che governa le operazioni AUTONOME.
 // Fermare la chat a meta' di una frase sarebbe protezione applicata proprio dove non serve.
-function spesaDelMeseCorrente() {
-  const mese = todayISO().slice(0, 7);
-  return (loadKey("debug-log", []) || [])
-    .filter((e) => e.type === "ai-cost" && (e.time || "").slice(0, 7) === mese)
-    .reduce((a, e) => a + (typeof e.costUsd === "number" ? e.costUsd : 0), 0);
-}
-function operazioniAutomaticheConsentite() { return spesaDelMeseCorrente() < TETTO_MENSILE_USD; }
+// TETTO_MENSILE_USD, TETTO_MENSILE_TOKEN, leggiSpesa, motivoTettoRaggiunto e
+// operazioniAutomaticheConsentite vivono accanto a logAiCost — vedi "IL TOTALIZZATORE DI SPESA".
 function CostSummaryPanel({ debugLog }) {
   const costEntries = (debugLog || []).filter((e) => e.type === "ai-cost");
   const today = todayISO();
@@ -9666,24 +9997,32 @@ function CostSummaryPanel({ debugLog }) {
   const sumRagionamento = (entries) => entries.reduce((a, e) => a + (typeof e.tokensRagionamento === "number" ? e.tokensRagionamento : 0), 0);
   const anyRagionamentoToday = todayEntries.some((e) => typeof e.tokensRagionamento === "number");
   const anyRagionamentoWeek = weekEntries.some((e) => typeof e.tokensRagionamento === "number");
-  // Spesa del mese in corso e distanza dal tetto. Limite dichiarato apertamente: il registro di
-  // debug tiene 50 voci a rotazione, quindi con molto uso il totale mensile e' un MINIMO osservato,
-  // non la spesa reale. Dirlo e' meglio di mostrare un numero che si crede completo.
-  const meseCorrente = today.slice(0, 7);
-  const meseEntries = costEntries.filter((e) => (e.time || "").slice(0, 7) === meseCorrente);
-  const spesaMese = meseEntries.reduce((a, e) => a + (typeof e.costUsd === "number" ? e.costUsd : 0), 0);
-  const quotaTetto = Math.min(100, Math.round((spesaMese / TETTO_MENSILE_USD) * 100));
+  // 12/09/2026 — il totale del mese viene dal totalizzatore, non dal registro da 50 voci. Prima
+  // diceva "0,10 $" dove il conto vero era 10 $, e non era un'imprecisione: era lo stesso numero
+  // che governava il tetto.
+  const totale = leggiSpesa();
+  const tokenMese = totale.tokenIn + totale.tokenOut;
+  const costoDalFornitore = ilFornitoreMandaIlCosto();
+  const quotaUsd = Math.min(100, Math.round((totale.usd / TETTO_MENSILE_USD) * 100));
+  const quotaToken = Math.min(100, Math.round((tokenMese / TETTO_MENSILE_TOKEN) * 100));
+  const tettoMorso = motivoTettoRaggiunto();
   const anyCostToday = todayEntries.some((e) => typeof e.costUsd === "number");
   const anyCostWeek = weekEntries.some((e) => typeof e.costUsd === "number");
   return html`<${Card} accent=${C.core}>
     <div class="r-hub-title" style="color:#3A4750">Costi/token IA</div>
     <div class="r-hub-detail">Solo le chiamate tracciate: Shell, Magi per intero (Balthasar, Melchior, Caspar, sintesi finale e — se la perturbazione è mirata a un pilastro — la riscrittura della sua memoria), Agente AIR, ricerca web on-demand, Seme (ricerca/esecuzione). Non include refresh pagina, login Google o sync Drive — non toccano mai un modello.</div>
     <div class="r-hub-detail" style="margin-top:10px">
-      <b>Questo mese</b>: $${spesaMese.toFixed(4)} su un tetto di $${TETTO_MENSILE_USD} (${quotaTetto}%).
-      ${quotaTetto >= 80 ? html`<span style="color:#B4553A"> — ci sei quasi.</span>` : ""}
-      <br/><span style="opacity:.7">È un minimo osservato, non la spesa certa: il registro tiene le ultime 50 voci, quindi le più vecchie del mese possono esserne già uscite.</span>
+      <b>Questo mese</b> (${totale.mese}): ${totale.chiamate} chiamate · ${tokenMese.toLocaleString("it-IT")} token su un budget di ${TETTO_MENSILE_TOKEN.toLocaleString("it-IT")} (${quotaToken}%).
+      <br/>${costoDalFornitore
+        ? html`Costo dichiarato dal fornitore: $${totale.usd.toFixed(4)} su un tetto di $${TETTO_MENSILE_USD} (${quotaUsd}%). <b>Il tetto che lavora è quello in dollari.</b>`
+        : html`Il fornitore <b>non manda il costo</b>: nessun dollaro è misurabile, e nessuno viene stimato. <b>Il tetto che lavora è quello in token.</b>`}
+      ${tettoMorso
+        ? html`<br/><span style="color:#B4553A"><b>Tetto raggiunto</b> su ${tettoMorso.quale === "usd" ? "i dollari" : "i token"} (${tettoMorso.quale === "usd" ? `$${tettoMorso.valore}` : tettoMorso.valore.toLocaleString("it-IT")} ≥ ${tettoMorso.quale === "usd" ? `$${tettoMorso.tetto}` : tettoMorso.tetto.toLocaleString("it-IT")}): le operazioni automatiche sono ferme, la chat no.</span>`
+        : (Math.max(quotaUsd, quotaToken) >= 80 ? html`<br/><span style="color:#B4553A">Ci sei quasi.</span>` : "")}
+      <br/><span style="opacity:.7">Questo conto non dipende dal registro di debug: è un totalizzatore che si azzera al cambio di mese e conserva gli ultimi ${SPESA_STORICO_MESI} mesi.</span>
     </div>
-    ${costEntries.length === 0 ? html`<div class="r-hub-detail" style="margin-top:8px">Nessuna chiamata tracciata ancora nel log (max 50 voci totali, condivise con tutti gli eventi di debug).</div>` : html`
+    ${totale.storico.length ? html`<div class="r-hub-detail" style="margin-top:6px"><b>Mesi chiusi</b>: ${totale.storico.map((m) => `${m.mese}: ${((m.tokenIn || 0) + (m.tokenOut || 0)).toLocaleString("it-IT")} token${m.chiamateConCosto ? ` · $${(m.usd || 0).toFixed(4)}` : ""}`).join(" · ")}</div>` : ""}
+    ${costEntries.length === 0 ? html`<div class="r-hub-detail" style="margin-top:8px">Nessuna chiamata nelle ultime 50 voci del registro — il ripartito per funzione qui sotto resta vuoto. Il totale del mese sopra non ne dipende.</div>` : html`
       <div class="r-hub-detail" style="margin-top:10px"><b>Oggi</b>: ${todayEntries.length} chiamate · ${sumTokens(todayEntries)} token (di cui ${anyRagionamentoToday ? sumRagionamento(todayEntries) : "n/d"} di ragionamento) · ${anyCostToday ? `$${sumCost(todayEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
       <div class="r-hub-detail" style="margin-top:4px"><b>Ultimi 7 giorni</b> (entro il tetto di 50 voci del log): ${weekEntries.length} chiamate · ${sumTokens(weekEntries)} token (di cui ${anyRagionamentoWeek ? sumRagionamento(weekEntries) : "n/d"} di ragionamento) · ${anyCostWeek ? `$${sumCost(weekEntries).toFixed(4)}` : "costo non disponibile (OpenRouter non lo ha restituito)"}</div>
       <table style="width:100%;margin-top:10px;border-collapse:collapse;font-size:12.5px">
@@ -10501,6 +10840,11 @@ function FeedbackWidget({ view, pushDebugLog }) {
 }
 function App() {
   const [view, setView] = useState("hub");
+  // 12/09/2026 — LA MEMORIA PIENA SMETTE DI ESSERE INVISIBILE. Un solo punto d'ascolto per tutte e
+  // 76 le chiamate a saveKey: la bandiera la alza saveKey, questa la mostra. Vedi "QUANDO LA MEMORIA
+  // DEL DISPOSITIVO DICE NO".
+  const [memoriaSatura, setMemoriaSatura] = useState(() => memoriaPiena());
+  useEffect(() => { quandoLaMemoriaSiRiempie(setMemoriaSatura); return () => quandoLaMemoriaSiRiempie(null); }, []);
   const [bio, setBio] = useState(() => loadKey("bio-data", []));
   const [air, setAir] = useState(() => loadKey("air-data", []));
   const [vidya, setVidya] = useState(() => loadKey("vidya-data", []));
@@ -10574,7 +10918,9 @@ function App() {
   // File versionati per compartimento (Legge 14): silenziosi in UI, ma tracciati nel log di debug.
   const syncIfEnabled = useCallback((label, content) => {
     if (!settingsRef.current.driveSyncEnabled) return;
-    createDriveFile(`Resonance – ${label} – ${new Date().toISOString().slice(0, 19).replace("T", " ")}`, content)
+    // 12/09/2026 — un file per etichetta per MESE, aggiornato sul posto. Vedi
+    // "I FILE VERSIONATI SU DRIVE": prima era un file nuovo a ogni scrittura, col contenuto intero.
+    aggiornaOCreaFileDiTesto(nomeFileVersionato(label), content)
       .catch((e) => pushDebugLog({ type: "versioned-file", label, error: e.message }));
   }, [pushDebugLog]);
   const updateSettings = useCallback((patch) => setSettings((prev) => { const next = { ...prev, ...patch }; saveKey("app-settings", next); return next; }), []);
@@ -10751,13 +11097,54 @@ function App() {
   useEffect(() => { if (settings.driveSyncEnabled) pullAndMergeOnce(); }, [settings.driveSyncEnabled]);
 
   // (3) Autosave con ritardo di 2s: push-merge (senza apply) a ogni modifica reale.
+  // ── 12/09/2026 — `shellChat` E' USCITO DA QUESTE DIPENDENZE, ed è l'unica cosa che è cambiata qui.
+  // Misurato: l'autosave partiva a OGNI messaggio (del Ghost e dello Shell) e `syncCore` scarica e
+  // ricarica lo stato INTERO. Con un anno di dati sono 585 kB per push, 1,17 MB di rete per ogni
+  // messaggio, ~5 secondi su 4G — e a 40 messaggi al giorno fa ~47 MB di traffico per sincronizzare
+  // pochi kB di novità. In macchina è la cosa che fa sembrare l'app lenta senza che niente sia lento.
+  // Restano dentro tutti i dati che il Ghost NON può ricostruire a memoria e che cambiano raramente.
+  // La chat ha un suo passo, più lento, qui sotto — e nel frattempo è già in localStorage: il
+  // ritardo espone alla perdita solo se il dispositivo muore, non se l'app si chiude.
+  // L'effetto (1) che timbra `sync-last-modified` continua a guardare anche `shellChat`: quello deve
+  // restare completo, o il merge preferirebbe il remoto e la chat nuova perderebbe.
   useEffect(() => {
     if (!settings.driveSyncEnabled) { skipAutosaveRef.current = false; return; } // sync off: non lasciare il flag armato (Bug B)
     if (!hasMountedAutosaveRef.current) { hasMountedAutosaveRef.current = true; return; } // il mount ha già il suo pull
     if (skipAutosaveRef.current) { skipAutosaveRef.current = false; return; }             // cambio causato da un apply: già sincronizzato
     const t = setTimeout(() => { pushMergedOnce(); }, 2000);
     return () => clearTimeout(t);
-  }, [bio, air, vidya, pBio, pAir, pVidya, magi, semi, shellChat, memory, styleMemory, kernel, resonance, settings.driveSyncEnabled]);
+  }, [bio, air, vidya, pBio, pAir, pVidya, magi, semi, memory, styleMemory, kernel, resonance, settings.driveSyncEnabled]);
+
+  // (3b) LA CHAT HA UN PASSO SUO. Due inneschi, entrambi a costo zero quando non c'è niente di nuovo:
+  //  · un battito ogni due minuti, che sale SOLO se l'impronta della chat è cambiata;
+  //  · l'app che va in secondo piano — è il momento in cui il Ghost chiude, e quello non si può perdere.
+  // L'impronta è lunghezza + id dell'ultimo messaggio: basta a distinguere "è arrivato qualcosa" da
+  // "sto solo ridisegnando", e non costa serializzare niente.
+  const improntaChatRef = useRef(null);
+  const improntaChat = () => { const c = stateRef.current.shellChat || []; return `${c.length}|${c[c.length - 1]?.id || ""}`; };
+  useEffect(() => {
+    if (!settings.driveSyncEnabled) return;
+    improntaChatRef.current = improntaChat(); // al mount la chat è già quella che il pull ha appena visto
+    const saleSeCambiata = () => {
+      const ora = improntaChat();
+      if (ora === improntaChatRef.current) return;
+      improntaChatRef.current = ora;
+      pushMergedOnce();
+    };
+    // Sullo stesso battito viaggia lo sfollamento degli archivi: è un non-operazione quando non ce
+    // n'è più di tre, quindi non serve un timer suo. Vedi "GLI ARCHIVI DELLA CHAT VANNO DOVE C'E'
+    // POSTO": la copia locale se ne va solo dopo che Drive ha restituito un id.
+    const sfolla = () => sfollaArchiviSuDrive({ carica: createDriveFile, pushDebugLog })
+      .catch((e) => pushDebugLog({ type: "archivio-chat-su-drive", error: e?.message || String(e) }));
+    sfolla();
+    const t = setInterval(() => { saleSeCambiata(); sfolla(); }, CHAT_SYNC_INTERVALLO_MS);
+    const alNascondersi = () => { if (typeof document !== "undefined" && document.visibilityState === "hidden") saleSeCambiata(); };
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", alNascondersi);
+    return () => {
+      clearInterval(t);
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", alNascondersi);
+    };
+  }, [settings.driveSyncEnabled, pushMergedOnce, pushDebugLog]);
 
   const addBio = useCallback((e) => setBio((prev) => { const n = [e, ...prev].sort((a, b) => b.date.localeCompare(a.date)); saveKey("bio-data", n); syncIfEnabled("04 BIO_STASIS", formatBioLog(n)); return n; }), [syncIfEnabled]);
   const delBio = useCallback((id) => setBio((prev) => { const n = prev.filter((e) => e.id !== id); saveKey("bio-data", n); syncIfEnabled("04 BIO_STASIS", formatBioLog(n)); return n; }), [syncIfEnabled]);
@@ -10870,7 +11257,7 @@ function App() {
   const advanceSeedIfDue = useCallback(async () => {
     // D4 — operazione automatica: si ferma al tetto. Il Ghost non l'ha chiesta adesso.
     if (!operazioniAutomaticheConsentite()) {
-      pushDebugLog({ type: "tetto-raggiunto", operazione: "avanzamento-seme", spesaMese: Number(spesaDelMeseCorrente().toFixed(4)), tetto: TETTO_MENSILE_USD });
+      pushDebugLog({ type: "tetto-raggiunto", operazione: "avanzamento-seme", ...(motivoTettoRaggiunto() || {}), spesaMese: Number(spesaDelMeseCorrente().toFixed(4)), tokenMese: tokenDelMeseCorrente() });
       return;
     }
     const s = stateRef.current;
@@ -11045,7 +11432,7 @@ function App() {
     // D4 — la Simbiosi proattiva parte da sola: e' esattamente il tipo di spesa che il Ghost non
       // vede partire, quindi si ferma al tetto.
     if (!operazioniAutomaticheConsentite()) {
-      pushDebugLog({ type: "tetto-raggiunto", operazione: "simbiosi-proattiva", spesaMese: Number(spesaDelMeseCorrente().toFixed(4)), tetto: TETTO_MENSILE_USD });
+      pushDebugLog({ type: "tetto-raggiunto", operazione: "simbiosi-proattiva", ...(motivoTettoRaggiunto() || {}), spesaMese: Number(spesaDelMeseCorrente().toFixed(4)), tokenMese: tokenDelMeseCorrente() });
       return;
     }
     // Ritardo: lascia finire mount + eventuale sync (che popola stateRef via applyMergedState) prima di valutare.
@@ -11096,6 +11483,10 @@ function App() {
     <div class="r-ghost-texture"></div>
     <${HexTexture} />
     <div class="r-topbar"><div class="r-brand">RESONANCE<span>•</span></div></div>
+    ${memoriaSatura && html`<div class="r-striscia-piena">
+      <b>La memoria del dispositivo è piena.</b> Da adesso le cose nuove non si salvano: ${memoriaSatura.scritturePerse} scrittur${memoriaSatura.scritturePerse === 1 ? "a" : "e"} già perdut${memoriaSatura.scritturePerse === 1 ? "a" : "e"} in questa sessione (l'ultima su «${memoriaSatura.chiave}»). La chat non viene più compattata, per non archiviare messaggi in un posto che non c'è.
+      <div style="margin-top:8px"><button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => setView("settings")}>Scarica il backup adesso</button></div>
+    </div>`}
     ${!ghostProfile && html`<${OnboardingView} onComplete=${saveGhostProfile} settings=${settings} driveRecovery=${driveRecovery} onRecoverFromDrive=${recoverFromDrive} />`}
     ${ghostProfile && html`<div>
     <${FeedbackWidget} view=${view} pushDebugLog=${pushDebugLog} />
