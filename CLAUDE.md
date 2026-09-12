@@ -72,6 +72,18 @@ non forzare mai push distruttivi su `main` o `stable` senza che sia esplicitamen
   il modello non deve vedere, il messaggio di errore non può riportarne il testo: in tre giri glieli
   consegna tutti. Si descrive la FORMA (`descriviForma`), mai il contenuto. Trovato dalla prova il
   04/09/2026, un'ora dopo aver scritto il banco stesso.
+- **Un tetto che legge una fonte con un tetto non è un tetto.** Il tetto di spesa sommava le voci
+  `ai-cost` dentro `debug-log`, che ne tiene 50: finestra dichiarata un mese, finestra reale sei
+  turni, massimo riportabile 0,14 $ contro una soglia di 5. Non poteva scattare, e nessuno se ne
+  sarebbe accorto perché il numero mostrato era plausibile. Un valore che GOVERNA una decisione non
+  può venire da un registro a rotazione: vuole un totalizzatore suo (`spesa-mensile`, 12/09/2026).
+  Vale per ogni soglia futura — prima di fidarsi del numero, guardare quanto vive la sua fonte.
+- **Un valore di ritorno che nessuno guarda è un fallimento muto.** `saveKey` restituiva `false` a
+  quota esaurita: 76 chiamate, zero controlli. Il caso peggiore era la compattazione della chat, che
+  accorciava comunque la chat e scriveva un segnaposto con una chiave inesistente — la Legge 14 rotta
+  in silenzio. La correzione NON è controllare 76 chiamanti (il 77° se ne dimentica): è rendere
+  rumoroso il fallimento in un punto solo (bandiera + striscia rossa), e controllare il ritorno SOLO
+  dove cambia la decisione. Se un fallimento non ha un modo di farsi vedere, non esiste.
 
 ## Accettore ed effettore — la regola, non solo il codice (dal Ghost, 04/09/2026)
 *«devono avere una relazione biunivoca, un po' come accettore d'azione ed effettore d'azione in
@@ -90,9 +102,15 @@ Vale per ogni futura coppia genera/controlla, non solo per i plasmidi:
 - Il guardiano dei dati personali sta **dove il dato entra** (`salvaPlasmide`), non dove esce.
 
 ## Checklist di consegna per ogni nuova feature
-- **Aggiorna `APP_CAPABILITIES_CONTEXT` in app.js** (blocco iniettato nel system prompt dello
-  Shell, stesso punto di `PILLAR_CTX`) con poche righe sulla nuova feature: cos'è, come si crea/
-  attiva, cosa significano i suoi stati. Senza questo lo Shell non distingue "il Ghost parla di
+- **Aggiungi una scheda all'array `CAPACITA` in app.js** con poche righe sulla nuova feature: cos'è,
+  come si crea/attiva, cosa significano i suoi stati.
+  Dal 12/09/2026 non è più un blocco di testo unico: è un array, e nel prompt del turno ci va
+  l'INDICE dei nomi più il nucleo più le schede che il turno nomina (−72% sul blocco). Quindi una
+  scheda nuova vuole anche: un nome che sia un NOME (la prima parola fino ai due punti), `nucleo:
+  true` solo se lo Shell deve poterla proporre senza essere interrogato, e un `k` scritto a mano se
+  il nome è più lungo di quattro parole significative. Il banco (`tests/capacita.test.mjs`) dice da
+  solo quando manca: verifica che ogni scheda si faccia trovare e che nessuna chiave si accenda su
+  una frase di vita reale. Senza questo lo Shell non distingue "il Ghost parla di
   una funzionalità dell'app" da "il Ghost parla della sua vita/lavoro reale" — bug già osservato
   (26/07/2026) col rilascio della feature Semi: il Ghost ha scritto "sto testando i Semi nel
   pilastro AIR" e lo Shell ha risposto come se si riferisse alla vecchia strategia contenuti,
