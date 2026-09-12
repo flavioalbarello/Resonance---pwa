@@ -356,3 +356,12 @@ body {
   word-break: break-word; user-select: all;
   background: var(--surface2); border: 1px dashed var(--border); opacity: .95;
 }
+
+/* 12/09/2026 — LA STRISCIA DELLA MEMORIA PIENA.
+   position:sticky e non relative: dice "da adesso le cose nuove non si salvano", quindi non può
+   scorrere via col contenuto. La prova di fumo l'aveva disegnata in cima e poi persa di vista
+   appena si scendeva in Setup, che è esattamente dove il Ghost sta quando cerca il backup.
+   z-index 11: sopra .r-screen (1), sopra la barra dei tab (10), perché è l'unica cosa che in quel
+   momento conta più della navigazione. */
+.r-striscia-piena { position: sticky; top: 0; z-index: 11; max-width: 456px; margin: 8px auto; padding: 10px 12px; border: 1px solid var(--warn, #B4553A); border-radius: 8px; background: #F6E4DE; font-size: 13px; line-height: 1.45; }
+.r-striscia-piena b { color: #B4553A; }

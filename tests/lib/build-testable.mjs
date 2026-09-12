@@ -125,6 +125,19 @@ const EXPORT_NAMES = [
   "rilevaNegazioneDiMateriale", "smentisciAssenzaDiMateriale", "NEGA_ESISTENZA_RE",
   // 10/09/2026 — il testo che va alla voce.
   "perLaVoce", "tabellaParlata", "VOCE_DI_ELENCO_RE", "RIGHELLO_RE", "PILLAR_CTX",
+  // 12/09/2026 — il controllo di ingegneria. Sei punti, ognuno con la sua misura, ognuno con le
+  // prove che lo difendono: il tetto di spesa che non poteva scattare, saveKey che falliva muta,
+  // gli archivi che non lasciavano mai il dispositivo, e il blocco delle capacità a richiamo.
+  "saveKey", "loadKey", "memoriaPiena", "dimenticaMemoriaPiena", "quandoLaMemoriaSiRiempie",
+  "leggiSpesa", "registraSpesa", "spesaDelMeseCorrente", "tokenDelMeseCorrente",
+  "motivoTettoRaggiunto", "operazioniAutomaticheConsentite", "ilFornitoreMandaIlCosto", "logAiCost",
+  "TETTO_MENSILE_USD", "TETTO_MENSILE_TOKEN", "SPESA_KEY", "SPESA_STORICO_MESI",
+  "compactShellChatIfNeeded", "SHELL_CHAT_COMPACT_TRIGGER", "SHELL_CHAT_KEEP_RECENT",
+  "sfollaArchiviSuDrive", "chiaviArchivioChat", "leggiArchiviSuDrive",
+  "ARCHIVI_LOCALI_DA_TENERE", "ARCHIVI_SU_DRIVE_KEY", "BACKUP_ARCHIVE_PREFIX",
+  "nomeFileVersionato", "CHAT_SYNC_INTERVALLO_MS", "chiaveIdempotenza",
+  "CAPACITA", "CAPACITA_INDICIZZATE", "CAPACITA_RICHIAMATE_MAX", "capacitaRichiamate",
+  "costruisciBloccoCapacita", "CAPACITA_INTESTAZIONE", "CAPACITA_CHIUSURA",
 ];
 
 // Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.
