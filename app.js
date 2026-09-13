@@ -2439,6 +2439,159 @@ function memoriaPiena() { return _memoriaPiena; }
 function quandoLaMemoriaSiRiempie(fn) { _avvisoMemoriaPiena = fn; }
 // Solo per le prove: azzera la bandiera fra un caso e l'altro.
 function dimenticaMemoriaPiena() { _memoriaPiena = null; }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// IL MAGAZZINO DEI TESTI — 13/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// IL CONTO CHE HA FATTO NASCERE QUESTO BLOCCO. localStorage ha un tetto di ~5 MB per origine.
+// Tolti gli archivi della chat (12/09), tutto il resto — chat attiva, log, Magi, debug — ne occupa
+// il 18%: quello che riempie il resto sono i TESTI dei documenti dei percorsi. Capienza misurata:
+// ~1.075 documenti da 4.000 caratteri. Non è una data, è un conteggio: al ritmo di un percorso
+// attivo sono anni, con tre o quattro percorsi vivi insieme sono due anni scarsi.
+// IndexedDB non ha quel tetto (centinaia di MB), è locale come localStorage — quindi funziona senza
+// rete, che è il senso di una PWA — e non chiede nessuna libreria. ~50.000 documenti, prudente.
+// Non è un rinvio: il tetto smette di essere raggiungibile da qualcuno che scrive testo. Tornerebbe
+// vero il giorno in cui si volessero tenere qui immagini o audio, che è una decisione diversa.
+//
+// COSA NON CAMBIA, ed è la scelta che rende questo blocco piccolo invece che una riscrittura:
+// la forma dei dati in memoria e nel file di sync resta IDENTICA. I documenti dentro lo stato React
+// hanno il loro `text` come sempre, quindi gli otto punti che lo leggono non si toccano, e il file
+// su Drive continua a portare i testi — se li togliessi da lì, i documenti non arriverebbero più
+// sull'altro dispositivo, e quella è una capacità, non un costo.
+// Cambia SOLO il confine con localStorage: si scrive lì una copia senza i testi, e all'avvio la si
+// ricompone leggendo i testi da qui.
+//
+// SE IndexedDB NON C'E' (finestra privata di Safari, browser vecchio, permessi negati) tutto resta
+// esattamente come prima: il testo continua a stare in localStorage. Nessuna funzione sparisce,
+// torna solo il tetto di prima. Un magazzino che non si apre non deve rompere l'app.
+const IDB_NOME = "resonance";
+const IDB_NEGOZIO = "testi-documenti";
+const IDB_VERSIONE = 1;
+let _testiDocumenti = new Map(); // id del documento → testo. Vive in RAM, riempita all'avvio.
+let _idbAttivo = false;          // false = comportamento di prima, testo dentro localStorage
+function idbDisponibile() { try { return typeof indexedDB !== "undefined" && indexedDB !== null; } catch { return false; } }
+function apriMagazzino() {
+  return new Promise((risolvi, rifiuta) => {
+    if (!idbDisponibile()) return rifiuta(new Error("IndexedDB non disponibile"));
+    let r;
+    try { r = indexedDB.open(IDB_NOME, IDB_VERSIONE); } catch (e) { return rifiuta(e); }
+    r.onupgradeneeded = () => { try { r.result.createObjectStore(IDB_NEGOZIO); } catch { /* già c'è */ } };
+    r.onsuccess = () => risolvi(r.result);
+    r.onerror = () => rifiuta(r.error || new Error("apertura del magazzino fallita"));
+    r.onblocked = () => rifiuta(new Error("magazzino bloccato da un'altra scheda"));
+  });
+}
+function conNegozio(modo, fn) {
+  return apriMagazzino().then((db) => new Promise((risolvi, rifiuta) => {
+    const tx = db.transaction([IDB_NEGOZIO], modo);
+    const negozio = tx.objectStore(IDB_NEGOZIO);
+    let esito;
+    try { esito = fn(negozio); } catch (e) { return rifiuta(e); }
+    tx.oncomplete = () => risolvi(esito); // risolvere con una promessa la concatena: i risultati delle richieste arrivano comunque prima di oncomplete
+    tx.onerror = () => rifiuta(tx.error || new Error("transazione fallita"));
+    tx.onabort = () => rifiuta(tx.error || new Error("transazione annullata"));
+  }));
+}
+const daRichiesta = (req) => new Promise((risolvi, rifiuta) => {
+  req.onsuccess = () => risolvi(req.result);
+  req.onerror = () => rifiuta(req.error || new Error("richiesta fallita"));
+});
+// Chiamata UNA volta all'avvio, prima che l'app si disegni. È l'unico momento asincrono di tutta
+// questa faccenda: da qui in poi i testi sono in RAM e ogni lettura resta sincrona come prima.
+async function caricaTestiDocumenti() {
+  _testiDocumenti = new Map();
+  _idbAttivo = false;
+  if (!idbDisponibile()) return _testiDocumenti;
+  try {
+    const [chiavi, valori] = await conNegozio("readonly", (n) => Promise.all([daRichiesta(n.getAllKeys()), daRichiesta(n.getAll())]));
+    (chiavi || []).forEach((id, i) => { if (typeof valori[i] === "string") _testiDocumenti.set(String(id), valori[i]); });
+    _idbAttivo = true;
+  } catch { _idbAttivo = false; } // magazzino illeggibile: si resta al comportamento di prima
+  return _testiDocumenti;
+}
+async function scriviTestiDocumenti(coppie) {
+  if (!_idbAttivo || !coppie.length) return true;
+  await conNegozio("readwrite", (n) => { for (const [id, testo] of coppie) n.put(testo, id); });
+  return true;
+}
+// La verifica prima di alleggerire: si rilegge dal magazzino e si confronta il testo, non la
+// lunghezza. Stessa regola degli archivi della chat — niente si toglie da dove sta senza una prova
+// che sia arrivato dove doveva.
+async function testiDavveroNelMagazzino(coppie) {
+  if (!coppie.length) return true;
+  const letti = await conNegozio("readonly", (n) => Promise.all(coppie.map(([id]) => daRichiesta(n.get(id)))));
+  return coppie.every(([, testo], i) => letti[i] === testo);
+}
+const documentiDi = (percorsi) => (Array.isArray(percorsi) ? percorsi : []).flatMap((p) => (p && Array.isArray(p.documents) ? p.documents : []));
+const coppieDiTesto = (percorsi) => documentiDi(percorsi).filter((d) => d && d.id && typeof d.text === "string" && d.text).map((d) => [String(d.id), d.text]);
+function ricordaTesti(percorsi) { for (const [id, testo] of coppieDiTesto(percorsi)) _testiDocumenti.set(id, testo); }
+// La copia SNELLA che va in localStorage: il testo esce, resta un segno che dice dov'è finito.
+// `caratteri` resta perché l'elenco dei documenti lo mostra senza aprire niente.
+function percorsiSnelli(percorsi) {
+  if (!_idbAttivo) return percorsi;
+  return (Array.isArray(percorsi) ? percorsi : []).map((p) => (p && Array.isArray(p.documents) ? {
+    ...p,
+    documents: p.documents.map((d) => (d && d.id && typeof d.text === "string" && d.text
+      ? (({ text, ...resto }) => ({ ...resto, testoNelMagazzino: true, caratteri: text.length }))(d)
+      : d)),
+  } : p));
+}
+// L'inverso: si rimette il testo dentro leggendolo dalla mappa. Un documento il cui testo non c'è
+// più nel magazzino NON diventa un documento vuoto silenzioso: si marca, così chi lo apre lo sa.
+function percorsiPieni(percorsi) {
+  return (Array.isArray(percorsi) ? percorsi : []).map((p) => (p && Array.isArray(p.documents) ? {
+    ...p,
+    documents: p.documents.map((d) => {
+      if (!d || typeof d.text === "string") return d;            // testo già dentro: niente da fare
+      if (!d.testoNelMagazzino || !d.id) return d;               // documento vecchio senza testo: com'era
+      const testo = _testiDocumenti.get(String(d.id));
+      // I due campi di servizio escono insieme al rientro del testo: in memoria e nel file di sync
+      // il documento deve avere ESATTAMENTE la forma che aveva prima del 13/09, o «la forma che
+      // viaggia non cambia» sarebbe una frase e non un fatto. La prova che lo difende è la quarta
+      // di magazzino-testi.test.mjs, e questa riga esiste perché quella prova è nata rossa.
+      const { testoNelMagazzino, caratteri, ...resto } = d;
+      return typeof testo === "string" ? { ...resto, text: testo } : { ...resto, testoIntrovabile: true, caratteri };
+    }),
+  } : p));
+}
+// Il salvataggio: in RAM, poi su disco COL TESTO DENTRO (come prima), e solo quando il magazzino
+// conferma si riscrive la copia snella. In nessun istante il testo esiste solo in memoria.
+// Se il magazzino non c'è o non risponde, resta quello che c'è sempre stato: nessuna perdita.
+function salvaPercorsi(chiave, percorsi) {
+  const lista = Array.isArray(percorsi) ? percorsi : [];
+  ricordaTesti(lista);
+  const esito = saveKey(chiave, lista);
+  if (!_idbAttivo) return esito;
+  const coppie = coppieDiTesto(lista);
+  if (!coppie.length) return esito;
+  scriviTestiDocumenti(coppie)
+    .then(() => testiDavveroNelMagazzino(coppie))
+    .then((verificato) => { if (verificato) saveKey(chiave, percorsiSnelli(lista)); })
+    .catch(() => { /* il testo resta dov'è: in localStorage, come prima di oggi */ });
+  return esito;
+}
+const CHIAVI_PERCORSI = ["percorsi-bio", "percorsi-air", "percorsi-vidya"];
+// Lo spostamento una-tantum dei documenti che esistono già. Gira all'avvio, dopo il caricamento:
+// scrive nel magazzino, RILEGGE per verificare, e solo allora toglie il testo da localStorage.
+// Se qualcosa va storto a metà, in localStorage il testo c'è ancora: il giro dopo riprova.
+async function migraTestiInIdb() {
+  if (!_idbAttivo) return { spostati: 0, chiavi: 0 };
+  let spostati = 0, chiavi = 0;
+  for (const chiave of CHIAVI_PERCORSI) {
+    const lista = loadKey(chiave, []);
+    const coppie = coppieDiTesto(lista);
+    if (!coppie.length) continue;
+    try {
+      ricordaTesti(lista);
+      await scriviTestiDocumenti(coppie);
+      if (!(await testiDavveroNelMagazzino(coppie))) continue;
+      if (saveKey(chiave, percorsiSnelli(lista))) { spostati += coppie.length; chiavi++; }
+    } catch { /* il giro dopo riprova: niente è stato tolto */ }
+  }
+  return { spostati, chiavi };
+}
+// Legge i percorsi da localStorage e li restituisce COMPLETI. È quello che usa lo stato React.
+const leggiPercorsi = (chiave) => percorsiPieni(loadKey(chiave, []));
 // FASE 1.1 (BRIEF_fase1_memoria_sedimento 27/07/2026) — migrazione retrocompatibile obbligatoria:
 // la memoria procedurale era una stringa unica per pilastro, ora è { corrente, sedimento: [{id,date,text}] }.
 // Converte il formato vecchio senza perdere nulla (necessario anche per Marta, che ha dati propri già
@@ -2632,6 +2785,22 @@ function buildFullBackup() {
   for (const k of BACKUP_KEYS) {
     const v = localStorage.getItem(k);
     if (v !== null) dati[k] = v; // stringa grezza: nessun re-parse, nessuna perdita di forma
+  }
+  // ══ 13/09/2026 — IL PEZZO CHE NON SI PUO' SBAGLIARE ══
+  // Da oggi i testi dei documenti non stanno più in localStorage ma nel magazzino (IndexedDB).
+  // Se questo giro restasse com'era, il file scaricato continuerebbe a SEMBRARE completo — stesso
+  // nome, stesse chiavi, stesso numero di voci — e non conterrebbe più il lavoro del Ghost.
+  // Silenzioso, esattamente come i difetti trovati l'11/09. Per questo il backup impara a leggere
+  // il posto nuovo PRIMA che qualcosa si sposti, e non dopo.
+  // I testi si rimettono dentro dalla mappa in RAM, quindi resta tutto sincrono: nessun await qui.
+  // Conseguenza voluta: il formato del file di backup NON cambia. Un backup fatto oggi si ripristina
+  // su una versione vecchia dell'app, e uno fatto ieri si ripristina su questa.
+  for (const k of CHIAVI_PERCORSI) {
+    if (dati[k] === undefined) continue;
+    try {
+      const pieni = percorsiPieni(JSON.parse(dati[k]));
+      dati[k] = JSON.stringify(pieni);
+    } catch { /* illeggibile: si esporta la stringa grezza, mai si perde il dato */ }
   }
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
@@ -4590,6 +4759,7 @@ Cosa succede quando non ce la fa: il motivo torna al modello e riprova, al massi
   { n: `Memoria del dispositivo piena`, nucleo: true, k: ["memoria piena", "memoria del dispositivo", "striscia rossa", "non salva"], s: `Memoria del dispositivo piena: se lo spazio locale si esaurisce, in cima all'app compare una striscia rossa che lo dice, quante scritture sono andate perdute in questa sessione e su quale chiave l'ultima, con un pulsante che porta al backup. Prima dell'11/09/2026 il fallimento era muto: la funzione di salvataggio restituiva "non fatto" e nessuno dei 76 punti che la chiamano guardava quella risposta. Finche' la striscia c'e', la chat NON viene piu' compattata: non compattare e' meglio che archiviare messaggi in un posto che non c'e'. La striscia sparisce ricaricando l'app, perche' dice "in questa sessione una scrittura e' andata perduta", non "il dispositivo e' pieno per sempre".` },
   { n: `Archivi della chat su Drive`, k: ["archivi della chat", "archivio della chat", "messaggi archiviati", "messaggi compattati"], s: `Archivi della chat su Drive: quando la chat supera i 40 messaggi i piu' vecchi finiscono in un archivio locale (e' la compattazione). Dal 12/09/2026 gli archivi oltre i tre piu' recenti salgono su Drive e lasciano il dispositivo, cosi' non riempiono lo spazio locale — che e' circa 5 MB e senza questo si sarebbe esaurito fra il sesto e il dodicesimo mese di uso. La copia locale viene cancellata SOLO dopo che Drive ha restituito l'identificativo del file: senza quella prova non si cancella niente, e con il sync spento non si sposta niente. Un indice locale tiene il conto di dove sono finiti, e l'indice sta nel backup.` },
   { n: `Quando la chat arriva su Drive`, k: ["quando si sincronizza", "sincronizzazione della chat", "passo del sync"], s: `Quando la chat arriva su Drive: i dati dei pilastri, i percorsi, la memoria e il kernel salgono due secondi dopo ogni modifica, come sempre. La CHAT ha un passo suo, piu' lento: ogni due minuti, e comunque appena l'app va in secondo piano — cioe' quando il Ghost la chiude. Fino all'11/09/2026 ogni singolo messaggio faceva scaricare e ricaricare lo stato intero: con un anno di dati sono 1,1 MB di rete per messaggio, circa cinque secondi in 4G, ed era la ragione per cui l'app sembrava lenta in macchina senza che niente fosse lento. I messaggi sono comunque sul dispositivo appena scritti: il ritardo riguarda solo la copia su Drive.` },
+  { n: `Dove stanno i testi dei documenti`, k: ["dove stanno i documenti", "magazzino dei testi", "spazio sul telefono", "memoria del telefono piena"], s: `Dove stanno i testi dei documenti: dal 13/09/2026 il TESTO dei documenti dei percorsi non sta piu' nello spazio piccolo del browser (circa 5 MB, che bastava per ~1.075 documenti da 4.000 caratteri) ma in un magazzino locale piu' grande sullo stesso telefono, che ne tiene decine di migliaia. Non cambia niente di quello che si vede o si fa: i documenti si aprono, si cercano e si rileggono esattamente come prima, anche senza rete, e il file di sync fra i due dispositivi continua a portarli. Lo spostamento dei documenti gia' esistenti avviene da solo alla prima apertura dell'app, e un testo lascia il vecchio posto SOLO dopo che il magazzino l'ha riletto identico. Se il magazzino non e' disponibile (finestra privata, browser vecchio) tutto resta com'era prima, col tetto di prima. Un documento il cui testo non si trova piu' lo dichiara invece di aprirsi vuoto.` },
   { n: `Backup e ripristino (Setup)`, k: ["backup", "ripristino"], s: `Backup e ripristino (Setup): scarica in un unico file tutto lo stato locale e sa rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo previa conferma.` },
 ];
 // Il tetto sulle schede richiamate. Non è prudenza: è il numero oltre il quale il richiamo
@@ -10851,9 +11021,9 @@ function App() {
   const [magi, setMagi] = useState(() => loadKey("magi-data", []));
   const [shellChat, setShellChatRaw] = useState(() => loadKey("shell-chat", []));
   const setShellChat = useCallback((updater) => setShellChatRaw((prev) => { const next = typeof updater === "function" ? updater(prev) : updater; saveKey("shell-chat", next); return next; }), []);
-  const [pBio, setPBio] = useState(() => loadKey("percorsi-bio", []));
-  const [pAir, setPAir] = useState(() => loadKey("percorsi-air", []));
-  const [pVidya, setPVidya] = useState(() => loadKey("percorsi-vidya", []));
+  const [pBio, setPBio] = useState(() => leggiPercorsi("percorsi-bio"));
+  const [pAir, setPAir] = useState(() => leggiPercorsi("percorsi-air"));
+  const [pVidya, setPVidya] = useState(() => leggiPercorsi("percorsi-vidya"));
   const [semi, setSemi] = useState(() => loadKey("semi-data", []));
   // PUNTO 4 (BRIEF_correzioni_post_test 26/07/2026): "Discuti in Shell" — messaggio di contesto
   // PREPARATO nell'input di Shell, mai inviato automaticamente (Legge 8). Non persistente (solo
@@ -10964,9 +11134,9 @@ function App() {
     setBio(merged.bio); saveKey("bio-data", merged.bio);
     setAir(merged.air); saveKey("air-data", merged.air);
     setVidya(merged.vidya); saveKey("vidya-data", merged.vidya);
-    setPBio(merged.pBio); saveKey("percorsi-bio", merged.pBio);
-    setPAir(merged.pAir); saveKey("percorsi-air", merged.pAir);
-    setPVidya(merged.pVidya); saveKey("percorsi-vidya", merged.pVidya);
+    setPBio(merged.pBio); salvaPercorsi("percorsi-bio", merged.pBio);
+    setPAir(merged.pAir); salvaPercorsi("percorsi-air", merged.pAir);
+    setPVidya(merged.pVidya); salvaPercorsi("percorsi-vidya", merged.pVidya);
     setMagi(merged.magi); saveKey("magi-data", merged.magi);
     setSemi(merged.semi); saveKey("semi-data", merged.semi);
     setShellChatRaw(merged.shellChat); saveKey("shell-chat", merged.shellChat);
@@ -11178,9 +11348,9 @@ function App() {
   }, [bio, air, vidya, syncIfEnabled]);
   const addMagi = useCallback((s) => setMagi((prev) => { const n = [s, ...prev]; saveKey("magi-data", n); syncIfEnabled("01 AGORÀ_MAGI", formatMagiLog(n)); return n; }), [syncIfEnabled]);
   const delMagi = useCallback((id) => setMagi((prev) => { const n = prev.filter((s) => s.id !== id); saveKey("magi-data", n); syncIfEnabled("01 AGORÀ_MAGI", formatMagiLog(n)); return n; }), [syncIfEnabled]);
-  const setPBioSync = useCallback((n) => { setPBio(n); saveKey("percorsi-bio", n); syncIfEnabled("04 BIO_STASIS — Percorsi", formatPercorsiLog("BIO", n)); }, [syncIfEnabled]);
-  const setPAirSync = useCallback((n) => { setPAir(n); saveKey("percorsi-air", n); syncIfEnabled("03 AIR_OPERATIONS — Percorsi", formatPercorsiLog("AIR", n)); }, [syncIfEnabled]);
-  const setPVidyaSync = useCallback((n) => { setPVidya(n); saveKey("percorsi-vidya", n); syncIfEnabled("05 VIDYA_TUNING — Percorsi", formatPercorsiLog("VIDYA", n)); }, [syncIfEnabled]);
+  const setPBioSync = useCallback((n) => { setPBio(n); salvaPercorsi("percorsi-bio", n); syncIfEnabled("04 BIO_STASIS — Percorsi", formatPercorsiLog("BIO", n)); }, [syncIfEnabled]);
+  const setPAirSync = useCallback((n) => { setPAir(n); salvaPercorsi("percorsi-air", n); syncIfEnabled("03 AIR_OPERATIONS — Percorsi", formatPercorsiLog("AIR", n)); }, [syncIfEnabled]);
+  const setPVidyaSync = useCallback((n) => { setPVidya(n); salvaPercorsi("percorsi-vidya", n); syncIfEnabled("05 VIDYA_TUNING — Percorsi", formatPercorsiLog("VIDYA", n)); }, [syncIfEnabled]);
   const setSemiSync = useCallback((n) => { setSemi(n); saveKey("semi-data", n); syncIfEnabled("03 AIR_OPERATIONS — Semi", formatSemiLog(n)); }, [syncIfEnabled]);
   const addSeed = useCallback((content, originSource) => {
     const s = {
@@ -11509,5 +11679,18 @@ function App() {
     </div>`}
   </div>`;
 }
+// ══ 13/09/2026 — L'UNICO MOMENTO ASINCRONO DI TUTTA LA FACCENDA DEI TESTI ══
+// Si apre il magazzino e si portano i testi in RAM PRIMA che l'app si disegni, perché da lì in poi
+// ogni lettura resta sincrona come è sempre stata: `useState(() => leggiPercorsi(...))` trova la
+// mappa già piena e restituisce documenti completi, e nessuno degli otto punti che leggono `d.text`
+// deve sapere che il testo è arrivato da un altro posto.
+// Costa qualche decina di millisecondi una volta per apertura. Se il magazzino non si apre, questa
+// riga non lancia: `caricaTestiDocumenti` inghiotte e lascia `_idbAttivo` a false, cioè il
+// comportamento di prima. Un magazzino che non si apre non deve impedire all'app di partire.
+await caricaTestiDocumenti();
 render(html`<${App} />`, document.getElementById("app"));
+// Lo spostamento dei documenti che esistono già parte DOPO il primo disegno: non è urgente, e
+// rallentare l'avvio per una cosa che si può fare mentre il Ghost guarda l'Hub sarebbe sbagliato.
+// È idempotente: al secondo avvio non trova più niente da spostare e non fa niente.
+migraTestiInIdb().catch(() => {});
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));

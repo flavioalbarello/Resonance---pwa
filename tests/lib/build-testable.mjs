@@ -51,6 +51,63 @@ const localStorage = {
   clear() { __store.clear(); },
 };
 globalThis.__store = __store;
+
+// ── IndexedDB finto (13/09/2026) ────────────────────────────────────────────────────────────────
+// Senza questo, in Node \`indexedDB\` non esiste, \`_idbAttivo\` resta false e il codice del magazzino
+// dei testi NON VIENE MAI ESEGUITO dal banco: le prove sarebbero verdi su un ramo morto. Che è
+// esattamente la forma di buco che questo progetto ha già trovato tre volte.
+// Copre solo ciò che app.js usa davvero: open/createObjectStore/transaction/put/get/getAll/
+// getAllKeys, con i risultati che arrivano DOPO il blocco sincrono, come nel browser vero — è quel
+// dettaglio di tempi che fa fallire un wrapper scritto male, e va riprodotto.
+const __idbDati = new Map();
+globalThis.__idbDati = __idbDati;
+globalThis.__idbGuasto = null; // "scrittura" | "lettura" | "apertura" — per far dire no al magazzino
+function __richiesta(esegui) {
+  const req = { onsuccess: null, onerror: null, result: undefined };
+  queueMicrotask(() => {
+    try { req.result = esegui(); req.onsuccess && req.onsuccess(); }
+    catch (e) { req.error = e; req.onerror && req.onerror(); }
+  });
+  return req;
+}
+function __negozioFinto(tx) {
+  const vietato = (modo) => {
+    if (globalThis.__idbGuasto === "scrittura" && modo === "w") throw new Error("magazzino in sola lettura (finto)");
+    if (globalThis.__idbGuasto === "lettura" && modo === "r") throw new Error("magazzino illeggibile (finto)");
+  };
+  return {
+    put(valore, chiave) { return __richiesta(() => { vietato("w"); __idbDati.set(String(chiave), valore); tx.__conta++; return chiave; }); },
+    get(chiave) { return __richiesta(() => { vietato("r"); return __idbDati.get(String(chiave)); }); },
+    getAll() { return __richiesta(() => { vietato("r"); return Array.from(__idbDati.values()); }); },
+    getAllKeys() { return __richiesta(() => { vietato("r"); return Array.from(__idbDati.keys()); }); },
+    delete(chiave) { return __richiesta(() => { vietato("w"); __idbDati.delete(String(chiave)); return undefined; }); },
+  };
+}
+globalThis.__accendiIdb = () => {
+  globalThis.indexedDB = {
+    open() {
+      const req = { onsuccess: null, onerror: null, onupgradeneeded: null, onblocked: null, result: null };
+      queueMicrotask(() => {
+        if (globalThis.__idbGuasto === "apertura") { req.error = new Error("apertura negata (finta)"); req.onerror && req.onerror(); return; }
+        req.result = {
+          createObjectStore() { return {}; },
+          transaction() {
+            const tx = { oncomplete: null, onerror: null, onabort: null, __conta: 0 };
+            tx.objectStore = () => __negozioFinto(tx);
+            // Due giri di microtask: le richieste si risolvono nel primo, la transazione si chiude
+            // nel secondo. Nel browser vero oncomplete arriva DOPO tutti gli onsuccess.
+            queueMicrotask(() => queueMicrotask(() => queueMicrotask(() => tx.oncomplete && tx.oncomplete())));
+            return tx;
+          },
+        };
+        req.onupgradeneeded && req.onupgradeneeded();
+        req.onsuccess && req.onsuccess();
+      });
+      return req;
+    },
+  };
+};
+globalThis.__spegniIdb = () => { delete globalThis.indexedDB; __idbDati.clear(); globalThis.__idbGuasto = null; };
 `;
 
 // Nomi che i test possono chiedere. Un nome qui che non esiste (piu') ne' in app.js ne' in un modulo
@@ -138,6 +195,11 @@ const EXPORT_NAMES = [
   "nomeFileVersionato", "CHAT_SYNC_INTERVALLO_MS", "chiaveIdempotenza",
   "CAPACITA", "CAPACITA_INDICIZZATE", "CAPACITA_RICHIAMATE_MAX", "capacitaRichiamate",
   "costruisciBloccoCapacita", "CAPACITA_INTESTAZIONE", "CAPACITA_CHIUSURA",
+  // 13/09/2026 — il magazzino dei testi: i documenti escono da localStorage.
+  "caricaTestiDocumenti", "migraTestiInIdb", "salvaPercorsi", "leggiPercorsi",
+  "percorsiSnelli", "percorsiPieni", "coppieDiTesto", "CHIAVI_PERCORSI",
+  "IDB_NOME", "IDB_NEGOZIO", "scriviTestiDocumenti", "testiDavveroNelMagazzino",
+  "BACKUP_FORMAT_VERSION",
 ];
 
 // Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.
