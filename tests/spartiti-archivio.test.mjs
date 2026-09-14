@@ -21,6 +21,9 @@ const { analizzaSpartito, abcDaArchivio, chiaveAbc, metroPerTipo, spartitiDalBra
 const leggi = (f) => JSON.parse(readFileSync(new URL(`./dati/${f}`, import.meta.url), "utf8"));
 const COOLEYS = leggi("thesession-cooleys.json");
 const RICERCA = leggi("thesession-ricerca.json");
+// La risposta VERA a «One metallica», scaricata il 14/09/2026: `total: 100`, e dentro nemmeno un
+// brano dei Metallica. È il dato che ha fatto nascere risultatiCheRispondono.
+const ONE_METALLICA = leggi("thesession-one-metallica.json");
 
 describe("IL DATO VERO PASSA — la misura che ha guidato tutto il resto", () => {
   test("tutte le trascrizioni vere di un brano vero diventano spartiti validi", () => {
@@ -217,6 +220,87 @@ describe("CHIEDERE UNO SPARTITO A PAROLE", () => {
   test("niente da cercare, niente ricerca: la frase senza titolo non parte", () => {
     assert.equal(richiestaDiSpartito("cerca uno spartito"), null);
     assert.equal(richiestaDiSpartito("cerca online uno spartito per favore"), null);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// UN ARCHIVIO CHE RISPONDE NON E' UN ARCHIVIO CHE HA CAPITO — 14/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost ha scritto «Cerca lo spartito per basso di One dei Metallica» e questo banco gira sulla
+// risposta VERA che l'archivio dà a quella query: cento brani, zero Metallica. Senza filtro la
+// chat gli avrebbe mostrato «Paddy Connelly Buys One Gets One Free» come risposta alla sua
+// domanda — peggio del «non posso cercare online» di cui si stava lamentando, perché una bugia che
+// dice «non so» si riconosce e una che dice «ecco» no.
+describe("LA PERTINENZA, misurata sulla risposta vera che ha rivelato il difetto", () => {
+  const { risultatiCheRispondono } = app;
+
+  test("IL DATO CRUDO: l'archivio dichiara cento brani e nessuno è quello chiesto", () => {
+    assert.equal(ONE_METALLICA.total, 100);
+    assert.equal(ONE_METALLICA.tunes.filter((t) => /metallica/i.test(`${t.name} ${t.alias || ""}`)).length, 0,
+      "se un giorno The Session avesse i Metallica, questo banco va riscritto invece che aggiustato");
+  });
+
+  test("nessuno di quei cento passa, e la parola caduta a vuoto si chiama per nome", () => {
+    const { risposte, scartati, paroleAssenti } = risultatiCheRispondono("One metallica", ONE_METALLICA.tunes);
+    assert.equal(risposte.length, 0, `passate: ${risposte.map((t) => t.name).join(", ")}`);
+    assert.equal(scartati, ONE_METALLICA.tunes.length);
+    assert.deepEqual(paroleAssenti, ["metallica"], "«one» c'era davvero nei titoli: l'unica assente è «metallica»");
+  });
+
+  test("MA LA RICERCA BUONA NON DEVE MORIRE: quello che risponde passa", () => {
+    const tunes = [
+      { id: 1, name: "Cooley's", alias: "Tulla Reel", type: "reel" },
+      { id: 2, name: "The Silver Spear", type: "reel" },
+      { id: 3, name: "Egan's", type: "polka" },
+      { id: 4, name: "Drowsy Maggie", type: "reel" },
+    ];
+    const passa = (q) => risultatiCheRispondono(q, tunes).risposte.map((t) => t.name);
+    assert.deepEqual(passa("Cooley's"), ["Cooley's"]);
+    assert.deepEqual(passa("cooley"), ["Cooley's"], "senza apostrofo e in minuscolo deve trovarlo lo stesso");
+    assert.deepEqual(passa("The Silver Spear"), ["The Silver Spear"], "gli articoli non contano");
+    assert.deepEqual(passa("Tulla"), ["Cooley's"], "l'alias è un nome vero del brano");
+    assert.deepEqual(passa("Egan's polka"), ["Egan's"],
+      "il TIPO di danza entra nel confronto: il nome è «Egan's», «polka» sta nel tipo");
+    assert.deepEqual(passa("Drowsy Maggie"), ["Drowsy Maggie"]);
+  });
+
+  test("L'APOSTROFO NON DEVE DIVIDERE: «Cooleys» e «Cooley's» sono lo stesso brano", () => {
+    // The Session contiene ENTRAMBE le grafie, a seconda di chi ha caricato il brano. Chi scrive
+    // quella che non coincide non deve sentirsi dire che il brano non esiste.
+    const conApostrofo = [{ id: 1, name: "Cooley's", type: "reel" }];
+    const senza = [{ id: 2, name: "Cooleys", type: "reel" }];
+    for (const q of ["Cooley's", "Cooleys", "cooley’s"]) {
+      assert.equal(risultatiCheRispondono(q, conApostrofo).risposte.length, 1, `«${q}» contro «Cooley's»`);
+      assert.equal(risultatiCheRispondono(q, senza).risposte.length, 1, `«${q}» contro «Cooleys»`);
+    }
+    // E non deve nascere una parola spuria «s» che fa passare qualunque cosa la contenga.
+    assert.equal(risultatiCheRispondono("Cooley's", [{ id: 3, name: "Silver Spear", type: "reel" }]).risposte.length, 0);
+  });
+
+  test("una parola in più che non c'entra annulla il risultato, e si dice quale", () => {
+    const tunes = [{ id: 1, name: "Cooley's", type: "reel" }];
+    const r = risultatiCheRispondono("Cooley's dei Beatles", tunes);
+    assert.equal(r.risposte.length, 0);
+    assert.deepEqual(r.paroleAssenti, ["beatles"], "«dei» è una parola vuota e non deve comparire qui");
+  });
+
+  test("query vuota: si restituisce tutto invece di far sparire l'archivio", () => {
+    const tunes = [{ id: 1, name: "Cooley's", type: "reel" }];
+    assert.equal(risultatiCheRispondono("", tunes).risposte.length, 1);
+    assert.equal(risultatiCheRispondono("di il the", tunes).risposte.length, 1, "solo parole vuote = nessun filtro");
+  });
+
+  test("la lista che non arriva non fa esplodere niente", () => {
+    for (const niente of [null, undefined, "non una lista", 42]) {
+      assert.deepEqual(risultatiCheRispondono("cooley", niente).risposte, []);
+    }
+  });
+
+  test("LA RICERCA VERA DI PRIMA resta com'era: il filtro non ha rotto il caso buono", () => {
+    // thesession-ricerca.json è la risposta vera a «morrison»: tutti i titoli la contengono.
+    const r = risultatiCheRispondono("morrison", RICERCA.tunes);
+    assert.equal(r.risposte.length, RICERCA.tunes.length, `scartati ${r.scartati}: ${r.risposte.length}/${RICERCA.tunes.length}`);
+    assert.equal(r.paroleAssenti.length, 0);
   });
 });
 
