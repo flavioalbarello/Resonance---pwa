@@ -67,6 +67,7 @@ import {
   spartitiDalBrano,
   richiestaDiSpartito,
   risultatiCheRispondono,
+  spiegazioneRicerca,
   chiaveAbc,
   abcDaArchivio,
   nuovoPromemoria,
@@ -8669,28 +8670,12 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   // ne' abbellirlo ne' contraddirlo. Il caso "zero risultati" dice il motivo vero invece di
   // lasciar credere a un guasto: quell'archivio tiene un repertorio solo, e un pezzo dei Beatles
   // non c'e' e non ci sara'.
-  const testoRicercaSpartiti = (chiesto, esito) => {
-    const nota = chiesto.strumento
-      ? `\n\n«${chiesto.strumento}» non l'ho usato per filtrare: l'archivio indicizza i brani, non gli arrangiamenti. Lo strumento lo scegli quando apri lo spartito (pentagramma o tablatura).`
-      : "";
-    if (esito.errore) return `Ho provato a cercare «${chiesto.query}» in ${ARCHIVIO_SPARTITI.nome} e non ho ottenuto risposta: ${esito.errore}. Non è una ricerca a vuoto, è una ricerca che non è partita: riprova fra poco.${nota}`;
-    if (!esito.tunes.length) {
-      // LA PAROLA CHE NON C'ERA IN NESSUN RISULTATO E' LA SPIEGAZIONE. L'archivio cerca in OR:
-      // a «One metallica» risponde cento brani che contengono «One» e nessuno che contenga
-      // «metallica». Dirgli quale parola è caduta a vuoto è la differenza fra "non ho trovato" e
-      // "ho capito perché non trovo".
-      const manca = esito.paroleAssenti.length
-        ? `\n\nL'archivio ha risposto con ${esito.grezzi} ${esito.grezzi === 1 ? "brano" : "brani"}, ma ${esito.paroleAssenti.length === 1 ? "la parola" : "le parole"} ${esito.paroleAssenti.map((p) => `«${p}»`).join(", ")} non ${esito.paroleAssenti.length === 1 ? "compare" : "compaiono"} in nessuno di quei titoli: ha cercato solo il resto, e quella è altra musica. Te li ho tolti invece di mostrarteli come se fossero risposte.`
-        : esito.scartati ? `\n\nL'archivio ne ha restituiti ${esito.grezzi}, ma nessuno conteneva tutte le parole che hai chiesto: te li ho tolti.` : "";
-      return `Ho cercato «${chiesto.query}» in ${ARCHIVIO_SPARTITI.nome} — è l'unico archivio che so interrogare — e non c'è.${manca}\n\n`
-        + `Quell'archivio tiene ${ARCHIVIO_SPARTITI.perChe}. Rock, metal, pop: lì non ci sono e non ci saranno. Non è un guasto, è il suo repertorio — e non ne ho altri: gli archivi di tablature per quella musica non si lasciano interrogare da un'app come questa.\n\n`
-        + `Cosa posso fare davvero: cercare con un altro titolo (la casella qui sotto), oppure scriverti una linea di basso io dal riquadro "Spartito" dentro un percorso — ma quella la inventa un modello, non è la trascrizione di quel brano, e te lo dico prima perché la differenza conta.${nota}`;
-    }
-    const tolti = esito.scartati ? ` L'archivio ne aveva restituiti ${esito.grezzi}: ${esito.scartati} non contenevano quello che hai chiesto e non te li mostro.` : "";
-    return `Ho cercato «${chiesto.query}» in ${ARCHIVIO_SPARTITI.nome}: ${esito.pertinenti} ${esito.pertinenti === 1 ? "brano" : "brani"}`
-      + `${esito.pertinenti > esito.tunes.length ? `, te ne mostro ${esito.tunes.length}` : ""}.${tolti} Apri un brano per vedere le sue trascrizioni e tenere quella che serve.\n\n`
-      + `Questa ricerca non è passata da nessun modello: l'ha fatta il programma, e non è costata niente.${nota}`;
-  };
+  // Il testo vive in lib/spartito.js (`spiegazioneRicerca`), non qui: afferma dei FATTI — quanti
+  // brani ha restituito l'archivio, quanti ne ho tolti io, quale parola è caduta a vuoto — e
+  // dentro un componente nessuna prova lo raggiungeva. È esattamente lì che il 14/09 ha detto al
+  // Ghost «te li ho tolti» su zero risultati, cioè avendo tolto niente.
+  const testoRicercaSpartiti = (chiesto, esito) =>
+    spiegazioneRicerca({ query: chiesto.query, strumento: chiesto.strumento, esito }).testo;
   const apriBranoInChat = async (mid, t) => {
     patchSpartito(mid, { busy: true, esito: "" });
     try {
