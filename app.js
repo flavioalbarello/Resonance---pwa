@@ -56,6 +56,18 @@ import {
   richiestaDiPianoAlimentare,
   validaRepertorio,
 } from "./lib/alimentare.js";
+import {
+  analizzaSpartito,
+  battuteDi,
+  briefDelloSpartito,
+  documentoSpartito,
+  eSpartito,
+  nuovoPromemoria,
+  ordinaPromemoria,
+  promemoriaDellaBattuta,
+  promemoriaOrfani,
+  SPARTITO_ESEMPIO,
+} from "./lib/spartito.js";
 
 const html = htm.bind(h);
 
@@ -4854,6 +4866,7 @@ Cosa succede quando non ce la fa: il motivo torna al modello e riprova, al massi
   { n: `Archivi della chat su Drive`, k: ["archivi della chat", "archivio della chat", "messaggi archiviati", "messaggi compattati"], s: `Archivi della chat su Drive: quando la chat supera i 40 messaggi i piu' vecchi finiscono in un archivio locale (e' la compattazione). Dal 12/09/2026 gli archivi oltre i tre piu' recenti salgono su Drive e lasciano il dispositivo, cosi' non riempiono lo spazio locale — che e' circa 5 MB e senza questo si sarebbe esaurito fra il sesto e il dodicesimo mese di uso. La copia locale viene cancellata SOLO dopo che Drive ha restituito l'identificativo del file: senza quella prova non si cancella niente, e con il sync spento non si sposta niente. Un indice locale tiene il conto di dove sono finiti, e l'indice sta nel backup.` },
   { n: `Quando la chat arriva su Drive`, k: ["quando si sincronizza", "sincronizzazione della chat", "passo del sync"], s: `Quando la chat arriva su Drive: i dati dei pilastri, i percorsi, la memoria e il kernel salgono due secondi dopo ogni modifica, come sempre. La CHAT ha un passo suo, piu' lento: ogni due minuti, e comunque appena l'app va in secondo piano — cioe' quando il Ghost la chiude. Fino all'11/09/2026 ogni singolo messaggio faceva scaricare e ricaricare lo stato intero: con un anno di dati sono 1,1 MB di rete per messaggio, circa cinque secondi in 4G, ed era la ragione per cui l'app sembrava lenta in macchina senza che niente fosse lento. I messaggi sono comunque sul dispositivo appena scritti: il ritardo riguarda solo la copia su Drive.` },
   { n: `Modalita' voce`, nucleo: true, k: ["modalita voce", "parlare all app", "microfono", "comando vocale", "navigare a voce"], s: `Modalita' voce: c'e' un pulsante microfono nella barra in cima, visibile da OGNI schermata. Acceso, il Ghost parla e succede una di due cose. Se dice un comando di navigazione — "apri magi", "apri la chat con lo Shell", "vai su Adam", "portami in bio", "torna alla home", "apri le impostazioni" — il programma cambia schermata da solo, senza passare dal modello: costa zero, e' istantaneo e si disfa con un altro comando. Qualunque altra frase viene MANDATA allo Shell come un messaggio, e la risposta viene letta ad alta voce. Accendere la modalita' e' il gesto di consenso: da li' in poi quello che si dice parte, perche' in macchina la casella di testo non si puo' usare. Questo NON scavalca le conferme: calendario, mail e Semi in esecuzione continuano ad avere il loro pulsante come prima. Serve un VERBO di apertura perche' sia navigazione: "parliamo di bio" non sposta niente, e "apri il percorso del concept album" resta l'azione di sempre e va allo Shell. Mentre l'app parla il microfono e' sordo di proposito, o sentirebbe la propria voce e la rimanderebbe indietro all'infinito. La barra sotto dice sempre cosa sta capendo e cosa ha fatto.` },
+  { n: `Spartiti`, k: ["spartito", "spartiti", "musica", "pentagramma", "tablatura", "notazione", "melodia", "note musicali"], s: `Spartiti: dentro un percorso, sotto "Artefatto documentale", c'e' un riquadro "Spartito". Si scrive che musica serve ("il tema dell'Atto IV, lento, in minore"), si sceglie lo strumento, e il modello la scrive in notazione ABC; il programma la CONTROLLA prima di tenerla — intestazione, tonalita', metro, almeno due battute, niente prosa in mezzo alle note, e se ci sono i versi che le sillabe tornino con le note. Se non va bene il motivo torna al modello e riprova, al massimo tre volte, e se non ci arriva lo dice invece di salvare qualcosa di rotto. C'e' anche "Partine uno a mano" per cominciare da un esempio vuoto. Uno spartito e' un DOCUMENTO del percorso come gli altri: sta in "Documenti del percorso" col nome che finisce in .abc, va su Drive, entra nel backup e si trova con la ricerca. Aprendolo compare il pentagramma vero, un pulsante per SUONARLO (lo suona il browser, non serve niente di installato), e un menu per vederlo anche in TABLATURA per chitarra, violino o mandolino — la tablatura e' un modo di guardare lo stesso spartito, non un file diverso. Si possono mettere i VERSI sotto le note, cosi' musica e parole restano un documento solo. PROMEMORIA: toccando una nota si attacca un promemoria a quella battuta, e quando lo spartito suona e arriva li' il promemoria compare da solo. L'ancora e' il numero di battuta, quindi sopravvive se lo spartito viene riscritto o trasposto; se lo spartito si accorcia e un promemoria resta oltre l'ultima battuta viene segnalato, mai buttato via da solo. Il disegnatore pesa 480 kB e vive dentro l'app: la prima volta che si apre uno spartito va scaricato, dopo funziona anche senza rete.` },
   { n: `Dove stanno i testi dei documenti`, k: ["dove stanno i documenti", "magazzino dei testi", "spazio sul telefono", "memoria del telefono piena"], s: `Dove stanno i testi dei documenti: dal 13/09/2026 il TESTO dei documenti dei percorsi non sta piu' nello spazio piccolo del browser (circa 5 MB, che bastava per ~1.075 documenti da 4.000 caratteri) ma in un magazzino locale piu' grande sullo stesso telefono, che ne tiene decine di migliaia. Non cambia niente di quello che si vede o si fa: i documenti si aprono, si cercano e si rileggono esattamente come prima, anche senza rete, e il file di sync fra i due dispositivi continua a portarli. Lo spostamento dei documenti gia' esistenti avviene da solo alla prima apertura dell'app, e un testo lascia il vecchio posto SOLO dopo che il magazzino l'ha riletto identico. Se il magazzino non e' disponibile (finestra privata, browser vecchio) tutto resta com'era prima, col tetto di prima. Un documento il cui testo non si trova piu' lo dichiara invece di aprirsi vuoto.` },
   { n: `Backup e ripristino (Setup)`, k: ["backup", "ripristino"], s: `Backup e ripristino (Setup): scarica in un unico file tutto lo stato locale e sa rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo previa conferma.` },
 ];
@@ -7055,6 +7068,160 @@ function aggiornaOCreaFileDiTesto(name, content) {
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 // ── Sync tra dispositivi: UN SOLO file, sempre aggiornato — distinto dai file versionati (Legge 14) ──
 const SYNC_FILENAME = "resonance-sync-state.json";
+// ══════════════════════════════════════════════════════════════════════════════
+// IL VISORE DI SPARTITI — 14/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// abcjs VIVE NEL REPO, come Preact e htm, e non arriva da una CDN. La prima versione di questo
+// blocco la importava da esm.sh sulla scia di loadDocxLib — poi la prova nel browser non ha
+// disegnato niente, e il motivo era che quella dipendenza non si può verificare da qui. Una
+// dipendenza che non posso far fallire in prova non la spedisco sul telefono del Ghost.
+// È anche la scelta migliore per lui, per le stesse ragioni scritte in cima a questo file quando
+// Preact uscì da esm.sh: un viaggio di rete invece di due, e soprattutto niente CDN fra lui e uno
+// spartito. Il file è autosufficiente (zero import esterni: controllato, non supposto).
+// 480 kB sul disco, 142 kB compressi in rete. NON sta nel precaricamento del service worker: un
+// file grosso dentro `addAll` fa fallire l'installazione intera se la rete singhiozza, e non vale
+// la pena rischiare l'avvio dell'app per una schermata che si apre ogni tanto. Ci pensa la cache
+// normale: si scarica la prima volta che si apre uno spartito, e da lì in poi funziona offline.
+let _abcLibPromise = null;
+function loadAbcLib() {
+  if (!_abcLibPromise) {
+    _abcLibPromise = import("./vendor/abcjs.mjs").catch((e) => { _abcLibPromise = null; throw e; });
+  }
+  return _abcLibPromise;
+}
+// Gli strumenti per cui ha senso offrire la tablatura. La notazione resta sempre quella vera: la
+// tablatura è una LETTURA in più dello stesso spartito, non un formato diverso — il dato non cambia,
+// cambia come lo si guarda, che è il motivo per cui si può accendere e spegnere senza salvare niente.
+// MISURATI, non presi dalla documentazione: renderizzando lo stesso spartito con ognuno e
+// guardando se il disegno cresce davvero. Chitarra 139→224px (sei corde), violino/mandolino
+// 139→201px (quattro). Ukulele e banjo li accetta senza lamentarsi e NON disegnano niente: non
+// stanno in questo elenco, perché un menù che offre una cosa che non succede è peggio di un menù
+// corto.
+const STRUMENTI_TABLATURA = [
+  { id: "", etichetta: "solo pentagramma" },
+  { id: "guitar", etichetta: "chitarra (tablatura)" },
+  { id: "violin", etichetta: "violino (tablatura)" },
+  { id: "mandolin", etichetta: "mandolino (tablatura)" },
+];
+function SpartitoView({ doc, color, onAggiorna }) {
+  const abc = String(doc?.text || "");
+  const analisi = analizzaSpartito(abc);
+  const battute = analisi.battute;
+  const [lib, setLib] = useState(null);
+  const [erroreLib, setErroreLib] = useState("");
+  const [tab, setTab] = useState("");
+  const [suona, setSuona] = useState(false);
+  const [battutaCorrente, setBattutaCorrente] = useState(0);
+  const [avviso, setAvviso] = useState(null);      // il promemoria che sta comparendo adesso
+  const [battutaScelta, setBattutaScelta] = useState(null);
+  const [testoPromemoria, setTestoPromemoria] = useState("");
+  const [mostraTesto, setMostraTesto] = useState(false);
+  const disegnoRef = useRef(null);
+  const sintoRef = useRef(null);
+  const tempiRef = useRef(null);
+  const promemoria = ordinaPromemoria(doc?.promemoria);
+  const orfani = promemoriaOrfani(promemoria, battute.length);
+
+  useEffect(() => { loadAbcLib().then(setLib).catch((e) => setErroreLib(e?.message || "non sono riuscito a caricare il disegnatore di spartiti")); }, []);
+
+  // Il disegno. `clickListener` dà la posizione nel testo ABC del punto toccato: da lì si risale
+  // alla battuta contando le stanghette prima di quel punto — che è il modo di ancorare un
+  // promemoria a una posizione MUSICALE invece che a un carattere.
+  useEffect(() => {
+    if (!lib || !disegnoRef.current) return;
+    try {
+      lib.renderAbc(disegnoRef.current, abc, {
+        responsive: "resize", add_classes: true,
+        ...(tab ? { tablature: [{ instrument: tab }] } : {}),
+        clickListener: (elemento) => {
+          const fino = abc.slice(0, elemento?.startChar ?? 0);
+          const n = Math.max(1, battuteDi(fino).length);
+          setBattutaScelta(n); setTestoPromemoria("");
+        },
+      });
+      setErroreLib("");
+    } catch (e) { setErroreLib("Questo spartito non si disegna: " + (e?.message || "motivo non dichiarato")); }
+  }, [lib, abc, tab]);
+
+  const fermaSuono = useCallback(() => {
+    try { tempiRef.current?.stop?.(); } catch { /* niente */ }
+    try { sintoRef.current?.stop?.(); } catch { /* niente */ }
+    setSuona(false); setBattutaCorrente(0); setAvviso(null);
+  }, []);
+  useEffect(() => () => fermaSuono(), [fermaSuono]);
+
+  // IL PEZZO CHE IL GHOST HA CHIESTO: il promemoria compare QUANDO LA MUSICA CI ARRIVA.
+  // TimingCallbacks di abcjs chiama a ogni evento con la posizione nel testo: si risale alla battuta
+  // con lo stesso conto del click, quindi l'ancora è una sola e non due che divergono.
+  const suonaSpartito = useCallback(async () => {
+    if (!lib) return;
+    if (suona) { fermaSuono(); return; }
+    try {
+      const visivo = lib.renderAbc(disegnoRef.current, abc, { responsive: "resize", add_classes: true, ...(tab ? { tablature: [{ instrument: tab }] } : {}) })[0];
+      const sinto = new lib.synth.CreateSynth();
+      sintoRef.current = sinto;
+      await sinto.init({ visualObj: visivo, options: { soundFontUrl: "https://paulrosen.github.io/midi-js-soundfonts/abcjs/" } });
+      await sinto.prime();
+      const tempi = new lib.TimingCallbacks(visivo, {
+        eventCallback: (ev) => {
+          if (!ev) { fermaSuono(); return; }
+          const n = Math.max(1, battuteDi(abc.slice(0, ev.startChar ?? 0)).length);
+          setBattutaCorrente(n);
+          const qui = promemoriaDellaBattuta(promemoria, n);
+          if (qui.length) setAvviso({ battuta: n, testi: qui.map((p) => p.testo) });
+        },
+      });
+      tempiRef.current = tempi;
+      setSuona(true); setAvviso(null);
+      tempi.start();
+      sinto.start();
+    } catch (e) { setErroreLib("Il suono non parte: " + (e?.message || "motivo non dichiarato")); setSuona(false); }
+  }, [lib, abc, tab, suona, promemoria, fermaSuono]);
+
+  const salvaPromemoria = () => {
+    const esito = nuovoPromemoria({ battuta: battutaScelta, testo: testoPromemoria });
+    if (!esito.ok) { setErroreLib(esito.motivo); return; }
+    onAggiorna?.({ ...doc, promemoria: ordinaPromemoria([...(doc.promemoria || []), esito.promemoria]) });
+    setBattutaScelta(null); setTestoPromemoria("");
+  };
+  const togliPromemoria = (id) => onAggiorna?.({ ...doc, promemoria: (doc.promemoria || []).filter((p) => p.id !== id) });
+
+  return html`<div style="margin-top:6px">
+    ${!analisi.ok && html`<div class="r-error" style="margin-bottom:6px">Questo spartito non è a posto: ${analisi.errori.map((e) => e.motivo).join(" · ")}</div>`}
+    <div class="r-hub-detail">${analisi.titolo || doc.title} · ${analisi.tonalita || "tonalità non dichiarata"} · ${analisi.metro || "metro non dichiarato"} · ${battute.length} battute${doc.strumento ? ` · ${doc.strumento}` : ""}</div>
+    ${erroreLib && html`<div class="r-error" style="margin-top:6px">${erroreLib}</div>`}
+    ${!lib && !erroreLib && html`<div class="r-hub-detail" style="margin-top:6px">Carico il disegnatore… (la prima volta serve la rete)</div>`}
+    <div ref=${disegnoRef} class="r-spartito"></div>
+    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="r-btn" style="background:${color};margin-left:0" onClick=${suonaSpartito} disabled=${!lib}>${suona ? "⏹ Ferma" : "▶ Suona"}</button>
+      <select class="r-input" style="width:auto" value=${tab} onChange=${(e) => setTab(e.target.value)}>
+        ${STRUMENTI_TABLATURA.map((s) => html`<option key=${s.id} value=${s.id}>${s.etichetta}</option>`)}
+      </select>
+      <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => setMostraTesto(!mostraTesto)}>${mostraTesto ? "Nascondi" : "Mostra"} il testo ABC</button>
+      ${suona && html`<span class="r-hub-detail">battuta ${battutaCorrente}</span>`}
+    </div>
+    ${avviso && html`<div class="r-spartito-avviso">
+      <b>Battuta ${avviso.battuta}</b><div>${avviso.testi.join(" · ")}</div>
+      <button class="r-btn r-btn-ghost" style="margin-left:0;margin-top:6px" onClick=${() => setAvviso(null)}>Ho visto</button>
+    </div>`}
+    ${battutaScelta && html`<div class="r-spartito-avviso">
+      <b>Promemoria alla battuta ${battutaScelta}</b>
+      <textarea class="r-textarea" style="margin-top:6px" value=${testoPromemoria} onInput=${(e) => setTestoPromemoria(e.target.value)} placeholder="Cosa deve ricordarti quando la musica arriva qui"></textarea>
+      <div style="margin-top:6px"><button class="r-btn" style="background:${color};margin-left:0" onClick=${salvaPromemoria}>Tieni</button>
+        <button class="r-btn r-btn-ghost" onClick=${() => setBattutaScelta(null)}>Lascia</button></div>
+    </div>`}
+    ${!battutaScelta && lib && html`<div class="r-hub-detail" style="margin-top:6px;opacity:.7">Tocca una nota per attaccarci un promemoria.</div>`}
+    ${promemoria.length > 0 && html`<div style="margin-top:10px">
+      <div class="r-hub-detail"><b>Promemoria</b></div>
+      ${promemoria.map((p) => html`<div key=${p.id} class="r-entry-row" style="margin-top:4px">
+        <div class="r-entry-line"><b>b.${p.battuta}</b> ${p.testo}${orfani.some((o) => o.id === p.id) ? html` <span style="color:#B4553A">· oltre l'ultima battuta</span>` : ""}</div>
+        <button class="r-icon-btn" onClick=${() => togliPromemoria(p.id)}>✕</button>
+      </div>`)}
+      ${orfani.length > 0 && html`<div class="r-hub-detail" style="margin-top:4px;color:#B4553A">${orfani.length} promemoria stanno oltre l'ultima battuta: lo spartito si è accorciato. Non li tolgo io — dimmi tu se vanno spostati o buttati.</div>`}
+    </div>`}
+    ${mostraTesto && html`<div class="r-magi-text" style="white-space:pre-wrap;margin-top:8px">${abc}</div>`}
+  </div>`;
+}
 let _docxLibPromise = null;
 function loadDocxLib() {
   // import() dinamico da CDN, una sola volta per sessione (stesso pattern di pdfjs-dist).
@@ -7515,6 +7682,52 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
       if (!artTitle.trim()) { const firstH = (text.match(/^#\s+(.+)$/m) || [])[1]; setArtTitle(firstH || percorso.title); }
     } catch (e) { setArtMsg("Errore generazione: " + e.message); } finally { setArtBusy(false); }
   };
+  // ══ GENERARE UNO SPARTITO ══════════════════════════════════════════════════════════════════
+  // Stessa disciplina del generatore di plasmidi: il CAPITOLATO è un oggetto solo, letto due volte.
+  // `briefDelloSpartito` dice al modello cosa deve fare, `analizzaSpartito` controlla il risultato
+  // con le stesse identiche regole, perché sono la stessa riga dello stesso array. Un modello che
+  // scrive prosa in mezzo alle note, o dimentica la tonalità, o mette i versi sfasati rispetto alle
+  // note, non passa — e il motivo torna indietro per il giro successivo invece di essere buttato.
+  // Il tetto è tre: ogni giro è una chiamata pagata, e se non ci arriva in tre la rinuncia si dice.
+  const [spartitoBrief, setSpartitoBrief] = useState("");
+  const [spartitoStrumento, setSpartitoStrumento] = useState("");
+  const [spartitoVersi, setSpartitoVersi] = useState(false);
+  const [spartitoBusy, setSpartitoBusy] = useState(false);
+  const [spartitoMsg, setSpartitoMsg] = useState("");
+  const TETTO_GIRI_SPARTITO = 3;
+  const generaSpartito = async () => {
+    if (!spartitoBrief.trim() || spartitoBusy) return;
+    setSpartitoBusy(true); setSpartitoMsg("");
+    const sys = `Sei un musicista che scrive in notazione ABC. Rispondi SOLO con ABC valido, mai con spiegazioni.`;
+    let disaccordo = "";
+    try {
+      for (let giro = 1; giro <= TETTO_GIRI_SPARTITO; giro++) {
+        const richiesta = briefDelloSpartito({ argomento: spartitoBrief.trim(), strumento: spartitoStrumento, conVersi: spartitoVersi })
+          + (disaccordo ? `\n\nIl tentativo precedente non andava bene: ${disaccordo}. Riscrivilo per intero correggendo questo.` : "");
+        const grezzo = await askModel(sys, richiesta, 0.7, 2000, settings);
+        // Un modello ci mette le virgolette di codice anche quando gli si dice di non farlo.
+        const abc = String(grezzo || "").replace(/^\s*```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim();
+        const analisi = analizzaSpartito(abc);
+        if (analisi.ok) {
+          const doc = documentoSpartito({ id: uid(), titolo: analisi.titolo || spartitoBrief.trim().slice(0, 60), abc, strumento: spartitoStrumento });
+          onUpdate({ ...percorso, documents: [doc, ...(percorso.documents || [])] });
+          setDocAperto(doc.id);
+          setSpartitoMsg(`Fatto: ${analisi.battute.length} battute, ${analisi.tonalita}${giro > 1 ? ` — al ${giro}° tentativo` : ""}.`);
+          setSpartitoBrief("");
+          setSpartitoBusy(false);
+          return;
+        }
+        disaccordo = analisi.errori.map((e) => e.motivo).join("; ");
+      }
+      // LA RINUNCIA RESTA SCRITTA: «non so ancora fare X» è una traccia legittima, non un silenzio.
+      setSpartitoMsg(`Non ci sono arrivato in ${TETTO_GIRI_SPARTITO} tentativi. L'ultimo problema: ${disaccordo}`);
+    } catch (e) { setSpartitoMsg("Errore: " + e.message); } finally { setSpartitoBusy(false); }
+  };
+  const nuovoSpartitoVuoto = () => {
+    const doc = documentoSpartito({ id: uid(), titolo: `Spartito — ${percorso.title}`, abc: SPARTITO_ESEMPIO });
+    onUpdate({ ...percorso, documents: [doc, ...(percorso.documents || [])] });
+    setDocAperto(doc.id);
+  };
   const artifactFilename = () => `${(artTitle || percorso.title || "documento").replace(/[^\w\sàèéìòù-]/gi, "").trim().slice(0, 60) || "documento"}.docx`;
   const downloadArtifact = async () => {
     if (!artText.trim() || artBusy) return;
@@ -7670,6 +7883,23 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
           </div>
         </div>`}
         ${artMsg && html`<div class="${artMsg.startsWith("Errore") ? "r-error" : "r-ok"}" style="margin-top:6px">${artMsg}</div>`}
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+          <div class="r-hub-detail"><b>Spartito</b> — lo scrive il modello in notazione ABC, il programma lo controlla prima di tenerlo. Diventa un documento del percorso come gli altri.</div>
+          <textarea class="r-textarea" style="margin-top:8px" value=${spartitoBrief} onInput=${(e) => setSpartitoBrief(e.target.value)} placeholder="Che musica? (es. «il tema dell'Atto IV, lento, in minore»)" disabled=${spartitoBusy} />
+          <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <select class="r-input" style="width:auto" value=${spartitoStrumento} onChange=${(e) => setSpartitoStrumento(e.target.value)} disabled=${spartitoBusy}>
+              <option value="">strumento non dichiarato</option>
+              ${STRUMENTI_TABLATURA.filter((s) => s.id).map((s) => html`<option key=${s.id} value=${s.id}>${s.etichetta}</option>`)}
+              <option value="voce">voce</option><option value="piano">piano</option>
+            </select>
+            <label class="r-hub-detail" style="display:flex;gap:6px;align-items:center"><input type="checkbox" checked=${spartitoVersi} onChange=${(e) => setSpartitoVersi(e.target.checked)} disabled=${spartitoBusy} /> con i versi sotto le note</label>
+          </div>
+          <div style="margin-top:6px">
+            <button class="r-btn" style="background:${color};margin-left:0" onClick=${generaSpartito} disabled=${spartitoBusy || !spartitoBrief.trim()}>${spartitoBusy ? "…" : "Genera spartito"}</button>
+            <button class="r-btn r-btn-ghost" onClick=${nuovoSpartitoVuoto} disabled=${spartitoBusy}>Partine uno a mano</button>
+          </div>
+          ${spartitoMsg && html`<div class="${spartitoMsg.startsWith("Errore") || spartitoMsg.startsWith("Non ci sono") ? "r-error" : "r-ok"}" style="margin-top:6px">${spartitoMsg}</div>`}
+        </div>
         ${(percorso.documents || []).length > 0 && html`<div style="margin-top:12px">
           <div class="r-hub-detail"><b>Documenti del percorso:</b> toccane uno per rileggerlo per intero.</div>
           ${(percorso.documents || []).map((d) => html`<div key=${d.id} style="margin-top:6px">
@@ -7677,7 +7907,9 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
               <div class="r-entry-line">${docAperto === d.id ? "▾" : "▸"} ${d.name}${d.driveId ? " · Drive" : ""}${d.origine === "chat" ? " · dalla conversazione" : ""}<span
                 style="opacity:0.5;font-size:11px"> · ${fmtDate(d.date)}${d.text ? ` · ${d.text.length} caratteri` : ""}</span></div>
             </div>
-            ${docAperto === d.id && html`<div class="r-magi-text" style="white-space:pre-wrap;margin-top:4px">${d.text || "— questo documento non ha il testo salvato: è stato creato prima del 31/08/2026, quando si conservava solo il nome. Il file scaricato o su Drive resta valido. —"}</div>`}
+            ${docAperto === d.id && (eSpartito(d)
+              ? html`<${SpartitoView} doc=${d} color=${color} onAggiorna=${(nuovo) => onUpdate({ ...percorso, documents: (percorso.documents || []).map((x) => (x.id === d.id ? nuovo : x)) })} />`
+              : html`<div class="r-magi-text" style="white-space:pre-wrap;margin-top:4px">${d.text || "— questo documento non ha il testo salvato: è stato creato prima del 31/08/2026, quando si conservava solo il nome. Il file scaricato o su Drive resta valido. —"}</div>`)}
           </div>`)}
         </div>`}
       </${Card}>
