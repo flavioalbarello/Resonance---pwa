@@ -201,7 +201,28 @@ describe("LA MISURA — se il risparmio non c'è, questo lavoro non serviva", ()
     ];
     const spariti = primaDel12Settembre.filter((n) => !app.CAPACITA.some((c) => c.n === n));
     assert.deepEqual(spariti, [], spariti.join(", "));
-    assert.ok(intero > 9000 && intero < 13000, `${intero} token: il blocco intero è cambiato molto`);
+    assert.ok(intero > 9000, `${intero} token: il blocco intero si è ristretto, è sparito del testo`);
+  });
+
+  // 14/09/2026 — QUI C'ERA UN TETTO ASSOLUTO: `intero < 13000`. Ha fatto il suo lavoro una volta
+  // (ha preso la scheda Spartiti gonfiata a 1386 token, dodici volte la mediana) e poi è diventato
+  // un ostacolo da alzare: la checklist di consegna dice di aggiungere una scheda a OGNI feature,
+  // quindi quel numero cresce per il motivo giusto, e un tetto che va rialzato ogni poche feature
+  // finisce come il tetto di spesa che leggeva il registro a rotazione — presente e inerte.
+  // Sostituito da due regole che restano vere mentre l'app cresce. Il tetto vecchio non è
+  // cancellato, è scritto qui (Legge 14): valeva 13.000, ed è scattato a 13.037.
+  test("nessuna scheda domina: viene richiamata INTERA, quindi la più grossa è quella che si paga", () => {
+    const taglie = app.CAPACITA.map((c) => ({ n: c.n, t: T(c.s) })).sort((a, b) => a.t - b.t);
+    const mediana = taglie[Math.floor(taglie.length / 2)].t;
+    const piuGrossa = taglie[taglie.length - 1];
+    assert.ok(piuGrossa.t < mediana * 6,
+      `«${piuGrossa.n}» pesa ${piuGrossa.t} token, ${(piuGrossa.t / mediana).toFixed(1)}× la mediana (${mediana}): è più schede in una, va divisa`);
+  });
+
+  test("una scheda media resta una scheda e non un capitolo, anche fra cento feature", () => {
+    // Misura che scala: cresce il numero di schede, non il costo di ciascuna.
+    const media = intero / app.CAPACITA.length;
+    assert.ok(media < 220, `${Math.round(media)} token per scheda in media su ${app.CAPACITA.length}: si sta scrivendo un manuale, non un indice`);
   });
 
   test("un turno che non nomina niente costa meno di un terzo del blocco intero", () => {
