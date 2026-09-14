@@ -380,6 +380,49 @@ describe("LA SPIEGAZIONE DELLA RICERCA, caso per caso", () => {
     assert.doesNotMatch(di({}).testo, /non l'ho usato per filtrare/);
   });
 
+  test("«NON CE NE SONO ALTRI» ERA FALSO: esistono, si nominano, e si dice perché non entrano qui", () => {
+    // Il Ghost ha risposto al messaggio dell'app mandando Lateralus dei Tool su MuseScore e su
+    // Songsterr, con la riga del basso. Aveva ragione. Due frasi diverse, e solo la seconda è vera:
+    // «non esistono» (falso) e «esistono ma non li posso leggere da qui» (misurato: CORS assente,
+    // 403 anti-robot). Questa prova tiene ferma la distinzione.
+    const r = di({});
+    assert.doesNotMatch(r.testo, /non ne ho altri/, "la frase vecchia, quella sbagliata");
+    assert.doesNotMatch(r.testo, /non ci saranno/, "non si profetizza sul repertorio di archivi altrui");
+    assert.match(r.testo, /ESISTONO ALTROVE/);
+    for (const nome of ["Songsterr", "MuseScore"]) assert.ok(r.testo.includes(nome), `manca ${nome}`);
+    assert.match(r.testo, /non posso fare è portarli qui dentro/);
+    assert.match(r.testo, /misurato, non supposto/);
+  });
+
+  test("i link ci sono davvero, portano la query, e sono link veri", () => {
+    const r = di({});
+    assert.equal(r.altrove.length, 2);
+    for (const a of r.altrove) {
+      assert.match(a.url, /^https:\/\//, a.url);
+      assert.ok(a.url.includes(encodeURIComponent("lateralus tool")), `la query non è nell'indirizzo: ${a.url}`);
+      assert.ok(a.nome && a.perChe && a.muro, `${a.id}: si dichiara a metà`);
+    }
+    assert.match(app.altroveDoveCercare("Cooley's")[0].url, /songsterr\.com/);
+  });
+
+  test("l'altrove si offre solo quando qui non c'è niente: con i risultati non si manda via nessuno", () => {
+    const trovati = spiegazioneRicerca({ query: "morrison", esito: { ...vuoto, tunes: [{}], pertinenti: 1, grezzi: 1 } });
+    assert.deepEqual(trovati.altrove, [], "con i brani in mano non si propone di andare altrove");
+    // E nemmeno su un guasto di rete: lì non si sa ancora se qui ci sia o no.
+    assert.deepEqual(di({ errore: "rete assente" }).altrove, []);
+    // Invece quando l'archivio ha risposto e nessuno era pertinente, sì.
+    assert.equal(di({ grezzi: 100, scartati: 100, paroleAssenti: ["metallica"] }).altrove.length, 2);
+  });
+
+  test("ogni archivio dichiarato dice il MURO per cui non si può leggere, non «non si può»", () => {
+    // Un limite senza il suo motivo, fra sei mesi, è indistinguibile da una scelta pigra — e non si
+    // può nemmeno ricontrollare se nel frattempo è caduto.
+    for (const a of app.ARCHIVI_NON_INTERROGABILI) {
+      assert.match(a.muro, /Misurato il \d{2}\/\d{2}\/\d{4}/, `${a.id}: il muro non porta la data della misura`);
+      assert.match(a.cerca("x y"), /^https:\/\/[^ ]+x%20y/, `${a.id}: indirizzo mal composto`);
+    }
+  });
+
   test("in nessun caso si dice di non avere accesso a internet", () => {
     const casi = [di({}), di({ grezzi: 100, scartati: 100, paroleAssenti: ["metallica"] }),
       di({ errore: "rete assente" }), spiegazioneRicerca({ query: "x", esito: { ...vuoto, tunes: [{}], pertinenti: 1, grezzi: 1 } })];
