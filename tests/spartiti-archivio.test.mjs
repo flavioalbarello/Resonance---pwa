@@ -304,6 +304,91 @@ describe("LA PERTINENZA, misurata sulla risposta vera che ha rivelato il difetto
   });
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// IL TESTO CHE COMPARE IN CHAT DEVE DIRE LA VERITA' DEL CASO IN CUI SI TROVA — 14/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost ha cercato «lateralus dei Tool». L'archivio ha risposto ZERO brani, e lo Shell gli ha
+// scritto: «L'archivio ha risposto con 0 brani, ma le parole «lateralus», «tool» non compaiono in
+// nessuno di QUEI titoli: ha cercato solo il resto... TE LI HO TOLTI invece di mostrarteli».
+// Zero titoli, nessun resto, niente tolto: una potatura raccontata che non era avvenuta.
+//
+// Due cause, e tutte e due valevano una correzione:
+//  1. `paroleAssenti` su lista vuota restituiva TUTTE le parole — `[].some()` è sempre falso, cioè
+//     vero in logica e falso in pratica: non si afferma l'assenza da un insieme che non esiste.
+//  2. il testo viveva DENTRO ShellView, dove nessuna prova lo raggiungeva. Un testo che afferma
+//     fatti («ne ho tolti N») deve stare sotto banco quanto il numero che afferma.
+describe("LA SPIEGAZIONE DELLA RICERCA, caso per caso", () => {
+  const { spiegazioneRicerca, risultatiCheRispondono } = app;
+  const vuoto = { tunes: [], pertinenti: 0, grezzi: 0, scartati: 0, paroleAssenti: [], errore: "" };
+  const di = (patch) => spiegazioneRicerca({ query: "lateralus tool", esito: { ...vuoto, ...patch } });
+
+  test("ZERO RISPOSTE: non si dice di aver tolto niente, perché non c'era niente", () => {
+    const r = di({});
+    assert.equal(r.caso, "nessuno");
+    assert.match(r.testo, /non conosce nessun brano con queste parole/);
+    assert.doesNotMatch(r.testo, /tolt/i, `dice di aver tolto qualcosa: ${r.testo.slice(0, 200)}`);
+    assert.doesNotMatch(r.testo, /quei titoli/i, "non ci sono titoli di cui parlare");
+    assert.doesNotMatch(r.testo, /0 brani/, "«ha risposto con 0 brani, ma...» era la frase sbagliata");
+  });
+
+  test("e il caso zero nasce dal filtro, non solo dal testo: lista vuota, nessuna parola «assente»", () => {
+    assert.deepEqual(risultatiCheRispondono("lateralus tool", []).paroleAssenti, [],
+      "su zero risultati non si può affermare che una parola manchi da quei titoli");
+  });
+
+  test("CENTO RISPOSTE NON PERTINENTI: lì sì che si dice quante e quale parola è caduta a vuoto", () => {
+    const r = di({ grezzi: 100, scartati: 100, paroleAssenti: ["metallica"] });
+    assert.equal(r.caso, "potati");
+    assert.match(r.testo, /ne ha restituiti 100/);
+    assert.match(r.testo, /«metallica» non compare/);
+    assert.match(r.testo, /Te li ho tolti/);
+  });
+
+  test("il plurale non si sbaglia: una parola «compare», due «compaiono»", () => {
+    assert.match(di({ grezzi: 9, scartati: 9, paroleAssenti: ["metallica"] }).testo, /la parola «metallica» non compare/);
+    assert.match(di({ grezzi: 9, scartati: 9, paroleAssenti: ["lateralus", "tool"] }).testo, /le parole «lateralus», «tool» non compaiono/);
+  });
+
+  test("SCARTATI SENZA PAROLE ASSENTI: c'è comunque una frase, e non nomina parole inesistenti", () => {
+    // Caso vero: ogni parola compare da qualche parte, ma mai tutte nello stesso titolo.
+    const r = di({ grezzi: 40, scartati: 40, paroleAssenti: [] });
+    assert.equal(r.caso, "potati");
+    assert.match(r.testo, /nessuno conteneva tutte le parole/);
+    assert.doesNotMatch(r.testo, /«»/, "nessuna parola vuota fra virgolette");
+  });
+
+  test("TROVATI: si dice quanti, e quanti sono stati tolti solo se ne sono stati tolti", () => {
+    const conScarti = spiegazioneRicerca({ query: "morrison", esito: { ...vuoto, tunes: [{}, {}], pertinenti: 2, grezzi: 7, scartati: 5 } });
+    assert.equal(conScarti.caso, "trovati");
+    assert.match(conScarti.testo, /2 brani/);
+    assert.match(conScarti.testo, /5 non contenevano quello che hai chiesto/);
+    const pulito = spiegazioneRicerca({ query: "morrison", esito: { ...vuoto, tunes: [{}], pertinenti: 1, grezzi: 1, scartati: 0 } });
+    assert.match(pulito.testo, /: 1 brano\./, pulito.testo.slice(0, 120));
+    assert.doesNotMatch(pulito.testo, /non contenevano/, "senza scarti non si parla di scarti");
+  });
+
+  test("ERRORE DI RETE: è una ricerca che NON E' PARTITA, e non va confusa con «non c'è»", () => {
+    const r = di({ errore: "l'archivio ha risposto 503" });
+    assert.equal(r.caso, "errore");
+    assert.match(r.testo, /non è partita/);
+    assert.doesNotMatch(r.testo, /non c'è\./, "un guasto di rete non è una risposta sul repertorio");
+    assert.doesNotMatch(r.testo, /tradizionale irlandese/, "non si spiega il repertorio quando non si è potuto guardare");
+  });
+
+  test("LO STRUMENTO si dice solo se il Ghost l'ha nominato", () => {
+    assert.match(spiegazioneRicerca({ query: "one", strumento: "basso", esito: vuoto }).testo, /«basso» non l'ho usato per filtrare/);
+    assert.doesNotMatch(di({}).testo, /non l'ho usato per filtrare/);
+  });
+
+  test("in nessun caso si dice di non avere accesso a internet", () => {
+    const casi = [di({}), di({ grezzi: 100, scartati: 100, paroleAssenti: ["metallica"] }),
+      di({ errore: "rete assente" }), spiegazioneRicerca({ query: "x", esito: { ...vuoto, tunes: [{}], pertinenti: 1, grezzi: 1 } })];
+    for (const c of casi) {
+      assert.doesNotMatch(c.testo, /non ho accesso|non posso cercare online|database musicali/i, c.caso);
+    }
+  });
+});
+
 describe("GLI INDIRIZZI DELL'ARCHIVIO", () => {
   test("si compongono con la ricerca dentro, non concatenando a mano", () => {
     const u = ARCHIVIO_SPARTITI.cerca("cooley's");
