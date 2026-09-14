@@ -1,4 +1,4 @@
-const CACHE = "resonance-v16"; // bump di versione: invalida qualunque cache residua e serve il nuovo app.js
+const CACHE = "resonance-v17"; // bump di versione: invalida qualunque cache residua e serve il nuovo app.js
 // 31/08/2026 — I TRE MODULI ESTRATTI DEVONO STARE QUI DENTRO. app.js non e' piu' un file solo: se
 // lib/*.js non fosse precaricato, online non cambierebbe niente (la strategia e' rete-prima), ma la
 // prima apertura SENZA rete dopo un aggiornamento troverebbe app.js in cache e i suoi import no —
@@ -16,6 +16,9 @@ const SHELL = [
   "./lib/capitolato.js",
   "./lib/alimentare.js",
   "./config.js",
+  // 14/09/2026 — il banco microfono. Precaricato perche' la prova si fa in macchina, e un garage o
+  // un parcheggio interrato senza campo e' esattamente il posto dove si finisce per provarlo.
+  "./prova-voce.html",
   "./vendor/preact.mjs",
   "./vendor/preact-hooks.mjs",
   "./vendor/htm.mjs",

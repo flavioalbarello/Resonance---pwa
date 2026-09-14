@@ -36,12 +36,18 @@
   .assente { color: #A33; font-weight: 700; }
   ol { padding-left: 20px; } li { margin-bottom: 6px; }
   textarea { width: 100%; height: 120px; font: 12px/1.4 ui-monospace, monospace; }
+  /* 14/09/2026 — la via del ritorno. Si entra da un pulsante nell'Hub: senza questo, per tornare
+     indietro servirebbe il tasto del browser, che in una PWA installata a volte non c'è. */
+  .ritorno { display: inline-block; margin-bottom: 14px; padding: 9px 14px; border-radius: 8px;
+    background: #E8E4DC; color: #3A4750; text-decoration: none; font-weight: 600; font-size: 14px; }
 </style>
 </head>
 <body>
 
+<a class="ritorno" href="./index.html">‹ Torna a Resonance</a>
 <h1>Banco microfono in auto</h1>
-<p class="piccolo">Non è una funzione dell'app. Serve a raccogliere tre fatti e basta.</p>
+<p class="piccolo">Non è una funzione dell'app. Serve a raccogliere tre fatti e basta.
+  Ci si arriva dal pulsante <b>BANCO MICROFONO</b> nella schermata principale.</p>
 
 <div class="scheda">
   <h2 style="margin-top:0">Come si esegue</h2>
