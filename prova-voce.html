@@ -90,6 +90,14 @@
     Il secondo pulsante legge un testo con markdown e tabella, per sentire la spogliatura nuova.</p>
   <button id="parla">Leggi una frase</button>
   <button id="parlaMd">Leggi un testo con tabella</button>
+  <button id="fermaVoce" disabled>Ferma la voce</button>
+  <!-- 14/09/2026 — QUESTA RIGA E' LA CORREZIONE VERA. Il Ghost: «li clicco e non mi sembra succeda
+       niente». Misurato subito dopo: la pagina chiamava speak() con il testo giusto, quindi il
+       guasto non era qui — ma la pagina non aveva NIENTE che permettesse di distinguere «il browser
+       non ha parlato» da «ha parlato e non l'ho sentito», che sono due fatti opposti e sono
+       esattamente quello che questo riquadro deve misurare. -->
+  <div id="statoVoce" class="grande" style="font-size:15px;margin-top:10px">—</div>
+  <div id="vociDisponibili" class="piccolo"></div>
 </div>
 
 <div class="scheda">
@@ -181,16 +189,60 @@ $("stop").onclick = () => { try { rec && rec.stop(); } catch (e) {} };
 // La seconda prova usa la STESSA spogliatura di app.js (perLaVoce), copiata qui nella sua forma
 // essenziale: serve a farla SENTIRE, non a essere l'implementazione. Quella vera sta in app.js,
 // dentro speakText, ed e' provata in tests/voce.test.mjs.
-function parla(testo) {
-  if (!window.speechSynthesis) { alert("Questo browser non sa parlare."); return; }
+// 14/09/2026 — RISCRITTA DOPO LA PROVA IN MACCHINA. Prima chiamava speak() e finiva lì: se sul
+// telefono non usciva un suono, non c'era modo di sapere perché. Tre cause possibili, tutte vere su
+// Chrome Android, e la pagina non ne distingueva nessuna:
+//  1. l'elenco delle voci è VUOTO al primo giro — si riempie in modo asincrono, e senza una voce
+//     scelta `speak()` a volte non emette niente;
+//  2. il riconoscimento vocale è ancora attivo e tiene l'audio: sintesi e riconoscimento si
+//     contendono lo stesso canale, e il Ghost aveva appena fatto tre tentativi con «Comincia»;
+//  3. la voce esce davvero, ma dal Bluetooth dell'auto e non dal telefono — che è PROPRIO il fatto
+//     che questo riquadro deve misurare, e senza retroazione è indistinguibile da un guasto.
+// Adesso ognuna delle tre si legge sullo schermo. Il caso 3 resta l'unico che si misura con le
+// orecchie, ma almeno si sa che il browser ha parlato.
+function mostraStatoVoce(t) { $("statoVoce").textContent = t; }
+// Le voci arrivano quando arrivano: si aspetta, con un tetto, invece di leggere un elenco vuoto.
+function assicuraVoci(tetto = 1500) {
+  return new Promise((risolvi) => {
+    const ora = window.speechSynthesis.getVoices() || [];
+    if (ora.length) return risolvi(ora);
+    let chiuso = false;
+    const fine = () => { if (chiuso) return; chiuso = true; risolvi(window.speechSynthesis.getVoices() || []); };
+    try { window.speechSynthesis.addEventListener("voiceschanged", fine, { once: true }); } catch (e) {}
+    setTimeout(fine, tetto);
+  });
+}
+function elencaVoci(voci) {
+  const it = voci.filter((v) => (v.lang || "").toLowerCase().startsWith("it"));
+  $("vociDisponibili").textContent = voci.length
+    ? `${voci.length} voci nel telefono, ${it.length} italiane${it.length ? ": " + it.map((v) => v.name).join(", ") : " — nessuna, parlerà con un accento straniero o non parlerà affatto"}`
+    : "il telefono non ha dichiarato nessuna voce";
+}
+async function parla(testo) {
+  if (!window.speechSynthesis) { mostraStatoVoce("Questo browser non sa parlare (speechSynthesis assente)."); return; }
+  // Il riconoscimento tiene l'audio: finché è acceso, su Android la voce spesso non esce.
+  try { if (rec) { rec.stop(); mostraStatoVoce("Ho spento il riconoscimento: teneva l'audio."); } } catch (e) {}
   window.speechSynthesis.cancel();
+  mostraStatoVoce("Preparo la voce…");
+  const voci = await assicuraVoci();
+  elencaVoci(voci);
   const u = new SpeechSynthesisUtterance(testo);
-  const voci = window.speechSynthesis.getVoices() || [];
   const it = voci.find((v) => (v.lang || "").toLowerCase().startsWith("it"));
   if (it) u.voice = it;
   u.lang = it?.lang || "it-IT";
+  const quale = it ? it.name : "nessuna voce italiana, uso la predefinita";
+  u.onstart = () => { mostraStatoVoce("STA PARLANDO ADESSO (" + quale + "). Se non senti niente, l'audio sta uscendo da un'altra parte."); $("fermaVoce").disabled = false; };
+  u.onend = () => { mostraStatoVoce("Finito di parlare. Se non hai sentito niente, il browser ha parlato lo stesso: l'audio e' andato altrove."); $("fermaVoce").disabled = true; };
+  u.onerror = (ev) => { mostraStatoVoce("Il browser ha RIFIUTATO di parlare: " + (ev.error || "motivo non dichiarato")); $("fermaVoce").disabled = true; };
   window.speechSynthesis.speak(u);
+  // Ultima rete: se dopo un secondo e mezzo non e' partito niente, non e' partito davvero.
+  setTimeout(() => {
+    if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending && $("statoVoce").textContent.startsWith("Preparo")) {
+      mostraStatoVoce("Il browser non ha nemmeno cominciato: speak() e' stato chiamato e non e' successo niente. E' un guasto del telefono, non della pagina.");
+    }
+  }, 1500);
 }
+$("fermaVoce").onclick = () => { try { window.speechSynthesis.cancel(); } catch (e) {} mostraStatoVoce("Fermata."); $("fermaVoce").disabled = true; };
 $("parla").onclick = () => parla(
   "Prova della voce. Se mi senti dalle casse dell'auto, l'audio esce dal profilo giusto.");
 $("parlaMd").onclick = () => {
@@ -264,7 +316,14 @@ $("copia").onclick = async () => {
 $("pulisci").onclick = () => { registro.length = 0; condizione = 0; disegna(); };
 
 // Alcuni browser popolano le voci in ritardo: senza questo, il primo tocco parla in inglese.
-if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = () => {};
+// 14/09/2026 — e adesso l'elenco si MOSTRA appena arriva, senza aspettare che qualcuno tocchi un
+// pulsante: se il telefono non ha nessuna voce italiana, è la prima cosa da sapere, non l'ultima.
+if (window.speechSynthesis) {
+  const aggiorna = () => elencaVoci(window.speechSynthesis.getVoices() || []);
+  window.speechSynthesis.onvoiceschanged = aggiorna;
+  aggiorna();
+  setTimeout(aggiorna, 800);
+}
 </script>
 </body>
 </html>
