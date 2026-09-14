@@ -202,6 +202,7 @@ const EXPORT_NAMES = [
   "BACKUP_FORMAT_VERSION",
   // 14/09/2026 — i numeri detti a parole, dal banco microfono fatto in macchina.
   "numeroDaParola", "numeriChiestiForti", "formeDelToken", "paroleUtili",
+  "DESTINAZIONI", "TABS", "comandoDiNavigazione", "VERBI_NAVIGAZIONE", "RIEMPITIVI_NAVIGAZIONE",
   "ROMANI_A_NUMERO", "ORDINALI_A_NUMERO",
 ];
 

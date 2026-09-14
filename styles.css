@@ -365,3 +365,17 @@ body {
    momento conta più della navigazione. */
 .r-striscia-piena { position: sticky; top: 0; z-index: 11; max-width: 456px; margin: 8px auto; padding: 10px 12px; border: 1px solid var(--warn, #B4553A); border-radius: 8px; background: #F6E4DE; font-size: 13px; line-height: 1.45; }
 .r-striscia-piena b { color: #B4553A; }
+
+/* 14/09/2026 — LA MODALITÀ VOCE.
+   Il pulsante vive nella barra in cima, quindi la navigazione a voce funziona da ogni schermata.
+   La barra di stato sotto è sticky per la stessa ragione della striscia della memoria piena: dice
+   cosa sta succedendo adesso, e una cosa che succede adesso non deve scorrere via. */
+.r-topbar { justify-content: space-between; }
+.r-voce-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 999px;
+  width: 40px; height: 40px; font-size: 18px; line-height: 1; cursor: pointer; flex-shrink: 0; }
+.r-voce-btn.accesa { border-color: #B4553A; background: #F6E4DE; animation: r-voce-pulsa 1.6s ease-in-out infinite; }
+@keyframes r-voce-pulsa { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+.r-voce-barra { position: sticky; top: 0; z-index: 11; max-width: 456px; margin: 6px auto;
+  padding: 9px 12px; border-radius: 8px; font-size: 13px; line-height: 1.4;
+  background: var(--surface2); border: 1px solid var(--border); }
+.r-voce-barra.accesa { border-color: #B4553A; background: #F6E4DE; }

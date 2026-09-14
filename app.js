@@ -4853,6 +4853,7 @@ Cosa succede quando non ce la fa: il motivo torna al modello e riprova, al massi
   { n: `Memoria del dispositivo piena`, nucleo: true, k: ["memoria piena", "memoria del dispositivo", "striscia rossa", "non salva"], s: `Memoria del dispositivo piena: se lo spazio locale si esaurisce, in cima all'app compare una striscia rossa che lo dice, quante scritture sono andate perdute in questa sessione e su quale chiave l'ultima, con un pulsante che porta al backup. Prima dell'11/09/2026 il fallimento era muto: la funzione di salvataggio restituiva "non fatto" e nessuno dei 76 punti che la chiamano guardava quella risposta. Finche' la striscia c'e', la chat NON viene piu' compattata: non compattare e' meglio che archiviare messaggi in un posto che non c'e'. La striscia sparisce ricaricando l'app, perche' dice "in questa sessione una scrittura e' andata perduta", non "il dispositivo e' pieno per sempre".` },
   { n: `Archivi della chat su Drive`, k: ["archivi della chat", "archivio della chat", "messaggi archiviati", "messaggi compattati"], s: `Archivi della chat su Drive: quando la chat supera i 40 messaggi i piu' vecchi finiscono in un archivio locale (e' la compattazione). Dal 12/09/2026 gli archivi oltre i tre piu' recenti salgono su Drive e lasciano il dispositivo, cosi' non riempiono lo spazio locale — che e' circa 5 MB e senza questo si sarebbe esaurito fra il sesto e il dodicesimo mese di uso. La copia locale viene cancellata SOLO dopo che Drive ha restituito l'identificativo del file: senza quella prova non si cancella niente, e con il sync spento non si sposta niente. Un indice locale tiene il conto di dove sono finiti, e l'indice sta nel backup.` },
   { n: `Quando la chat arriva su Drive`, k: ["quando si sincronizza", "sincronizzazione della chat", "passo del sync"], s: `Quando la chat arriva su Drive: i dati dei pilastri, i percorsi, la memoria e il kernel salgono due secondi dopo ogni modifica, come sempre. La CHAT ha un passo suo, piu' lento: ogni due minuti, e comunque appena l'app va in secondo piano — cioe' quando il Ghost la chiude. Fino all'11/09/2026 ogni singolo messaggio faceva scaricare e ricaricare lo stato intero: con un anno di dati sono 1,1 MB di rete per messaggio, circa cinque secondi in 4G, ed era la ragione per cui l'app sembrava lenta in macchina senza che niente fosse lento. I messaggi sono comunque sul dispositivo appena scritti: il ritardo riguarda solo la copia su Drive.` },
+  { n: `Modalita' voce`, nucleo: true, k: ["modalita voce", "parlare all app", "microfono", "comando vocale", "navigare a voce"], s: `Modalita' voce: c'e' un pulsante microfono nella barra in cima, visibile da OGNI schermata. Acceso, il Ghost parla e succede una di due cose. Se dice un comando di navigazione — "apri magi", "apri la chat con lo Shell", "vai su Adam", "portami in bio", "torna alla home", "apri le impostazioni" — il programma cambia schermata da solo, senza passare dal modello: costa zero, e' istantaneo e si disfa con un altro comando. Qualunque altra frase viene MANDATA allo Shell come un messaggio, e la risposta viene letta ad alta voce. Accendere la modalita' e' il gesto di consenso: da li' in poi quello che si dice parte, perche' in macchina la casella di testo non si puo' usare. Questo NON scavalca le conferme: calendario, mail e Semi in esecuzione continuano ad avere il loro pulsante come prima. Serve un VERBO di apertura perche' sia navigazione: "parliamo di bio" non sposta niente, e "apri il percorso del concept album" resta l'azione di sempre e va allo Shell. Mentre l'app parla il microfono e' sordo di proposito, o sentirebbe la propria voce e la rimanderebbe indietro all'infinito. La barra sotto dice sempre cosa sta capendo e cosa ha fatto.` },
   { n: `Dove stanno i testi dei documenti`, k: ["dove stanno i documenti", "magazzino dei testi", "spazio sul telefono", "memoria del telefono piena"], s: `Dove stanno i testi dei documenti: dal 13/09/2026 il TESTO dei documenti dei percorsi non sta piu' nello spazio piccolo del browser (circa 5 MB, che bastava per ~1.075 documenti da 4.000 caratteri) ma in un magazzino locale piu' grande sullo stesso telefono, che ne tiene decine di migliaia. Non cambia niente di quello che si vede o si fa: i documenti si aprono, si cercano e si rileggono esattamente come prima, anche senza rete, e il file di sync fra i due dispositivi continua a portarli. Lo spostamento dei documenti gia' esistenti avviene da solo alla prima apertura dell'app, e un testo lascia il vecchio posto SOLO dopo che il magazzino l'ha riletto identico. Se il magazzino non e' disponibile (finestra privata, browser vecchio) tutto resta com'era prima, col tetto di prima. Un documento il cui testo non si trova piu' lo dichiara invece di aprirsi vuoto.` },
   { n: `Backup e ripristino (Setup)`, k: ["backup", "ripristino"], s: `Backup e ripristino (Setup): scarica in un unico file tutto lo stato locale e sa rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo previa conferma.` },
 ];
@@ -8208,7 +8209,7 @@ function MessaggioProtetto({ disegna, avvisa }) {
   }
   return html`<${CorpoMessaggio} disegna=${disegna} />`;
 }
-function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, aggiungiDaLettura, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory, bio, air, vidya, pushDebugLog, addSeed, advanceSeedIfDue, shellDraft, consumeShellDraft, pBio, pAir, pVidya, semi, ghostProfile, saveGhostProfile }) {
+function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, aggiungiDaLettura, percorsi, setPercorsi, memory, updateMemoria, styleMemory, setStyleMemory, bio, air, vidya, pushDebugLog, addSeed, advanceSeedIfDue, shellDraft, consumeShellDraft, pBio, pAir, pVidya, semi, ghostProfile, saveGhostProfile, voceDaInviare, consumaVoce }) {
   // BLOCCO 1 — il fuoco vive qui perche' e' della conversazione, non dell'app intera.
   const [fuoco, setFuocoState] = useState(() => leggiFuoco());
   const cambiaFuoco = (f) => setFuocoState(f);
@@ -8236,6 +8237,18 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   // automatico (Legge 8: il Ghost decide se/come inviarlo). Consumato una sola volta (shellDraft torna
   // "" in App), così non sovrascrive un input che il Ghost sta già scrivendo in un mount successivo.
   useEffect(() => { if (shellDraft) { setInput(shellDraft); consumeShellDraft?.(); } }, [shellDraft]);
+  // 14/09/2026 — LA VOCE INVIA, IL PULSANTE "Discuti in Shell" NO, e sono due cose diverse.
+  // Sopra: un testo PREPARATO nella casella, che il Ghost rilegge e manda lui (Legge 8).
+  // Qui: il Ghost ha acceso la modalità voce e ha parlato. Accendere la modalità è il gesto di
+  // consenso, e in macchina la casella non si può usare — se questo restasse una bozza da toccare,
+  // la modalità voce non servirebbe a niente. Nessun effettore verso il mondo fuori parte da qui:
+  // calendario, mail e Semi continuano ad avere il loro pulsante, come prima.
+  // `id` e non il testo nelle dipendenze: due volte la stessa frase sono due invii, non uno.
+  useEffect(() => {
+    if (!voceDaInviare?.testo) return;
+    consumaVoce?.();
+    send(voceDaInviare.testo);
+  }, [voceDaInviare?.id]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   // Modalità dialettica per-sessione (mai persistente) — override del default cognitiveStyle.dialectic
@@ -10790,11 +10803,67 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
 //──────────────────────────────────────────────────────────
 // ROOT
 //──────────────────────────────────────────────────────────
-const TABS = [
-  { key: "hub", label: "Hub" }, { key: "shell", label: "Shell" }, { key: "bio", label: "Bio" }, { key: "air", label: "Air" },
-  { key: "vidya", label: "Vidya" }, { key: "magi", label: "Magi" }, { key: "simbiosi", label: "Adam" },
-  { key: "kernel", label: "Kernel" }, { key: "settings", label: "Setup" },
+// ══════════════════════════════════════════════════════════════════════════════
+// LA VOCE DENTRO L'APP — 14/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// Il banco microfono ha finito il suo lavoro: il riconoscimento capisce, la sintesi parla, e le tre
+// trascrizioni vere hanno detto cosa regge e cosa no. Le parole lunghe e distintive arrivano sempre
+// intere; quelle corte con l'apostrofo si sbriciolano. Da qui la forma di questo pezzo.
+//
+// UN OGGETTO SOLO, LETTO DUE VOLTE. La barra dei tab e il vocabolario della voce nascono dalla
+// stessa riga dello stesso array: una schermata nuova diventa raggiungibile a voce senza che nessuno
+// se lo ricordi, e una tolta smette di essere pronunciabile. Due elenchi separati divergono entro un
+// mese — è già successo col piano alimentare, ed è la regola di casa dal 04/09.
+//
+// LA NAVIGAZIONE NON PASSA DAL MODELLO. È un recupero di Grado 0: costa zero token, è istantanea,
+// ed è reversibile con un altro comando. Chiedere a un modello «in che schermata vuole andare»
+// sarebbe pagare per una cosa che il programma sa già.
+const DESTINAZIONI = [
+  { key: "hub", label: "Hub", voce: ["hub", "home", "principale", "inizio"] },
+  { key: "shell", label: "Shell", voce: ["shell", "chat", "conversazione"] },
+  { key: "bio", label: "Bio", voce: ["bio", "salute"] },
+  { key: "air", label: "Air", voce: ["air"] },
+  { key: "vidya", label: "Vidya", voce: ["vidya"] },
+  { key: "magi", label: "Magi", voce: ["magi", "agora", "magio"] },
+  { key: "simbiosi", label: "Adam", voce: ["adam", "simbiosi"] },
+  { key: "kernel", label: "Kernel", voce: ["kernel"] },
+  { key: "settings", label: "Setup", voce: ["setup", "impostazioni", "configurazione"] },
 ];
+const TABS = DESTINAZIONI.map(({ key, label }) => ({ key, label }));
+// Serve un VERBO di apertura, sempre. Senza, «parliamo di bio» porterebbe via il Ghost dalla
+// schermata in cui sta mentre racconta una cosa — e una frase della vita non è un comando.
+const VERBI_NAVIGAZIONE = new Set(["apri", "aprimi", "apra", "apriamo", "vai", "andiamo", "vado", "portami", "passa", "passiamo", "mostrami", "torna", "torniamo", "entra", "entriamo", "fammi"]);
+// Le forme ELISE («all'hub», «nell'agora», «dell'app») vanno messe per esteso: normalizzaTesto
+// toglie l'apostrofo e lascia «all», «nell», «dell» come parole a sé. Senza, «vai all'hub» non era
+// navigazione — trovato dal banco, non da me, ed è la stessa elisione che il microfono aveva già
+// mostrato sbriciolando «l'atto» in «latto».
+const RIEMPITIVI_NAVIGAZIONE = new Set([
+  "la", "il", "lo", "i", "le", "un", "una", "uno", "su", "in", "a", "con", "per", "di", "e",
+  "al", "allo", "alla", "ai", "alle", "agli", "all",
+  "del", "della", "dello", "dei", "delle", "degli", "dell",
+  "nel", "nella", "nello", "nei", "nelle", "negli", "nell",
+  "sul", "sulla", "sullo", "sui", "sulle", "sugli", "sull",
+  "dal", "dalla", "dallo", "dai", "dalle", "dagli", "dall",
+  "mi", "me", "ora", "adesso", "subito", "vedere", "pagina", "schermata", "sezione", "scheda", "parte",
+]);
+// Tutto ciò che resta dopo verbo e riempitivi deve essere una destinazione, e sempre LA STESSA.
+// È il punto che separa «apri magi» da «apri il percorso del concept album»: nella seconda restano
+// parole che non sono destinazioni, quindi non è navigazione e la frase prosegue verso lo Shell —
+// dove «apri un percorso» è un'azione che esiste già dal piano di controllo conversazionale.
+function comandoDiNavigazione(frase) {
+  const parole = normalizzaTesto(frase).split(" ").filter(Boolean);
+  if (!parole.length || !parole.some((p) => VERBI_NAVIGAZIONE.has(p))) return null;
+  const resto = parole.filter((p) => !VERBI_NAVIGAZIONE.has(p) && !RIEMPITIVI_NAVIGAZIONE.has(p));
+  if (!resto.length) return null;
+  let scelta = null;
+  for (const p of resto) {
+    const d = DESTINAZIONI.find((x) => x.voce.includes(p));
+    if (!d) return null;                              // una parola che non è una destinazione
+    if (scelta && scelta.key !== d.key) return null;   // due destinazioni diverse: non si indovina
+    scelta = d;
+  }
+  return scelta;
+}
 function hexPoints(cx, cy, r) {
   return Array.from({ length: 6 }, (_, i) => { const a = (Math.PI / 3) * i - Math.PI / 6; return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`; }).join(" ");
 }
@@ -11138,6 +11207,77 @@ function App() {
     setShellDraft(`Vorrei discutere questa strategia proposta per il Seme AIR (id: ${seed.id}) — "${seed.content}":\n\n"${strategy.titolo}": ${strategy.descrizione}\n\nHo delle domande/aggiustamenti prima di approvarla. L'approvazione resta comunque dal pannello Semi, non da qui.`);
     setView("shell");
   }, []);
+  // ══ LA MODALITÀ VOCE (14/09/2026) ══════════════════════════════════════════════════════════
+  // Il gesto di accendere la modalità È il consenso: da acceso, quello che il Ghost dice parte.
+  // Legge 8 non è aggirata — resta intatta per tutto ciò che tocca il mondo fuori (calendario,
+  // mail, Semi in esecuzione), che continua a volere il suo pulsante. Qui si parla e si naviga,
+  // che è quanto scrivere nella casella di testo: in macchina la casella non si può usare.
+  const [voceAccesa, setVoceAccesa] = useState(false);
+  const [voceParziale, setVoceParziale] = useState("");
+  const [voceNota, setVoceNota] = useState("");
+  const [voceDaInviare, setVoceDaInviare] = useState(null);
+  const riconoscitoreRef = useRef(null);
+  const vogliamoAscoltareRef = useRef(false);
+  // IL RISCHIO DA NON SPEDIRE: l'app legge la risposta ad alta voce, il riconoscimento la sente e
+  // la rimanda allo Shell come se l'avesse detta il Ghost. Un anello che si alimenta da solo, e
+  // ogni giro è una chiamata pagata. Quindi finché la sintesi parla — e per un momento dopo,
+  // perché un risultato può arrivare in ritardo — quello che si sente non conta.
+  const zittoFinoARef = useRef(0);
+  const parlaSenzaRisentirsi = useCallback((testo) => {
+    zittoFinoARef.current = Date.now() + 2000;
+    speakText(testo, () => { zittoFinoARef.current = Date.now() + 900; });
+  }, []);
+  const ascoltato = useCallback((testo) => {
+    const t = String(testo || "").trim();
+    if (!t) return;
+    const dove = comandoDiNavigazione(t);
+    if (dove) {
+      setView(dove.key);
+      setVoceNota(`Aperto: ${dove.label}`);
+      parlaSenzaRisentirsi(`Apro ${dove.label}.`);
+      return;
+    }
+    // Non è un comando di navigazione: è una cosa da dire allo Shell.
+    setVoceNota(`Mandato allo Shell: «${t}»`);
+    setVoceDaInviare({ testo: t, id: uid() });
+    setView("shell");
+  }, [parlaSenzaRisentirsi]);
+  const spegniVoce = useCallback(() => {
+    vogliamoAscoltareRef.current = false;
+    try { riconoscitoreRef.current?.stop(); } catch { /* già ferma */ }
+    setVoceAccesa(false); setVoceParziale("");
+  }, []);
+  const accendiVoce = useCallback(() => {
+    const Riconoscitore = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
+    if (!Riconoscitore) { setVoceNota("Questo browser non sa ascoltare."); return; }
+    const rec = new Riconoscitore();
+    rec.lang = "it-IT"; rec.continuous = true; rec.interimResults = true;
+    rec.onresult = (ev) => {
+      let parziale = "", definitivo = "";
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const r = ev.results[i];
+        if (r.isFinal) definitivo += r[0].transcript; else parziale += r[0].transcript;
+      }
+      if (Date.now() < zittoFinoARef.current || window.speechSynthesis?.speaking) { setVoceParziale(""); return; }
+      setVoceParziale(parziale.trim());
+      if (definitivo.trim()) { setVoceParziale(""); ascoltato(definitivo); }
+    };
+    // Android chiude la sessione da solo dopo una pausa: se il Ghost non ha spento la modalità,
+    // si riapre. Senza questo la voce "smette di funzionare" dopo il primo silenzio, che è
+    // esattamente il difetto che fa abbandonare una funzione.
+    rec.onend = () => { if (vogliamoAscoltareRef.current) { try { rec.start(); } catch { setVoceAccesa(false); } } else setVoceAccesa(false); };
+    rec.onerror = (ev) => {
+      if (ev.error === "no-speech" || ev.error === "aborted") return; // normali: onend riapre
+      setVoceNota(`Il microfono ha detto no: ${ev.error}`);
+      vogliamoAscoltareRef.current = false; setVoceAccesa(false);
+    };
+    riconoscitoreRef.current = rec;
+    vogliamoAscoltareRef.current = true;
+    try { rec.start(); setVoceAccesa(true); setVoceNota("Ti ascolto. Di' «apri magi», «apri la chat con lo Shell», oppure parla allo Shell."); }
+    catch (e) { setVoceNota("Non sono riuscito ad accendere il microfono: " + (e?.message || "motivo non dichiarato")); }
+  }, [ascoltato]);
+  useEffect(() => () => { vogliamoAscoltareRef.current = false; try { riconoscitoreRef.current?.stop(); } catch { /* niente */ } }, []);
+
   const [kernel, setKernel] = useState(() => loadKey("kernel-data", { content: DEFAULT_KERNEL, version: 1, history: [] }));
   const [settings, setSettings] = useState(() => ({ ...DEFAULT_SETTINGS, ...loadKey("app-settings", {}) }));
   const [driveStatus, setDriveStatus] = useState({ state: "idle", time: null, error: null, remoteTime: null, fileId: null });
@@ -11757,7 +11897,20 @@ function App() {
   return html`<div>
     <div class="r-ghost-texture"></div>
     <${HexTexture} />
-    <div class="r-topbar"><div class="r-brand">RESONANCE<span>•</span></div></div>
+    ${/* 14/09/2026 — il microfono sta nella barra in cima e non in una schermata, perché la
+          navigazione a voce deve funzionare DA OVUNQUE: se per dire «apri magi» bisogna prima
+          arrivare in una certa pagina, non serve a niente. Compare solo se il browser sa ascoltare;
+          dove non sa, non c'è un pulsante che non fa niente. */ ""}
+    <div class="r-topbar"><div class="r-brand">RESONANCE<span>•</span></div>
+      ${(typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition)) && html`
+        <button class="r-voce-btn ${voceAccesa ? "accesa" : ""}" onClick=${() => (voceAccesa ? spegniVoce() : accendiVoce())}
+          title=${voceAccesa ? "Spegni la voce" : "Parla all'app"}>${voceAccesa ? "🔴" : "🎤"}</button>`}
+    </div>
+    ${(voceAccesa || voceNota) && html`<div class="r-voce-barra ${voceAccesa ? "accesa" : ""}">
+      <div><b>${voceAccesa ? "Ti ascolto" : "Voce spenta"}</b>${voceParziale ? html` · <span style="opacity:.75">${voceParziale}…</span>` : ""}</div>
+      ${voceNota && html`<div class="r-hub-detail" style="margin-top:2px">${voceNota}</div>`}
+      ${voceAccesa && html`<div class="r-hub-detail" style="margin-top:4px;opacity:.7">Puoi dire: apri magi · apri la chat con lo Shell · vai su Adam · torna alla home. Tutto il resto va allo Shell.</div>`}
+    </div>`}
     ${memoriaSatura && html`<div class="r-striscia-piena">
       <b>La memoria del dispositivo è piena.</b> Da adesso le cose nuove non si salvano: ${memoriaSatura.scritturePerse} scrittur${memoriaSatura.scritturePerse === 1 ? "a" : "e"} già perdut${memoriaSatura.scritturePerse === 1 ? "a" : "e"} in questa sessione (l'ultima su «${memoriaSatura.chiave}»). La chat non viene più compattata, per non archiviare messaggi in un posto che non c'è.
       <div style="margin-top:8px"><button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => setView("settings")}>Scarica il backup adesso</button></div>
@@ -11769,7 +11922,7 @@ function App() {
     ${view === "shell" && html`<${ShellView} messages=${shellChat} setMessages=${setShellChat} settings=${settings} addBio=${addBio} addAir=${addAir} addVidya=${addVidya} aggiungiDaLettura=${aggiungiDaLettura}
       percorsi=${{ bio: pBio, air: pAir, vidya: pVidya }} setPercorsi=${{ bio: setPBioSync, air: setPAirSync, vidya: setPVidyaSync }}
       memory=${memory} updateMemoria=${updateMemoria} styleMemory=${styleMemory} setStyleMemory=${setStyleMemory} bio=${bio} air=${air} vidya=${vidya} pushDebugLog=${pushDebugLog}
-      addSeed=${addSeed} advanceSeedIfDue=${advanceSeedIfDue} shellDraft=${shellDraft} consumeShellDraft=${() => setShellDraft("")}
+      addSeed=${addSeed} advanceSeedIfDue=${advanceSeedIfDue} shellDraft=${shellDraft} consumeShellDraft=${() => setShellDraft("")} voceDaInviare=${voceDaInviare} consumaVoce=${() => setVoceDaInviare(null)}
       pBio=${pBio} pAir=${pAir} pVidya=${pVidya} semi=${semi}
       ghostProfile=${ghostProfile} saveGhostProfile=${saveGhostProfile} />`}
     ${view === "bio" && html`<${BioView} entries=${bio} onAdd=${addBio} onDelete=${delBio} percorsi=${pBio} setPercorsi=${setPBioSync} settings=${settings} digest=${digestBio} memory=${memory} />`}
