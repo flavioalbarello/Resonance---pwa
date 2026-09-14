@@ -200,6 +200,9 @@ const EXPORT_NAMES = [
   "percorsiSnelli", "percorsiPieni", "coppieDiTesto", "CHIAVI_PERCORSI",
   "IDB_NOME", "IDB_NEGOZIO", "scriviTestiDocumenti", "testiDavveroNelMagazzino",
   "BACKUP_FORMAT_VERSION",
+  // 14/09/2026 — i numeri detti a parole, dal banco microfono fatto in macchina.
+  "numeroDaParola", "numeriChiestiForti", "formeDelToken", "paroleUtili",
+  "ROMANI_A_NUMERO", "ORDINALI_A_NUMERO",
 ];
 
 // Le importazioni che in Node non hanno senso e vengono sostituite dagli stub qui sopra.
