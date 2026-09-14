@@ -99,7 +99,10 @@ describe("LA RICOSTRUZIONE — quello che l'archivio non manda", () => {
     const chiavi = abc.split("\n").filter((r) => r.startsWith("K:"));
     assert.equal(chiavi.length, 1, `due tonalità: ${chiavi.join(" e ")}`);
     assert.equal(chiavi[0], "K:BbMaj");
-    assert.equal(analizzaSpartito(abc).ok, true);
+    // `"archivio"`: è un frammento preso da fuori, e da oggi il controllo sulle durate è un avviso
+    // per quelli e un errore per ciò che scrive un modello. Questo frammento ha la levata «F/E/»
+    // senza la battuta che la completa — normale in un ritaglio, non in uno spartito generato.
+    assert.equal(analizzaSpartito(abc, "archivio").ok, true);
   });
 
   test("senza tonalità propria resta quella del catalogo", () => {
@@ -429,6 +432,110 @@ describe("LA SPIEGAZIONE DELLA RICERCA, caso per caso", () => {
     for (const c of casi) {
       assert.doesNotMatch(c.testo, /non ho accesso|non posso cercare online|database musicali/i, c.caso);
     }
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LE BATTUTE DEVONO TORNARE COL METRO — 14/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// Nato dalla proposta del Ghost: «basterebbe banalmente una ricerca Google e poi osservare le
+// immagini». I mattoni ci sono (ricerca web e visione sono già cablate), ma nessuno dei sette
+// requisiti guardava le DURATE — e un modello che legge uno spartito da un'immagine sbaglia proprio
+// quelle, in modo plausibile: note giuste, ritmo storto, ABC formalmente perfetto.
+describe("LE DURATE — il controllo che mancava, e che serve prima di leggere un'immagine", () => {
+  const { durataDellaBattuta, metroInUnita } = app;
+
+  test("il metro dice quanto vale una battuta, nell'unità dichiarata da L:", () => {
+    assert.equal(metroInUnita("4/4", "1/8"), 8);
+    assert.equal(metroInUnita("6/8", "1/8"), 6);
+    assert.equal(metroInUnita("2/4", "1/8"), 4);
+    assert.equal(metroInUnita("3/4", "1/4"), 3);
+    assert.equal(metroInUnita("C", "1/8"), 8, "C è 4/4");
+    assert.equal(metroInUnita("C|", "1/8"), 8, "C| è 2/2, che vale come 4/4 in crome");
+    assert.ok(Number.isNaN(metroInUnita("boh", "1/8")), "un metro illeggibile non si giudica");
+  });
+
+  test("le durate ABC si contano come le conta chi suona", () => {
+    assert.equal(durataDellaBattuta("ABCD EFGA"), 8, "otto crome");
+    assert.equal(durataDellaBattuta("A2 B2 C4"), 8, "i numeri moltiplicano");
+    assert.equal(durataDellaBattuta("A/B/ C/2D/2 E3 F"), 6, "la barra divide: A/ è mezza croma");
+    assert.equal(durataDellaBattuta("[CEG]2 [DF]2 A4"), 8, "un accordo vale UNA durata, non tre");
+    assert.equal(durataDellaBattuta("(3ABC (3DEF A A"), 6, "una terzina sta nel tempo di due");
+    assert.equal(durataDellaBattuta("z4 A4"), 8, "le pause durano");
+    assert.equal(durataDellaBattuta("A>B C>D E>F G>A"), 8, "il ritmo zoppo sposta durata, non ne aggiunge");
+    assert.equal(durataDellaBattuta('"Em"A2 !fermata!B2 {g}C4'), 8, "accordi scritti, decorazioni e abbellimenti non durano");
+    assert.equal(durataDellaBattuta("A,2 B,2 c'2 d'2"), 8, "le ottave non sono durate");
+  });
+
+  test("«[1» E «[2» SONO LA PRIMA E LA SECONDA VOLTA, non accordi", () => {
+    // Letti come accordi facevano contare note che non ci sono. Stessa forma dell'errore che
+    // rifiutava `"Em"` come prosa: un simbolo di notazione scambiato per musica.
+    assert.equal(durataDellaBattuta("1 DEFD E4"), 8);
+    assert.equal(durataDellaBattuta("[K:Gmaj]ABCD EFGA"), 8, "un campo dentro la riga non è un accordo");
+    // Il caso che MORDE, trovato dalla verifica di rottura: il primo giro provava «1 DEFD E4» senza
+    // la parentesi, e lì il parser cadeva in piedi per caso (nessun «]» da trovare, quindi tirava
+    // dritto). Serve un accordo VERO più avanti nella battuta: allora «[1» ingoia tutto fino al «]»
+    // dell'accordo e la battuta vale 4 invece di 8.
+    assert.equal(durataDellaBattuta("[1 ABCD [CE]4"), 8, "«[1» si mangia la battuta fino al primo accordo");
+  });
+
+  test("L'ANACRUSI NON E' UN ERRORE, e me l'ha insegnato il dato vero", () => {
+    // Cooley's, prima misura: battuta 1 = «D2» (vale 2), battuta 9 = «DEFD E2» (vale 6). 2+6 = 8.
+    // In un brano con la levata, l'iniziale incompleta e quella che chiude fanno insieme una
+    // battuta intera. Le parziali si ACCOPPIANO: non è tolleranza, è come si conta la musica.
+    const conLevata = "X:1\nT:P\nM:4/4\nL:1/8\nK:Edor\nD2|EBBA B2 EB|B2 AB dBAG|DEFD E2|";
+    const a = analizzaSpartito(conLevata);
+    assert.equal(a.ok, true, a.errori.map((e) => e.motivo).join(" · "));
+  });
+
+  test("UNA SOLA DURATA SBAGLIATA VIENE PRESA — ed è il punto di tutto questo", () => {
+    const sano = "X:1\nT:P\nM:4/4\nL:1/8\nK:Edor\nEBBA B2 EB|B2 AB dBAG|";
+    const storto = "X:1\nT:P\nM:4/4\nL:1/8\nK:Edor\nEBBA B3 EB|B2 AB dBAG|";
+    assert.equal(analizzaSpartito(sano).ok, true);
+    const r = analizzaSpartito(storto);
+    assert.equal(r.ok, false, "una battuta di 9 crome in 4/4 passava: è il buco che apriva la lettura da immagine");
+    assert.match(r.errori.map((e) => e.motivo).join(" "), /più lunga del metro/);
+  });
+
+  test("una parziale spaiata si dice per quello che è", () => {
+    const spaiata = "X:1\nT:P\nM:4/4\nL:1/8\nK:Edor\nD2|EBBA B2 EB|B2 AB dBAG|";
+    assert.match(analizzaSpartito(spaiata).errori.map((e) => e.motivo).join(" "), /parziale spaiata/);
+  });
+
+  test("IL REPERTORIO VERO NON VIENE BUTTATO: per l'archivio è un AVVISO, non un rifiuto", () => {
+    // Misurato su 192 trascrizioni vere: 31 hanno battute che non tornano, e guardandole una per
+    // una NON sono falsi positivi — sono trascrizioni vere e imperfette, caricate da musicisti che
+    // scrivono a orecchio. «FED AD BDAD» vale 9 dove un'altra versione scrive «F/E/D AD BDAD».
+    // Buttare la musica di qualcun altro perché non ha contato le crome sarebbe la Legge 14 rotta
+    // al contrario. Per un modello invece è un errore da rifare: lì la battuta storta è sua.
+    const storto = "X:1\nT:P\nM:4/4\nL:1/8\nK:Edor\nFED AD BDAD|B2 AB dBAG|";
+    assert.equal(analizzaSpartito(storto, "modello").ok, false, "da un modello si pretende che torni");
+    const daFuori = analizzaSpartito(storto, "archivio");
+    assert.equal(daFuori.ok, true, "da un archivio si tiene");
+    assert.equal(daFuori.avvisi.length, 1, "ma NON in silenzio");
+    assert.equal(daFuori.avvisi[0].id, "battute-che-tornano");
+    assert.match(daFuori.avvisi[0].motivo, /più lunga del metro/);
+  });
+
+  test("tutte e 192 le trascrizioni vere restano accettate, con l'avviso dove serve", () => {
+    const versioni = spartitiDalBrano(COOLEYS, analizzaSpartito);
+    assert.equal(versioni.filter((v) => !v.analisi.ok).length, 0, "l'archivio non deve perdere niente");
+    assert.ok(versioni.some((v) => (v.analisi.avvisi || []).length >= 0), "il campo avvisi esiste sempre");
+  });
+
+  test("senza metro non si giudica invece di inventare un verdetto", () => {
+    // `metro-dichiarato` prende già il caso; questo controllo non deve aggiungere un secondo errore
+    // su un dato che non ha.
+    const senzaMetro = analizzaSpartito("X:1\nT:P\nK:C\nABCD EFGA|ABC|");
+    assert.equal(senzaMetro.errori.filter((e) => e.id === "battute-che-tornano").length, 0);
+  });
+
+  test("il requisito si DETTA al modello, non solo si verifica", () => {
+    // La regola di casa: un oggetto solo, letto due volte. Se il modello non sa che deve contare,
+    // il controllo a valle scarta e non insegna niente.
+    const brief = app.briefDelloSpartito({ argomento: "prova" });
+    assert.match(brief, /una battuta vale 8 crome/);
+    assert.match(brief, /levata/);
   });
 });
 
