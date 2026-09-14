@@ -140,6 +140,86 @@ describe("I FALSI POSITIVI DEL MIO GUARDIANO, trovati dal dato vero", () => {
   });
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// CHIEDERLO PARLANDO — 14/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// La ricerca esisteva da un giorno quando il Ghost ha scritto in chat «Cerca online lo spartito per
+// basso elettrico di Come Together dei Beatles e mostramelo» e lo Shell ha risposto «Non posso
+// cercare online». Era vero per come stava l'app: la ricerca era un pulsante dentro un percorso, e
+// un pulsante che non si trova non esiste. Questo banco tiene la frase VERA del Ghost come primo
+// caso — non una frase pulita scritta da me — perché è quella che ha rotto.
+describe("CHIEDERE UNO SPARTITO A PAROLE", () => {
+  const { richiestaDiSpartito } = app;
+
+  test("LA FRASE VERA DEL GHOST, quella che ha prodotto il «non posso cercare online»", () => {
+    const r = richiestaDiSpartito("Cerca online lo spartito per basso elettrico di come together dei Beatles e mostramelo");
+    assert.ok(r, "non riconosciuta");
+    assert.equal(r.query, "come together Beatles");
+    assert.equal(r.strumento, "basso", "lo strumento si dice al Ghost, anche se non filtra la ricerca");
+  });
+
+  test("le forme normali di chiederlo arrivano tutte a una query utile", () => {
+    const casi = [
+      ["cercami lo spartito di Cooley's", "Cooley's"],
+      ["trovami la tablatura di Drowsy Maggie", "Drowsy Maggie"],
+      ["cerca la partitura del brano Morrison's", "Morrison's"],
+      ["scaricami lo spartito per violino di Egan's polka", "Egan's polka"],
+      ["trova lo spartito di The Silver Spear", "The Silver Spear"],
+    ];
+    for (const [frase, atteso] of casi) {
+      const r = richiestaDiSpartito(frase);
+      assert.ok(r, `non riconosciuta: ${frase}`);
+      assert.equal(r.query, atteso, frase);
+    }
+  });
+
+  test("SERVONO TUTTI E DUE: un verbo di ricerca E la parola spartito", () => {
+    // Senza il verbo è una conversazione sugli spartiti; senza l'oggetto è una ricerca di altro.
+    assert.equal(richiestaDiSpartito("cosa ne pensi dello spartito che abbiamo fatto"), null);
+    assert.equal(richiestaDiSpartito("mi piacerebbe uno spartito di Cooley's"), null);
+    assert.equal(richiestaDiSpartito("cerca un percorso su anatomia"), null);
+    assert.equal(richiestaDiSpartito("trova il documento dell'atto quarto"), null);
+    assert.equal(richiestaDiSpartito("oggi ho dormito male"), null);
+    // Questi due sono il caso in cui SOLO la parola «spartito» tiene: c'è il verbo, c'è un «di X»
+    // da cui una query si estrarrebbe benissimo, e senza il controllo sull'oggetto partirebbe una
+    // ricerca musicale su «Beethoven» o su «telefono Marta». Trovati dalla verifica di rottura:
+    // il primo giro di banco restava verde anche togliendo quel controllo.
+    assert.equal(richiestaDiSpartito("cerca la biografia di Beethoven"), null);
+    assert.equal(richiestaDiSpartito("trovami il numero di telefono di Marta"), null);
+  });
+
+  test("SCRIVERE NON E' CERCARE: «generami uno spartito» non interroga nessun archivio", () => {
+    assert.equal(richiestaDiSpartito("scrivimi uno spartito per basso"), null);
+    assert.equal(richiestaDiSpartito("genera uno spartito per il tema dell'Atto IV"), null);
+    assert.equal(richiestaDiSpartito("componi una tablatura lenta in minore"), null);
+  });
+
+  test("CERCARE DENTRO NON E' CERCARE FUORI — il falso positivo che direbbe una bugia", () => {
+    // Queste frasi hanno verbo e oggetto giusti, ma parlano di roba GIA' SALVATA. Partendo verso
+    // l'archivio tornerebbero vuote, e il «non c'è» sembrerebbe una verità sul suo spartito.
+    assert.equal(richiestaDiSpartito("cerca lo spartito che abbiamo fatto ieri"), null);
+    assert.equal(richiestaDiSpartito("trova lo spartito nel percorso Musica"), null);
+    assert.equal(richiestaDiSpartito("cercami la tablatura che ho salvato"), null);
+    assert.equal(richiestaDiSpartito("cerca lo spartito nei documenti"), null);
+    assert.equal(richiestaDiSpartito("trovami lo spartito di ieri"), null);
+  });
+
+  test("la frase intera resta attaccata: la query è una LETTURA, e va potuta confrontare", () => {
+    const frase = "Cerca online lo spartito per basso elettrico di come together dei Beatles e mostramelo";
+    assert.equal(richiestaDiSpartito(frase).frase, frase);
+  });
+
+  test("una query si ferma a sei parole: una frase lunga non diventa un'interrogazione assurda", () => {
+    const r = richiestaDiSpartito("cercami lo spartito di uno due tre quattro cinque sei sette otto nove");
+    assert.ok(r.query.split(" ").length <= 6, r.query);
+  });
+
+  test("niente da cercare, niente ricerca: la frase senza titolo non parte", () => {
+    assert.equal(richiestaDiSpartito("cerca uno spartito"), null);
+    assert.equal(richiestaDiSpartito("cerca online uno spartito per favore"), null);
+  });
+});
+
 describe("GLI INDIRIZZI DELL'ARCHIVIO", () => {
   test("si compongono con la ricerca dentro, non concatenando a mano", () => {
     const u = ARCHIVIO_SPARTITI.cerca("cooley's");

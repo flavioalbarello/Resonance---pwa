@@ -65,6 +65,7 @@ import {
   vociDichiarate,
   ARCHIVIO_SPARTITI,
   spartitiDalBrano,
+  richiestaDiSpartito,
   chiaveAbc,
   abcDaArchivio,
   nuovoPromemoria,
@@ -4871,7 +4872,7 @@ Cosa succede quando non ce la fa: il motivo torna al modello e riprova, al massi
   { n: `Archivi della chat su Drive`, k: ["archivi della chat", "archivio della chat", "messaggi archiviati", "messaggi compattati"], s: `Archivi della chat su Drive: quando la chat supera i 40 messaggi i piu' vecchi finiscono in un archivio locale (e' la compattazione). Dal 12/09/2026 gli archivi oltre i tre piu' recenti salgono su Drive e lasciano il dispositivo, cosi' non riempiono lo spazio locale — che e' circa 5 MB e senza questo si sarebbe esaurito fra il sesto e il dodicesimo mese di uso. La copia locale viene cancellata SOLO dopo che Drive ha restituito l'identificativo del file: senza quella prova non si cancella niente, e con il sync spento non si sposta niente. Un indice locale tiene il conto di dove sono finiti, e l'indice sta nel backup.` },
   { n: `Quando la chat arriva su Drive`, k: ["quando si sincronizza", "sincronizzazione della chat", "passo del sync"], s: `Quando la chat arriva su Drive: i dati dei pilastri, i percorsi, la memoria e il kernel salgono due secondi dopo ogni modifica, come sempre. La CHAT ha un passo suo, piu' lento: ogni due minuti, e comunque appena l'app va in secondo piano — cioe' quando il Ghost la chiude. Fino all'11/09/2026 ogni singolo messaggio faceva scaricare e ricaricare lo stato intero: con un anno di dati sono 1,1 MB di rete per messaggio, circa cinque secondi in 4G, ed era la ragione per cui l'app sembrava lenta in macchina senza che niente fosse lento. I messaggi sono comunque sul dispositivo appena scritti: il ritardo riguarda solo la copia su Drive.` },
   { n: `Modalita' voce`, nucleo: true, k: ["modalita voce", "parlare all app", "microfono", "comando vocale", "navigare a voce"], s: `Modalita' voce: c'e' un pulsante microfono nella barra in cima, visibile da OGNI schermata. Acceso, il Ghost parla e succede una di due cose. Se dice un comando di navigazione — "apri magi", "apri la chat con lo Shell", "vai su Adam", "portami in bio", "torna alla home", "apri le impostazioni" — il programma cambia schermata da solo, senza passare dal modello: costa zero, e' istantaneo e si disfa con un altro comando. Qualunque altra frase viene MANDATA allo Shell come un messaggio, e la risposta viene letta ad alta voce. Accendere la modalita' e' il gesto di consenso: da li' in poi quello che si dice parte, perche' in macchina la casella di testo non si puo' usare. Questo NON scavalca le conferme: calendario, mail e Semi in esecuzione continuano ad avere il loro pulsante come prima. Serve un VERBO di apertura perche' sia navigazione: "parliamo di bio" non sposta niente, e "apri il percorso del concept album" resta l'azione di sempre e va allo Shell. Mentre l'app parla il microfono e' sordo di proposito, o sentirebbe la propria voce e la rimanderebbe indietro all'infinito. La barra sotto dice sempre cosa sta capendo e cosa ha fatto.` },
-  { n: `Spartiti`, k: ["spartito", "spartiti", "musica", "pentagramma", "tablatura", "notazione", "melodia", "note musicali"], s: `Spartiti: dentro un percorso, sotto "Artefatto documentale", c'e' un riquadro "Spartito". Si scrive che musica serve ("il tema dell'Atto IV, lento, in minore"), si sceglie lo strumento, e il modello la scrive in notazione ABC; il programma la CONTROLLA prima di tenerla — intestazione, tonalita', metro, almeno due battute, niente prosa in mezzo alle note, e se ci sono i versi che le sillabe tornino con le note. Se non va bene il motivo torna al modello e riprova, al massimo tre volte, e se non ci arriva lo dice invece di salvare qualcosa di rotto. C'e' anche "Partine uno a mano" per cominciare da un esempio vuoto. Uno spartito e' un DOCUMENTO del percorso come gli altri: sta in "Documenti del percorso" col nome che finisce in .abc, va su Drive, entra nel backup e si trova con la ricerca. Aprendolo compare il pentagramma vero, un pulsante per SUONARLO (lo suona il browser, non serve niente di installato), e un menu per vederlo anche in TABLATURA per chitarra, violino o mandolino — la tablatura e' un modo di guardare lo stesso spartito, non un file diverso. Si possono mettere i VERSI sotto le note, cosi' musica e parole restano un documento solo. PROMEMORIA: toccando una nota si attacca un promemoria a quella battuta, e quando lo spartito suona e arriva li' il promemoria compare da solo. L'ancora e' il numero di battuta, quindi sopravvive se lo spartito viene riscritto o trasposto; se lo spartito si accorcia e un promemoria resta oltre l'ultima battuta viene segnalato, mai buttato via da solo. Il disegnatore pesa 480 kB e vive dentro l'app: la prima volta che si apre uno spartito va scaricato, dopo funziona anche senza rete. CHIAVI: legge e disegna tutte le chiavi che si dichiarano dentro K: o dentro una voce — violino (treble), basso (bass), contralto/viola (alto), tenore, percussioni (perc), e gli spostamenti d'ottava tipo treble+8. PARTITURE DA DIRETTORE: si', spuntando "partitura a piu' strumenti". Ogni strumento si dichiara con una riga V: col suo nome e la sua chiave, e ha il suo pentagramma con il nome scritto a sinistra; il programma li elenca sopra il disegno. Le battute restano quelle della PARTITURA — la battuta 3 e' la 3 per tutti gli strumenti — quindi un promemoria attaccato li' vale per il punto musicale, non per una voce sola. Il programma controlla anche un errore che i modelli fanno spesso: raggruppare gli strumenti con le parentesi tonde in %%score li mette sullo STESSO pentagramma e il secondo perde la sua chiave (una viola in chiave di contralto sparisce dentro il rigo del violino); servono le parentesi quadre, e se le chiavi finiscono mescolate lo spartito viene rifiutato con quel motivo. CERCARE IN UN ARCHIVIO ONLINE: nel riquadro Spartito c'e' anche «Cercalo in un archivio». L'archivio e' The Session (musica tradizionale irlandese e scozzese, gia' in notazione ABC). Si scrive il nome del brano, compaiono i risultati, si apre un brano e si vedono le sue trascrizioni — un brano tradizionale ne ha spesso venti o trenta, tutte legittime e diverse fra loro, con tonalita' e numero di battute diversi: si sceglie quella che serve e si tiene. Questa ricerca NON passa da nessun modello e costa zero: e' il programma che chiama l'archivio. Quello che arriva non e' uno spartito intero ma un frammento senza intestazione: il programma rimonta titolo, metro (dedotto dal tipo di danza: reel 4/4, jig 6/8, polka 2/4...) e tonalita', e poi lo fa passare dallo stesso controllo degli spartiti scritti dal modello. Se una trascrizione non passa non viene proposta, e il numero di quelle scartate si vede. Ogni spartito preso da fuori porta con se' la PROVENIENZA — archivio, indirizzo, numero della trascrizione e chi l'ha scritta — sia nel documento sia dentro il testo ABC. NON sa importare un PDF o una scansione: quella e' un'immagine, e riconoscere la musica dentro un'immagine e' un altro mestiere.` },
+  { n: `Spartiti`, k: ["spartito", "spartiti", "musica", "pentagramma", "tablatura", "notazione", "melodia", "note musicali"], s: `Spartiti: dentro un percorso, sotto "Artefatto documentale", c'e' un riquadro "Spartito". Si scrive che musica serve ("il tema dell'Atto IV, lento, in minore"), si sceglie lo strumento, e il modello la scrive in notazione ABC; il programma la CONTROLLA prima di tenerla — intestazione, tonalita', metro, almeno due battute, niente prosa in mezzo alle note, e se ci sono i versi che le sillabe tornino con le note. Se non va bene il motivo torna al modello e riprova, al massimo tre volte, e se non ci arriva lo dice invece di salvare qualcosa di rotto. C'e' anche "Partine uno a mano" per cominciare da un esempio vuoto. Uno spartito e' un DOCUMENTO del percorso come gli altri: sta in "Documenti del percorso" col nome che finisce in .abc, va su Drive, entra nel backup e si trova con la ricerca. Aprendolo compare il pentagramma vero, un pulsante per SUONARLO (lo suona il browser, non serve niente di installato), e un menu per vederlo anche in TABLATURA per chitarra, violino o mandolino — la tablatura e' un modo di guardare lo stesso spartito, non un file diverso. Si possono mettere i VERSI sotto le note, cosi' musica e parole restano un documento solo. PROMEMORIA: toccando una nota si attacca un promemoria a quella battuta, e quando lo spartito suona e arriva li' il promemoria compare da solo. L'ancora e' il numero di battuta, quindi sopravvive se lo spartito viene riscritto o trasposto; se lo spartito si accorcia e un promemoria resta oltre l'ultima battuta viene segnalato, mai buttato via da solo. Il disegnatore pesa 480 kB e vive dentro l'app: la prima volta che si apre uno spartito va scaricato, dopo funziona anche senza rete. CHIAVI: legge e disegna tutte le chiavi che si dichiarano dentro K: o dentro una voce — violino (treble), basso (bass), contralto/viola (alto), tenore, percussioni (perc), e gli spostamenti d'ottava tipo treble+8. PARTITURE DA DIRETTORE: si', spuntando "partitura a piu' strumenti". Ogni strumento si dichiara con una riga V: col suo nome e la sua chiave, e ha il suo pentagramma con il nome scritto a sinistra; il programma li elenca sopra il disegno. Le battute restano quelle della PARTITURA — la battuta 3 e' la 3 per tutti gli strumenti — quindi un promemoria attaccato li' vale per il punto musicale, non per una voce sola. Il programma controlla anche un errore che i modelli fanno spesso: raggruppare gli strumenti con le parentesi tonde in %%score li mette sullo STESSO pentagramma e il secondo perde la sua chiave (una viola in chiave di contralto sparisce dentro il rigo del violino); servono le parentesi quadre, e se le chiavi finiscono mescolate lo spartito viene rifiutato con quel motivo. CERCARE IN UN ARCHIVIO ONLINE: SI PUO' CHIEDERE QUI IN CHAT, a parole ("cercami lo spartito di Cooley's", "trova la tablatura di Drowsy Maggie"), anche parlando con la modalita' voce. Quando la frase ha un verbo di ricerca e la parola spartito/tablatura/partitura, la ricerca parte DA SOLA: la fa il programma, non passa da nessun modello, non costa niente e funziona anche senza chiave API. Sotto la risposta compare una card con quello che e' stato cercato — le parole estratte dalla frase, MODIFICABILI, perche' da una frase parlata non si indovina sempre il titolo giusto — i brani trovati, e dove tenere lo spartito (pilastro e percorso). Se la frase dice invece di cercare DENTRO ("cerca lo spartito che abbiamo fatto ieri", "nel percorso") la ricerca online NON parte: quella e' roba gia' salvata. C'e' anche il pulsante, nel riquadro Spartito dentro un percorso: «Cercalo in un archivio». L'archivio e' The Session (musica tradizionale irlandese e scozzese, gia' in notazione ABC). Si scrive il nome del brano, compaiono i risultati, si apre un brano e si vedono le sue trascrizioni — un brano tradizionale ne ha spesso venti o trenta, tutte legittime e diverse fra loro, con tonalita' e numero di battute diversi: si sceglie quella che serve e si tiene. Questa ricerca NON passa da nessun modello e costa zero: e' il programma che chiama l'archivio. Quello che arriva non e' uno spartito intero ma un frammento senza intestazione: il programma rimonta titolo, metro (dedotto dal tipo di danza: reel 4/4, jig 6/8, polka 2/4...) e tonalita', e poi lo fa passare dallo stesso controllo degli spartiti scritti dal modello. Se una trascrizione non passa non viene proposta, e il numero di quelle scartate si vede. Ogni spartito preso da fuori porta con se' la PROVENIENZA — archivio, indirizzo, numero della trascrizione e chi l'ha scritta — sia nel documento sia dentro il testo ABC. NON sa importare un PDF o una scansione: quella e' un'immagine, e riconoscere la musica dentro un'immagine e' un altro mestiere.` },
   { n: `Dove stanno i testi dei documenti`, k: ["dove stanno i documenti", "magazzino dei testi", "spazio sul telefono", "memoria del telefono piena"], s: `Dove stanno i testi dei documenti: dal 13/09/2026 il TESTO dei documenti dei percorsi non sta piu' nello spazio piccolo del browser (circa 5 MB, che bastava per ~1.075 documenti da 4.000 caratteri) ma in un magazzino locale piu' grande sullo stesso telefono, che ne tiene decine di migliaia. Non cambia niente di quello che si vede o si fa: i documenti si aprono, si cercano e si rileggono esattamente come prima, anche senza rete, e il file di sync fra i due dispositivi continua a portarli. Lo spostamento dei documenti gia' esistenti avviene da solo alla prima apertura dell'app, e un testo lascia il vecchio posto SOLO dopo che il magazzino l'ha riletto identico. Se il magazzino non e' disponibile (finestra privata, browser vecchio) tutto resta com'era prima, col tetto di prima. Un documento il cui testo non si trova piu' lo dichiara invece di aprirsi vuoto.` },
   { n: `Backup e ripristino (Setup)`, k: ["backup", "ripristino"], s: `Backup e ripristino (Setup): scarica in un unico file tutto lo stato locale e sa rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo previa conferma.` },
 ];
@@ -8612,6 +8613,94 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     setSalvaEsito(`✓ Salvato in "${target.title}"${nodo ? `, sotto il nodo "${nodo}"` : ""} — ${salvaDa.testo.length} caratteri, per intero.`);
     setSalvaDa((s) => (s ? { ...s, fatto: true } : s));
   };
+  // ══ CHIEDERE UNO SPARTITO PARLANDO (14/09/2026) ════════════════════════════════════════════
+  // Il 13/09 il Ghost ha scritto in chat «Cerca online lo spartito per basso elettrico di Come
+  // Together dei Beatles e mostramelo» e lo Shell ha risposto «Non posso cercare online». La
+  // ricerca c'era gia' — da ieri — ma solo come pulsante dentro un percorso, e un pulsante che non
+  // si trova non esiste. Il modo naturale di chiedere una cosa e' chiederla.
+  //
+  // COME LA NAVIGAZIONE A VOCE, NON COME UN'AZIONE DEL MODELLO: `richiestaDiSpartito` riconosce la
+  // frase per confronto di parole e la ricerca la fa il programma. Nessun turno di modello, nessun
+  // token, e soprattutto niente da indovinare — l'archivio si interroga, non si ricorda. Funziona
+  // anche senza chiave API, perche' non c'e' nessun modello da pagare.
+  //
+  // LA QUERY SI DICHIARA E SI PUO' CORREGGERE. Da una frase parlata (brano + strumento + artista +
+  // «e mostramelo») separare il titolo giusto tutte le volte e' impossibile; fingere di esserci
+  // riusciti produce una ricerca a vuoto senza che si capisca perche'. La card scrive cosa ha
+  // cercato e tiene la casella pronta per rifarlo con altre parole.
+  // mid -> { query, tunes, totale, errore, brano, versioni, scartate, busy, esito, pil, percorsoId }
+  const [spartitoStato, setSpartitoStato] = useState({});
+  const patchSpartito = (mid, patch) => setSpartitoStato((s) => ({ ...s, [mid]: { ...(s[mid] || {}), ...patch } }));
+  const pilastroDelFuoco = () => {
+    const p = percorsoDelFuoco(leggiFuoco());
+    return (p && PILASTRI_NOMI.find((k) => (percorsi[k] || []).some((x) => x.id === p.id))) || "vidya";
+  };
+  const cercaNellArchivio = async (query) => {
+    try {
+      const r = await fetch(ARCHIVIO_SPARTITI.cerca(query));
+      if (!r.ok) throw new Error(`l'archivio ha risposto ${r.status}`);
+      const d = await r.json();
+      const tunes = Array.isArray(d?.tunes) ? d.tunes : [];
+      return { tunes: tunes.slice(0, 8), totale: Number.isFinite(d?.total) ? d.total : tunes.length, errore: "" };
+    } catch (e) { return { tunes: [], totale: 0, errore: e?.message || "l'archivio non risponde" }; }
+  };
+  // Il testo del messaggio lo scrive IL PROGRAMMA, che sa com'e' andata: cosi' nessun modello puo'
+  // ne' abbellirlo ne' contraddirlo. Il caso "zero risultati" dice il motivo vero invece di
+  // lasciar credere a un guasto: quell'archivio tiene un repertorio solo, e un pezzo dei Beatles
+  // non c'e' e non ci sara'.
+  const testoRicercaSpartiti = (chiesto, esito) => {
+    const nota = chiesto.strumento
+      ? `\n\n«${chiesto.strumento}» non l'ho usato per filtrare: l'archivio indicizza i brani, non gli arrangiamenti. Lo strumento lo scegli quando apri lo spartito (pentagramma o tablatura).`
+      : "";
+    if (esito.errore) return `Ho provato a cercare «${chiesto.query}» in ${ARCHIVIO_SPARTITI.nome} e non ho ottenuto risposta: ${esito.errore}. Non è una ricerca a vuoto, è una ricerca che non è partita: riprova fra poco.${nota}`;
+    if (!esito.tunes.length) {
+      return `Ho cercato «${chiesto.query}» in ${ARCHIVIO_SPARTITI.nome} — è l'unico archivio che so interrogare — e non c'è.\n\n`
+        + `Quell'archivio tiene ${ARCHIVIO_SPARTITI.perChe}. Un pezzo pop o rock lì non c'è e non ci sarà: non è un guasto, è il suo repertorio.\n\n`
+        + `Cosa posso fare davvero: cercare con un altro titolo (la casella qui sotto), oppure scriverti lo spartito io dal riquadro "Spartito" dentro un percorso — ma quello lo inventa un modello, non è la trascrizione ufficiale di quel brano, e te lo dico prima perché la differenza conta.${nota}`;
+    }
+    return `Ho cercato «${chiesto.query}» in ${ARCHIVIO_SPARTITI.nome}: ${esito.totale} ${esito.totale === 1 ? "brano" : "brani"}`
+      + `${esito.totale > esito.tunes.length ? `, te ne mostro ${esito.tunes.length}` : ""}. Apri un brano per vedere le sue trascrizioni e tenere quella che serve.\n\n`
+      + `Questa ricerca non è passata da nessun modello: l'ha fatta il programma, e non è costata niente.${nota}`;
+  };
+  const apriBranoInChat = async (mid, t) => {
+    patchSpartito(mid, { busy: true, esito: "" });
+    try {
+      const r = await fetch(ARCHIVIO_SPARTITI.brano(t.id));
+      if (!r.ok) throw new Error(`l'archivio ha risposto ${r.status}`);
+      const brano = await r.json();
+      const versioni = spartitiDalBrano(brano, analizzaSpartito);
+      const buone = versioni.filter((v) => v.analisi.ok);
+      patchSpartito(mid, { brano, versioni: buone, scartate: versioni.length - buone.length, busy: false,
+        esito: buone.length ? "" : "Le trascrizioni di questo brano non passano il controllo: non te le propongo rotte." });
+    } catch (e) { patchSpartito(mid, { busy: false, esito: "Errore: " + (e?.message || "l'archivio non risponde") }); }
+  };
+  const rifaiRicercaSpartiti = async (mid, query) => {
+    const q = String(query || "").trim();
+    if (!q) return;
+    patchSpartito(mid, { busy: true, esito: "", brano: null, versioni: null });
+    const esito = await cercaNellArchivio(q);
+    patchSpartito(mid, { query: q, tunes: esito.tunes, totale: esito.totale, errore: esito.errore, busy: false,
+      esito: esito.errore ? `Errore: ${esito.errore}` : esito.tunes.length ? "" : `Nessun brano che si chiami «${q}».` });
+  };
+  const tieniSpartitoDallArchivio = (mid, v) => {
+    const st = spartitoStato[mid] || {};
+    const pil = st.pil || pilastroDelFuoco();
+    const lista = percorsi[pil] || [];
+    // Stessa regola che usa la tendina: un id che in questo pilastro non esiste non vale, e si
+    // ricade sul primo della lista — così quello che parte è quello che il Ghost vede selezionato.
+    const target = lista.find((p) => p.id === st.percorsoId) || lista[0];
+    if (!target) { patchSpartito(mid, { esito: "Scegli un percorso di destinazione." }); return; }
+    const titolo = `${st.brano.name} (${v.chiave})`;
+    const doc = documentoSpartito({ id: uid(), titolo, abc: v.abc, nodoId: nodoPerDocumento(target.topics, titolo) });
+    // La PROVENIENZA resta attaccata: fra sei mesi uno spartito senza fonte e' indistinguibile da
+    // uno scritto dal Ghost, e queste trascrizioni sono di chi le ha scritte.
+    doc.fonte = v.fonte;
+    doc.origine = "archivio";
+    setPercorsi[pil](lista.map((p) => (p.id === target.id ? { ...p, documents: [doc, ...(p.documents || [])] } : p)));
+    vibra(pil);
+    registraAzione({ fase: "eseguita", azioneId: "salva_nel_percorso", etichetta: titolo, percorso: target.title, fonte: v.fonte?.url || "", daPulsante: true });
+    patchSpartito(mid, { brano: null, versioni: null, esito: `✓ Tenuto in "${target.title}" (${pil.toUpperCase()}): ${v.battute} battute in ${v.chiave}. Lo apri da lì per suonarlo o vederlo in tablatura.` });
+  };
   const [docTargetPillar, setDocTargetPillar] = useState("bio");
   const [docTargetId, setDocTargetId] = useState("");      // id percorso esistente, o "" = nuovo
   const [docNewTitle, setDocNewTitle] = useState("");       // titolo del nuovo percorso se docTargetId vuoto
@@ -8706,6 +8795,21 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // passa dalla selezione di un'azione (non ce n'e' nessuna da scegliere in "fammi un piano")
       // ne' dalla lettura multi-lente. Limite dichiarato e accettato: per questi turni la memoria
       // procedurale non si aggiorna da sola.
+      // ═══ CERCARE UNO SPARTITO: LO FA IL PROGRAMMA, NON IL MODELLO (14/09/2026) ═══
+      // Vedi il blocco sopra `cercaNellArchivio`. Sta PRIMA di tutto il resto del turno perche' non
+      // ha bisogno di niente di quello che viene dopo — niente chiave API, niente memoria, niente
+      // selezione di azioni: c'e' un archivio da interrogare e un accettore che controlla cosa
+      // torna. Il messaggio che compare lo scrive il programma, che sa com'e' andata.
+      const chiestoSpartito = currentAttachment ? null : richiestaDiSpartito(userText);
+      if (chiestoSpartito) {
+        const esitoRicerca = await cercaNellArchivio(chiestoSpartito.query);
+        chiudiRichiestaInSospeso();
+        pushDebugLog?.({ type: "ricerca-spartiti-archivio", query: chiestoSpartito.query, strumento: chiestoSpartito.strumento, trovati: esitoRicerca.tunes.length, totale: esitoRicerca.totale, error: esitoRicerca.errore || null });
+        patchSpartito(assistantMsgId, { query: chiestoSpartito.query, tunes: esitoRicerca.tunes, totale: esitoRicerca.totale, errore: esitoRicerca.errore, pil: pilastroDelFuoco(), percorsoId: percorsoDelFuoco(leggiFuoco())?.id || "" });
+        setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: testoRicercaSpartiti(chiestoSpartito, esitoRicerca), time: new Date().toISOString(), actions: [], alerts: [], ricercaSpartiti: { query: chiestoSpartito.query, strumento: chiestoSpartito.strumento } }]);
+        vibra("vidya");
+        return; // il finally esterno rilascia il Wake Lock e rimette a posto lo stato di invio
+      }
       if (richiestaDiPianoAlimentare(userText) && settings.apiKey && !currentAttachment) {
         const parametri = estraiParametriPiano(userText);
         const vincoliAlimentari = (Array.isArray(ghostProfile?.hardConstraints) ? ghostProfile.hardConstraints : [])
@@ -9939,6 +10043,49 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                 · ${s.cosa}${s.dove?.length ? html` <i>(${s.dove.join(", ")})</i>` : ""}
               </div>`)}
             </div>`}
+            ${/* 14/09/2026 — LA RICERCA CHIESTA PARLANDO. Il testo qui sopra dice cosa è stato
+                  cercato e com'è andata; questa card è la parte che si tocca. La query resta
+                  MODIFICABILE perché estrarla da una frase parlata non riesce sempre, e una query
+                  sbagliata che non si può correggere produce un "non c'è" che sembra una verità
+                  sull'archivio invece che un errore di lettura della frase. */ ""}
+            ${m.ricercaSpartiti && (() => {
+              const st = spartitoStato[mid] || {};
+              const query = st.query !== undefined ? st.query : m.ricercaSpartiti.query;
+              const bozza = st.bozzaQuery !== undefined ? st.bozzaQuery : query;
+              const pil = st.pil || pilastroDelFuoco();
+              const lista = percorsi[pil] || [];
+              const pid = lista.some((p) => p.id === st.percorsoId) ? st.percorsoId : (lista[0]?.id || "");
+              return html`<div class="r-draft-card">
+                <div class="r-draft-label">▸ ${ARCHIVIO_SPARTITI.nome.toUpperCase()} — HO CERCATO «${query}»</div>
+                <div style="display:flex;gap:8px;margin-top:6px">
+                  <input class="r-input" style="flex:1" value=${bozza} disabled=${st.busy}
+                    onInput=${(e) => patchSpartito(mid, { bozzaQuery: e.target.value })}
+                    onKeyDown=${(e) => e.key === "Enter" && rifaiRicercaSpartiti(mid, e.target.value)} />
+                  <button class="r-btn r-draft-copy" onClick=${() => rifaiRicercaSpartiti(mid, bozza)} disabled=${st.busy || !String(bozza).trim()}>${st.busy ? "…" : "Cerca ancora"}</button>
+                </div>
+                <div class="r-hub-detail">Queste parole le ho estratte dalla tua frase. Se non sono quelle giuste correggile qui: non passa da nessun modello, non costa niente.</div>
+                ${st.esito && html`<div class="${st.esito.startsWith("Errore") ? "r-error" : "r-ok"}" style="margin-top:6px">${st.esito}</div>`}
+                ${!st.brano && (st.tunes || []).map((t) => html`<div key=${t.id} class="r-entry-row" style="margin-top:4px;cursor:pointer" onClick=${() => apriBranoInChat(mid, t)}>
+                  <div class="r-entry-line">▸ ${t.name}${t.alias && t.alias !== t.name ? ` · ${t.alias}` : ""}<span style="opacity:.5;font-size:11px"> · ${t.type}</span></div>
+                </div>`)}
+                ${st.brano && html`<div style="margin-top:8px">
+                  <div class="r-hub-detail"><b>${st.brano.name}</b> · ${st.brano.type} · ${(st.versioni || []).length} trascrizion${(st.versioni || []).length === 1 ? "e" : "i"}${st.scartate ? ` (${st.scartate} scartate dal controllo)` : ""}. Un brano tradizionale ne ha spesso parecchie, tutte legittime e diverse: scegli.</div>
+                  ${lista.length ? html`<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+                    <select class="r-input" value=${pil} onChange=${(e) => patchSpartito(mid, { pil: e.target.value, percorsoId: "" })}>
+                      ${PILASTRI_NOMI.map((k) => html`<option key=${k} value=${k}>${k.toUpperCase()}</option>`)}
+                    </select>
+                    <select class="r-input" style="flex:1" value=${pid} onChange=${(e) => patchSpartito(mid, { percorsoId: e.target.value })}>
+                      ${lista.map((p) => html`<option key=${p.id} value=${p.id}>${p.title}</option>`)}
+                    </select>
+                  </div>` : html`<div class="r-hub-detail">In ${pil.toUpperCase()} non hai percorsi: creane uno (o cambia pilastro) e lo spartito avrà dove stare.</div>`}
+                  ${(st.versioni || []).map((v) => html`<div key=${v.scelta} class="r-entry-row" style="margin-top:4px">
+                    <div class="r-entry-line">${v.chiave} · ${v.battute} battute${v.fonte.autore ? ` · ${v.fonte.autore}` : ""}</div>
+                    <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => tieniSpartitoDallArchivio(mid, v)} disabled=${!lista.length}>Tieni</button>
+                  </div>`)}
+                  <button class="r-btn r-btn-ghost" style="margin-left:0;margin-top:6px" onClick=${() => patchSpartito(mid, { brano: null, versioni: null })}>Torna ai risultati</button>
+                </div>`}
+              </div>`;
+            })()}
             ${m.rispostaTroncata && html`<div class="r-draft-card">
               <div class="r-draft-label">▸ QUESTA RISPOSTA È TAGLIATA A METÀ</div>
               <div class="r-hub-detail">Ho raggiunto il tetto di lunghezza di una singola risposta e mi sono fermato dov'ero, non perché avessi finito. Quello che c'è scritto sopra è valido: manca il seguito.</div>
