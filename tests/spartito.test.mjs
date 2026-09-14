@@ -17,7 +17,7 @@ const app = await loadApp();
 const {
   analizzaSpartito, battuteDi, noteDi, briefDelloSpartito, documentoSpartito, eSpartito,
   nuovoPromemoria, ordinaPromemoria, promemoriaOrfani, promemoriaDellaBattuta,
-  REQUISITI_SPARTITO, SPARTITO_ESEMPIO, PROMEMORIA_TETTO,
+  REQUISITI_SPARTITO, SPARTITO_ESEMPIO, PROMEMORIA_TETTO, vociDichiarate,
 } = app;
 
 const CON_VERSI = [
@@ -183,6 +183,118 @@ describe("I PROMEMORIA — ancorati alla battuta, non al carattere", () => {
     const lista = [{ battuta: 3, testo: "uno" }, { battuta: 3, testo: "due" }, { battuta: 4, testo: "altro" }];
     assert.deepEqual(promemoriaDellaBattuta(lista, 3).map((p) => p.testo), ["uno", "due"]);
     assert.deepEqual(promemoriaDellaBattuta(lista, 7), []);
+  });
+});
+
+describe("LE CHIAVI E LE PARTITURE — tre domande del Ghost, tre misure", () => {
+  // «Legge le varie chiavi? Può fare uno spartito da direttore d'orchestra?»
+  // Misurato: abcjs le disegna tutte (basso, contralto, percussioni, due pentagrammi con nomi e
+  // chiavi diverse) e il controllo che avevo scritto io le RIFIUTAVA. Un guardiano che scarta il
+  // caso buono è peggio di nessun guardiano: quello lascia passare, questo convince che la cosa
+  // non si possa fare. Queste prove esistono perché non torni.
+  const QUARTETTO = [
+    // Parentesi QUADRE, non tonde: le tonde mettono due strumenti sullo stesso pentagramma e il
+    // secondo perde la sua chiave. Scrivendo questa prova ci avevo messo le tonde — con viola e
+    // violoncello sullo stesso rigo — e il requisito `pentagrammi-non-mescolati` me l'ha bocciata.
+    // È la TERZA volta in questa sola funzione che l'accettore boccia un mio esempio scritto a mano.
+    "X:1", "T:Quartetto", "M:4/4", "L:1/4", "%%score [V1 V2 Va Vc]",
+    'V:V1 name="Violino I" clef=treble', 'V:V2 name="Violino II" clef=treble',
+    'V:Va name="Viola" clef=alto', 'V:Vc name="Violoncello" clef=bass', "K:G",
+    "[V:V1] G A B c | d2 z2 |", "[V:V2] B, C D E | F2 z2 |",
+    "[V:Va] G, A, B, C | D2 z2 |", "[V:Vc] G,, A,, B,, C, | D,2 z2 |",
+  ].join("\n");
+
+  test("le chiavi passano il controllo: sono dentro K:, dove ABC le mette", () => {
+    for (const clef of ["bass", "alto", "tenor", "perc", "treble+8"]) {
+      const abc = `X:1\nT:P\nM:4/4\nL:1/4\nK:C clef=${clef}\nC D E F | G A B c |`;
+      const a = analizzaSpartito(abc);
+      assert.equal(a.ok, true, `clef=${clef}: ${a.errori.map((e) => e.motivo).join(" · ")}`);
+      assert.ok(a.tonalita.includes(clef), a.tonalita);
+    }
+  });
+
+  test("UNA PARTITURA PASSA — prima veniva rifiutata come se fosse prosa", () => {
+    const a = analizzaSpartito(QUARTETTO);
+    assert.equal(a.ok, true, a.errori.map((e) => e.motivo).join(" · "));
+  });
+
+  test("gli strumenti si leggono con nome e chiave", () => {
+    const voci = vociDichiarate(QUARTETTO);
+    assert.equal(voci.length, 4);
+    assert.deepEqual(voci.map((v) => v.nome), ["Violino I", "Violino II", "Viola", "Violoncello"]);
+    assert.deepEqual(voci.map((v) => v.chiave), ["treble", "treble", "alto", "bass"]);
+  });
+
+  test("LA BATTUTA 3 E' LA 3 PER TUTTI: un quartetto di 2 battute ne ha 2, non 8", () => {
+    // Senza questo il promemoria della battuta 3 sarebbe finito nella seconda battuta del
+    // secondo violino — l'ancora deve essere una posizione MUSICALE, e in una partitura la
+    // posizione musicale è comune a tutti gli strumenti.
+    assert.equal(battuteDi(QUARTETTO).length, 2);
+    assert.equal(battuteDi(QUARTETTO)[0].testo, "G A B c", "la battuta di riferimento non è la prima voce");
+  });
+
+  test("V: può stare anche DOPO K:, che nelle partiture è la forma più comune", () => {
+    const dopoK = 'X:1\nT:Duo\nM:4/4\nL:1/4\nK:C\nV:1 name="Violino" clef=treble\nV:2 name="Cello" clef=bass\n[V:1] c d e f | g a b c |\n[V:2] C, D, E, F, | G, A, B, C |';
+    const a = analizzaSpartito(dopoK);
+    assert.equal(a.ok, true, a.errori.map((e) => e.motivo).join(" · "));
+    assert.equal(a.voci.length, 2);
+    assert.equal(a.battute.length, 2);
+  });
+
+  test("ma il requisito su K: morde ancora dove serve", () => {
+    // Aprire la porta alle voci non deve aprirla a tutto: un Q: dopo K: sposta davvero il punto
+    // in cui cominciano le note, e resta un errore.
+    assert.equal(analizzaSpartito("X:1\nT:P\nM:4/4\nK:C\nC D E F |\nQ:1/4=90\nG A B c |").ok, false);
+  });
+
+  test("uno spartito a una voce sola resta identico a com'era", () => {
+    const a = analizzaSpartito(SPARTITO_ESEMPIO);
+    assert.equal(a.voci.length, 0);
+    assert.equal(a.battute.length, 4);
+    assert.equal(a.ok, true);
+  });
+
+  test("la prosa in mezzo alle note viene ancora presa", () => {
+    // La riparazione doveva far passare i marcatori di voce, non spalancare il controllo.
+    assert.equal(analizzaSpartito("X:1\nT:P\nM:4/4\nK:C\nC D E F | Ecco la melodia | G A B c |").ok, false);
+    assert.equal(analizzaSpartito(`${QUARTETTO}\n[V:V1] e questa e la coda finale |`).ok, false);
+  });
+
+  test("il marcatore di voce non viene contato come una nota, nemmeno IN MEZZO alla riga", () => {
+    // `[V:V1]` sta fra parentesi quadre come un accordo: senza toglierlo prima, valeva una nota e
+    // faceva sballare il conto delle sillabe di ogni verso.
+    // Il caso in TESTA lo copre già la funzione che stacca il marcatore. Quello IN MEZZO no — ABC
+    // permette di cambiare voce a metà riga — e la prima versione di questa prova non lo provava:
+    // rompendo la riga che lo difende il banco restava verde. Adesso mordono tutte e due.
+    assert.equal(noteDi("[V:V1] G A B c").length, 4);
+    assert.deepEqual(noteDi("G A | [V:V2] B c"), ["G", "A", "B", "c"]);
+  });
+
+  test("LE PARENTESI TONDE CHE MESCOLANO LE CHIAVI sono un errore, e il programma lo dice", () => {
+    // Misurato disegnando le quattro varianti: `(V1 Va)` mette violino e viola sullo STESSO rigo e
+    // la viola perde la chiave di contralto. Un modello le usa volentieri, perché in ABC
+    // "raggruppare" suona come "mettere insieme".
+    const conTonde = QUARTETTO.replace("%%score [V1 V2 Va Vc]", "%%score (V1 Va) (V2 Vc)");
+    const a = analizzaSpartito(conTonde);
+    assert.equal(a.ok, false);
+    assert.ok(a.errori.some((e) => e.id === "pentagrammi-non-mescolati"), a.errori.map((e) => e.id).join(","));
+    assert.match(a.errori.find((e) => e.id === "pentagrammi-non-mescolati").motivo, /quadre/);
+  });
+
+  test("ma due strumenti con la STESSA chiave sullo stesso rigo sono una scelta legittima", () => {
+    // Due violini su un rigo solo si fa, ed è una decisione di chi scrive: il requisito prende il
+    // caso in cui una chiave viene PERSA, non il raggruppamento in sé.
+    const dueViolini = QUARTETTO.replace("%%score [V1 V2 Va Vc]", "%%score (V1 V2) [Va Vc]");
+    assert.equal(analizzaSpartito(dueViolini).ok, true, analizzaSpartito(dueViolini).errori.map((e) => e.motivo).join(" · "));
+  });
+
+  test("quello che si dice al modello spiega come si scrive una partitura", () => {
+    const brief = briefDelloSpartito({ argomento: "un quartetto", conVoci: true });
+    assert.match(brief, /PARTITURA/);
+    assert.match(brief, /clef=bass/);
+    assert.match(brief, /parentesi QUADRE/);
+    assert.match(brief, /la battuta 3 è la 3 per tutti/i);
+    assert.ok(!briefDelloSpartito({ argomento: "x" }).includes("PARTITURA"), "lo chiede anche a chi non l'ha chiesto");
   });
 });
 
