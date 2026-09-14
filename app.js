@@ -406,8 +406,61 @@ const RUMORE_DOCUMENTO_RE = /\b(il|lo|la|i|gli|le|l|un|uno|una|del|dello|della|d
 // Imprecisione dichiarata: in italiano l'articolo "i" e il numero romano I sono la stessa stringa,
 // quindi "i testi" può risolvere su "Atto I". Nel caso peggiore riapre il documento sbagliato — che
 // è una LETTURA, non una scrittura: costa un turno e si corregge dicendolo.
+// ══════════════════════════════════════════════════════════════════════════════
+// 14/09/2026 — I NUMERI DETTI A PAROLE, dal banco microfono fatto in macchina
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost ha detto tre volte la stessa frase: «Apri il percorso del concept album e leggimi l'atto
+// quarto». Il telefono ha capito «leggi il LATTO quarto», «leggi il TUO quarto», «leggi L'ATTO
+// quarto». Una su tre giusta — e la giusta è arrivata dalla condizione PEGGIORE (in tasca, finestrino
+// aperto), il che dice che il rumore non è la variabile: lo è l'elisione di una parola corta.
+// Tutto il resto è arrivato intero tutte e tre le volte: "percorso", "concept album", "quarto".
+//
+// Quindi il programma aveva in mano abbastanza per trovare il documento in tutti e tre i casi, e in
+// due su tre rispondeva "non esiste" — misurato. Mancavano due cose:
+//  · "quarto" non era un numero. Riconosceva IV e 4, non le parole. Il difetto del 09/09 era chiuso
+//    per chi SCRIVE e aperto per chi PARLA, e il Ghost parla: è in macchina.
+//  · "4" e "IV" non erano lo stesso numero. Difetto anche per chi scrive: "atto 4" contro un
+//    documento intitolato "ATTO IV" dava ambiguo.
+// Ora si converte tutto a un numero solo, quindi 4 ≡ IV ≡ quarto sono la stessa cosa ovunque.
+const ROMANI_A_NUMERO = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10, xi: 11, xii: 12, xiii: 13, xiv: 14, xv: 15, xvi: 16, xvii: 17, xviii: 18, xix: 19, xx: 20 };
+const ORDINALI_A_NUMERO = {
+  primo: 1, prima: 1, secondo: 2, seconda: 2, terzo: 3, terza: 3, quarto: 4, quarta: 4,
+  quinto: 5, quinta: 5, sesto: 6, sesta: 6, settimo: 7, settima: 7, ottavo: 8, ottava: 8,
+  nono: 9, nona: 9, decimo: 10, decima: 10, undicesimo: 11, undicesima: 11, dodicesimo: 12,
+  dodicesima: 12, tredicesimo: 13, tredicesima: 13, quattordicesimo: 14, quattordicesima: 14,
+  quindicesimo: 15, quindicesima: 15, sedicesimo: 16, sedicesima: 16, diciassettesimo: 17,
+  diciassettesima: 17, diciottesimo: 18, diciottesima: 18, diciannovesimo: 19, diciannovesima: 19,
+  ventesimo: 20, ventesima: 20,
+};
+function numeroDaParola(p) {
+  if (/^\d{1,3}$/.test(p)) return Number(p) || null;     // 2026 resta fuori: le date non sono numeri d'atto
+  if (ROMANI_A_NUMERO[p] !== undefined) return ROMANI_A_NUMERO[p];
+  if (ORDINALI_A_NUMERO[p] !== undefined) return ORDINALI_A_NUMERO[p];
+  return null;
+}
+// Permissiva, per i TITOLI e per lo spareggio: prende anche la "i" da sola, perché in un titolo
+// "Atto I" quella è inequivocabilmente un numero. Imprecisione dichiarata e invariata dal 09/09:
+// in italiano l'articolo "i" e il numero romano I sono la stessa stringa.
 function numeriDelTitolo(testo) {
-  return normalizzaTesto(testo).split(" ").filter((p) => /^(?:[ivx]{1,4}|\d{1,3})$/.test(p));
+  const visti = new Set();
+  for (const p of normalizzaTesto(testo).split(" ")) {
+    const n = numeroDaParola(p);
+    if (n !== null) visti.add(n);
+  }
+  return Array.from(visti);
+}
+// Stretta, per quello che il Ghost CHIEDE: niente "i" da sola, perché in una frase è quasi sempre
+// l'articolo ("leggi I documenti del percorso") e da oggi un numero pesa sul punteggio — un numero
+// falso farebbe vincere il documento numero 1 a ogni domanda al plurale.
+// Cifre, romani di almeno due lettere, e ordinali a parole: quelli non sono mai un articolo.
+function numeriChiestiForti(testo) {
+  const visti = new Set();
+  for (const p of normalizzaTesto(testo).split(" ")) {
+    if (p === "i") continue;
+    const n = numeroDaParola(p);
+    if (n !== null) visti.add(n);
+  }
+  return Array.from(visti);
 }
 function trovaDocumentoNelPercorso(percorso, riferimento) {
   const docs = (percorso?.documents || []).filter((d) => d && String(d.text || "").trim());
@@ -423,12 +476,22 @@ function trovaDocumentoNelPercorso(percorso, riferimento) {
       ? { esito: "trovato", doc: docs[0], candidati: [docs[0]] }
       : { esito: "ambiguo", candidati: docs.slice(0, 6), motivo: "non ho capito quale dei documenti" };
   }
+  // 14/09/2026 — IL NUMERO CHIESTO VALE UN PUNTO, e non solo lo spareggio.
+  // Prima i numeri contavano SOLO a parità di punteggio. Ma se il riconoscimento vocale sbriciola
+  // l'unica parola piena — «l'atto» diventa «latto», «tuo» — nessun documento fa punto, si esce
+  // subito con "nessuno" e allo spareggio non si arriva mai. Misurato sulle tre trascrizioni vere:
+  // due su tre rispondevano "non esiste" pur avendo in mano «quarto», che bastava.
+  // Un punto, non tutto il punteggio: un documento che c'entra per le parole resta davanti a uno
+  // che ha solo il numero giusto, che è la cautela per cui i numeri erano stati tenuti fuori.
+  const numeriForti = numeriChiestiForti(riferimento);
   const punteggiati = docs
     .map((d) => {
       const parole = new Set(paroleUtili(`${d.title || ""} ${d.name || ""}`));
-      let punteggio = 0;
-      for (const k of chiave) if (parole.has(k)) punteggio++;
-      return { doc: d, punteggio, numeri: numeriDelTitolo(`${d.title || ""} ${d.name || ""}`) };
+      const numeri = numeriDelTitolo(`${d.title || ""} ${d.name || ""}`);
+      let puntiParole = 0;
+      for (const k of chiave) if (parole.has(k)) puntiParole++;
+      const puntoNumero = numeriForti.some((n) => numeri.includes(n)) ? 1 : 0;
+      return { doc: d, punteggio: puntiParole + puntoNumero, puntiParole, numeri };
     })
     .filter((x) => x.punteggio > 0)
     .sort((a, b) => b.punteggio - a.punteggio);
@@ -460,7 +523,16 @@ function trovaDocumentoNelPercorso(percorso, riferimento) {
     // quindi è quello", che va benissimo quando il Ghost ha CHIESTO di aprire un documento e non va
     // affatto bene per l'apertura automatica (vedi documentoDaContesto): allegherebbe lo stesso
     // testo a ogni turno di ogni percorso con un solo documento dentro.
-    : { esito: "trovato", doc: aPari[0].doc, candidati: [aPari[0].doc], viaPunteggio: true };
+    // viaSoloNumero: nessuna parola della frase sta nel titolo, ha vinto il numero da solo.
+    // Serve a distinguere due domande diverse che passano tutte e due da qui:
+    //  · «leggi il latto quarto» — il Ghost HA CHIESTO un documento, il riconoscimento gli ha
+    //    sbriciolato l'unica parola piena, e il numero è tutto ciò che resta. Va bene così.
+    //  · «domani è il 4 settembre» — nessuno ha chiesto niente. Qui allegare l'Atto IV al turno
+    //    sarebbe un documento intero infilato in una conversazione che parla d'altro.
+    // Misurato appena aggiunto il punto sul numero: «domani e il 4 settembre» allegava 4.269
+    // caratteri. Chi apre da solo (documentoDaContesto) rifiuta questo caso; chi ha ricevuto una
+    // richiesta esplicita lo accetta.
+    : { esito: "trovato", doc: aPari[0].doc, candidati: [aPari[0].doc], viaPunteggio: true, viaSoloNumero: aPari[0].puntiParole === 0 };
 }
 // ── 01/09/2026 — IL DOCUMENTO CHE NESSUNO AVEVA CHIESTO DI APRIRE ────────────────────────────────
 // Il Ghost: "non mi sembra che legga i documenti del percorso e di conseguenza perde contesto".
@@ -478,7 +550,10 @@ function trovaDocumentoNelPercorso(percorso, riferimento) {
 function documentoDaContesto(percorso, frase) {
   if (!percorso || !String(frase || "").trim()) return null;
   const trovato = trovaDocumentoNelPercorso(percorso, frase);
-  return trovato.esito === "trovato" && trovato.viaPunteggio ? { ...trovato, automatico: true } : null;
+  // `viaSoloNumero` escluso (14/09/2026): qui non c'è nessuna richiesta: è il programma che decide
+  // da solo di mettere un documento intero davanti al modello. Un numero che compare per caso in
+  // una frase — una data, un'ora, «il quarto giorno» — non è un motivo sufficiente.
+  return trovato.esito === "trovato" && trovato.viaPunteggio && !trovato.viaSoloNumero ? { ...trovato, automatico: true } : null;
 }
 // Il tetto esiste perché un documento può essere lungo quanto si vuole e il turno no. Tagliare
 // dichiarandolo è l'unica forma onesta: il modello sa di avere una parte, non crede di avere tutto.
@@ -631,11 +706,30 @@ const TETTO_FRAMMENTI_RICERCA = 5;
 const SEQUENZA_NEL_TITOLO_PUNTI = 10;
 // Le coppie contigue della domanda che ricompaiono, contigue, nel titolo. "atto iv" conta, "atto"
 // da solo no, "iv atto" no: l'ordine e' parte del segnale.
+// 14/09/2026 — le forme equivalenti di uno stesso numero: 4, IV, quarto. Servono qui sotto, dove il
+// confronto è fra TESTI e non fra numeri già estratti: senza, «atto quarto» non trovava la coppia
+// «atto iv» nel titolo e il documento giusto finiva secondo, dietro a quello più recente.
+// Costruite una volta dalle due tabelle, così non si può aggiungere un ordinale e dimenticare il
+// romano — sono la stessa tabella letta al contrario.
+const FORME_DEL_NUMERO = (() => {
+  const per = new Map();
+  const aggiungi = (n, forma) => { if (!per.has(n)) per.set(n, new Set([String(n)])); per.get(n).add(forma); };
+  for (const [r, n] of Object.entries(ROMANI_A_NUMERO)) aggiungi(n, r);
+  for (const [o, n] of Object.entries(ORDINALI_A_NUMERO)) aggiungi(n, o);
+  return per;
+})();
+function formeDelToken(p) {
+  const n = numeroDaParola(p);
+  if (n === null || !FORME_DEL_NUMERO.has(n)) return [p];
+  return Array.from(FORME_DEL_NUMERO.get(n));
+}
 function coppieContigueNelTitolo(parole, chiaviNormalizzate) {
   if (!chiaviNormalizzate || parole.length < 2) return 0;
   let n = 0;
   for (let i = 0; i + 1 < parole.length; i++) {
-    if (chiaviNormalizzate.includes(`${parole[i]} ${parole[i + 1]}`)) n++;
+    const sinistra = formeDelToken(parole[i]);
+    const destra = formeDelToken(parole[i + 1]);
+    if (sinistra.some((a) => destra.some((b) => chiaviNormalizzate.includes(`${a} ${b}`)))) n++;
   }
   return n;
 }
@@ -4714,7 +4808,7 @@ const CAPACITA = [
   { n: `Il vincolo AIR chiede, non decide`, s: `Il vincolo AIR chiede, non decide: quando una lettura destinata ad AIR sembra legare l'identità professionale del Ghost al pilastro, il programma non la scrive e non la butta. Compare una card che mostra il dato, dice quale dei due rilevatori ha segnalato — il codice, deterministico sui termini dichiarati; il modello, come seconda opinione — e perché. Due pulsanti: "Va bene, procedi" scrive il dato, "No, lascialo fuori" lo lascia fuori. La risposta resta scritta nel messaggio, quindi la domanda non ricompare domani.` },
   { n: `Il documento si apre da solo se la frase lo nomina`, s: `Il documento si apre da solo se la frase lo nomina: quando c'è un percorso aperto e il Ghost dice qualcosa che nomina un suo documento ("riprendiamo l'Atto III", "quel pezzo sul Divenire"), il programma trova il documento confrontando le parole della frase con i titoli e lo mette davanti allo Shell PER INTERO prima che risponda — senza aspettare che l'apertura venga riconosciuta come un comando. Se nessun titolo corrisponde davvero non allega niente: una domanda generica non trascina dentro il testo di un documento. È diverso da "rileggimi l'Atto I", che è una richiesta esplicita: questo è il caso in cui il Ghost non chiede di riaprirlo e semplicemente continua a lavorarci.` },
   { n: `Quando lo Shell dice che una cosa NON esiste`, k: ["non esiste", "non esistono"], s: `Quando lo Shell dice che una cosa NON esiste: dal 10/09/2026 il programma controlla anche questo. Prima controllava solo il verso opposto — il modello che dichiara FATTA una cosa non avvenuta — e un "non esiste" falso passava indisturbato. È più pericoloso: un "l'ho messo in calendario" sbagliato si scopre aprendo il calendario, un "non esiste" sbagliato fa credere di aver perso del lavoro e non invita nessuno a controllare. Ora, se il modello nega che ci sia del materiale MENTRE il programma ha in mano l'elenco dei documenti del percorso aperto, sotto la risposta compare la smentita con i titoli veri. La frase del modello non viene cancellata: resta, con accanto il fatto. Se non c'è nessun percorso aperto il controllo tace, perché senza elenco non avrebbe niente con cui smentire.` },
-  { n: `Cercare fra i documenti riconosce i numeri`, k: ["atto", "capitolo", "cercare"], s: `Cercare fra i documenti riconosce i numeri: "atto IV", "capitolo 9". Fino al 09/09/2026 le parole di due lettere o meno venivano scartate prima ancora di cercare, quindi "IV" e "V" sparivano dalla domanda e la ricerca non sapeva distinguere l'Atto IV dall'Atto I. In più, una coppia di parole della domanda ritrovata NEL TITOLO ("atto iv") pesa più di qualunque parola sparsa nel testo, e a pari punteggio vince il documento più recente invece del primo che era stato salvato. Difetto trovato dal Ghost il 09/09: aveva chiesto i temi dell'Atto IV e dell'Atto V e si è sentito rispondere che non esistevano, mentre erano nel percorso da otto giorni.` },
+  { n: `Cercare fra i documenti riconosce i numeri`, k: ["atto", "capitolo", "cercare", "atto quarto", "numero dell atto"], s: `Cercare fra i documenti riconosce i numeri: "atto IV", "capitolo 9", e dal 14/09/2026 anche "atto QUARTO" detto a parole. Cifra, numero romano e ordinale a parole sono la stessa cosa: 4, IV e quarto portano allo stesso documento, da primo a ventesimo, maschile e femminile. Serve perche' il Ghost usa l'app parlando, in macchina: un banco di misura fatto il 14/09 ha mostrato che dicendo tre volte "leggimi l'atto quarto" il riconoscimento vocale capisce "il latto quarto", "il tuo quarto", "l'atto quarto" — l'unica parola che si sbriciola e' quella corta con l'apostrofo, mentre il numero arriva sempre intero. Quindi il numero da solo basta a trovare il documento quando il Ghost lo ha CHIESTO. Non basta invece per l'apertura automatica: una frase che contiene un numero per caso ("domani e' il 4 settembre", "il quarto giorno") non trascina dentro nessun documento. Fino al 09/09/2026 le parole di due lettere venivano scartate prima di cercare, quindi "IV" spariva dalla domanda: difetto trovato dal Ghost, che si era sentito rispondere che l'Atto IV e l'Atto V non esistevano mentre erano nel percorso da otto giorni.` },
   { n: `Quando la ricerca taglia, lo dice`, s: `Quando la ricerca taglia, lo dice: se i documenti pertinenti sono più di quelli che entrano nella risposta, la riga "ho guardato" dichiara quanti ne ha esaminati, quanti ne mostra e quanti NON sono passati — con la frase esplicita che un'assenza lì non prova che il documento non esista. Serve a distinguere "non c'è" da "non me l'hanno dato": è la confusione fra le due che ha prodotto il difetto del 09/09.` },
   { n: `Interrogare la memoria cerca anche dentro i percorsi`, k: ["interrogare la memoria", "cosa ci eravamo detti"], s: `Interrogare la memoria cerca anche dentro i percorsi: "cosa ci eravamo detti su X" guarda nelle note correnti dei pilastri, nei frammenti di sedimento E nei documenti dei percorsi, nelle competenze accumulate e nella memoria specifica di ogni percorso. Ogni risultato dice da dove viene (quale documento, di quale percorso). Prima i documenti non venivano guardati affatto, quindi il materiale più lungo prodotto dal sistema era l'unico che la ricerca non trovava.` },
   { n: `Forma delle risposte dell'Agorà Magi`, k: ["forma delle risposte dei magi", "righe brevissime", "tetto di parole"], s: `Forma delle risposte dell'Agorà Magi: ogni stadio risponde dentro un campo strutturato, in righe brevissime che cominciano con "· ", una idea per riga, con un tetto di parole dichiarato per ruolo (Balthasar 60, Melchior 60, Caspar 50, Sintesi 70). Serve a due cose insieme: risposte dense invece che prolisse, e soprattutto tenere fuori dallo schermo il ragionamento interno del modello, che il 01/09/2026 finiva stampato per intero al posto della risposta (conteggi di parole, "devo", versioni intermedie). Se il campo strutturato non arriva leggibile, il programma pota le righe di deliberazione e consegna il resto invece di perdere la chiamata.` },
