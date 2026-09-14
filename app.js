@@ -69,6 +69,9 @@ import {
   risultatiCheRispondono,
   spiegazioneRicerca,
   altroveDoveCercare,
+  richiestaDiTrascrizione,
+  briefDiTrascrizione,
+  noteDiLettura,
   chiaveAbc,
   abcDaArchivio,
   nuovoPromemoria,
@@ -4885,6 +4888,10 @@ Cosa succede quando non ce la fa: il motivo torna al modello e riprova, al massi
   { n: `Promemoria sulle battute`, k: ["promemoria sulla battuta", "promemoria sulle battute", "promemoria sullo spartito", "promemoria musicale", "battute dello spartito"], s: `Promemoria sulle battute: dentro uno spartito aperto, toccando una nota si attacca un promemoria a QUELLA battuta, e quando lo spartito suona e arriva li' il promemoria compare da solo. L'ancora e' il NUMERO DI BATTUTA, non un punto sullo schermo: quindi sopravvive se lo spartito viene riscritto o trasposto. Se lo spartito si accorcia e un promemoria resta oltre l'ultima battuta viene SEGNALATO, mai buttato via da solo (Legge 14: non si cancella, si registra). In una partitura a piu' strumenti la battuta 3 e' la 3 per tutti, quindi un promemoria attaccato li' vale per il punto musicale, non per una voce sola.` },
   { n: `Partiture da direttore`, k: ["partitura", "partiture", "direttore d'orchestra", "orchestra", "chiave di violino", "chiave di basso", "chiavi musicali", "piu strumenti", "quartetto"], s: `Partiture da direttore: si', spuntando "partitura a piu' strumenti" nel riquadro Spartito. Ogni strumento si dichiara con una riga V: col suo nome e la sua chiave, e ha il suo pentagramma con il nome scritto a sinistra; il programma li elenca sopra il disegno. CHIAVI: legge e disegna tutte le chiavi che si dichiarano dentro K: o dentro una voce — violino (treble), basso (bass), contralto/viola (alto), tenore, percussioni (perc), e gli spostamenti d'ottava tipo treble+8. Le battute restano quelle della PARTITURA: la battuta 3 e' la 3 per tutti gli strumenti. Il programma controlla anche un errore che i modelli fanno spesso: raggruppare gli strumenti con le parentesi TONDE in %%score li mette sullo STESSO pentagramma e il secondo perde la sua chiave (una viola in chiave di contralto sparisce dentro il rigo del violino); servono le parentesi QUADRE, e se le chiavi finiscono mescolate lo spartito viene rifiutato con quel motivo.` },
   { n: `Spartiti dall'archivio online`, k: ["archivio di spartiti", "spartiti online", "spartito online", "cercare spartiti", "cercare uno spartito", "tablature online", "the session", "cercare online"], s: `Spartiti dall'archivio online: SI', L'APP SA CERCARE SPARTITI ONLINE. Non rispondere mai che non hai accesso a internet o a database musicali: quella risposta e' sbagliata e il Ghost l'ha gia' ricevuta due volte. SI CHIEDE A PAROLE, qui in chat ("cercami lo spartito di Cooley's", "trova la tablatura di Drowsy Maggie"), anche parlando con la modalita' voce: quando la frase ha un verbo di ricerca e la parola spartito/tablatura/partitura, la ricerca parte DA SOLA prima ancora che il turno arrivi a te — la fa il programma, non passa da nessun modello, costa zero e funziona anche senza chiave API. Sotto la risposta compare una card con quello che e' stato cercato (le parole estratte dalla frase, MODIFICABILI, perche' da una frase parlata non si indovina sempre il titolo giusto), i brani trovati, e dove tenere lo spartito (pilastro e percorso). Se invece la frase dice di cercare DENTRO ("cerca lo spartito che abbiamo fatto ieri", "nel percorso") la ricerca online NON parte: quella e' roba gia' salvata. C'e' anche il pulsante nel riquadro Spartito dentro un percorso: «Cercalo in un archivio». L'ARCHIVIO e' The Session (musica tradizionale irlandese e scozzese, gia' in notazione ABC). Si apre un brano e si vedono le sue trascrizioni — un brano tradizionale ne ha spesso venti o trenta, tutte legittime e diverse fra loro, con tonalita' e numero di battute diversi: si sceglie quella che serve e si tiene. Quello che arriva non e' uno spartito intero ma un frammento senza intestazione: il programma rimonta titolo, metro (dedotto dal tipo di danza: reel 4/4, jig 6/8, polka 2/4...) e tonalita', e poi lo fa passare dallo stesso controllo degli spartiti scritti dal modello. Se una trascrizione non passa non viene proposta, e il numero di quelle scartate si vede. Ogni spartito preso da fuori porta con se' la PROVENIENZA — archivio, indirizzo, numero della trascrizione e chi l'ha scritta — sia nel documento sia dentro il testo ABC. SE IL BRANO NON E' LI': c'e' una scheda apposta, "Archivi di spartiti che non posso leggere", e dice dove invece c'e'. Non rispondere mai che quel brano non esiste. L'ARCHIVIO CERCA IN OR, E IL PROGRAMMA CONTROLLA: a «One metallica» The Session risponde 100 brani che contengono «One» e nessuno dei Metallica. Quei cento non vengono mostrati: un risultato vale solo se il suo nome, alias o tipo di danza contiene TUTTE le parole chieste, e la parola che non compare in nessun titolo viene detta per nome ("la parola «metallica» non compare in nessuno di quei titoli"). Cento risultati sbagliati sono peggio di zero: uno «zero» si riconosce, cento no.` },
+  { n: `Trascrivere uno spartito da una foto`, k: ["trascrivere uno spartito", "trascrivi lo spartito", "trascrivimi lo spartito", "trascrivi la tablatura", "trascrivimi la tablatura", "spartito da una foto", "foto dello spartito", "foto di uno spartito", "screenshot dello spartito", "leggere uno spartito", "leggi lo spartito", "spartito da immagine", "musicnotes"], s: `Trascrivere uno spartito da una foto: il Ghost allega in chat la FOTO o lo screenshot di uno spartito e chiede di trascriverlo ("trascrivimi lo spartito del basso in ABC", "leggi questo spartito e convertilo"). Servono TUTTE E DUE le cose: l'immagine allegata E la richiesta a parole — una foto mandata senza chiederlo non fa partire niente e non costa un token. Il modello legge l'immagine e scrive ABC; il programma lo CONTROLLA con gli stessi requisiti degli spartiti generati, comprese le durate: ogni battuta deve valere quanto dice il metro. Se non torna, il motivo torna al modello che RILEGGE l'immagine, fino a tre volte; se non ci arriva lo dice invece di dare una trascrizione storta.
+QUELLO CHE IL PROGRAMMA NON PUO' CONTROLLARE, e che va detto ogni volta: se le note sono LE NOTE GIUSTE. Il controllo vede la forma — intestazione, tonalita', metro, battute che tornano — non la fedelta'. Un SI letto al posto di un LA passa tutti i controlli. Per questo la card mette il pentagramma RIDISEGNATO subito sotto, a un dito dall'immagine appena mandata: quel confronto lo puo' fare solo il Ghost, che e' musicista, e va invitato a farlo. Uno spartito generato e' un'invenzione e se e' brutto si vede; uno trascritto pretende di essere fedele a una cosa che esiste, e se e' sbagliato non si vede.
+DOVE NON CI SONO ARRIVATO: al modello si chiede di scrivere in righe di commento ABC (che cominciano con %) tutto quello che non e' riuscito a leggere — una battuta coperta, un'accordatura, un passaggio sfocato — e il programma le estrae e le mostra in un riquadro suo. Senza quel posto, un "non ci arrivo" finirebbe in mezzo alle note come prosa e verrebbe scartato: il posto per dirlo va DATO, o il modello riempie il buco a orecchio.
+Legge il PENTAGRAMMA e non la tablatura quando ci sono tutti e due: dicono la stessa cosa, ma il pentagramma porta le durate. Il documento salvato porta la PROVENIENZA — che viene da un'immagine, da quale file, quando — perche' fra sei mesi uno spartito letto da una foto e' indistinguibile da uno scritto dal Ghost, ed e' proprio il caso in cui la differenza conta di piu'. NON sa leggere un PDF: quello va prima fotografato o esportato come immagine.` },
   { n: `Archivi di spartiti che non posso leggere`, k: ["songsterr", "musescore", "ultimate guitar", "spartiti rock", "tablature rock", "spartiti di canzoni", "altri archivi"], s: `Archivi di spartiti che non posso leggere: QUELLO CHE NON SA FARE, e la distinzione che conta: rock, metal e pop in QUELL'archivio non ci sono. Ma ESISTONO ALTROVE, e l'app lo dice per nome invece di far credere che non esistano — il 14/09/2026 il Ghost ha mandato tre schermate di Lateralus dei Tool su MuseScore e Songsterr, con la riga del basso, per smentire la frase «non ce ne sono altri» che l'app gli aveva scritto. Aveva ragione. Quello che e' vero e' un'altra cosa: quegli archivi non si possono LEGGERE da dentro l'app, ed e' misurato, non supposto — Songsterr risponde con i dati giusti ma senza le intestazioni CORS e col preflight a 404, quindi un browser non puo' leggerlo; MuseScore risponde 403 a chiunque non sia un browser vero. Quindi nel caso «non trovato» la card mostra i LINK alla ricerca gia' fatta su quegli archivi: si aprono fuori dall'app, con un tocco del Ghost, e quello che trova la' resta la' — non entra nei percorsi. Se il Ghost chiede uno di quei brani: non dirgli che non esiste e non dire che non hai accesso a internet. Digli che li' non c'e', che altrove c'e', e che i link sono nella card. L'altra strada dentro l'app e' farsi scrivere una linea da un modello, che e' un'invenzione ispirata al brano e NON la sua trascrizione: va detto ogni volta.`},
   { n: `Dove stanno i testi dei documenti`, k: ["dove stanno i documenti", "magazzino dei testi", "spazio sul telefono", "memoria del telefono piena"], s: `Dove stanno i testi dei documenti: dal 13/09/2026 il TESTO dei documenti dei percorsi non sta piu' nello spazio piccolo del browser (circa 5 MB, che bastava per ~1.075 documenti da 4.000 caratteri) ma in un magazzino locale piu' grande sullo stesso telefono, che ne tiene decine di migliaia. Non cambia niente di quello che si vede o si fa: i documenti si aprono, si cercano e si rileggono esattamente come prima, anche senza rete, e il file di sync fra i due dispositivi continua a portarli. Lo spostamento dei documenti gia' esistenti avviene da solo alla prima apertura dell'app, e un testo lascia il vecchio posto SOLO dopo che il magazzino l'ha riletto identico. Se il magazzino non e' disponibile (finestra privata, browser vecchio) tutto resta com'era prima, col tetto di prima. Un documento il cui testo non si trova piu' lo dichiara invece di aprirsi vuoto.` },
   { n: `Backup e ripristino (Setup)`, k: ["backup", "ripristino"], s: `Backup e ripristino (Setup): scarica in un unico file tutto lo stato locale e sa rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo previa conferma.` },
@@ -8678,6 +8685,50 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   // Ghost «te li ho tolti» su zero risultati, cioè avendo tolto niente.
   const testoRicercaSpartiti = (chiesto, esito) =>
     spiegazioneRicerca({ query: chiesto.query, strumento: chiesto.strumento, esito }).testo;
+  // ══ LEGGERE UNO SPARTITO DA UN'IMMAGINE ═══════════════════════════════════════════════════
+  // Vedi briefDiTrascrizione. Tre tentativi come per gli spartiti generati, e per la stessa ragione:
+  // il disaccordo torna al modello come materia del giro dopo, invece di essere scartato in
+  // silenzio. La differenza è la TEMPERATURA — qui 0.2, perché non deve avere idee: deve copiare.
+  const TETTO_GIRI_TRASCRIZIONE = 3;
+  const trascriviDaImmagine = async (mid, chiesto, immagine) => {
+    patchSpartito(mid, { busy: true, esito: "" });
+    const sys = "Sei un musicista che legge spartiti e li trascrive in notazione ABC. Rispondi SOLO con ABC valido.";
+    let disaccordo = "";
+    try {
+      for (let giro = 1; giro <= TETTO_GIRI_TRASCRIZIONE; giro++) {
+        const richiesta = briefDiTrascrizione({ strumento: chiesto.strumento, conVersi: chiesto.conVersi })
+          + (disaccordo ? `\n\nIl tentativo precedente non andava bene: ${disaccordo}. Rileggi l'immagine e riscrivilo per intero correggendo questo.` : "");
+        const grezzo = await askModel(sys, richiesta, 0.2, 2500, settings, false, immagine);
+        const abc = String(grezzo || "").replace(/^\s*```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim();
+        const analisi = analizzaSpartito(abc, "modello");
+        if (analisi.ok) {
+          patchSpartito(mid, { busy: false, trascritto: abc, analisiTrascritta: analisi, noteLettura: noteDiLettura(abc), giri: giro, esito: "" });
+          return;
+        }
+        disaccordo = analisi.errori.map((e) => e.motivo).join("; ");
+      }
+      // LA RINUNCIA RESTA SCRITTA. «Non sono riuscito a leggerlo» è una traccia legittima, e in
+      // questo caso è anche l'esito GIUSTO: meglio di uno spartito che sembra letto e non lo è.
+      patchSpartito(mid, { busy: false, esito: `Non ci sono arrivato in ${TETTO_GIRI_TRASCRIZIONE} letture. L'ultimo problema: ${disaccordo}. Preferisco dirtelo che darti una trascrizione che non torna.` });
+    } catch (e) { patchSpartito(mid, { busy: false, esito: "Errore: " + (e?.message || "lettura non riuscita") }); }
+  };
+  const tieniTrascrizione = (mid, nomeImmagine) => {
+    const st = spartitoStato[mid] || {};
+    const pil = st.pil || pilastroDelFuoco();
+    const lista = percorsi[pil] || [];
+    const target = lista.find((p) => p.id === st.percorsoId) || lista[0];
+    if (!target || !st.trascritto) { patchSpartito(mid, { esito: "Scegli un percorso di destinazione." }); return; }
+    const titolo = st.analisiTrascritta?.titolo || `Trascrizione — ${nomeImmagine || "immagine"}`;
+    const doc = documentoSpartito({ id: uid(), titolo, abc: st.trascritto, nodoId: nodoPerDocumento(target.topics, titolo) });
+    // LA PROVENIENZA, anche qui: fra sei mesi uno spartito letto da una foto è indistinguibile da
+    // uno scritto dal Ghost, e questo è proprio il caso in cui la differenza conta di più.
+    doc.origine = "immagine";
+    doc.fonte = { da: "immagine allegata", nome: nomeImmagine || "", quando: new Date().toISOString(), letturaAutomatica: true };
+    setPercorsi[pil](lista.map((p) => (p.id === target.id ? { ...p, documents: [doc, ...(p.documents || [])] } : p)));
+    vibra(pil);
+    registraAzione({ fase: "eseguita", azioneId: "salva_nel_percorso", etichetta: titolo, percorso: target.title, origine: "immagine", daPulsante: true });
+    patchSpartito(mid, { trascritto: null, esito: `✓ Tenuto in "${target.title}" (${pil.toUpperCase()}). Ricontrollalo contro l'originale prima di fidartene.` });
+  };
   const apriBranoInChat = async (mid, t) => {
     patchSpartito(mid, { busy: true, esito: "" });
     try {
@@ -8814,6 +8865,20 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // passa dalla selezione di un'azione (non ce n'e' nessuna da scegliere in "fammi un piano")
       // ne' dalla lettura multi-lente. Limite dichiarato e accettato: per questi turni la memoria
       // procedurale non si aggiorna da sola.
+      // ═══ LEGGERE UNO SPARTITO DA UN'IMMAGINE (14/09/2026) ═══
+      // Serve l'immagine E una richiesta esplicita: una foto allegata senza chiederlo non fa
+      // partire nessuna trascrizione, e nessun token.
+      const chiestaTrascrizione = currentAttachment?.kind === "image" ? richiestaDiTrascrizione(userText) : null;
+      if (chiestaTrascrizione && settings.apiKey) {
+        chiudiRichiestaInSospeso();
+        setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", time: new Date().toISOString(), actions: [], alerts: [],
+          content: `Leggo lo spartito nell'immagine e provo a trascriverlo in ABC${chiestaTrascrizione.strumento ? ` (parte di ${chiestaTrascrizione.strumento})` : ""}.\n\n`
+            + `Controllo che le battute tornino col metro prima di darti qualcosa: è lì che casca chi legge male. Quello che NON posso controllare è se le note sono le note giuste — quello lo vedi tu, confrontando il pentagramma qui sotto con l'immagine che hai appena mandato.`,
+          trascrizioneDaImmagine: { nome: currentAttachment.name || "immagine", strumento: chiestaTrascrizione.strumento } }]);
+        patchSpartito(assistantMsgId, { pil: pilastroDelFuoco(), percorsoId: percorsoDelFuoco(leggiFuoco())?.id || "" });
+        trascriviDaImmagine(assistantMsgId, chiestaTrascrizione, currentAttachment);
+        return; // il finally esterno rilascia il Wake Lock e rimette a posto lo stato di invio
+      }
       // ═══ CERCARE UNO SPARTITO: LO FA IL PROGRAMMA, NON IL MODELLO (14/09/2026) ═══
       // Vedi il blocco sopra `cercaNellArchivio`. Sta PRIMA di tutto il resto del turno perche' non
       // ha bisogno di niente di quello che viene dopo — niente chiave API, niente memoria, niente
@@ -10067,6 +10132,44 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                   MODIFICABILE perché estrarla da una frase parlata non riesce sempre, e una query
                   sbagliata che non si può correggere produce un "non c'è" che sembra una verità
                   sull'archivio invece che un errore di lettura della frase. */ ""}
+            ${/* 14/09/2026 — LA TRASCRIZIONE DA UN'IMMAGINE. Il pentagramma ridisegnato sta QUI,
+                  a un dito dall'immagine che il Ghost ha appena allegato: il programma può
+                  controllare che le battute tornino, ma se le NOTE sono quelle giuste lo vede solo
+                  lui. Mettere i due a distanza di scroll sarebbe rendere impossibile l'unico
+                  controllo che conta. */ ""}
+            ${m.trascrizioneDaImmagine && (() => {
+              const st = spartitoStato[mid] || {};
+              const pil = st.pil || pilastroDelFuoco();
+              const lista = percorsi[pil] || [];
+              const pid = lista.some((p) => p.id === st.percorsoId) ? st.percorsoId : (lista[0]?.id || "");
+              const docFinto = st.trascritto ? { id: `t-${mid}`, name: "trascrizione.abc", title: st.analisiTrascritta?.titolo || "trascrizione", text: st.trascritto, date: new Date().toISOString() } : null;
+              return html`<div class="r-draft-card">
+                <div class="r-draft-label">▸ LETTURA DI «${m.trascrizioneDaImmagine.nome}»</div>
+                ${st.busy && html`<div class="r-hub-detail">Sto leggendo… se una battuta non torna col metro la rimando indietro e rileggo, fino a tre volte.</div>`}
+                ${st.esito && html`<div class="${st.esito.startsWith("✓") ? "r-ok" : "r-error"}" style="margin-top:6px">${st.esito}</div>`}
+                ${docFinto && html`<div>
+                  <div class="r-esito-falso" style="margin-top:6px">
+                    <b>Le battute tornano col metro. Le note NO: quelle non le so controllare.</b>
+                    <div class="r-hub-detail">Ho verificato la forma — intestazione, tonalità, metro, e che ogni battuta valga quanto deve. Se ho letto un SI al posto di un LA, o una nota in meno in un passaggio veloce, il controllo non se ne accorge e nemmeno io. Guarda il pentagramma qui sotto contro l'immagine che hai mandato: quel confronto lo puoi fare solo tu.</div>
+                  </div>
+                  ${(st.noteLettura || []).length > 0 && html`<div class="r-draft-card" style="margin-top:6px">
+                    <div class="r-draft-label">▸ DOVE NON CI SONO ARRIVATO</div>
+                    ${st.noteLettura.map((n, i) => html`<div class="r-draft-body" key=${i}>· ${n}</div>`)}
+                  </div>`}
+                  <${SpartitoView} doc=${docFinto} color=${C.vidya} onAggiorna=${(nuovo) => patchSpartito(mid, { trascritto: nuovo.text })} />
+                  ${lista.length ? html`<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
+                    <select class="r-input" value=${pil} onChange=${(e) => patchSpartito(mid, { pil: e.target.value, percorsoId: "" })}>
+                      ${PILASTRI_NOMI.map((k) => html`<option key=${k} value=${k}>${k.toUpperCase()}</option>`)}
+                    </select>
+                    <select class="r-input" style="flex:1;min-width:140px" value=${pid} onChange=${(e) => patchSpartito(mid, { percorsoId: e.target.value })}>
+                      ${lista.map((p) => html`<option key=${p.id} value=${p.id}>${p.title}</option>`)}
+                    </select>
+                    <button class="r-btn r-draft-copy" onClick=${() => tieniTrascrizione(mid, m.trascrizioneDaImmagine.nome)}>Tieni</button>
+                  </div>` : html`<div class="r-hub-detail">In ${pil.toUpperCase()} non hai percorsi: creane uno (o cambia pilastro) e la trascrizione avrà dove stare.</div>`}
+                  <div class="r-hub-detail">${st.giri > 1 ? `Ci sono arrivato alla ${st.giri}ª lettura. ` : ""}Se lo tieni resta scritto che viene da un'immagine e non l'ho scritto io.</div>
+                </div>`}
+              </div>`;
+            })()}
             ${m.ricercaSpartiti && (() => {
               const st = spartitoStato[mid] || {};
               const query = st.query !== undefined ? st.query : m.ricercaSpartiti.query;
