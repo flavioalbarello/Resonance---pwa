@@ -205,7 +205,7 @@ const EXPORT_NAMES = [
   "DESTINAZIONI", "TABS", "comandoDiNavigazione", "VERBI_NAVIGAZIONE", "RIEMPITIVI_NAVIGAZIONE",
   // 14/09/2026 — gli spartiti (lib/spartito.js si ri-esporta da solo, questi servono per nome).
   "vociDichiarate", "SPARTITO_VERSIONE_FORMATO", "ARCHIVIO_SPARTITI", "spartitiDalBrano",
-  "chiaveAbc", "metroPerTipo", "abcDaArchivio", "richiestaDiSpartito", "risultatiCheRispondono", "spiegazioneRicerca", "altroveDoveCercare", "ARCHIVI_NON_INTERROGABILI",
+  "chiaveAbc", "metroPerTipo", "abcDaArchivio", "richiestaDiSpartito", "risultatiCheRispondono", "spiegazioneRicerca", "durataDellaBattuta", "metroInUnita", "battuteCheNonTornano", "altroveDoveCercare", "ARCHIVI_NON_INTERROGABILI",
   "ROMANI_A_NUMERO", "ORDINALI_A_NUMERO",
 ];
 
