@@ -204,7 +204,8 @@ const EXPORT_NAMES = [
   "numeroDaParola", "numeriChiestiForti", "formeDelToken", "paroleUtili",
   "DESTINAZIONI", "TABS", "comandoDiNavigazione", "VERBI_NAVIGAZIONE", "RIEMPITIVI_NAVIGAZIONE",
   // 14/09/2026 — gli spartiti (lib/spartito.js si ri-esporta da solo, questi servono per nome).
-  "vociDichiarate", "SPARTITO_VERSIONE_FORMATO",
+  "vociDichiarate", "SPARTITO_VERSIONE_FORMATO", "ARCHIVIO_SPARTITI", "spartitiDalBrano",
+  "chiaveAbc", "metroPerTipo", "abcDaArchivio",
   "ROMANI_A_NUMERO", "ORDINALI_A_NUMERO",
 ];
 

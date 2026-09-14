@@ -1,0 +1,982 @@
+{
+ "format": "json",
+ "id": 1,
+ "name": "Cooley's",
+ "url": "https://thesession.org/tunes/1",
+ "member": {
+  "id": 1,
+  "name": "Jeremy",
+  "url": "https://thesession.org/members/1"
+ },
+ "date": "2001-05-14 18:45:18",
+ "type": "reel",
+ "tunebooks": 6775,
+ "recordings": 3,
+ "collections": 4,
+ "aliases": [
+  "Cooley's",
+  "Cooleys",
+  "Joe Cooley",
+  "Joe Cooley's",
+  "Joe Cooley's Fancy",
+  "Joe Cooleys",
+  "Luttrell's Pass",
+  "Put The Cake In The Dresser",
+  "Put The Cake On The Dresser",
+  "Reaping The Rye",
+  "Ríl Na Tulaí",
+  "The Tulla"
+ ],
+ "settings": [
+  {
+   "id": 1,
+   "url": "https://thesession.org/tunes/1#setting1",
+   "key": "Edorian",
+   "abc": "|:D2|EBBA B2 EB|B2 AB dBAG|FDAD BDAD|FDAD dAFD|! EBBA B2 EB|B2 AB defg|afec dBAF|DEFD E2:|! |:gf|eB B2 efge|eB B2 gedB|A2 FA DAFA|A2 FA defg|! eB B2 eBgB|eB B2 defg|afec dBAF|DEFD E2:|",
+   "member": {
+    "id": 1,
+    "name": "Jeremy",
+    "url": "https://thesession.org/members/1"
+   },
+   "date": "2001-05-14 18:45:18"
+  },
+  {
+   "id": 12342,
+   "url": "https://thesession.org/tunes/1#setting12342",
+   "key": "Eminor",
+   "abc": "|:F|CGGC G2 CG|G2 FG BGFE|(3DCB, FB, GB,FB,|DB,DF BFDB,|! CGGC G2 CG|G2 FG Bcde|fdcd BGFB|B,CDF C3:|! |:d|cG ~G2 cede|cG ~G2 ecBG|(3FGF DF B,FDF|GFDF Bcde|! cG ~G2 cede|cG ~G2 Bcde|fdcd BGFB|B,CDF C3:|",
+   "member": {
+    "id": 2673,
+    "name": "donnchad",
+    "url": "https://thesession.org/members/2673"
+   },
+   "date": "2002-06-11 15:43:50"
+  },
+  {
+   "id": 12343,
+   "url": "https://thesession.org/tunes/1#setting12343",
+   "key": "Eminor",
+   "abc": "|:D2|EBBA B2 EB|B2 AB dBAG|FDAD BDAD|FDAD dAFD|! EBBA B2 EB|B2 AB defg|afef dBAF|DEFD E2:|! |:gf|eB ~B2 eBgB|eB ~B2 {a}gedB|A2 FA DFAB|BA FA defg|! eB ~B2 eBgB|eB B2 defg|afef dBAF|DEFD E2:|",
+   "member": {
+    "id": 41592,
+    "name": "middlefaster",
+    "url": "https://thesession.org/members/41592"
+   },
+   "date": "2008-06-15 13:53:38"
+  },
+  {
+   "id": 20796,
+   "url": "https://thesession.org/tunes/1#setting20796",
+   "key": "Edorian",
+   "abc": "D|:EBBA \"slide\"B3 B|B2 AB dBAD|(3FED AD BDAD|(3FED A=c BAFD|! EBBA \"slide\" B3 B|B2 AB defg|afec dBAF|1 EGFD E3 D:|2 EGFD E3 d||! |:eB (3BBB efgf|eB (3BBB fedB|(3ABA FB (3ABA FB|ADFA Bcdf|! eB (3BBB efgf|eB (3BBB fedB|(3ABA FB dfec|dBAF EFGB:|! |:eB (3BBB eBfB|eB (3BBB fedc|BE (3EEE BEdE|BE (3BBB BAFB|! eB (3BBB eBfB|eB (3BBB fecA|d3 e fdec|dBAF EFGB:|",
+   "member": {
+    "id": 5892,
+    "name": "Edgar Bolton",
+    "url": "https://thesession.org/members/5892"
+   },
+   "date": "2013-02-01 03:04:27"
+  },
+  {
+   "id": 20960,
+   "url": "https://thesession.org/tunes/1#setting20960",
+   "key": "Edorian",
+   "abc": "|:eBBA ~B2B2|~B2AB dBAG|FDAD BDAD|EDFA BAFB|! eBBA ~B2Bc|B2AB defA|~A2eA dBAF|1 DEFD ~E2E2:|2 DEFD ~e2e2||! |:eB~B2 eBgB|eB~B2 gedB|A2FA DAFA|~A2FA Beed|! e2~A2 eage|dBAB defA|~A2e2 dBAF|1 DEfd ~e2e2:|2 DEFD ~E2E2||",
+   "member": {
+    "id": 79788,
+    "name": "sebastian the m3g4p0p",
+    "url": "https://thesession.org/members/79788"
+   },
+   "date": "2013-02-17 18:29:47"
+  },
+  {
+   "id": 21423,
+   "url": "https://thesession.org/tunes/1#setting21423",
+   "key": "Eminor",
+   "abc": "|:A|EBBE B2 EB|~B2 AB dBAG|(3FED AD BDAD|FDFA dAFD|! EBBE B2 EB|~B2 AB defg|afef dBAd|DEFA E3:|! f|eB ~B2 egfg|eB ~B2 gedB|(3ABA FA DAFA|BAFA defg|! eB ~B2 egfg|eB ~B2 defg|afef dBAd|DEFA E3:|",
+   "member": {
+    "id": 5892,
+    "name": "Edgar Bolton",
+    "url": "https://thesession.org/members/5892"
+   },
+   "date": "2013-04-15 13:30:56"
+  }
+ ],
+ "comments": [
+  {
+   "id": 1,
+   "url": "https://thesession.org/tunes/1#comment1",
+   "subject": "",
+   "content": "This reel originally went under a different name (The Tulla Reel) but has since become associated with the master accordian player, Joe Cooley. You'll almost always hear this tune played with \"The Wise Maid\" or \"The Maid Behind The Bar.",
+   "member": {
+    "id": 1,
+    "name": "Jeremy",
+    "url": "https://thesession.org/members/1"
+   },
+   "date": "2001-05-25 20:16:44"
+  },
+  {
+   "id": 8578,
+   "url": "https://thesession.org/tunes/1#comment8578",
+   "subject": "Cminor",
+   "content": "Have a go in a different key, its good practice    K: Cminor  |:F|CGGC G2 CG|G2 FG BGFE|(3DCB, FB, GB,FB,|DB,DF BFDB,|  CGGC G2 CG|G2 FG Bcde|fdcd BGFB|B,CDF C3:|  |:d|cG ~G2 cede| cG ~G2 ecBG|(3FGF DF B,FDF|GFDF Bcde|  cG ~G2 cede| cG ~G2 Bcde| fdcd BGFB| B,CDF C3:|",
+   "member": {
+    "id": 2673,
+    "name": "donnchad",
+    "url": "https://thesession.org/members/2673"
+   },
+   "date": "2002-06-11 15:43:50"
+  },
+  {
+   "id": 8613,
+   "url": "https://thesession.org/tunes/1#comment8613",
+   "subject": "E dorian?",
+   "content": "It looks like c only occurs twice in this reel and is sharped both times.  So does that mean this is really E dorian rather than E minor? (I know, it doesn't really matter; I'm just hopelessly academic!)    At my local session I've heard Cooley's followed by The Golden Keyboard.",
+   "member": {
+    "id": 2126,
+    "name": "Sarah",
+    "url": "https://thesession.org/members/2126"
+   },
+   "date": "2002-06-12 00:07:22"
+  },
+  {
+   "id": 8707,
+   "url": "https://thesession.org/tunes/1#comment8707",
+   "subject": "",
+   "content": "I don't think the C belongs in there, sharpened or not. Usually it's fiddlers or piano accordionists who like to stick neat leading notes in tunes. I would skip it, frankly.      I really like playing Cooley's into the Sligo Maid.",
+   "member": {
+    "id": 1467,
+    "name": "Bloomfield",
+    "url": "https://thesession.org/members/1467"
+   },
+   "date": "2002-06-12 22:16:26"
+  },
+  {
+   "id": 8784,
+   "url": "https://thesession.org/tunes/1#comment8784",
+   "subject": "Hexatonic",
+   "content": "It's one of those tunes that's based on a scale that foregoes the 7th degree. In the key of \"D\" that would mean the scale would go  D E F G A B d, no C sharp or natural. Any six note scale is \"Hexatonic\" as any five note scale is \"Pentatonic\" most 8 tone western scales are \"Diatonic\" (I wonder why not \"Octonic\", maybe the minor 3rd & 6th are accounted for). As most Irish tunes are in the dorian mode (with a C# in the mode of E dorian) as opposed to the natural minor (C Natural in the scale of E minor) if you are going to play the C most players would use a C#, making it E dorian rather than E minor.    The Sligo Maid is another tune where the C is optional & the F is absent - it can be pentatonic or hexatonic. So it could be played or written in a key signiture with no sharps - true A minor, one sharp - A dorian or 2 sharps - A mixolydian. And none of them are wrong or right. As you can see - Irish music falls within the explanations of classical western theory, but it also blurs the lines a bit. It's because this music isn't rigid & allows for different approaches to it.",
+   "member": {
+    "id": 1173,
+    "name": "b.maloney",
+    "url": "https://thesession.org/members/1173"
+   },
+   "date": "2002-06-13 19:38:21"
+  },
+  {
+   "id": 14988,
+   "url": "https://thesession.org/tunes/1#comment14988",
+   "subject": "\"Details\" Correction",
+   "content": "I noticed under the \"Details\" tab that Cooley's was listed as being included on Mary Berin's Fedeoga Stain. Cooley's is on one of the tracks, but it the Hornpipe by Paddy O'brien and not the reel.   The Hornpipe is a great piece also - a lot of fun to play.",
+   "member": {
+    "id": 4216,
+    "name": "ralpheym",
+    "url": "https://thesession.org/members/4216"
+   },
+   "date": "2002-10-14 18:02:52"
+  },
+  {
+   "id": 14998,
+   "url": "https://thesession.org/tunes/1#comment14998",
+   "subject": "\"Details\" needs no correction",
+   "content": "Read the \"Details\" again: it doesn't say that this particular tune is on that album: it just says \"Recordings of a tune by this name\". There's a difference. :-)",
+   "member": {
+    "id": 1,
+    "name": "Jeremy",
+    "url": "https://thesession.org/members/1"
+   },
+   "date": "2002-10-14 20:37:32"
+  },
+  {
+   "id": 15005,
+   "url": "https://thesession.org/tunes/1#comment15005",
+   "subject": "Details Details",
+   "content": "OK. I stand corrected.  IMHO it seems that it would be more useful information to know about albums that did have the particular tune. But thanks for pointing out the difference. - re",
+   "member": {
+    "id": 4216,
+    "name": "ralpheym",
+    "url": "https://thesession.org/members/4216"
+   },
+   "date": "2002-10-15 00:46:08"
+  },
+  {
+   "id": 28837,
+   "url": "https://thesession.org/tunes/1#comment28837",
+   "subject": "Put the Cake on the Dresser",
+   "content": "I have an old recording of michael coleman playing \"cooley's\" under this name, and I have also heard it might be composed by Joe Mills.  Does anyone know the origins of this tune?",
+   "member": {
+    "id": 6225,
+    "name": "Jamie",
+    "url": "https://thesession.org/members/6225"
+   },
+   "date": "2003-05-12 00:30:22"
+  },
+  {
+   "id": 77948,
+   "url": "https://thesession.org/tunes/1#comment77948",
+   "subject": "Composer",
+   "content": "I found this on cranfordpub.com:    \"In trying to search out the 'true' composer(s), I've read a few theories. The most likely comes from Allan Jardine, a folklorist who interviewed a number of Irish composer / musicians during the 1970s. In his interview with Galway accordionist Joe Mills:    \"There has always been some contoversy over the authorship of the tune. According to Joe Mills, who does claim to be the composer, the story goes that Joe Cooley was a young lad of 18 or so when he first heard Joe Mills playing the tune, (1938). They were both members of the Aughrim Slopes Band and Cooley was reported to be mad for the tune. \"He quickly learned it, and played it sometimes 2 and 3 times per night.\"   Joe Mills feels that this is why so many people came to associate the tunes with Cooley, as does even his own brother, Seamus.    Mill's title Luttrell's Pass refers to the Battle of Aughrim, fought in Joe Mills' neck of the woods in the early part of the 17th century. Other titles include Joe Cooley's Fancy (Tony McMahon recording), and the Tulla Reel, (Ceol Rince na hEireann, Vol. 1, #200.)    Below are a few of the other possibilities:    Dan Collins, a student of John McGrath, says that Sonny Brogan told him that Joe Cooley and himself wrote Cooley's Reel together. This seems unlikely since Brogan was interviewed by Jardine and no mention was made of this co-authorship.     Another claim that Joe Cooley was a co-author comes from his brother, Seamus. Charlie Piggott and Fintan Vallely's book includes an account in which Seamus says that he and Joe heard some old concertina play a tune that they couldn't remember all of, and that they reconstructed it themselves.     Reg Hall, the author of the booklet included with the 2 CD set Michael Gorman:The Sligo Champion, states that the original name of the tune is Put the Cake in the Dresser and that Gorman composed it. No one can dispute that the variations are his.     Don Meade of NYC, who directed me to much of the above information, also adds   \"Jimmy Keane of Chicago tells me, he has an old manuscript from Co. Kerry with a tune called Leahy's that is the original Cooley's Reel \".     Mayo accordionist Vincent McGrath claims that his uncle John McGrath, composed it. McGrath died in 1955. There are a number of his students still living and none that I've talked to verify Vincent's claims. Only one tune their teacher wrote, an untitled D reel known as John McGrath's Composition is most certainly his.     We await confirmation...\"    Interesting, isn't it?    Something I know for sure is that Michael Gorman wrote a third part for the tune, and called it Put the Cake on the Dresser.  Here is a recording of him playing all three parts:  http://www.cranfordpub.com/mp3s/michaelgorman1.mp3    -Max",
+   "member": {
+    "id": 8045,
+    "name": "Max Becher",
+    "url": "https://thesession.org/members/8045"
+   },
+   "date": "2004-06-18 10:38:14"
+  },
+  {
+   "id": 138961,
+   "url": "https://thesession.org/tunes/1#comment138961",
+   "subject": "",
+   "content": "Actually, first time I ever saw the c# there. I heard it played a little differently, esp. starting the 3rd bar with (3FED instead of just FD. Also, from the 7th bar - afge dBAF |1 DEFD EGFD :|2 DEFD Egfg |  which is a nice transition. The way it's written here I really don't understand what's going on in the transition. Anyway, there are some more variations but never mind. It's always fun to find variations on this site, gives me ideas :)",
+   "member": {
+    "id": 14062,
+    "name": "derpayatz",
+    "url": "https://thesession.org/members/14062"
+   },
+   "date": "2005-05-03 07:15:37"
+  },
+  {
+   "id": 138962,
+   "url": "https://thesession.org/tunes/1#comment138962",
+   "subject": "",
+   "content": "PS. I heard it played with Tarbolton Lodge, a tune I never quite managed to learn yet.",
+   "member": {
+    "id": 14062,
+    "name": "derpayatz",
+    "url": "https://thesession.org/members/14062"
+   },
+   "date": "2005-05-03 07:16:15"
+  },
+  {
+   "id": 188346,
+   "url": "https://thesession.org/tunes/1#comment188346",
+   "subject": "Correction - Cooley's",
+   "content": "Apologies, it wasn't Michael Coleman (as I stated above) but Michael Gorman who has this tune recorded as Put the cake in the dresser.  However, the bio that I have on Gorman doesn't mention it was the third part he wrote, but says that he wrote the tune itself.  Has anyone gotten anything more definitive?  Gorman wrote the mountain road which usually has only two parts commonly played, but Gorman is recorded playing four / five on the recording I have.  Could he actually of composed \"Cooley's\" and the third part is original / or a variation on a theme?  Just curious.    j",
+   "member": {
+    "id": 6225,
+    "name": "Jamie",
+    "url": "https://thesession.org/members/6225"
+   },
+   "date": "2006-01-07 07:53:21"
+  },
+  {
+   "id": 323922,
+   "url": "https://thesession.org/tunes/1#comment323922",
+   "subject": "",
+   "content": "I have a recording of Alan Stivell (Breton harpist) playing this tune, but with another section included. On the track listing it is called E Kreiz Hag Endro. Does anyone else know it by this name? How does that fit in with the Cooley's/Mills debate??",
+   "member": {
+    "id": 40766,
+    "name": "rutharmstrong",
+    "url": "https://thesession.org/members/40766"
+   },
+   "date": "2007-10-29 05:44:13"
+  },
+  {
+   "id": 325037,
+   "url": "https://thesession.org/tunes/1#comment325037",
+   "subject": "",
+   "content": "Finally I know what this tune is!!!! I first heard it by Benoit Sauve (as much as of you here at thesession.org hate his playing) playing it in Bminor on a recorder (amazingly, that is).",
+   "member": {
+    "id": 38352,
+    "name": "Joseph Chordmichael",
+    "url": "https://thesession.org/members/38352"
+   },
+   "date": "2007-11-02 17:08:37"
+  },
+  {
+   "id": 376725,
+   "url": "https://thesession.org/tunes/1#comment376725",
+   "subject": "The Dubliners' version",
+   "content": "The Dubliners' version.    X: 1  T: Cooley's Reel  M: 4/4  L: 1/8  R: reel  Z: olafure@gmail.com. 15. jun 2008  K: Emin  |:D2|EBBA B2 EB|B2 AB dBAG|FDAD BDAD|FDAD dAFD|  EBBA B2 EB|B2 AB defg|afef dBAF|DEFD E2:|  |:gf|eB ~B2 eBgB|eB ~B2 {a}gedB|A2 FA DFAB|BA FA defg|  eB ~B2 eBgB|eB B2 defg|afef dBAF|DEFD E2:|",
+   "member": {
+    "id": 41592,
+    "name": "middlefaster",
+    "url": "https://thesession.org/members/41592"
+   },
+   "date": "2008-06-15 13:53:38"
+  },
+  {
+   "id": 405861,
+   "url": "https://thesession.org/tunes/1#comment405861",
+   "subject": "Cooley's Reel in Dm?",
+   "content": "Has anyone done a transcription of the Pat Surface's version of Cooley's on \"Due North\"?   It's gorgeous but it would be nifty to have the notes.",
+   "member": {
+    "id": 8586,
+    "name": "bobbi",
+    "url": "https://thesession.org/members/8586"
+   },
+   "date": "2008-10-14 13:13:07"
+  },
+  {
+   "id": 405865,
+   "url": "https://thesession.org/tunes/1#comment405865",
+   "subject": "Re: Cooley's Reel in Dm?",
+   "content": "LOL, see: https://thesession.org/discussions/19370/    Why not suss it out from the recording by ear? I suspect you're eminently capable. :-)",
+   "member": {
+    "id": 58,
+    "name": "Will Harmon",
+    "url": "https://thesession.org/members/58"
+   },
+   "date": "2008-10-14 13:20:56"
+  },
+  {
+   "id": 405881,
+   "url": "https://thesession.org/tunes/1#comment405881",
+   "subject": "Re: Cooley's Reel in Dm?",
+   "content": "Yes, I am capable, you are right.   This query is for a student, and for a combined learning process, which is the most powerful.  Learn the tune by ear,  prompt yourself with the written language of music--the notes.  Also doing a comparision of versions, so it would be helpful.   Anyhow, thanks, Will.",
+   "member": {
+    "id": 8586,
+    "name": "bobbi",
+    "url": "https://thesession.org/members/8586"
+   },
+   "date": "2008-10-14 14:26:03"
+  },
+  {
+   "id": 405897,
+   "url": "https://thesession.org/tunes/1#comment405897",
+   "subject": "Re: Cooley's Reel in Dm?",
+   "content": "fwiw, a really nice Dm setting of Cooley's can be heard on John Carty's album \"I Will if I Can\". In the liner notes JC calls Dm \"the saddest of all keys\". Don't know about that, but it's a lovely track.",
+   "member": {
+    "id": 5317,
+    "name": "octogreg",
+    "url": "https://thesession.org/members/5317"
+   },
+   "date": "2008-10-14 15:53:46"
+  },
+  {
+   "id": 405900,
+   "url": "https://thesession.org/tunes/1#comment405900",
+   "subject": "Re: Cooley's Reel in Dm?",
+   "content": "Good answer, Bobbi. Still, you'll be better off if you transcribe the tune yourself. Listening closely enough to jot a tune down, and mark in all the nuances you possible can, is a great way to gete inside a tune, even if you never come back to use the notation. You'll be able to more effectively teach the tune because you've dug into it so thoroughly.    My $0.02.",
+   "member": {
+    "id": 58,
+    "name": "Will Harmon",
+    "url": "https://thesession.org/members/58"
+   },
+   "date": "2008-10-14 16:04:24"
+  },
+  {
+   "id": 405934,
+   "url": "https://thesession.org/tunes/1#comment405934",
+   "subject": "Re: Cooley's Reel in Dm?",
+   "content": "octogreg, JC was quoting Spinal Tap there with the \"saddest of all keys\" thing ;-)",
+   "member": {
+    "id": 11048,
+    "name": "Reverend",
+    "url": "https://thesession.org/members/11048"
+   },
+   "date": "2008-10-14 17:15:58"
+  },
+  {
+   "id": 405936,
+   "url": "https://thesession.org/tunes/1#comment405936",
+   "subject": "Re: Cooley's Reel in Dm?",
+   "content": "http://www.youtube.com/watch?v=N5dnVlbKgoM",
+   "member": {
+    "id": 11048,
+    "name": "Reverend",
+    "url": "https://thesession.org/members/11048"
+   },
+   "date": "2008-10-14 17:20:31"
+  },
+  {
+   "id": 406009,
+   "url": "https://thesession.org/tunes/1#comment406009",
+   "subject": "Re: Cooley's Reel in Dm?",
+   "content": "You got there before me Reverend, I was thinking of that very scene after reading octogreg's comment about it being the saddest key sig.    I actually think B minor is the most heart renching    With E major being the happiest",
+   "member": {
+    "id": 103806,
+    "name": "irishfiddleMA",
+    "url": "https://thesession.org/members/103806"
+   },
+   "date": "2008-10-15 03:25:06"
+  },
+  {
+   "id": 441411,
+   "url": "https://thesession.org/tunes/1#comment441411",
+   "subject": "Cooleys",
+   "content": "This reel seems to be one of the most recognized irish tunes out there... Anyone agree?",
+   "member": {
+    "id": 52645,
+    "name": "Deleteplease",
+    "url": "https://thesession.org/members/52645"
+   },
+   "date": "2009-04-06 10:23:04"
+  },
+  {
+   "id": 443592,
+   "url": "https://thesession.org/tunes/1#comment443592",
+   "subject": "Just in general",
+   "content": "I live quite close to where joe cooley was from and evdry year they have this big fesival calle the cooley collins.its a week of real irishness.a mini willie clancy/milwown malbay.i have a tune that goes well with it also so il check it out.i love that a tune i hear played so lovingly locally is a bit hit in the session",
+   "member": {
+    "id": 55445,
+    "name": "Reelyconkored",
+    "url": "https://thesession.org/members/55445"
+   },
+   "date": "2009-04-17 19:31:53"
+  },
+  {
+   "id": 501402,
+   "url": "https://thesession.org/tunes/1#comment501402",
+   "subject": "",
+   "content": "I've heard this tune played as an interlude between verses in Star of the County Down.",
+   "member": {
+    "id": 51918,
+    "name": "Invincible",
+    "url": "https://thesession.org/members/51918"
+   },
+   "date": "2010-03-13 17:55:24"
+  },
+  {
+   "id": 529939,
+   "url": "https://thesession.org/tunes/1#comment529939",
+   "subject": "\"Cooley's\" in Scotland...",
+   "content": "Some interesting comments above about the tune's origins. Thanks for that information. I reckon the band who made this tune common in Scotland was a 70s folk-rock band called \"The JSD Band\". It was on their very first album when the fiddler was Chuck Fleming. Certainly that's where Dougie MacLean and I learned it from, and we'll still bring it out in a session when we get the flute and the fiddle out. A genuine classic.",
+   "member": {
+    "id": 726,
+    "name": "Kenny",
+    "url": "https://thesession.org/members/726"
+   },
+   "date": "2010-08-04 06:17:59"
+  },
+  {
+   "id": 529945,
+   "url": "https://thesession.org/tunes/1#comment529945",
+   "subject": "3rd part....",
+   "content": "Don't think Gorman's 3rd part adds anything, myself. His 2nd part is also slightly different from the more usual version.",
+   "member": {
+    "id": 726,
+    "name": "Kenny",
+    "url": "https://thesession.org/members/726"
+   },
+   "date": "2010-08-04 06:25:37"
+  },
+  {
+   "id": 541893,
+   "url": "https://thesession.org/tunes/1#comment541893",
+   "subject": "Tunes played with Cooley's",
+   "content": "I like to play Bill Hart's just before and going into Cooley's Reel",
+   "member": {
+    "id": 67521,
+    "name": "KayleeJ",
+    "url": "https://thesession.org/members/67521"
+   },
+   "date": "2010-10-12 10:24:42"
+  },
+  {
+   "id": 670926,
+   "url": "https://thesession.org/tunes/1#comment670926",
+   "subject": "Setting 4",
+   "content": "Is the Michael Gorman (three part) version",
+   "member": {
+    "id": 5892,
+    "name": "Edgar Bolton",
+    "url": "https://thesession.org/members/5892"
+   },
+   "date": "2013-02-01 07:25:27"
+  },
+  {
+   "id": 672807,
+   "url": "https://thesession.org/tunes/1#comment672807",
+   "subject": "Setting # 5: Jim Donoghue",
+   "content": "plays Cooley's here:  http://www.youtube.com/watch?v=Ee_k8zyfU4A  Starts at ~ 13:20, 2nd reel. He plays it on a C whistle though, but I transposed it to E dorian for the sake of your convenience. :)",
+   "member": {
+    "id": 79788,
+    "name": "sebastian the m3g4p0p",
+    "url": "https://thesession.org/members/79788"
+   },
+   "date": "2013-02-17 18:45:28"
+  },
+  {
+   "id": 672813,
+   "url": "https://thesession.org/tunes/1#comment672813",
+   "subject": "",
+   "content": "Go raibh ma'agat / Thanks megapop!  ;-)",
+   "member": {
+    "id": 11705,
+    "name": "ceolachan",
+    "url": "https://thesession.org/members/11705"
+   },
+   "date": "2013-02-17 20:04:59"
+  },
+  {
+   "id": 672817,
+   "url": "https://thesession.org/tunes/1#comment672817",
+   "subject": "",
+   "content": "A Clarke C, but I have to admit being particularly interested in his son's technique on the bodhran, the upper end of the tipper and the drum angled to that end, curious...  :-D",
+   "member": {
+    "id": 11705,
+    "name": "ceolachan",
+    "url": "https://thesession.org/members/11705"
+   },
+   "date": "2013-02-17 20:44:38"
+  },
+  {
+   "id": 672827,
+   "url": "https://thesession.org/tunes/1#comment672827",
+   "subject": "",
+   "content": "Even more interesting is Seamus Tansey playing the goat skin without a tipper, a technique I have heard only on Mediterrean drums so far.  BTW I hear the two e in Bar 1 and 5 as the usual E.",
+   "member": {
+    "id": 1659,
+    "name": "swisspiper",
+    "url": "https://thesession.org/members/1659"
+   },
+   "date": "2013-02-18 04:07:50"
+  },
+  {
+   "id": 672834,
+   "url": "https://thesession.org/tunes/1#comment672834",
+   "subject": "",
+   "content": "That's old school...  :-)  That's the first way I learned to play it.  You should check out how dear Tommy Hayes whacks the skin...",
+   "member": {
+    "id": 11705,
+    "name": "ceolachan",
+    "url": "https://thesession.org/members/11705"
+   },
+   "date": "2013-02-18 05:43:33"
+  },
+  {
+   "id": 672835,
+   "url": "https://thesession.org/tunes/1#comment672835",
+   "subject": "",
+   "content": "Starts at 19:50",
+   "member": {
+    "id": 11705,
+    "name": "ceolachan",
+    "url": "https://thesession.org/members/11705"
+   },
+   "date": "2013-02-18 05:55:46"
+  },
+  {
+   "id": 676153,
+   "url": "https://thesession.org/tunes/1#comment676153",
+   "subject": "Cooley's/John Brosnan's",
+   "content": "Cooley's reel followed by John Brosnan's reel (B minor) makes a heck of a set.",
+   "member": {
+    "id": 83201,
+    "name": "Tate",
+    "url": "https://thesession.org/members/83201"
+   },
+   "date": "2013-03-16 19:18:26"
+  },
+  {
+   "id": 676580,
+   "url": "https://thesession.org/tunes/1#comment676580",
+   "subject": "#1",
+   "content": "Look at URL of this page - this tune is number 1 of all songs here on Session. It's amazing and it shows how great this tune is.",
+   "member": {
+    "id": 86848,
+    "name": "Jirka Dostál",
+    "url": "https://thesession.org/members/86848"
+   },
+   "date": "2013-03-21 15:34:05"
+  },
+  {
+   "id": 676987,
+   "url": "https://thesession.org/tunes/1#comment676987",
+   "subject": "Cooley's",
+   "content": "Hear Joe Cooley playing it here: http://www.joecooleytapes.org    Its on the \"Joe Cooley And Miliosa Lundy (nee McWeeney)\" tape.     Thanks to 'cathiewhitesides' for making it available  (see https://thesession.org/discussions/31575)",
+   "member": {
+    "id": 35561,
+    "name": "David50",
+    "url": "https://thesession.org/members/35561"
+   },
+   "date": "2013-03-26 11:34:35"
+  },
+  {
+   "id": 678944,
+   "url": "https://thesession.org/tunes/1#comment678944",
+   "subject": "Setting 6: Ríl na Tulaí",
+   "content": "Ceol Rince na hEireann Volume 1, no.200 (p.77)",
+   "member": {
+    "id": 5892,
+    "name": "Edgar Bolton",
+    "url": "https://thesession.org/members/5892"
+   },
+   "date": "2013-04-15 13:36:23"
+  },
+  {
+   "id": 680533,
+   "url": "https://thesession.org/tunes/1#comment680533",
+   "subject": "The key of Em?",
+   "content": "Looking at the cords for cooley's reel, should it be F# instead of F. I'm trying to play the tune on a diatonic accordion and thought the major key for Em would be G. I don't have much knowledge of reading music. For example in the setting X : 1, what does D2 mean as to D or d? Also not sure what ^ means. Should I be playing this tune in the major key G? Any help would be greatly appreciated. Doug",
+   "member": {
+    "id": 89076,
+    "name": "Doug Fleming",
+    "url": "https://thesession.org/members/89076"
+   },
+   "date": "2013-05-01 14:13:56"
+  },
+  {
+   "id": 680535,
+   "url": "https://thesession.org/tunes/1#comment680535",
+   "subject": "",
+   "content": "There's no setting with chords given, is it? The letters just stand for the notes, and F is automatically interpreted as F# given the key of E minor/dorian, in this case. ^ means sharp. G major and E minor are equivalent regarding the accidentals, but the home note is E. For detailed information about this notation just check http://abcnotation.com/learn ....",
+   "member": {
+    "id": 79788,
+    "name": "sebastian the m3g4p0p",
+    "url": "https://thesession.org/members/79788"
+   },
+   "date": "2013-05-01 14:26:40"
+  },
+  {
+   "id": 681834,
+   "url": "https://thesession.org/tunes/1#comment681834",
+   "subject": "decending triplet scale",
+   "content": "Learned this with a slurred descending triplet scale first beat of bar 3 and all places where on here there's F down to D. It's just adding a passing note; F, E, D but it's handy for practicing/starting to do slurred triplets and probably helps to lead into separately bowed triplets.",
+   "member": {
+    "id": 23918,
+    "name": "Andrew Crowe",
+    "url": "https://thesession.org/members/23918"
+   },
+   "date": "2013-05-13 08:57:17"
+  },
+  {
+   "id": 718133,
+   "url": "https://thesession.org/tunes/1#comment718133",
+   "subject": "X: 8 \"Cooley's Reel\" ~ C: brothers Joe & Séamus Cooley",
+   "content": "A transcription request from a friend ~ based on the transcription from the following lovely book, a recommended read, I've taken that transcription as a starting point and adding some of the other ways people have with it.  It’s not quite how I’ve learned and played it, but very close:     \"Blooming Meadows: The World of Irish Traditional Musicians\"  Fintan Vallely & Charlie Piggott, photographs by Nutan  Publisher: Town House and Country House, 1998  ISBN: 1-86059-100-0     Joe Cooley (1924–December 20, 1973)~ by Charlie Piggott, pages 64 - 69      Pages 66 & 67: \"A tune which occupies a prime position in the repertoire of many Irish traditional musicians and is most often associated with the Cooley brothers is 'Cooley's Reel'.  Though sometimes linked to Joe's music, the emergence of this fine piece of music derives from a combined effort and demonstrates how many tunes found expression in the pre-tape age.  Séamus dates its origin to the 1940s when, still in their teens, he and Joe attended a house session in the adjoining county of Clare.  An old man with a battered looking concertina sat playing in front of an open fire (some of the missing buttons had been replaced with cigarette ends!) and a particular tune which he was playing caught their fancy.  Come what may, on returning home, they could not remember the tune but sat up in bed till daybreak whistling and humming until finally a bold reel emerged.  Joe took credit for the first part and Séamus had recomposed the turn of the tune.  It has been played and performed ever since as 'Cooley's Reel'.\"     Joe Cooley ~ 1924–December 20, 1973  http://en.wikipedia.org/wiki/Joe_Cooley  http://www.youtube.com/watch?v=CGzJdoMeoQY  \"Tony MacMahon, knowing that Cooley was dying from cancer, arranged this famous recording session in Lahiffe's Bar in Peterswell, County Galway on November 29, 1973. Accompanying Cooley was his brother Jack on bodhran and banjo player Des Mulkere from Crusheen in Co Clare. Joe Cooley died a month later, in St Luke's Hospital, Dublin, on December 20, 1973. This clip is precious to me. Go ndéana Dia trócaire ar a anam.\"     The Joe Cooley Tapes  http://www.joecooleytapes.org/  \"This site contains numerous field recordings made in the early 1970s of the great Irish accordion player Joe Cooley when he lived in the San Francisco bay area. The recordings were made on a Norelco cassette recorder by Jeremy Kammerer and Cathie Whitesides.\"",
+   "member": {
+    "id": 11705,
+    "name": "ceolachan",
+    "url": "https://thesession.org/members/11705"
+   },
+   "date": "2014-04-03 21:49:51"
+  },
+  {
+   "id": 718232,
+   "url": "https://thesession.org/tunes/1#comment718232",
+   "subject": "",
+   "content": "Nice one Ceol.",
+   "member": {
+    "id": 55381,
+    "name": "Solidmahog",
+    "url": "https://thesession.org/members/55381"
+   },
+   "date": "2014-04-04 14:25:12"
+  },
+  {
+   "id": 721016,
+   "url": "https://thesession.org/tunes/1#comment721016",
+   "subject": "Kerry Reel",
+   "content": "I was going to reprint the excerpt from the Blooming Meadows book here, but ceol beat me to it - good work, man.  Fascinating tome, that, the story behind this tune is pretty funny.      Other thing I was going to point out is that this reel has always reminded me of a strathspey, the Braes Of Tullymet:  https://thesession.org/tunes/3084  Of course the melodies depart company after a bit but the basic opening motif is similar - it would make for a nice pairing, no?  And perhaps this was what the old concertina player was cranking out for the Cooleys.",
+   "member": {
+    "id": 8450,
+    "name": "Lucy Rietmann",
+    "url": "https://thesession.org/members/8450"
+   },
+   "date": "2014-04-24 22:59:51"
+  },
+  {
+   "id": 758418,
+   "url": "https://thesession.org/tunes/1#comment758418",
+   "subject": "",
+   "content": "https://www.youtube.com/watch?v=fSr9JrPDfvo",
+   "member": {
+    "id": 63653,
+    "name": "fluther",
+    "url": "https://thesession.org/members/63653"
+   },
+   "date": "2015-04-14 16:52:55"
+  },
+  {
+   "id": 796213,
+   "url": "https://thesession.org/tunes/1#comment796213",
+   "subject": "Re: Cooley's",
+   "content": "Marcas O'Murchu on flute.................    https://youtu.be/ImtEjMj01tE",
+   "member": {
+    "id": 726,
+    "name": "Kenny",
+    "url": "https://thesession.org/members/726"
+   },
+   "date": "2016-08-19 09:26:14"
+  },
+  {
+   "id": 812712,
+   "url": "https://thesession.org/tunes/1#comment812712",
+   "subject": "Re: Cooley's",
+   "content": "I learned this tune a few months ago,and I think it has so much spirit.",
+   "member": {
+    "id": 107111,
+    "name": "mainee mcgrath",
+    "url": "https://thesession.org/members/107111"
+   },
+   "date": "2017-02-15 19:08:05"
+  },
+  {
+   "id": 896829,
+   "url": "https://thesession.org/tunes/1#comment896829",
+   "subject": "Cooley's reel different version",
+   "content": "Hello everyone,    Here's an arrangement I made of the tune. With a slower tempo and a different feel.    Instruments : Tin Whistle, Irish Bouzouki, Mandolin, Bodhran & Piano    You can play along with me !    https://www.youtube.com/watch?v=0b57g593xQo",
+   "member": {
+    "id": 136338,
+    "name": "Suzie Blanchette",
+    "url": "https://thesession.org/members/136338"
+   },
+   "date": "2020-05-10 14:10:45"
+  },
+  {
+   "id": 897691,
+   "url": "https://thesession.org/tunes/1#comment897691",
+   "subject": "Re: Cooley's",
+   "content": "Odd that none of the dozen versions posted above are the way Cooley plays it on the recording linked to by Ceolachan.",
+   "member": {
+    "id": 36889,
+    "name": "Richard D Cook",
+    "url": "https://thesession.org/members/36889"
+   },
+   "date": "2020-05-21 22:29:17"
+  },
+  {
+   "id": 901746,
+   "url": "https://thesession.org/tunes/1#comment901746",
+   "subject": "Re: Cooley's",
+   "content": "Willie Clancy Week 2001  :  https://youtu.be/Tq3MxFBbxcg",
+   "member": {
+    "id": 726,
+    "name": "Kenny",
+    "url": "https://thesession.org/members/726"
+   },
+   "date": "2020-07-11 21:04:08"
+  },
+  {
+   "id": 908860,
+   "url": "https://thesession.org/tunes/1#comment908860",
+   "subject": "Cooley's, X:13",
+   "content": "Heard this version on YouTube played by Alban Fuam. Apparently it's from the album \"Celtic Music The Traditional Collection\". It has some nice little variations.    https://www.youtube.com/watch?v=Iv9ohDwGXBA",
+   "member": {
+    "id": 139568,
+    "name": "GraefinZahl",
+    "url": "https://thesession.org/members/139568"
+   },
+   "date": "2020-11-10 09:40:05"
+  },
+  {
+   "id": 909625,
+   "url": "https://thesession.org/tunes/1#comment909625",
+   "subject": "Cooley's, X:14",
+   "content": "This is the abcjs.net online abc software setting. I didn’t make it.",
+   "member": {
+    "id": 137813,
+    "name": "magnus",
+    "url": "https://thesession.org/members/137813"
+   },
+   "date": "2020-11-20 17:10:55"
+  },
+  {
+   "id": 912329,
+   "url": "https://thesession.org/tunes/1#comment912329",
+   "subject": "Cooley's, X:15",
+   "content": "Bass and Chords for B/C Box    Upper case = Bass button / Lower case = Chord button    Arranged for 12-bass instrument with push B and both push/pull E    8-Bass instruments can substitute D for B, delay or drop pull E",
+   "member": {
+    "id": 12799,
+    "name": "Michael Eskin",
+    "url": "https://thesession.org/members/12799"
+   },
+   "date": "2021-01-03 18:07:01"
+  },
+  {
+   "id": 920298,
+   "url": "https://thesession.org/tunes/1#comment920298",
+   "subject": "Re: Cooley's",
+   "content": "Played by Frankie Gavin and Paul Brock  :  https://youtu.be/502_aTAZ730    Just remembered an occasion in Mullagh at the Willie Clancy week a few years back.  A session was going great in one of the pubs, with box-player Anders Trajberg, among others. There were 2 elderly ladies seated on the periphery of the session, and one of them asked Anders if he would play \"Cooley's Reel\", and her friend chimed in with \" and then \"The Wise Maid\". Anders turned to them and said, \"sure you can't play \"Cooley's\" without the \"Wise Maid\", and led us off on the 2 tunes. The smiles on the 2 ladies' faces, you'd have thought they'd won the lottery.   :)  We need to remember occasions like that in these awkward times.",
+   "member": {
+    "id": 726,
+    "name": "Kenny",
+    "url": "https://thesession.org/members/726"
+   },
+   "date": "2021-04-30 08:46:00"
+  },
+  {
+   "id": 924506,
+   "url": "https://thesession.org/tunes/1#comment924506",
+   "subject": "Re: Cooley's  X:9",
+   "content": "In the last two bars of the first line seems a triplet-sign to be missing. Maybe someone would like to fix this?",
+   "member": {
+    "id": 142739,
+    "name": "R. Rassweiler",
+    "url": "https://thesession.org/members/142739"
+   },
+   "date": "2021-07-16 18:52:04"
+  },
+  {
+   "id": 926929,
+   "url": "https://thesession.org/tunes/1#comment926929",
+   "subject": "Cooley's, X:16",
+   "content": "Lovely version of this mighty tune on 'A Tribute to Joe Cooley' by Frankie Gavin, Paul Brock and Charlie Lennon",
+   "member": {
+    "id": 3572,
+    "name": "shanachie",
+    "url": "https://thesession.org/members/3572"
+   },
+   "date": "2021-09-05 23:38:46"
+  },
+  {
+   "id": 934524,
+   "url": "https://thesession.org/tunes/1#comment934524",
+   "subject": "Re: Cooley's (composer? disputed)",
+   "content": "Welp, this new \"Composer\" option is very handy, but sure opens a whole new can of worms when it comes to traditional tune authorship. There are *six* versions as to who composed the tune collected in this comment above: https://thesession.org/tunes/1#comment77948    I'm thinking, unless there's a previously unavailable documented evidence of the original manuscript of the tune, maybe we should keep it as \"Disputed\"? Or else, someone please leave further info in the comments!",
+   "member": {
+    "id": 26966,
+    "name": "Bregolas",
+    "url": "https://thesession.org/members/26966"
+   },
+   "date": "2021-12-25 19:55:55"
+  },
+  {
+   "id": 945619,
+   "url": "https://thesession.org/tunes/1#comment945619",
+   "subject": "Cooley's, X:17",
+   "content": "I first heard this version of Cooley's reel on youtube played by Alina Gingertail, it has a more swung feel to the second part and some crotchets instead of quavers witch I really like.",
+   "member": {
+    "id": 148903,
+    "name": "Blunty026",
+    "url": "https://thesession.org/members/148903"
+   },
+   "date": "2022-06-29 20:38:40"
+  },
+  {
+   "id": 948400,
+   "url": "https://thesession.org/tunes/1#comment948400",
+   "subject": "Cooley's, X:18",
+   "content": "https://www.youtube.com/watch?v=XlIzWNchFFY  (skip to 1:33)  I could only really do the start of this tune as it was so complicated but  will keep editing this setting until it's perfect",
+   "member": {
+    "id": 148903,
+    "name": "Blunty026",
+    "url": "https://thesession.org/members/148903"
+   },
+   "date": "2022-08-27 19:04:59"
+  },
+  {
+   "id": 952180,
+   "url": "https://thesession.org/tunes/1#comment952180",
+   "subject": "Cooley's, X:19",
+   "content": "This setting is based off this video of the Green Circle Ensemble performing Cooley's Reel https://www.youtube.com/watch?v=EUlkYcNVDvs",
+   "member": {
+    "id": 99946,
+    "name": "Madeleine Townley",
+    "url": "https://thesession.org/members/99946"
+   },
+   "date": "2022-10-31 22:19:36"
+  },
+  {
+   "id": 957405,
+   "url": "https://thesession.org/tunes/1#comment957405",
+   "subject": "Re: Cooley's",
+   "content": "Hello,  funny to transpose it in Ddor to use on a banjo or a fiddle the open strings D and A drones  X: 3  T: Cooley's  R: reel  M: 4/4  L: 1/8  K:Ddor  |:DAAG A2 DA|A2 GA cAGF|ECGC ACGC|ECEG cGEC|  DAAG A2 DA|A2 GA cdef|gede cAGE|1:CDEC D2 A,C:|2CDEC D2 fe||  |:dA ~A2 dAfA|dA ~A2 fdcA|G2 EG CEGE|AGEG cdef|  dA ~A2 dAfA|dA A2 cdef|gede cAGE|1CDEC D2 fe:|2 CDEC D2 A,C||",
+   "member": {
+    "id": 147088,
+    "name": "PhilPontoise",
+    "url": "https://thesession.org/members/147088"
+   },
+   "date": "2023-01-29 13:29:02"
+  },
+  {
+   "id": 960188,
+   "url": "https://thesession.org/tunes/1#comment960188",
+   "subject": "Re: Cooley's",
+   "content": "Apparently, it was played on \"The Bounty\"  :)  https://youtu.be/x7Cs1E1Vkb8    And to add to my post above from 12 years ago, Aly Bain would have been the first to record the tune in Scotland, on his first full LP recording with \"borders bluesman\", and all-round musical genius, Mike Whellans. If it's not up on \"Youtube\", I'll post it in the next few days.",
+   "member": {
+    "id": 726,
+    "name": "Kenny",
+    "url": "https://thesession.org/members/726"
+   },
+   "date": "2023-03-06 19:13:20"
+  },
+  {
+   "id": 994382,
+   "url": "https://thesession.org/tunes/1#comment994382",
+   "subject": "Cooley's, X:23",
+   "content": "just a few changes to the chords",
+   "member": {
+    "id": 144723,
+    "name": "Helen Snibson",
+    "url": "https://thesession.org/members/144723"
+   },
+   "date": "2024-08-03 06:06:37"
+  },
+  {
+   "id": 1010565,
+   "url": "https://thesession.org/tunes/1#comment1010565",
+   "subject": "Re: Cooley's",
+   "content": "In the notes to the tune on CD#2 of \"It Was Mighty\", Early Days of Irish Music in London (Topic TSCD679T) the tune is attributed to Michael Gorman.  It seems Coleman is confused with Gorman above.    \"The Galway accordion player Joe Cooley was around London in the late 1940's, and part of his legacy was that 'Cooleys' was a very popular reel in the 1950's.  Few people would have known, however, that it was a version of Michael Gorman's mid-1920's composition, 'Put the Cake on the Dresser.'\"",
+   "member": {
+    "id": 62285,
+    "name": "bellowsboy",
+    "url": "https://thesession.org/members/62285"
+   },
+   "date": "2025-05-02 14:21:13"
+  },
+  {
+   "id": 1023044,
+   "url": "https://thesession.org/tunes/1#comment1023044",
+   "subject": "Cooley's, X:28",
+   "content": "Performed by Zara Craig for Oberlin Contra 2025!",
+   "member": {
+    "id": 188737,
+    "name": "Sam Crespino",
+    "url": "https://thesession.org/members/188737"
+   },
+   "date": "2025-12-08 03:15:49"
+  },
+  {
+   "id": 1025870,
+   "url": "https://thesession.org/tunes/1#comment1025870",
+   "subject": "Cooley's, X:29",
+   "content": "This is how it was set at the slow session last night.",
+   "member": {
+    "id": 187396,
+    "name": "Steve Ewing",
+    "url": "https://thesession.org/members/187396"
+   },
+   "date": "2026-01-27 17:46:15"
+  },
+  {
+   "id": 1025880,
+   "url": "https://thesession.org/tunes/1#comment1025880",
+   "subject": "Re: Cooley's",
+   "content": "Steve Ewing said (X:29), \"This is how it was set at the slow session last night.\"    That G in the 4th bar doesn't sound right. Was that really how they played it?",
+   "member": {
+    "id": 11834,
+    "name": "Nigel Gatherer",
+    "url": "https://thesession.org/members/11834"
+   },
+   "date": "2026-01-27 21:06:48"
+  },
+  {
+   "id": 1026259,
+   "url": "https://thesession.org/tunes/1#comment1026259",
+   "subject": "Cooley's, X:30",
+   "content": "I tried to match the Bothy Band rendition of Joe Cooley's reel on the Live In concert BBC album. Bars 3 and 4 updated vs Version 1 of this tune",
+   "member": {
+    "id": 22376,
+    "name": "UPipes & harp",
+    "url": "https://thesession.org/members/22376"
+   },
+   "date": "2026-02-06 10:46:04"
+  },
+  {
+   "id": 1026349,
+   "url": "https://thesession.org/tunes/1#comment1026349",
+   "subject": "Cooley's, X:31",
+   "content": "This version is even simpler than the previous one on bars 3 and 4 part A",
+   "member": {
+    "id": 22376,
+    "name": "UPipes & harp",
+    "url": "https://thesession.org/members/22376"
+   },
+   "date": "2026-02-09 12:07:10"
+  },
+  {
+   "id": 1029228,
+   "url": "https://thesession.org/tunes/1#comment1029228",
+   "subject": "Re: Cooley's",
+   "content": "For those on Facebook - Here's Anna Massie playing this choon.    https://www.facebook.com/reel/1228287019083687",
+   "member": {
+    "id": 143775,
+    "name": "Gillies",
+    "url": "https://thesession.org/members/143775"
+   },
+   "date": "2026-04-03 17:22:50"
+  }
+ ]
+}
