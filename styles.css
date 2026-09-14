@@ -379,3 +379,14 @@ body {
   padding: 9px 12px; border-radius: 8px; font-size: 13px; line-height: 1.4;
   background: var(--surface2); border: 1px solid var(--border); }
 .r-voce-barra.accesa { border-color: #B4553A; background: #F6E4DE; }
+
+/* 14/09/2026 — GLI SPARTITI. Il disegno di abcjs è un SVG che si adatta alla larghezza: su un
+   telefono in verticale una battuta lunga sfora, quindi scorre in orizzontale invece di rimpicciolire
+   fino a essere illeggibile. Il riquadro del promemoria è lo stesso oggetto per i due casi — quello
+   che compare mentre la musica suona e quello che si scrive toccando una nota — perché sono la
+   stessa cosa letta nei due versi. */
+.r-spartito { margin-top: 8px; overflow-x: auto; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 6px 4px; }
+.r-spartito svg { max-width: none; }
+.r-spartito .abcjs-note_selected path { fill: #B4553A; }
+.r-spartito-avviso { margin-top: 8px; padding: 10px 12px; border: 1px solid #B4553A; border-radius: 8px;
+  background: #F6E4DE; font-size: 13.5px; line-height: 1.45; }
