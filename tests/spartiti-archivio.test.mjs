@@ -555,3 +555,81 @@ describe("GLI INDIRIZZI DELL'ARCHIVIO", () => {
     assert.ok(ARCHIVIO_SPARTITI.nome && ARCHIVIO_SPARTITI.perChe);
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LEGGERE UNO SPARTITO DA UN'IMMAGINE — 14/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// Uno spartito GENERATO è un'invenzione, e se è brutto si vede. Uno TRASCRITTO pretende di essere
+// fedele a una cosa che esiste, e se è sbagliato NON si vede: note giuste e ritmo storto sono
+// indistinguibili da una lettura corretta per chi non ha l'originale sotto gli occhi.
+describe("TRASCRIVERE DA UN'IMMAGINE — e dire quello che non si può controllare", () => {
+  const { richiestaDiTrascrizione, briefDiTrascrizione, noteDiLettura } = app;
+
+  test("si chiede a parole, e lo strumento e i versi si leggono dalla frase", () => {
+    assert.ok(richiestaDiTrascrizione("trascrivimelo in ABC"));
+    assert.ok(richiestaDiTrascrizione("leggi questo spartito e trascrivilo"));
+    assert.equal(richiestaDiTrascrizione("convertimi la tablatura del basso").strumento, "basso");
+    assert.equal(richiestaDiTrascrizione("trascrivi le note e i versi").conVersi, true);
+    assert.equal(richiestaDiTrascrizione("trascrivi lo spartito").conVersi, false);
+  });
+
+  test("NON parte su una frase qualsiasi: serve il verbo E l'oggetto", () => {
+    assert.equal(richiestaDiTrascrizione("oggi ho letto un libro"), null);
+    assert.equal(richiestaDiTrascrizione("guarda questa foto"), null);
+    assert.equal(richiestaDiTrascrizione("leggi ad alta voce la risposta"), null);
+    assert.equal(richiestaDiTrascrizione(""), null);
+  });
+
+  test("non si accavalla con la RICERCA in archivio: sono due strade diverse", () => {
+    // «cerca» non trascrive, «trascrivi» non cerca. Se si accendessero tutte e due, una frase sola
+    // farebbe partire una chiamata di rete e un turno di modello insieme.
+    assert.equal(richiestaDiTrascrizione("cercami lo spartito di Cooley's"), null);
+    assert.equal(app.richiestaDiSpartito("trascrivimi questo spartito"), null);
+  });
+
+  test("IL BRIEF DICE DI NON INVENTARE, ed è la riga che regge tutto", () => {
+    // Normalizzato: il brief va a capo per stare in larghezza nel sorgente, e una prova che si
+    // rompe su un a capo controlla la mia formattazione invece del contenuto.
+    const b = briefDiTrascrizione({}).replace(/\s+/g, " ");
+    assert.match(b, /NON INVENTARE/);
+    assert.match(b, /Una battuta inventata è peggio di una battuta mancante/);
+    assert.match(b, /PRIMA DI CHIUDERE OGNI STANGHETTA, CONTA/);
+  });
+
+  test("legge il PENTAGRAMMA e non la tablatura, perché è lì che stanno le durate", () => {
+    assert.match(briefDiTrascrizione({}), /leggi il PENTAGRAMMA/);
+    assert.match(briefDiTrascrizione({}), /Drop D/, "l'accordatura va dichiarata: in ABC l'altezza è quella che suona");
+  });
+
+  test("i requisiti di forma sono GLI STESSI degli spartiti generati — un oggetto letto due volte", () => {
+    const b = briefDiTrascrizione({});
+    for (const r of app.REQUISITI_SPARTITO) {
+      if (r.id === "versi-allineati") continue;         // solo su richiesta
+      assert.ok(b.includes(r.detta), `il brief di trascrizione non detta «${r.id}»`);
+    }
+    assert.ok(briefDiTrascrizione({ conVersi: true }).includes("w:"), "coi versi si detta anche quello");
+  });
+
+  test("IL POSTO PER DIRE «QUI NON CI SONO ARRIVATO» VA DATO, o diventa prosa e viene scartata", () => {
+    const abc = "X:1\nT:Schism\n% Drop D: la prima corda suona un tono sotto\nM:4/4\nL:1/8\n% battuta 7 illeggibile nella foto, messa come pausa\nK:Dm\nDEFD E4|z8|";
+    assert.deepEqual(noteDiLettura(abc), [
+      "Drop D: la prima corda suona un tono sotto",
+      "battuta 7 illeggibile nella foto, messa come pausa",
+    ]);
+    // E quelle righe non fanno fallire l'accettore: i commenti ABC sono legittimi.
+    assert.equal(analizzaSpartito(abc).ok, true, analizzaSpartito(abc).errori.map((e) => e.motivo).join(" · "));
+  });
+
+  test("`%%source` non è una nota di lettura: è la provenienza, e ha già il suo posto", () => {
+    assert.deepEqual(noteDiLettura("X:1\n%%score [V1 V2]\n% nota vera\nK:C"), ["nota vera"]);
+  });
+
+  test("UNA LETTURA COL RITMO STORTO VIENE FERMATA — è tutto il motivo per cui questa strada è sicura", () => {
+    // Il modo tipico in cui sbaglia chi legge uno spartito da un'immagine: le note giuste, una
+    // durata sbagliata. Senza il controllo sulle battute questo passava e sembrava una trascrizione.
+    const letturaStorta = "X:1\nT:Schism\nM:4/4\nL:1/8\nK:Dm\nDEFD E4|DEFD E3|";
+    const r = analizzaSpartito(letturaStorta, "modello");
+    assert.equal(r.ok, false);
+    assert.match(r.errori.map((e) => e.motivo).join(" "), /parziale spaiata|più lunga del metro/);
+  });
+});
