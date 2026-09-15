@@ -984,8 +984,201 @@ describe("LE MOSSE DI UNO SCALTRO", () => {
     assert.match(b, /trova prima il NUMERO DI CATALOGO/);
     assert.match(b, /filetype:pdf per andare al documento invece che alla pagina di vendita/);
     assert.match(b, /site:imslp\.org/);
-    assert.match(b, /prova anche il titolo nelle ALTRE LINGUE/);
+    assert.match(b, /CERCA PRIMA IN INGLESE E IN CINESE/);
+    assert.match(b, /简谱 \(notazione numerica\) e 五线谱 \(pentagramma\) sono due mondi separati/);
+    assert.match(b, /GUARDA ANCHE LE ANTEPRIME DEI SITI A PAGAMENTO/);
+    assert.match(b, /guardare la vetrina è gratis/);
+    assert.match(b, /TITOLO_EN:/);
+    assert.match(b, /TITOLO_ZH:/);
     assert.match(b, /se il primo giro dà solo negozi, CAMBIA CHIAVE invece di insistere/);
-    assert.match(b, /CATALOGO: RV 269/, "deve dire come dichiararlo, o il programma non lo legge");
+    assert.match(b, /CATALOGO: \(per esempio RV 269/, "deve dire come dichiararlo, o il programma non lo legge");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PIU' LINGUE, POI I PDF, POI LE IMMAGINI — 15/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost, precisando l'ordine delle mosse: «cercherebbe innanzitutto su più lingue, per prime
+// inglese e cinese che sono le più diffuse, poi farebbe una ricerca tra i PDF, poi cercherebbe tra
+// le immagini, ANCHE TRA LE ANTEPRIME DEI SITI A PAGAMENTO».
+// L'ultima è l'inversione che conta: nelle PAGINE un negozio è inutile perché non si compra, ma
+// ogni negozio mette in vetrina le prime pagine come immagine, e guardare la vetrina è gratis.
+describe("LE LINGUE E LE ANTEPRIME", () => {
+  const { queryScaltre, ricercheAMano, titoliDaRicerca } = app;
+  const tutto = { query: "la primavera", autore: "Vivaldi", catalogo: "RV 269",
+    titoloEn: "Spring (The Four Seasons)", titoloZh: "四季 春", strumento: "flauto" };
+
+  test("i titoli tradotti li dà chi cerca: il programma non li può sapere", () => {
+    const t = titoliDaRicerca("CATALOGO: RV 269\nTITOLO_EN: Spring (The Four Seasons)\nTITOLO_ZH: 四季 春");
+    assert.equal(t.en, "Spring (The Four Seasons)");
+    assert.equal(t.zh, "四季 春");
+    // Un campo lasciato vuoto NON diventa un titolo: cercare «-» non trova niente.
+    assert.deepEqual(titoliDaRicerca("TITOLO_EN: -\nTITOLO_ZH: "), { en: "", zh: "" });
+    assert.deepEqual(titoliDaRicerca(null), { en: "", zh: "" });
+  });
+
+  test("L'ORDINE E' QUELLO CHE HA DETTO IL GHOST: lingue, PDF, immagini", () => {
+    const r = ricercheAMano(tutto).map((x) => x.id);
+    assert.deepEqual(r.slice(0, 5), ["en", "zh", "pdf", "immagini", "anteprime"],
+      `ordine sbagliato: ${r.join(" → ")}`);
+  });
+
+  test("la ricerca in CINESE usa le parole cinesi, non il titolo italiano tradotto a metà", () => {
+    const zh = decodeURIComponent(ricercheAMano(tutto).find((x) => x.id === "zh").url);
+    assert.ok(zh.includes("四季 春"), zh);
+    assert.ok(zh.includes("乐谱"), "manca la parola «spartito» in cinese");
+    assert.ok(zh.includes("长笛"), "lo strumento va tradotto: 长笛 è il flauto traverso");
+    assert.ok(zh.includes("免费"), "manca «gratis»");
+  });
+
+  test("LE ANTEPRIME DEI NEGOZI si CERCANO, non si escludono — è l'inversione", () => {
+    const r = ricercheAMano(tutto);
+    const ant = r.find((x) => x.id === "anteprime");
+    const url = decodeURIComponent(ant.url);
+    assert.match(ant.url, /tbm=isch/, "le anteprime sono immagini, non pagine");
+    assert.ok(url.includes("site:musicnotes.com"), "i negozi qui si INCLUDONO");
+    assert.ok(url.includes("site:sheetmusicdirect.com"));
+    assert.ok(!url.includes("-site:"), "qui non si esclude niente");
+    // E nelle PAGINE restano esclusi: le due mosse sono opposte apposta.
+    const pdf = decodeURIComponent(r.find((x) => x.id === "pdf").url);
+    assert.ok(pdf.includes("-site:sheetmusicdirect.com"), "nelle pagine i negozi restano fuori");
+  });
+
+  test("senza i titoli tradotti si cerca lo stesso, col titolo che si ha", () => {
+    const r = ricercheAMano({ query: "Cooley's", autore: "" });
+    assert.equal(r.length, 6, "tutte le mosse restano disponibili");
+    for (const x of r) {
+      assert.match(x.url, /^https:\/\/www\.google\.com\/search\?/, x.id);
+      assert.ok(!/undefined|\[object/.test(x.url), `${x.id}: ${x.url}`);
+    }
+    assert.ok(decodeURIComponent(r.find((x) => x.id === "zh").url).includes("Cooley's"));
+  });
+
+  test("le query dettate coprono inglese e cinese, non solo la lingua della domanda", () => {
+    const q = queryScaltre(tutto);
+    assert.ok(q.some((x) => x.includes("Spring (The Four Seasons)") && x.includes("sheet music")), "manca l'inglese");
+    assert.ok(q.some((x) => x.includes("四季 春") && x.includes("乐谱")), "manca il cinese");
+    assert.ok(q.some((x) => x.includes("简谱") || x.includes("五线谱")), "mancano le due notazioni cinesi");
+    assert.ok(q.some((x) => x.includes('"RV 269"')), "manca il catalogo");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RICOSTRUIRE DA FRAMMENTI — 15/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// Ultima mossa dello scaltro, dal Ghost: «dai vari frammenti cercherebbe di ricostruire lo
+// spartito se non lo trova per intero». È il caso normale con le anteprime dei negozi: ognuna
+// mostra le prime due pagine, un video un pezzo, un forum un'altra sezione.
+describe("UNIRE I FRAMMENTI", () => {
+  const { unisciSpartiti, chiedeDiContinuare } = app;
+  const primo = "X:1\nT:Spring\n% battute 5-8 coperte dal riquadro della fotocamera\nM:4/4\nL:1/8\nK:E\nEFGA Bcde|edcB AGFE|";
+  const secondo = "X:1\nT:Spring (seguito)\nM:4/4\nL:1/8\nK:E\nBcde fgab|bagf edcB|";
+
+  test("UNA SOLA INTESTAZIONE, e le battute continuano la numerazione", () => {
+    // Due X: o due K: e il disegnatore si ferma; e se le battute ripartissero da 1, ogni promemoria
+    // attaccato dopo la giunzione punterebbe altrove.
+    const u = unisciSpartiti(primo, secondo);
+    assert.equal(u.ok, true, u.disaccordi.join(" | ") + " " + u.analisi.errori.map((e) => e.motivo).join(" | "));
+    assert.equal(u.abc.split("\n").filter((r) => /^K:/.test(r)).length, 1, "due tonalità dichiarate");
+    assert.equal(u.abc.split("\n").filter((r) => /^X:/.test(r)).length, 1);
+    assert.equal(u.battuteUnite, u.battutePrimo + u.battuteSecondo);
+    assert.deepEqual(u.analisi.battute.map((b) => b.numero), [1, 2, 3, 4]);
+  });
+
+  test("LE NOTE DI LETTURA DI TUTTI E DUE RESTANO: dicono dove il buco è ancora aperto", () => {
+    const u = unisciSpartiti(primo, secondo);
+    assert.match(u.abc, /battute 5-8 coperte dal riquadro/);
+    assert.equal(app.noteDiLettura(u.abc).length, 1);
+  });
+
+  test("DUE FRAMMENTI IN TONALITA' O METRO DIVERSI NON SI CUCIONO IN SILENZIO", () => {
+    // O non è lo stesso brano, o uno dei due è stato letto male. Incollarli produrrebbe uno
+    // spartito che sembra intero e non lo è — il difetto peggiore di tutta questa strada.
+    const storto = unisciSpartiti(primo, secondo.replace("K:E", "K:G").replace("M:4/4", "M:3/4"));
+    assert.equal(storto.ok, false);
+    assert.match(storto.disaccordi.join(" "), /metri diversi: 4\/4 e 3\/4/);
+    assert.match(storto.disaccordi.join(" "), /tonalità diverse: E e G/);
+    assert.match(storto.disaccordi.join(" "), /o non è lo stesso brano, o uno è stato letto male/);
+  });
+
+  test("un modo diverso sulla stessa fondamentale non è un disaccordo", () => {
+    // Em e Edor sono lo stesso MI: un frammento scritto col modo per esteso non va rifiutato.
+    const u = unisciSpartiti(primo.replace("K:E", "K:Em"), secondo.replace("K:E", "K:Edor"));
+    assert.deepEqual(u.disaccordi, []);
+  });
+
+  test("IL RISULTATO UNITO PASSA DALL'ACCETTORE come tutto il resto", () => {
+    // Cucire due pezzi buoni può produrre una cosa rotta: le battute devono tornare anche dopo.
+    const meta = "X:1\nT:P\nM:4/4\nL:1/8\nK:C\nCDEF GAB|";          // 7 crome: battuta storta
+    const u = unisciSpartiti(primo, meta);
+    assert.equal(u.ok, false, "una battuta che non torna deve fermare anche l'unione");
+    assert.match(u.analisi.errori.map((e) => e.motivo).join(" "), /parziale spaiata|più lunga del metro/);
+  });
+
+  test("«continua lo spartito» si riconosce, «continua pure» no", () => {
+    assert.equal(chiedeDiContinuare("continua lo spartito con questa immagine"), true);
+    assert.equal(chiedeDiContinuare("attacca in coda questa tablatura"), true);
+    assert.equal(chiedeDiContinuare("questo è il seguito dello spartito"), true);
+    // Senza l'oggetto musicale «continua» è una parola di conversazione, e farebbe partire una
+    // trascrizione a vuoto su qualunque immagine allegata.
+    assert.equal(chiedeDiContinuare("continua pure"), false);
+    assert.equal(chiedeDiContinuare("aggiungi questo al percorso"), false);
+    assert.equal(chiedeDiContinuare(""), false);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// IL RISULTATO E' LO SPARTITO, NON UNA LISTA DI LINK — 15/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost: «come risultato voglio lo spartito non una lista di link, altrimenti la faccio da solo
+// la ricerca. Se devo mettermi ad aprirli tutti, qual è il tempo che risparmio?». Aveva ragione:
+// una lista di link è un compito, non una risposta. E la via era già aperta — il plugin di ricerca
+// restituisce IL CONTENUTO delle pagine, non solo gli indirizzi.
+describe("LO SPARTITO, NON L'ELENCO", () => {
+  const { estraiAbcDaTesto, briefRicercaWebSpartito } = app;
+
+  test("l'ABC dentro un blocco di codice si prende", () => {
+    const r = estraiAbcDaTesto("Ho trovato questo:\n```abc\nX:1\nT:Cooley's\nM:4/4\nL:1/8\nK:Edor\nEBBA B2 EB|B2 AB dBAG|\n```\nSpero vada bene.");
+    assert.equal(r.length, 1);
+    assert.match(r[0], /^X:1/);
+    assert.equal(analizzaSpartito(r[0], "archivio").ok, true);
+    assert.ok(!r[0].includes("Spero vada bene"), "la prosa attorno non entra nello spartito");
+  });
+
+  test("e anche senza le virgolette di codice, che un modello dimentica", () => {
+    const r = estraiAbcDaTesto("Eccolo:\nX:1\nT:Spring\nM:4/4\nL:1/8\nK:E\nEFGA Bcde|edcB AGFE|\nQuesto viene da IMSLP, è gratis.");
+    assert.equal(r.length, 1);
+    assert.equal(analizzaSpartito(r[0], "archivio").ok, true);
+    assert.ok(!r[0].includes("IMSLP"), "la riga di prosa dopo le note chiude il pezzo");
+  });
+
+  test("QUELLO CHE NON E' UNO SPARTITO NON DIVENTA UNO SPARTITO", () => {
+    assert.deepEqual(estraiAbcDaTesto("ABC: nessuna pagina ne aveva. Ecco i siti: IMSLP, Mutopia."), []);
+    assert.deepEqual(estraiAbcDaTesto("```\nnon è musica, è un blocco di testo\n```"), []);
+    assert.deepEqual(estraiAbcDaTesto("X:1 senza tonalità e senza note"), [], "senza K: non è uno spartito");
+    assert.deepEqual(estraiAbcDaTesto(null), []);
+  });
+
+  test("più spartiti in una risposta si prendono tutti", () => {
+    const due = "```abc\nX:1\nT:A\nM:4/4\nL:1/8\nK:C\nCDEF GABc|cBAG FEDC|\n```\ne anche\n```abc\nX:1\nT:B\nM:4/4\nL:1/8\nK:G\nGABc defg|gfed cBAG|\n```";
+    assert.equal(estraiAbcDaTesto(due).length, 2);
+  });
+
+  test("IL BRIEF CHIEDE LA MUSICA PRIMA DEI NOMI DEI SITI, e vieta di inventarla", () => {
+    const b = briefRicercaWebSpartito({ query: "la primavera" }).replace(/\s+/g, " ");
+    assert.match(b, /QUELLO CHE SERVE DAVVERO E' LO SPARTITO, NON L'ELENCO DEI SITI/);
+    assert.match(b, /RIPORTALA PER INTERO/);
+    assert.match(b, /Copiala com'è: non riscriverla, non accorciarla, non sistemarla/);
+    assert.match(b, /Se in nessuna pagina c'è ABC, non inventarlo/);
+    assert.match(b, /Un ABC scritto a memoria è musica sbagliata che sembra trovata/);
+  });
+
+  test("lo spartito trovato è roba D'ARCHIVIO: una battuta storta è un avviso, non un rifiuto", () => {
+    // Viene da fuori, è la trascrizione di qualcun altro. Buttarla perché il suo autore non ha
+    // contato le crome sarebbe la Legge 14 al contrario — la stessa regola di The Session.
+    const conBattutaStorta = "X:1\nT:P\nM:4/4\nL:1/8\nK:Edor\nFED AD BDAD|B2 AB dBAG|";
+    const r = analizzaSpartito(estraiAbcDaTesto("```abc\n" + conBattutaStorta + "\n```")[0], "archivio");
+    assert.equal(r.ok, true);
+    assert.equal(r.avvisi.length, 1);
   });
 });

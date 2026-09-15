@@ -205,7 +205,7 @@ const EXPORT_NAMES = [
   "DESTINAZIONI", "TABS", "comandoDiNavigazione", "VERBI_NAVIGAZIONE", "RIEMPITIVI_NAVIGAZIONE",
   // 14/09/2026 — gli spartiti (lib/spartito.js si ri-esporta da solo, questi servono per nome).
   "vociDichiarate", "SPARTITO_VERSIONE_FORMATO", "ARCHIVIO_SPARTITI", "spartitiDalBrano",
-  "chiaveAbc", "metroPerTipo", "abcDaArchivio", "richiestaDiSpartito", "risultatiCheRispondono", "eEcoDellApp", "spiegazioneRicerca", "durataDellaBattuta", "metroInUnita", "battuteCheNonTornano", "altroveDoveCercare", "ARCHIVI_NON_INTERROGABILI", "briefRicercaWebSpartito", "fontiPerSpartito", "senzaIndirizziInventati", "archiviLiberiMancanti", "ARCHIVI_LIBERI", "queryScaltre", "ricercheAMano", "catalogoDaRicerca", "riferimentoDaBrief", "briefRicercaCaratteristiche", "schedaDaRicerca", "requisitiDallaScheda",
+  "chiaveAbc", "metroPerTipo", "abcDaArchivio", "richiestaDiSpartito", "risultatiCheRispondono", "eEcoDellApp", "spiegazioneRicerca", "durataDellaBattuta", "metroInUnita", "battuteCheNonTornano", "altroveDoveCercare", "ARCHIVI_NON_INTERROGABILI", "briefRicercaWebSpartito", "fontiPerSpartito", "senzaIndirizziInventati", "unisciSpartiti", "chiedeDiContinuare", "archiviLiberiMancanti", "ARCHIVI_LIBERI", "queryScaltre", "ricercheAMano", "catalogoDaRicerca", "titoliDaRicerca", "estraiAbcDaTesto", "riferimentoDaBrief", "briefRicercaCaratteristiche", "schedaDaRicerca", "requisitiDallaScheda",
   "ROMANI_A_NUMERO", "ORDINALI_A_NUMERO",
 ];
 
