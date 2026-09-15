@@ -8895,7 +8895,15 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   const testoRicercaSpartiti = (chiesto, esito) => {
     const s = spiegazioneRicerca({ query: chiesto.query, strumento: chiesto.strumento, autore: chiesto.autore, esito });
     if (s.caso === "trovati") return s.testo;
-    return String(s.testo || "").split("\n").filter((r) => /non filtra|come autore/.test(r)).join(" ").trim();
+    // 15/09/2026 — VIA ANCHE LE NOTE. Le avevo tenute un giro fa dicendo che erano un FATTO: «ho
+    // cercato una cosa diversa da quella che hai chiesto». Era vero, ed erano comunque da togliere:
+    // spiegavano a parole una decisione presa DENTRO una ricerca che ormai non si vede, e la prova
+    // che non servivano è che il Ghost, leggendole, ha dovuto chiedere «perché togliere l'autore?».
+    // Una nota che genera la domanda a cui doveva rispondere non è una nota: è un indovinello.
+    // Il fatto resta visibile, ma come COSA e non come spiegazione: la casella in fondo alla card
+    // mostra le parole che ho cercato davvero — autore compreso — e si correggono toccandole.
+    // Mostrare batte raccontare, che è la regola di casa applicata a me stesso.
+    return "";
   };
   // ══ LEGGERE UNO SPARTITO DA UN'IMMAGINE ═══════════════════════════════════════════════════
   // Vedi briefDiTrascrizione. Tre tentativi come per gli spartiti generati, e per la stessa ragione:
@@ -8973,7 +8981,14 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         0.3, 700, settings, true, null, (raw) => leggiDiagnosticaRicerca(raw, diag),
       );
       const { testo, inventati } = senzaIndirizziInventati(grezzo, diag.fonti);
-      const fonti = fontiPerSpartito(diag.fonti, chiesto.query);
+      // L'AUTORE STA NELLA PERTINENZA. Dal Ghost, 15/09/2026: «perché togliere l'autore?».
+      // Toglierlo è una regola dell'ARCHIVIO, non una regola: The Session indicizza i NOMI dei
+      // brani, non i compositori, e «primavera vivaldi» lì dà zero perché nessun brano si chiama
+      // «vivaldi». Vale per quella ricerca e per nessun'altra.
+      // Nel filtro scritto ieri l'autore mancava, e l'autore è spesso la parola CHE DISCRIMINA:
+      // senza «billy cobham», «Stratus» pareggia con qualunque pagina che contenga quella parola —
+      // altri brani omonimi, previsioni del tempo. La domanda era giusta e la risposta era un bug.
+      const fonti = fontiPerSpartito(diag.fonti, [chiesto.query, chiesto.autore].filter(Boolean).join(" "));
       // Il numero di catalogo, se il modello l'ha trovato, rende MOLTO più precise le ricerche che
       // il Ghost può fare in un tocco: «RV 269» non lo usa nessun negozio, lo usano le biblioteche.
       const catalogo = catalogoDaRicerca(grezzo);
@@ -9052,16 +9067,26 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         esito: buone.length ? "" : "Le trascrizioni di questo brano non passano il controllo: non te le propongo rotte." });
     } catch (e) { patchSpartito(mid, { busy: false, esito: "Errore: " + (e?.message || "l'archivio non risponde") }); }
   };
+  // «CERCA ANCORA» RIFACEVA SOLO LA META' INUTILE — 15/09/2026, trovato dalla domanda del Ghost
+  // sull'autore, guardando dove finiva la query corretta.
+  // Il pulsante rilanciava SOLO la ricerca d'archivio: quella che su nove richieste su dieci non ha
+  // niente, e che ormai non si vede nemmeno. La ricerca web — l'unica che risponde — restava quella
+  // di prima, con le parole vecchie. Correggere le parole non correggeva la risposta.
+  // E rimetteva in campo `esito` con la prosa dell'archivio («Nessun brano che contenga «man»,
+  // «in». L'archivio ne ha restituiti 393...»), cioè esattamente il rumore che avevo tolto dalla
+  // card un'ora prima, da un'altra porta. Un testo che ricompare da un secondo posto è la stessa
+  // forma del microfono coperto su un chiamante su quattro.
   const rifaiRicercaSpartiti = async (mid, query) => {
     const q = String(query || "").trim();
     if (!q) return;
-    patchSpartito(mid, { busy: true, esito: "", brano: null, versioni: null });
+    patchSpartito(mid, { busy: true, esito: "", brano: null, versioni: null, webAbc: [], webFonti: [], webStato: "", webLetturaImmagine: "" });
     const esito = await cercaNellArchivio(q);
     patchSpartito(mid, { query: q, bozzaQuery: q, tunes: esito.tunes, pertinenti: esito.pertinenti, grezzi: esito.grezzi, scartati: esito.scartati, paroleAssenti: esito.paroleAssenti, errore: esito.errore, busy: false,
-      esito: esito.errore ? `Errore: ${esito.errore}`
-        : esito.tunes.length ? (esito.scartati ? `${esito.pertinenti} pertinenti su ${esito.grezzi} restituiti dall'archivio.` : "")
-        : esito.paroleAssenti.length ? `Nessun brano che contenga ${esito.paroleAssenti.map((p) => `«${p}»`).join(", ")}. L'archivio ne ha restituiti ${esito.grezzi} che contengono solo il resto: è altra musica, non te li mostro.`
-        : `Nessun brano che si chiami «${q}».` });
+      // L'esito resta SOLO quando è una cosa che il Ghost deve sapere e non può vedere da sé: un
+      // guasto. Il resto lo dice la card, che ha due stati e non ha bisogno di didascalie.
+      esito: esito.errore ? `Errore: ${esito.errore}` : "" });
+    // E la ricerca che risponde davvero riparte con le parole NUOVE.
+    if (!esito.tunes.length) cercaSpartitoNelWeb(mid, { query: q, strumento: "", autore: "" });
   };
   const tieniSpartitoDallArchivio = (mid, v) => {
     const st = spartitoStato[mid] || {};
@@ -10507,7 +10532,13 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
             ${m.ricercaSpartiti && (() => {
               const st = spartitoStato[mid] || {};
               const query = st.query !== undefined ? st.query : m.ricercaSpartiti.query;
-              const bozza = st.bozzaQuery !== undefined ? st.bozzaQuery : query;
+              // LA CASELLA DEVE DIRE QUELLO CHE HO CERCATO DAVVERO, autore compreso. `query` è il
+              // titolo SENZA autore, perché è quello che serve all'archivio — ma la ricerca che
+              // risponde è quella web, e lì l'autore c'è. Mostrare «english man in new york» mentre
+              // si è cercato «english man in new york Sting» è una didascalia che mente, e il Ghost
+              // l'ha beccata dalla parte opposta: «perché togliere l'autore?».
+              const cercatoDavvero = [query, m.ricercaSpartiti.autore].filter(Boolean).join(" ");
+              const bozza = st.bozzaQuery !== undefined ? st.bozzaQuery : cercatoDavvero;
               const pil = st.pil || pilastroDelFuoco();
               const lista = percorsi[pil] || [];
               const pid = lista.some((p) => p.id === st.percorsoId) ? st.percorsoId : (lista[0]?.id || "");
@@ -10583,7 +10614,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                 ${/* ── LA CASELLA, IN FONDO E CHIUSA. Serve — da una frase parlata il titolo non
                       si indovina sempre — ma non è il risultato, quindi non sta davanti. ─────── */ ""}
                 <details style="margin-top:8px">
-                  <summary class="r-hub-detail" style="cursor:pointer;user-select:none">«${query}» — non sono le parole giuste?</summary>
+                  <summary class="r-hub-detail" style="cursor:pointer;user-select:none">«${cercatoDavvero}» — non sono le parole giuste?</summary>
                   <div style="display:flex;gap:8px;margin-top:6px">
                     <input class="r-input" style="flex:1" value=${bozza} disabled=${st.busy}
                       onInput=${(e) => patchSpartito(mid, { bozzaQuery: e.target.value })}
