@@ -360,7 +360,11 @@ describe("LA SPIEGAZIONE DELLA RICERCA, caso per caso", () => {
   test("ZERO RISPOSTE: non si dice di aver tolto niente, perché non c'era niente", () => {
     const r = di({});
     assert.equal(r.caso, "nessuno");
-    assert.match(r.testo, /: zero\./);
+    // 15/09 sera — controllava `/: zero\./`. La frase e' cambiata («Non e' in The Session ...»)
+    // perche' UN ESITO ZERO NON E' UNA NOTIZIA e non merita un annuncio. Il fatto che questa prova
+    // difende non era mai la parola «zero»: era che non si vanti di una potatura mai avvenuta.
+    assert.ok(/non è in/i.test(r.testo), `non dice nemmeno che non c'è: ${r.testo}`);
+    assert.ok(r.testo.length < 160, `un esito zero in ${r.testo.length} caratteri è un annuncio: ${r.testo}`);
     assert.doesNotMatch(r.testo, /tolt/i, `dice di aver tolto qualcosa: ${r.testo.slice(0, 200)}`);
     assert.doesNotMatch(r.testo, /quei titoli/i, "non ci sono titoli di cui parlare");
     assert.doesNotMatch(r.testo, /0 brani|0 risultati/, "«ha risposto con 0 brani, ma...» era la frase sbagliata");
@@ -374,14 +378,18 @@ describe("LA SPIEGAZIONE DELLA RICERCA, caso per caso", () => {
   test("CENTO RISPOSTE NON PERTINENTI: lì sì che si dice quante e quale parola è caduta a vuoto", () => {
     const r = di({ grezzi: 100, scartati: 100, paroleAssenti: ["metallica"] });
     assert.equal(r.caso, "potati");
+    // I FATTI: quanti ne ha visti, e QUALE parola e' caduta a vuoto. Restano tutti e due.
+    // Le parole intorno («non compare in nessun titolo», «non te la mostro») sono cadute il
+    // 15/09 sera: dicevano due volte la stessa cosa.
     assert.match(r.testo, /100 risultati/);
-    assert.match(r.testo, /«metallica» non compare/);
-    assert.match(r.testo, /non te la mostro/);
+    assert.match(r.testo, /«metallica»/);
   });
 
   test("il plurale non si sbaglia: una parola «compare», due «compaiono»", () => {
-    assert.match(di({ grezzi: 9, scartati: 9, paroleAssenti: ["metallica"] }).testo, /«metallica» non compare in/);
-    assert.match(di({ grezzi: 9, scartati: 9, paroleAssenti: ["lateralus", "tool"] }).testo, /«lateralus», «tool» non compaiono in/);
+    // La frase nuova («nessuno che contenga X») vale per uno e per molti: il problema del plurale
+    // non e' stato risolto, e' stato DISSOLTO. Restano le parole, che sono il fatto.
+    assert.match(di({ grezzi: 9, scartati: 9, paroleAssenti: ["metallica"] }).testo, /«metallica»/);
+    assert.match(di({ grezzi: 9, scartati: 9, paroleAssenti: ["lateralus", "tool"] }).testo, /«lateralus», «tool»/);
     assert.match(di({ grezzi: 1, scartati: 1, paroleAssenti: ["x"] }).testo, /1 risultato,/, "uno solo non è «1 risultati»");
   });
 
@@ -406,8 +414,10 @@ describe("LA SPIEGAZIONE DELLA RICERCA, caso per caso", () => {
   test("ERRORE DI RETE: è una ricerca che NON E' PARTITA, e non va confusa con «non c'è»", () => {
     const r = di({ errore: "l'archivio ha risposto 503" });
     assert.equal(r.caso, "errore");
-    assert.match(r.testo, /non è partita/);
-    assert.doesNotMatch(r.testo, /non c'è\./, "un guasto di rete non è una risposta sul repertorio");
+    // Prima: /non è partita/. Adesso lo dice piu' corto e piu' netto, ma e' LA STESSA distinzione,
+    // che e' il fatto: un guasto di rete non e' una risposta sul repertorio.
+    assert.match(r.testo, /non ho potuto guardare/);
+    assert.doesNotMatch(r.testo, /^Non è in/, "un guasto di rete non è «non c'è»");
     assert.doesNotMatch(r.testo, /tradizionale irlandese/, "non si spiega il repertorio quando non si è potuto guardare");
   });
 
@@ -429,7 +439,10 @@ describe("LA SPIEGAZIONE DELLA RICERCA, caso per caso", () => {
     const r = di({});
     assert.doesNotMatch(r.testo, /non ne ho altri/, "la frase vecchia, quella sbagliata");
     assert.doesNotMatch(r.testo, /non ci saranno/, "non si profetizza sul repertorio di archivi altrui");
-    assert.match(r.testo, /I link qui sotto portano dove invece c'è/);
+    // Prima: /I link qui sotto portano dove invece c'è/. Adesso dice «Guardo nel resto del web»,
+    // che e' piu' vero: da oggi ci va da solo invece di mandarci il Ghost. Il fatto difeso — non si
+    // afferma mai che il brano non esista — e' quello delle due righe qui sopra.
+    assert.match(r.testo, /resto del web/);
     // I nomi e il motivo tecnico di ciascuno stanno nella CARD, accanto al loro link, non nel
     // messaggio: il muro di prosa che li elencava era tre schermate (15/09, «un po' scarso»).
     for (const nome of ["Songsterr", "MuseScore", "IMSLP"]) {
@@ -1279,5 +1292,82 @@ describe("IL MOTORE DEI PDF SI SCRIVE IN OGNI IMBUTO — se no il ripiego OCR co
     const applicazioni = codice.match(/PIANO_PDF(?!\s*=)/g) || [];
     assert.equal(imbuti.length, 2, "gli imbuti verso OpenRouter sono due: se sono cambiati, questa prova va riletta, non cancellata");
     assert.equal(applicazioni.length, imbuti.length, "ogni imbuto deve applicare PIANO_PDF a un allegato PDF");
+  });
+});
+
+// ── UN TENTATIVO SU SEI NON E' UN TENTATIVO — 15/09/2026 sera ───────────────────────────────────
+// Dalla schermata del Ghost su «La Primavera»: il programma ha provato UN documento — englishtap,
+// dichiarato dal modello — che ha risposto con un corpo vuoto, e si è fermato lì. Sullo schermo, a
+// due centimetri, c'erano flutetunes, free-scores, IMSLP, Mutopia e ScoreExchange, tutti gratis.
+describe("SI PROVANO TUTTI I DOCUMENTI TROVATI, non solo quello che il modello ha nominato", () => {
+  const { candidatiDaLeggere, briefRicercaWebSpartito } = app;
+
+  test("i candidati vengono ANCHE dagli indirizzi veri della ricerca, non solo dal testo", () => {
+    const c = candidatiDaLeggere({
+      testo: "PDF: https://englishtap.com/a.pdf",
+      fonti: [{ url: "https://flutetunes.com/b.pdf", costo: "gratis" }, { url: "https://negozio.com/c.pdf", costo: "pagamento" }],
+    });
+    assert.equal(c.length, 3, "il programma ha in mano gli indirizzi: usarne uno solo è una scusa");
+    assert.equal(c[0].url, "https://flutetunes.com/b.pdf", "il gratis va provato per primo");
+  });
+
+  test("a parità, il PDF prima dell'immagine: un PDF è il pezzo intero, un'immagine la prima pagina", () => {
+    const c = candidatiDaLeggere({ testo: "IMMAGINE: https://x.org/anteprima.png\nPDF: https://x.org/tutto.pdf" });
+    assert.deepEqual(c.map((x) => x.url), ["https://x.org/tutto.pdf", "https://x.org/anteprima.png"]);
+    assert.equal(c[0].pdf, true);
+    assert.equal(c[1].pdf, false);
+  });
+
+  test("PIU' PDF DICHIARATI si prendono tutti — il brief adesso ne chiede fino a tre", () => {
+    const c = candidatiDaLeggere({ testo: "PDF: https://a.org/1.pdf\nPDF: https://b.org/2.pdf\nPDF: https://c.org/3.pdf" });
+    assert.equal(c.length, 3);
+  });
+
+  test("una PAGINA non è un documento da leggere, e un doppione non è un secondo tentativo", () => {
+    const c = candidatiDaLeggere({
+      testo: "PDF: https://a.org/1.pdf",
+      fonti: [{ url: "https://a.org/1.pdf" }, { url: "https://scoreexchange.com/scores/12345" }, { url: "non-un-indirizzo" }],
+    });
+    assert.deepEqual(c.map((x) => x.url), ["https://a.org/1.pdf"]);
+  });
+
+  test("c'è un tetto: provarne venti costa venti letture e il Ghost aspetta", () => {
+    const tanti = Array.from({ length: 20 }, (_, i) => ({ url: `https://x${i}.org/a.pdf`, costo: "gratis" }));
+    assert.equal(candidatiDaLeggere({ fonti: tanti }).length, 4);
+    assert.equal(candidatiDaLeggere({ fonti: tanti, max: 2 }).length, 2);
+  });
+
+  test("IL BRIEF CHIEDE PIU' DI UN PDF, e dice perché", () => {
+    const b = briefRicercaWebSpartito({ query: "la primavera" });
+    assert.match(b, /SCRIVINE FINO A TRE/);
+    assert.match(b, /Un PDF su tre risponde vuoto/);
+  });
+});
+
+// ── LA DIAGNOSTICA NON E' UNA RISPOSTA — 15/09/2026 sera ────────────────────────────────────────
+// Nella card, in verde, il Ghost si è trovato: «Ho provato a leggere quello che ho trovato, ma non
+// passa il controllo — da il PDF: Invalid file URL: Empty response body from URL:
+// https://www.englishtap.com/music/pdf-flute-music/vivaldi-the-four-seasons-spring.pdf».
+// Cercava uno spartito e leggeva il messaggio d'errore di una libreria. Le sue parole: «tutto il
+// resto è spreco di token e mio tempo ed energie nel cercare la risposta vera nella risposta data».
+describe("QUELLO CHE NON E' UN RISULTATO NON STA NELLA CARD", () => {
+  const sorgente = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const catena = /const cercaSpartitoNelWeb[\s\S]*?\n  };/.exec(sorgente)?.[0] || "";
+
+  test("il messaggio grezzo del fornitore non finisce in nessun campo che la card mostra", () => {
+    assert.ok(catena, "cercaSpartitoNelWeb non si trova più: se l'hai rinominata, aggiorna questa prova");
+    const perdite = catena.split("\n")
+      .filter((r) => !/^\s*(?:\/\/|\*)/.test(r))
+      .filter((r) => /web(?:Nota|Commento|Esito)/.test(r) && /e\?\.message|\be\.message|analisi\.errori/.test(r));
+    // Una sola eccezione è legittima: webNota quando la RICERCA INTERA non è partita — lì il motivo
+    // è l'unica cosa che c'è da dire, e non c'è nessun risultato che stia venendo soffocato.
+    assert.ok(perdite.length <= 1, `la diagnostica arriva al Ghost da ${perdite.length} punti:\n${perdite.join("\n")}`);
+  });
+
+  test("il commento in prosa del modello non si mostra più: ripeteva la lista di link, con gli asterischi", () => {
+    // Nella schermata: «- **flutetunes.com** — spartito per flauto solo, PDF, MIDI, MP3 — **gratis**»
+    // con gli asterischi CRUDI, perché quel campo non passa da nessun renderer markdown — e sotto,
+    // gli stessi siti di nuovo, con gli indirizzi veri. Due volte la stessa cosa, una delle due rotta.
+    assert.doesNotMatch(sorgente, /\$\{st\.webCommento && html/, "webCommento era il blocco di prosa non reso");
   });
 });
