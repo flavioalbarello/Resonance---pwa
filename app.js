@@ -5023,7 +5023,8 @@ ALLA RICERCA SI CHIEDONO DATI, NON UN RACCONTO: tonalita', metro, andamento in b
 E QUI STA IL GUADAGNO PIU' GRANDE: quello che la ricerca trova non resta contesto da leggere. TONALITA' E METRO DIVENTANO REQUISITI di quel turno, controllati come tutti gli altri — se la ricerca dice 16/16 in Mi minore e il modello scrive 4/4 in Do, il disaccordo torna indietro e il modello riscrive. E' l'accettore d'azione di Anochin nella forma piena: il controllo si forma PRIMA di agire, insieme alla decisione, e specifica che forma dovra' avere il risultato. Quello che la ricerca NON ha trovato non diventa un vincolo: non si pretende cio' che non si sa.
 Il confronto sulla tonalita' guarda la fondamentale e il colore (maggiore/minore), non la scritta esatta: Edor (dorico di MI) vale come Em perche' e' minore quanto lui, mentre Mi maggiore no.
 IL GHOST VEDE COSA E' STATO LETTO, in un riquadro sopra il risultato: tonalita', metro, andamento e peculiarita', con scritto quali sono diventati requisiti. Serve anche a un altro scopo: se li' compare un brano diverso da quello che intendeva, la ricerca ha capito male e lui puo' correggere il nome e rigenerare. Se la ricerca non trova niente di specifico lo dice, e avverte che quello che esce va trattato come un'invenzione libera e non come qualcosa «nello stile di». Se la ricerca fallisce del tutto, si genera lo stesso ma dichiarando di aver scritto al buio: un riferimento non letto e' meno grave di un rifiuto secco.` },
-  { n: `Cercare spartiti in tutto il web`, k: ["cercare in tutto il web", "ricerca web", "cercare sul web", "spartiti sul web", "come una ricerca google", "in tutto il web", "ricerca online"], s: `Cercare spartiti in tutto il web: IL RISULTATO E' LO SPARTITO, NON UNA LISTA DI LINK (dal Ghost, 15/09/2026: «altrimenti la faccio da solo la ricerca, se devo aprirli tutti qual e' il tempo che risparmio?»). Il plugin di ricerca non restituisce solo gli indirizzi: restituisce IL CONTENUTO delle pagine. Quindi al modello si chiede, prima di tutto il resto, di RIPORTARE PER INTERO la notazione ABC se l'ha vista in una delle pagine lette — e ce n'e' in tante: abcnotation, i forum di musicisti, le raccolte di sessione. Quello che torna passa dall'accettore e compare nella card come SPARTITO VERO: disegnato, suonabile, con il pulsante per tenerlo nel percorso. I link restano sotto, come ripiego per confrontare o cercare altre versioni. Se in nessuna pagina c'era ABC il modello deve dirlo e NON inventarlo: un ABC scritto a memoria e' musica sbagliata che sembra trovata. Lo spartito preso cosi' e' trattato come roba d'archivio — viene da fuori, quindi una battuta che non torna e' un avviso e non un rifiuto — e porta scritto che e' la trascrizione di qualcun altro. CERCA ANCHE IN TUTTO IL WEB, dal 15/09/2026: oltre all'archivio parte una ricerca web vera (come una ricerca Google), che copre quello che l'archivio non ha — classica, rock, pop. La card tiene le due cose SEPARATE perche' non sono la stessa: dall'archivio esce ABC pronto che si puo' TENERE (si apre, si suona, si salva nel percorso) e costa zero; dal web escono INDIRIZZI da APRIRE, e quella ricerca passa da un modello quindi COSTA. GLI INDIRIZZI LI METTE IL PROGRAMMA, non il modello: la ricerca per IMMAGINI (uno spartito E' un'immagine: si vede il pentagramma senza aprire niente — la mossa piu' veloce, e nessun modello la sa fare), la ricerca «solo PDF senza negozi» con filetype:pdf e -site:, e quella dentro IMSLP. IL NUMERO DI CATALOGO: al modello si chiede di trovarlo (RV, BWV, K, Op.) perche' e' la chiave che usano le biblioteche e i negozi molto meno — «RV 269» trova meglio di «La Primavera» — e il programma lo usa per comporre quelle ricerche. Al modello si detta anche COME cercare: operatori, altre lingue, e cambiare chiave invece di insistere se il primo giro da' solo negozi.` },
+  { n: `Cercare spartiti in tutto il web`, k: ["cercare in tutto il web", "ricerca web", "cercare sul web", "spartiti sul web", "come una ricerca google", "in tutto il web", "ricerca online"], s: `Cercare spartiti in tutto il web: LA CARD HA DUE STATI E BASTA (dal 15/09/2026 sera). CE L'HO FATTA: lo spartito, disegnato, suonabile, da tenere in un tocco. NON CE L'HO FATTA: una riga, i TRE posti migliori, e la ricerca fra le immagini. Niente altro: niente intestazioni di sezione, niente resoconto di dove sono andato a guardare, niente archivio nominato quando non ha trovato niente. Il Ghost, quattro segnalazioni in un giorno: «più del 90% e' spazzatura e rumore di fondo», «cosi' e' come cercare su Google, anzi peggio! si perde il senso stesso dell'app: deve essere un facilitatore, un'estensione digitale del Ghost, non un impaccio». Le tre risposte precedenti avevano ACCORCIATO e PIEGATO i blocchi senza toglierne nessuno: il problema non era la loro lunghezza, era che c'erano. I RISULTATI SI FILTRANO PER PERTINENZA PRIMA CHE PER COSTO: su «Englishman in New York» i primi cinque erano Joplin e Dowland, tutti marcati GRATIS e tutti in cima, mentre le trascrizioni vere stavano sotto. Un risultato gratis sul brano sbagliato non e' un risultato: e' rumore con una medaglia.` },
+  { n: `Il risultato e' lo spartito, non i link`, k: ["il risultato e' lo spartito", "non una lista di link", "riportare l'abc", "notazione nelle pagine", "abc dal web"], s: `Il risultato e' lo spartito, non i link: IL RISULTATO E' LO SPARTITO, NON UNA LISTA DI LINK (dal Ghost, 15/09/2026: «altrimenti la faccio da solo la ricerca, se devo aprirli tutti qual e' il tempo che risparmio?»). Il plugin di ricerca non restituisce solo gli indirizzi: restituisce IL CONTENUTO delle pagine. Quindi al modello si chiede, prima di tutto il resto, di RIPORTARE PER INTERO la notazione ABC se l'ha vista in una delle pagine lette — e ce n'e' in tante: abcnotation, i forum di musicisti, le raccolte di sessione. Quello che torna passa dall'accettore e compare nella card come SPARTITO VERO: disegnato, suonabile, con il pulsante per tenerlo nel percorso. I link restano sotto, come ripiego per confrontare o cercare altre versioni. Se in nessuna pagina c'era ABC il modello deve dirlo e NON inventarlo: un ABC scritto a memoria e' musica sbagliata che sembra trovata. Lo spartito preso cosi' e' trattato come roba d'archivio — viene da fuori, quindi una battuta che non torna e' un avviso e non un rifiuto — e porta scritto che e' la trascrizione di qualcun altro. CERCA ANCHE IN TUTTO IL WEB, dal 15/09/2026: oltre all'archivio parte una ricerca web vera (come una ricerca Google), che copre quello che l'archivio non ha — classica, rock, pop. La card tiene le due cose SEPARATE perche' non sono la stessa: dall'archivio esce ABC pronto che si puo' TENERE (si apre, si suona, si salva nel percorso) e costa zero; dal web escono INDIRIZZI da APRIRE, e quella ricerca passa da un modello quindi COSTA. GLI INDIRIZZI LI METTE IL PROGRAMMA, non il modello: la ricerca per IMMAGINI (uno spartito E' un'immagine: si vede il pentagramma senza aprire niente — la mossa piu' veloce, e nessun modello la sa fare), la ricerca «solo PDF senza negozi» con filetype:pdf e -site:, e quella dentro IMSLP. IL NUMERO DI CATALOGO: al modello si chiede di trovarlo (RV, BWV, K, Op.) perche' e' la chiave che usano le biblioteche e i negozi molto meno — «RV 269» trova meglio di «La Primavera» — e il programma lo usa per comporre quelle ricerche. Al modello si detta anche COME cercare: operatori, altre lingue, e cambiare chiave invece di insistere se il primo giro da' solo negozi.` },
   { n: `Gli indirizzi li mette il programma`, k: ["indirizzi inventati", "link inventati", "link finti", "da dove vengono i link", "ordine dei risultati"], s: `Gli indirizzi li mette il programma: GLI INDIRIZZI LI METTE IL PROGRAMMA, non il modello: vengono dalle annotazioni della risposta, cioe' da quello che il motore ha davvero restituito. Al modello si vieta di scriverli, e se ne scrive uno lo stesso viene TOLTO e il numero di quelli tolti si dice. Un link ricordato a memoria porta a una pagina che non esiste, ed e' indistinguibile da uno buono finche' non ci clicchi. I risultati sono ORDINATI per quanto sono vicini a qualcosa di usabile qui dentro: prima chi da' ABC, poi MusicXML, poi i PDF e le immagini, ultimi i video. Se il modello ha risposto SENZA fare nessuna ricerca vera, la card lo dice. DAL 15/09/2026 NON SERVE PIU' APRIRE NIENTE: se nessuna pagina aveva ABC ma la ricerca ha trovato un PDF o un'immagine, il programma se li fa leggere da solo — e li prova TUTTI, fino a quattro, non solo quello che il modello ha nominato — vedi la scheda «Leggere da se' il PDF che la ricerca trova». Fino a quel giorno qui c'era scritto di aprire il link, fare uno screenshot e allegarlo a mano: era vero, ed e' esattamente il lavoro che il Ghost non voleva fare.` },
   { n: `Archivi di spartiti che non posso leggere`, k: ["songsterr", "musescore", "ultimate guitar", "spartiti rock", "tablature rock", "spartiti di canzoni", "altri archivi"], s: `Archivi di spartiti che non posso leggere: QUELLO CHE NON SA FARE, e la distinzione che conta: rock, metal e pop in QUELL'archivio non ci sono. Ma ESISTONO ALTROVE, e l'app lo dice per nome invece di far credere che non esistano — il 14/09/2026 il Ghost ha mandato tre schermate di Lateralus dei Tool su MuseScore e Songsterr, con la riga del basso, per smentire la frase «non ce ne sono altri» che l'app gli aveva scritto. Aveva ragione. Quello che e' vero e' un'altra cosa: quegli archivi non si possono LEGGERE da dentro l'app, ed e' misurato, non supposto — Songsterr risponde con i dati giusti ma senza le intestazioni CORS e col preflight a 404, quindi un browser non puo' leggerlo; MuseScore risponde 403 a chiunque non sia un browser vero. Quindi nel caso «non trovato» la card mostra i LINK alla ricerca gia' fatta su quegli archivi: si aprono fuori dall'app, con un tocco del Ghost, e quello che trova la' resta la' — non entra nei percorsi. Se il Ghost chiede uno di quei brani: non dirgli che non esiste e non dire che non hai accesso a internet. Digli che li' non c'e', che altrove c'e', e che i link sono nella card. L'altra strada dentro l'app e' farsi scrivere una linea da un modello, che e' un'invenzione ispirata al brano e NON la sua trascrizione: va detto ogni volta.`},
   { n: `Leggere da se' il PDF che la ricerca trova`, k: ["legge il pdf", "leggere il pdf", "spartito in pdf", "pdf dello spartito", "apre il pdf", "scaricare il pdf"], s: `Leggere da se' il PDF che la ricerca trova: dal 15/09/2026 la catena si chiude da sola. Se la ricerca sul web non trova notazione ABC in nessuna pagina ma trova un PDF o un'immagine, il programma se li fa LEGGERE e ne tira fuori lo spartito, senza che il Ghost apra niente. I CANDIDATI SONO FINO A QUATTRO, non uno: quelli che il modello dichiara (gliene vengono chiesti fino a tre) PIU' quelli che stanno negli indirizzi veri della ricerca, che il programma ha gia' in mano. Ordine: prima i gratis, poi i PDF sulle immagini — un PDF e' quasi sempre lo spartito INTERO, un'immagine quasi sempre solo la prima pagina o l'anteprima di un negozio. Il 15/09 il programma ne provava UNO: su «La Primavera» ha pescato l'unico che rispondeva vuoto e si e' fermato, mentre sullo schermo c'erano altri cinque PDF gratuiti. Un tentativo su sei non e' un tentativo. SE NON CE LA FA NON RACCONTA PERCHE': dice quanti ne ha aperti, e basta — prima finiva nella card il messaggio d'errore grezzo del fornitore, che non e' una risposta. A scaricare il documento e' il server del modello, non il telefono: percio' funziona anche sui siti che al browser non lo lascerebbero prendere (Mutopia, per esempio, non manda le intestazioni CORS — misurato). Quello che ne esce e' trattato come roba d'archivio: passa dall'accettore, e nella card c'e' scritto che e' stato LETTO da un PDF o da un'immagine, perche' una lettura sbaglia le note in un modo che il controllo non vede — il pentagramma va guardato prima di fidarsi. Se nessuno dei due passa il controllo, l'app lo dice e non da' niente, invece di dare uno spartito rotto.` },
@@ -8880,8 +8881,22 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   // brani ha restituito l'archivio, quanti ne ho tolti io, quale parola è caduta a vuoto — e
   // dentro un componente nessuna prova lo raggiungeva. È esattamente lì che il 14/09 ha detto al
   // Ghost «te li ho tolti» su zero risultati, cioè avendo tolto niente.
-  const testoRicercaSpartiti = (chiesto, esito) =>
-    spiegazioneRicerca({ query: chiesto.query, strumento: chiesto.strumento, autore: chiesto.autore, esito }).testo;
+  // 15/09/2026, QUARTA SEGNALAZIONE E ULTIMA. «ancora una risposta in cui più del 90% è spazzatura
+  // e rumore di fondo per l'utente, ed è presente ancora la parte di the session».
+  // I tre giri precedenti hanno ACCORCIATO il messaggio dell'archivio. Era la risposta sbagliata a
+  // tutte e tre le volte: il Ghost non chiedeva un messaggio più corto, chiedeva CHE NON CI FOSSE.
+  // Un archivio di musica tradizionale irlandese che non ha Sting non è un fatto — è la definizione
+  // di quell'archivio. Dirlo in una riga è dirlo lo stesso.
+  // Da adesso: se l'archivio non ha trovato niente, NON SI NOMINA. Si cerca lo stesso (costa zero e
+  // ogni tanto azzecca), ma lo zero resta dentro il programma. Quello che esce è la ricerca web.
+  // Restano fuori solo le note che dicono che ho cercato una COSA DIVERSA da quella chiesta
+  // («Sting» tolto perché letto come autore): quelle non parlano dell'archivio, parlano della
+  // domanda, e cambiano cosa fa il Ghost.
+  const testoRicercaSpartiti = (chiesto, esito) => {
+    const s = spiegazioneRicerca({ query: chiesto.query, strumento: chiesto.strumento, autore: chiesto.autore, esito });
+    if (s.caso === "trovati") return s.testo;
+    return String(s.testo || "").split("\n").filter((r) => /non filtra|come autore/.test(r)).join(" ").trim();
+  };
   // ══ LEGGERE UNO SPARTITO DA UN'IMMAGINE ═══════════════════════════════════════════════════
   // Vedi briefDiTrascrizione. Tre tentativi come per gli spartiti generati, e per la stessa ragione:
   // il disaccordo torna al modello come materia del giro dopo, invece di essere scartato in
@@ -8958,7 +8973,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         0.3, 700, settings, true, null, (raw) => leggiDiagnosticaRicerca(raw, diag),
       );
       const { testo, inventati } = senzaIndirizziInventati(grezzo, diag.fonti);
-      const fonti = fontiPerSpartito(diag.fonti);
+      const fonti = fontiPerSpartito(diag.fonti, chiesto.query);
       // Il numero di catalogo, se il modello l'ha trovato, rende MOLTO più precise le ricerche che
       // il Ghost può fare in un tocco: «RV 269» non lo usa nessun negozio, lo usano le biblioteche.
       const catalogo = catalogoDaRicerca(grezzo);
@@ -10469,6 +10484,26 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                 </div>`}
               </div>`;
             })()}
+            ${/* ══ LA CARD DELLA RICERCA — RIFATTA IL 15/09/2026 SERA ═══════════════════════════
+                  Il Ghost, quarta volta in un giorno, davanti a nove schermate:
+                    «più del 90% è spazzatura e rumore di fondo per l'utente»
+                    «così è come cercare su Google, anzi peggio! si perde il senso stesso dell'app.
+                     deve essere un facilitatore, un'estensione digitale del Ghost, non un impaccio»
+                  Le tre risposte precedenti erano tutte e tre sbagliate nello stesso modo: ho
+                  ACCORCIATO i blocchi, poi li ho PIEGATI, poi li ho accorciati ancora. Nessuna delle
+                  tre toglieva niente, e il problema non era la lunghezza dei blocchi: era che
+                  c'erano. «▸ THE SESSION — HO CERCATO», «▸ E IN TUTTO IL RESTO DEL WEB», «Cerca come
+                  cercherebbe uno scaltro», «E dove sta la roba gratis», «Dove cercare a mano», dieci
+                  link: sono tutta roba che ho aggiunto io, una alla volta, ognuna con la sua buona
+                  ragione, e insieme fanno la pozza. Una card che si deve LEGGERE per trovare la
+                  risposta non è un facilitatore: è un compito in più.
+                  Adesso la card ha due stati e basta.
+                    · CE L'HO FATTA  → lo spartito. Disegnato, suonabile, da tenere in un tocco.
+                    · NON CE L'HO FATTA → una riga, e i tre posti migliori dove c'è.
+                  Niente intestazioni di sezione, niente resoconto di dov'ero andato a guardare,
+                  niente archivio nominato quando non ha trovato niente. La casella per correggere
+                  le parole resta — serve quando la frase parlata è stata capita male — ma sta in
+                  fondo, chiusa, e non annuncia niente. */ ""}
             ${m.ricercaSpartiti && (() => {
               const st = spartitoStato[mid] || {};
               const query = st.query !== undefined ? st.query : m.ricercaSpartiti.query;
@@ -10476,127 +10511,45 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
               const pil = st.pil || pilastroDelFuoco();
               const lista = percorsi[pil] || [];
               const pid = lista.some((p) => p.id === st.percorsoId) ? st.percorsoId : (lista[0]?.id || "");
+              const trovati = (st.webAbc || []).length > 0 || (st.tunes || []).length > 0 || !!st.brano;
+              const alLavoro = st.busy || st.webStato === "in-corso" || st.webLetturaImmagine === "in-corso";
+              // I TRE POSTI MIGLIORI, non dieci. Sono già ordinati per pertinenza (vedi
+              // fontiPerSpartito): i primi tre sono i tre che parlano davvero del brano chiesto.
+              const tre = (st.webFonti || []).slice(0, 3);
+              // La ricerca fra le IMMAGINI è l'unica delle ricerche già pronte che è sopravvissuta,
+              // e non per simmetria: è la mossa con cui il Ghost il brano l'ha trovato DAVVERO,
+              // con lo screenshot a dimostrarlo (Google Immagini, titolo inglese più 乐谱). Uno
+              // spartito È un'immagine: si vede il pentagramma senza aprire niente.
+              const fraLeImmagini = (st.webAMano || []).find((r) => r.id === "immagini");
               return html`<div class="r-draft-card">
-                ${/* 15/09/2026 — L'ARCHIVIO SI FA VEDERE SOLO SE HA QUALCOSA. Su «La Primavera di
-                      Vivaldi» questo blocco occupava mezza schermata — intestazione, casella di
-                      ricerca, spiegazione delle parole estratte — per dire ZERO, e l'archivio è di
-                      musica tradizionale irlandese: su un brano di Vivaldi lo zero è la normalità,
-                      non una notizia. Il Ghost, terza volta che lo segnala: «ancora con questo the
-                      session». Quando non ha trovato niente resta una riga, e la casella per
-                      correggere le parole sta piegata dentro — serve, ma non prima del risultato. */ ""}
-                ${(st.tunes || []).length > 0 ? html`<div>
-                  <div class="r-draft-label">▸ ${ARCHIVIO_SPARTITI.nome.toUpperCase()} — HO CERCATO «${query}»</div>
-                  <div style="display:flex;gap:8px;margin-top:6px">
-                    <input class="r-input" style="flex:1" value=${bozza} disabled=${st.busy}
-                      onInput=${(e) => patchSpartito(mid, { bozzaQuery: e.target.value })}
-                      onKeyDown=${(e) => e.key === "Enter" && rifaiRicercaSpartiti(mid, e.target.value)} />
-                    <button class="r-btn r-draft-copy" onClick=${() => rifaiRicercaSpartiti(mid, bozza)} disabled=${st.busy || !String(bozza).trim()}>${st.busy ? "…" : "Cerca ancora"}</button>
-                  </div>
-                  <div class="r-hub-detail">Queste parole le ho estratte dalla tua frase. Se non sono quelle giuste correggile qui: non passa da nessun modello, non costa niente.</div>
-                </div>` : html`<details>
-                  <summary class="r-hub-detail" style="cursor:pointer;user-select:none">Cerco con «${query}» — tocca per cambiare le parole</summary>
-                  <div style="display:flex;gap:8px;margin-top:6px">
-                    <input class="r-input" style="flex:1" value=${bozza} disabled=${st.busy}
-                      onInput=${(e) => patchSpartito(mid, { bozzaQuery: e.target.value })}
-                      onKeyDown=${(e) => e.key === "Enter" && rifaiRicercaSpartiti(mid, e.target.value)} />
-                    <button class="r-btn r-draft-copy" onClick=${() => rifaiRicercaSpartiti(mid, bozza)} disabled=${st.busy || !String(bozza).trim()}>${st.busy ? "…" : "Cerca ancora"}</button>
-                  </div>
-                  <div class="r-hub-detail">Le ho estratte dalla tua frase. Correggerle non costa niente.</div>
-                </details>`}
-                ${/* 14/09/2026 — I LINK AGLI ARCHIVI CHE NON POSSO INTERROGARE. Il Ghost ha
-                      risposto al messaggio dell'app mandando Lateralus dei Tool su MuseScore e su
-                      Songsterr: esistono, e «non ce ne sono altri» era falso. Quello che è vero è
-                      che non li posso LEGGERE da qui (misurato: CORS assente, 403 anti-robot).
-                      Allora l'app fa l'unica cosa onesta che può — dice dove sono e ci porta. Non
-                      parte niente da solo: è un link, e il gesto è il suo. */ ""}
-                ${/* 15/09/2026 — LA RICERCA SUL WEB. Il Ghost: «deve cercare online, in tutto il
-                      web, come una ricerca Google, non solo in archivi». Sta sotto e SEPARATA da
-                      quella d'archivio, perché le due cose non sono la stessa: sopra c'è musica
-                      che si può TENERE (ABC pronto, gratis); qui ci sono posti da APRIRE, e quello
-                      che c'è là resta là finché non lo fotografi. Gli indirizzi sono quelli che il
-                      motore ha restituito, non quelli che il modello ricorda. */ ""}
-                ${st.webStato && html`<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">
-                  <div class="r-draft-label">▸ E IN TUTTO IL RESTO DEL WEB</div>
-                  ${st.webStato === "in-corso" && html`<div class="r-hub-detail">Sto cercando…</div>`}
-                  ${st.webStato === "errore" && st.webNota && html`<div class="r-error" style="margin-top:4px">${st.webNota}</div>`}
-                  ${/* 15/09/2026 — LO SPARTITO PRIMA DEI LINK. Il Ghost: «come risultato voglio lo
-                        spartito, non una lista di link, altrimenti la faccio da solo la ricerca. Se
-                        devo mettermi ad aprirli tutti, qual è il tempo che risparmio?». Aveva
-                        ragione: una lista di link è un compito, non una risposta. Se una delle
-                        pagine lette aveva notazione ABC, qui c'è la MUSICA — disegnata, suonabile,
-                        e da tenere in un tocco. I link restano sotto, come ripiego. */ ""}
-                  ${st.webLetturaImmagine === "in-corso" && html`<div class="r-hub-detail" style="margin-top:6px">Sto leggendo i documenti che ho trovato${st.webDaProvare > 1 ? ` (${st.webProvati || 1} di ${st.webDaProvare})` : ""}…</div>`}
-                  ${st.webLetturaImmagine === "rifiutata" && html`<div class="r-hub-detail" style="margin-top:6px">Ho aperto ${st.webProvati === 1 ? "il documento che ho trovato" : `i ${st.webProvati} documenti che ho trovato`}: nessuno si lascia leggere in modo affidabile. Qui sotto ci sono i posti dove c'è.</div>`}
-                  ${(st.webAbc || []).map((x, i) => html`<div key=${i} class="r-draft-card" style="margin-top:6px">
-                    <div class="r-draft-label">▸ SPARTITO TROVATO — ${x.analisi.titolo || "senza titolo"}${x.analisi.tonalita ? ` · ${x.analisi.tonalita}` : ""} · ${x.analisi.battute.length} battute</div>
-                    <div class="r-hub-detail">${x.daImmagine ? `L'ho LETTO DA ${/\.pdf(\?|$)/i.test(String(x.daImmagine)) ? "UN PDF" : "UN'IMMAGINE"} trovato sul web: le note possono essere sbagliate e il controllo non se ne accorge — guarda il pentagramma prima di fidartene. ` : ""}L'ho preso da una pagina, non l'ho scritto io: è la trascrizione di qualcun altro e può avere i suoi difetti.${(x.analisi.avvisi || []).length ? html` Il controllo segnala: ${x.analisi.avvisi.map((a) => a.motivo).join("; ")}.` : ""}</div>
-                    <${SpartitoView} doc=${{ id: `w-${mid}-${i}`, name: "trovato.abc", title: x.analisi.titolo || "trovato", text: x.abc, date: new Date().toISOString() }} color=${C.vidya} onAggiorna=${() => {}} />
-                    ${lista.length ? html`<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
-                      <select class="r-input" value=${pil} onChange=${(e) => patchSpartito(mid, { pil: e.target.value, percorsoId: "" })}>
-                        ${PILASTRI_NOMI.map((k) => html`<option key=${k} value=${k}>${k.toUpperCase()}</option>`)}
-                      </select>
-                      <select class="r-input" style="flex:1;min-width:140px" value=${pid} onChange=${(e) => patchSpartito(mid, { percorsoId: e.target.value })}>
-                        ${lista.map((p) => html`<option key=${p.id} value=${p.id}>${p.title}</option>`)}
-                      </select>
-                      <button class="r-btn r-draft-copy" onClick=${() => tieniSpartitoDalWeb(mid, x)}>Tieni</button>
-                    </div>` : ""}
-                  </div>`)}
-                  ${/* 15/09/2026 — TUTTO QUESTO STA PIEGATO. Il Ghost, davanti a sei schermate di
-                        card: «ancora testo su testo di quasi spazzatura, io voglio lo spartito, non
-                        mi interessa dove non l'hai trovato o dove l'hai trovato; tutto il resto è
-                        spreco di token e mio tempo ed energie nel cercare la risposta vera nella
-                        risposta data». Aveva ragione due volte: i link servono quando lo spartito
-                        NON c'è, e anche allora servono in tre, non in venti. Quindi il default è
-                        chiuso, e quello che si vede aperto è la musica.
-                        `<details>` è HTML nativo: non costa stato, non costa un render, e si
-                        ricorda da sé se è aperto finché la card è viva. */ ""}
-                  ${st.webStato === "fatta" && (st.webFonti || []).length > 0 && html`<details style="margin-top:8px">
-                    <summary class="r-hub-detail" style="cursor:pointer;user-select:none">${(st.webAbc || []).length ? "Altre versioni e dove cercarle" : `Dove si trova — ${(st.webFonti || []).length} ${(st.webFonti || []).length === 1 ? "posto" : "posti"}, gratis per primi`}</summary>
-                  ${(st.webFonti || []).map((f) => html`<div key=${f.url} class="r-entry-row" style="margin-top:4px">
-                    <div class="r-entry-line">${f.costo === "gratis" ? html`<b style="color:${C.bio};font-size:11px">GRATIS </b>` : f.costo === "pagamento" ? html`<span style="opacity:.5;font-size:11px">a pagamento · </span>` : f.costo === "misto" ? html`<span style="opacity:.6;font-size:11px">in parte gratis · </span>` : ""}<a href=${f.url} target="_blank" rel="noopener noreferrer" style="color:${C.vidya}">${f.titolo || f.dominio} ↗</a><span style="opacity:.55;font-size:11px"> · ${f.dominio}${f.che ? ` · ${f.che}` : ""}${f.portabile === "abc" ? " · si può portare qui dentro" : f.portabile === "musicxml" ? " · formato leggibile da un programma" : ""}</span></div>
-                  </div>`)}
-                  ${/* 15/09/2026 — GLI ARCHIVI LIBERI NON SI ASPETTANO DAL MOTORE. Sui risultati veri
-                        del Ghost su «La Primavera», sei link su dieci erano negozi e IMSLP e Mutopia —
-                        che il testo dichiarava gratis — non avevano nemmeno il link: il motore non li
-                        aveva restituiti, perché chi vende fa SEO e loro no. Questi il programma li
-                        SA, e ce li porta senza chiedere il permesso a nessuno. */ ""}
-                  ${/* 15/09/2026 — LE MOSSE CHE FA UNA PERSONA SCALTRA, pronte in un tocco. La
-                        ricerca per IMMAGINI è la più utile di tutte per uno spartito — mostra il
-                        pentagramma senza aprire niente — e nessun modello la sa fare: la compone il
-                        programma. È esattamente la mossa che il Ghost aveva fatto a mano. */ ""}
-                  ${st.webStato === "fatta" && (st.webAMano || []).length > 0 && html`<div style="margin-top:8px">
-                    <div class="r-hub-detail"><b>Cerca come cercherebbe uno scaltro</b>${st.webCatalogo ? html` — il numero di catalogo è <b>${st.webCatalogo}</b>, e con quello si trova molto meglio che col titolo` : ""}. Queste sono già pronte:</div>
-                    ${(st.webAMano || []).map((r) => html`<div key=${r.id} class="r-entry-row" style="margin-top:4px">
-                      <div class="r-entry-line"><a href=${r.url} target="_blank" rel="noopener noreferrer" style="color:${C.vidya}">${r.nome} ↗</a><span style="opacity:.55;font-size:11px"> · ${r.che}</span></div>
-                    </div>`)}
-                  </div>`}
-                  ${st.webStato === "fatta" && archiviLiberiMancanti(query, st.webFonti || []).length > 0 && html`<div style="margin-top:8px">
-                    <div class="r-hub-detail"><b>E dove sta la roba gratis</b> — questi archivi il motore non li restituisce quasi mai, ma ci arrivo lo stesso: cercano già il tuo titolo.</div>
-                    ${archiviLiberiMancanti(query, st.webFonti || []).map((a) => html`<div key=${a.id} class="r-entry-row" style="margin-top:4px">
-                      <div class="r-entry-line"><b style="color:${C.bio};font-size:11px">GRATIS </b><a href=${a.url} target="_blank" rel="noopener noreferrer" style="color:${C.vidya}">${a.nome} ↗</a><span style="opacity:.55;font-size:11px"> · ${a.che}</span></div>
-                    </div>`)}
-                  </div>`}
-                  ${st.webInventati > 0 && html`<div class="r-esito-falso" style="margin-top:6px">Il modello ha scritto ${st.webInventati === 1 ? "un indirizzo" : `${st.webInventati} indirizzi`} che la ricerca non aveva restituito: ${st.webInventati === 1 ? "l'ho tolto" : "li ho tolti"}. Gli indirizzi qui sopra vengono dai risultati veri.</div>`}
-                  </details>`}
-                  ${st.webStato === "fatta" && !(st.webFonti || []).length && !st.webNota && html`<div class="r-hub-detail">La ricerca non ha restituito nessun indirizzo.</div>`}
-                </div>`}
-                ${/* 15/09/2026 — LA LISTA FISSA SOLO SE LA RICERCA NON HA DATO NIENTE. Prima erano
-                      sempre tutte e due, e nella prova sono comparsi SEI link: tre risultati veri e
-                      tre ricerche generiche, con IMSLP due volte. Una ricerca vera batte una lista
-                      scritta a mano; la lista resta come rete, per quando la ricerca non parte
-                      (niente chiave, niente rete) o torna vuota. */ ""}
-                ${!st.busy && !st.brano && !(st.tunes || []).length && !(st.webFonti || []).length && altroveDoveCercare(query).length > 0 && html`<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">
-                  <div class="r-hub-detail"><b>Dove cercare a mano</b> — la ricerca sul web non ha dato indirizzi, ma questi archivi hanno anche rock, metal, pop e classica. Non li so leggere da qui: si aprono nel browser, e quello che trovi là resta là.</div>
-                  ${altroveDoveCercare(query).map((a) => html`<div key=${a.id} class="r-entry-row" style="margin-top:4px">
-                    <div class="r-entry-line"><a href=${a.url} target="_blank" rel="noopener noreferrer" style="color:${C.vidya}">${a.nome} ↗</a><span style="opacity:.55;font-size:11px"> · ${a.perChe}</span></div>
-                  </div>`)}
-                </div>`}
-                ${st.esito && html`<div class="${st.esito.startsWith("Errore") ? "r-error" : "r-ok"}" style="margin-top:6px">${st.esito}</div>`}
+                ${/* ── CE L'HO FATTA: LO SPARTITO ─────────────────────────────────────────────── */ ""}
+                ${(st.webAbc || []).map((x, i) => html`<div key=${i}>
+                  <div class="r-draft-label">▸ ${x.analisi.titolo || "SPARTITO"}${x.analisi.tonalita ? ` · ${x.analisi.tonalita}` : ""} · ${x.analisi.battute.length} battute</div>
+                  <${SpartitoView} doc=${{ id: `w-${mid}-${i}`, name: "trovato.abc", title: x.analisi.titolo || "trovato", text: x.abc, date: new Date().toISOString() }} color=${C.vidya} onAggiorna=${() => {}} />
+                  ${lista.length ? html`<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
+                    <select class="r-input" value=${pil} onChange=${(e) => patchSpartito(mid, { pil: e.target.value, percorsoId: "" })}>
+                      ${PILASTRI_NOMI.map((k) => html`<option key=${k} value=${k}>${k.toUpperCase()}</option>`)}
+                    </select>
+                    <select class="r-input" style="flex:1;min-width:140px" value=${pid} onChange=${(e) => patchSpartito(mid, { percorsoId: e.target.value })}>
+                      ${lista.map((p) => html`<option key=${p.id} value=${p.id}>${p.title}</option>`)}
+                    </select>
+                    <button class="r-btn r-draft-copy" onClick=${() => tieniSpartitoDalWeb(mid, x)}>Tieni</button>
+                  </div>` : ""}
+                  ${/* LA PROVENIENZA RESTA, in una riga sola: non è rumore, è l'unica cosa che
+                        distingue una trascrizione da un'invenzione, e se l'ho LETTA da un'immagine
+                        le note possono essere sbagliate senza che il controllo se ne accorga. */ ""}
+                  <div class="r-hub-detail" style="margin-top:4px">${x.daImmagine
+                    ? `Letto da ${/\.pdf(\?|$)/i.test(String(x.daImmagine)) ? "un PDF" : "un'immagine"} — controlla il pentagramma contro l'originale prima di fidartene.`
+                    : "Trascrizione di qualcun altro, presa da una pagina."}${(x.analisi.avvisi || []).length ? ` ⚠ ${x.analisi.avvisi.map((a) => a.motivo).join("; ")}` : ""}</div>
+                </div>`)}
+                ${/* ── L'ARCHIVIO, SOLO SE HA TROVATO QUALCOSA. Quando non ha trovato niente non
+                      si nomina: un archivio di musica tradizionale irlandese che non ha Sting non
+                      è una notizia, è la sua definizione. ────────────────────────────────────── */ ""}
                 ${!st.brano && (st.tunes || []).map((t) => html`<div key=${t.id} class="r-entry-row" style="margin-top:4px;cursor:pointer" onClick=${() => apriBranoInChat(mid, t)}>
-                  <div class="r-entry-line">▸ ${t.name}${t.alias && t.alias !== t.name ? ` · ${t.alias}` : ""}<span style="opacity:.5;font-size:11px"> · ${t.type}</span></div>
+                  <div class="r-entry-line">▸ ${t.name}${t.alias && t.alias !== t.name ? ` · ${t.alias}` : ""}<span style="opacity:.5;font-size:11px"> · ${t.type} · ${ARCHIVIO_SPARTITI.nome}</span></div>
                 </div>`)}
                 ${st.brano && html`<div style="margin-top:8px">
-                  <div class="r-hub-detail"><b>${st.brano.name}</b> · ${st.brano.type} · ${(st.versioni || []).length} trascrizion${(st.versioni || []).length === 1 ? "e" : "i"}${st.scartate ? ` (${st.scartate} scartate dal controllo)` : ""}. Un brano tradizionale ne ha spesso parecchie, tutte legittime e diverse: scegli.</div>
+                  <div class="r-hub-detail"><b>${st.brano.name}</b> · ${st.brano.type} · ${(st.versioni || []).length} trascrizion${(st.versioni || []).length === 1 ? "e" : "i"}${st.scartate ? ` (${st.scartate} scartate dal controllo)` : ""}. Scegli.</div>
                   ${lista.length ? html`<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
                     <select class="r-input" value=${pil} onChange=${(e) => patchSpartito(mid, { pil: e.target.value, percorsoId: "" })}>
                       ${PILASTRI_NOMI.map((k) => html`<option key=${k} value=${k}>${k.toUpperCase()}</option>`)}
@@ -10604,13 +10557,40 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                     <select class="r-input" style="flex:1" value=${pid} onChange=${(e) => patchSpartito(mid, { percorsoId: e.target.value })}>
                       ${lista.map((p) => html`<option key=${p.id} value=${p.id}>${p.title}</option>`)}
                     </select>
-                  </div>` : html`<div class="r-hub-detail">In ${pil.toUpperCase()} non hai percorsi: creane uno (o cambia pilastro) e lo spartito avrà dove stare.</div>`}
+                  </div>` : html`<div class="r-hub-detail">In ${pil.toUpperCase()} non hai percorsi: creane uno e lo spartito avrà dove stare.</div>`}
                   ${(st.versioni || []).map((v) => html`<div key=${v.scelta} class="r-entry-row" style="margin-top:4px">
                     <div class="r-entry-line">${v.chiave} · ${v.battute} battute${v.fonte.autore ? ` · ${v.fonte.autore}` : ""}${(v.analisi.avvisi || []).length ? html`<span style="opacity:.6;font-size:11px"> · ⚠ ${v.analisi.avvisi.map((x) => x.motivo).join("; ")}</span>` : ""}</div>
                     <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => tieniSpartitoDallArchivio(mid, v)} disabled=${!lista.length}>Tieni</button>
                   </div>`)}
                   <button class="r-btn r-btn-ghost" style="margin-left:0;margin-top:6px" onClick=${() => patchSpartito(mid, { brano: null, versioni: null })}>Torna ai risultati</button>
                 </div>`}
+                ${/* ── MENTRE LAVORO: UNA RIGA. Non tre stati annunciati uno per uno. ────────── */ ""}
+                ${alLavoro && !trovati && html`<div class="r-hub-detail">${st.webLetturaImmagine === "in-corso" ? `Ho trovato ${st.webDaProvare === 1 ? "un documento" : `${st.webDaProvare} documenti`}, li sto leggendo…` : "Cerco lo spartito…"}</div>`}
+                ${/* ── NON CE L'HO FATTA: UNA RIGA E I TRE POSTI MIGLIORI. ──────────────────── */ ""}
+                ${!alLavoro && !trovati && html`<div>
+                  <div class="r-hub-detail">${st.webStato === "errore" ? (st.webNota || "La ricerca non è riuscita.")
+                    : st.webLetturaImmagine === "rifiutata" ? `Ho aperto ${st.webProvati === 1 ? "il documento che ho trovato" : `i ${st.webProvati} documenti che ho trovato`}, ma nessuno si legge in modo affidabile: non te lo do rotto.`
+                    : tre.length ? "Lo spartito non sono riuscito a portartelo dentro. Qui c'è:"
+                    : "Non l'ho trovato."}</div>
+                  ${tre.map((f) => html`<div key=${f.url} class="r-entry-row" style="margin-top:4px">
+                    <div class="r-entry-line">${f.costo === "gratis" ? html`<b style="color:${C.bio};font-size:11px">GRATIS </b>` : f.costo === "pagamento" ? html`<span style="opacity:.5;font-size:11px">a pagamento · </span>` : ""}<a href=${f.url} target="_blank" rel="noopener noreferrer" style="color:${C.vidya}">${f.titolo || f.dominio} ↗</a><span style="opacity:.55;font-size:11px"> · ${f.dominio}</span></div>
+                  </div>`)}
+                  ${fraLeImmagini && html`<div class="r-entry-row" style="margin-top:4px">
+                    <div class="r-entry-line"><a href=${fraLeImmagini.url} target="_blank" rel="noopener noreferrer" style="color:${C.vidya}">Cerca fra le immagini ↗</a><span style="opacity:.55;font-size:11px"> · si vede il pentagramma senza aprire niente</span></div>
+                  </div>`}
+                </div>`}
+                ${st.esito && html`<div class="${st.esito.startsWith("Errore") ? "r-error" : "r-ok"}" style="margin-top:6px">${st.esito}</div>`}
+                ${/* ── LA CASELLA, IN FONDO E CHIUSA. Serve — da una frase parlata il titolo non
+                      si indovina sempre — ma non è il risultato, quindi non sta davanti. ─────── */ ""}
+                <details style="margin-top:8px">
+                  <summary class="r-hub-detail" style="cursor:pointer;user-select:none">«${query}» — non sono le parole giuste?</summary>
+                  <div style="display:flex;gap:8px;margin-top:6px">
+                    <input class="r-input" style="flex:1" value=${bozza} disabled=${st.busy}
+                      onInput=${(e) => patchSpartito(mid, { bozzaQuery: e.target.value })}
+                      onKeyDown=${(e) => e.key === "Enter" && rifaiRicercaSpartiti(mid, e.target.value)} />
+                    <button class="r-btn r-draft-copy" onClick=${() => rifaiRicercaSpartiti(mid, bozza)} disabled=${st.busy || !String(bozza).trim()}>${st.busy ? "…" : "Cerca ancora"}</button>
+                  </div>
+                </details>
               </div>`;
             })()}
             ${m.rispostaTroncata && html`<div class="r-draft-card">
