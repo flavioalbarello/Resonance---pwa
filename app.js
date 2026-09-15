@@ -85,6 +85,7 @@ import {
   pdfDaRicerca,
   candidatiDaLeggere,
   primaImmagineMostrabile,
+  immaginiSpartitoDaSerper,
   senzaIndirizziInventati,
   richiestaDiTrascrizione,
   briefDiTrascrizione,
@@ -5100,7 +5101,7 @@ ALLA RICERCA SI CHIEDONO DATI, NON UN RACCONTO: tonalita', metro, andamento in b
 E QUI STA IL GUADAGNO PIU' GRANDE: quello che la ricerca trova non resta contesto da leggere. TONALITA' E METRO DIVENTANO REQUISITI di quel turno, controllati come tutti gli altri — se la ricerca dice 16/16 in Mi minore e il modello scrive 4/4 in Do, il disaccordo torna indietro e il modello riscrive. E' l'accettore d'azione di Anochin nella forma piena: il controllo si forma PRIMA di agire, insieme alla decisione, e specifica che forma dovra' avere il risultato. Quello che la ricerca NON ha trovato non diventa un vincolo: non si pretende cio' che non si sa.
 Il confronto sulla tonalita' guarda la fondamentale e il colore (maggiore/minore), non la scritta esatta: Edor (dorico di MI) vale come Em perche' e' minore quanto lui, mentre Mi maggiore no.
 IL GHOST VEDE COSA E' STATO LETTO, in un riquadro sopra il risultato: tonalita', metro, andamento e peculiarita', con scritto quali sono diventati requisiti. Serve anche a un altro scopo: se li' compare un brano diverso da quello che intendeva, la ricerca ha capito male e lui puo' correggere il nome e rigenerare. Se la ricerca non trova niente di specifico lo dice, e avverte che quello che esce va trattato come un'invenzione libera e non come qualcosa «nello stile di». Se la ricerca fallisce del tutto, si genera lo stesso ma dichiarando di aver scritto al buio: un riferimento non letto e' meno grave di un rifiuto secco.` },
-  { n: `Cercare spartiti in tutto il web`, k: ["cercare in tutto il web", "ricerca web", "cercare sul web", "spartiti sul web", "come una ricerca google", "in tutto il web", "ricerca online"], s: `Cercare spartiti in tutto il web: LA CARD HA DUE STATI E BASTA (dal 15/09/2026 sera). CE L'HO FATTA: lo spartito, disegnato, suonabile, da tenere in un tocco. NON CE L'HO FATTA: una riga, i TRE posti migliori, e la ricerca fra le immagini. Niente altro: niente intestazioni di sezione, niente resoconto di dove sono andato a guardare, niente archivio nominato quando non ha trovato niente. Il Ghost, quattro segnalazioni in un giorno: «più del 90% e' spazzatura e rumore di fondo», «cosi' e' come cercare su Google, anzi peggio! si perde il senso stesso dell'app: deve essere un facilitatore, un'estensione digitale del Ghost, non un impaccio». Le tre risposte precedenti avevano ACCORCIATO e PIEGATO i blocchi senza toglierne nessuno: il problema non era la loro lunghezza, era che c'erano. I RISULTATI SI FILTRANO PER PERTINENZA PRIMA CHE PER COSTO: su «Englishman in New York» i primi cinque erano Joplin e Dowland, tutti marcati GRATIS e tutti in cima, mentre le trascrizioni vere stavano sotto. Un risultato gratis sul brano sbagliato non e' un risultato: e' rumore con una medaglia. QUANDO NON CE L'HO FATTA, SE LA RICERCA HA TROVATO UN'IMMAGINE VERA dello spartito, la card la MOSTRA subito — è la mossa con cui il Ghost il brano l'ha trovato a mano in 15 secondi (Google Immagini, poi MuseScore): vedere il pentagramma non deve aspettare che un modello lo trascriva, che è più lento e può fallire. Prima quell'indirizzo veniva trovato e usato solo per LA lettura, e non si vedeva mai se la lettura falliva — un dato calcolato e mai guardato, la stessa forma di saveKey che nessuno controllava.` },
+  { n: `Cercare spartiti in tutto il web`, k: ["cercare in tutto il web", "ricerca web", "cercare sul web", "spartiti sul web", "come una ricerca google", "in tutto il web", "ricerca online"], s: `Cercare spartiti in tutto il web: LA CARD HA DUE STATI E BASTA (dal 15/09/2026 sera). CE L'HO FATTA: lo spartito, disegnato, suonabile, da tenere in un tocco. NON CE L'HO FATTA: una riga, i TRE posti migliori, e la ricerca fra le immagini. Niente altro: niente intestazioni di sezione, niente resoconto di dove sono andato a guardare, niente archivio nominato quando non ha trovato niente. Il Ghost, quattro segnalazioni in un giorno: «più del 90% e' spazzatura e rumore di fondo», «cosi' e' come cercare su Google, anzi peggio! si perde il senso stesso dell'app: deve essere un facilitatore, un'estensione digitale del Ghost, non un impaccio». Le tre risposte precedenti avevano ACCORCIATO e PIEGATO i blocchi senza toglierne nessuno: il problema non era la loro lunghezza, era che c'erano. I RISULTATI SI FILTRANO PER PERTINENZA PRIMA CHE PER COSTO: su «Englishman in New York» i primi cinque erano Joplin e Dowland, tutti marcati GRATIS e tutti in cima, mentre le trascrizioni vere stavano sotto. Un risultato gratis sul brano sbagliato non e' un risultato: e' rumore con una medaglia. QUANDO NON CE L'HO FATTA, SE LA RICERCA HA TROVATO UN'IMMAGINE VERA dello spartito, la card la MOSTRA subito — è la mossa con cui il Ghost il brano l'ha trovato a mano in 15 secondi (Google Immagini, poi MuseScore): vedere il pentagramma non deve aspettare che un modello lo trascriva, che è più lento e può fallire. Prima quell'indirizzo veniva trovato e usato solo per LA lettura, e non si vedeva mai se la lettura falliva — un dato calcolato e mai guardato, la stessa forma di saveKey che nessuno controllava. DAL 15/09/2026 SERA C'È ANCHE UNA RICERCA DIRETTA PER IMMAGINI (Serper, se SERPER_API_KEY è configurata su Vercel): non passa da nessun modello, quindi può mostrare il pentagramma PRIMA ancora che web_search abbia finito di rispondere, e costa una frazione (~$0,001 a chiamata contro $0,007+token). Gira IN PARALLELO alla ricerca col modello, non al suo posto: se manca la chiave, o non trova niente, il resto della catena copre comunque il caso — nessun errore visibile, solo meno strade tentate.` },
   { n: `Il risultato e' lo spartito, non i link`, k: ["il risultato e' lo spartito", "non una lista di link", "riportare l'abc", "notazione nelle pagine", "abc dal web"], s: `Il risultato e' lo spartito, non i link: IL RISULTATO E' LO SPARTITO, NON UNA LISTA DI LINK (dal Ghost, 15/09/2026: «altrimenti la faccio da solo la ricerca, se devo aprirli tutti qual e' il tempo che risparmio?»). Il plugin di ricerca non restituisce solo gli indirizzi: restituisce IL CONTENUTO delle pagine. Quindi al modello si chiede, prima di tutto il resto, di RIPORTARE PER INTERO la notazione ABC se l'ha vista in una delle pagine lette — e ce n'e' in tante: abcnotation, i forum di musicisti, le raccolte di sessione. Quello che torna passa dall'accettore e compare nella card come SPARTITO VERO: disegnato, suonabile, con il pulsante per tenerlo nel percorso. I link restano sotto, come ripiego per confrontare o cercare altre versioni. Se in nessuna pagina c'era ABC il modello deve dirlo e NON inventarlo: un ABC scritto a memoria e' musica sbagliata che sembra trovata. Lo spartito preso cosi' e' trattato come roba d'archivio — viene da fuori, quindi una battuta che non torna e' un avviso e non un rifiuto — e porta scritto che e' la trascrizione di qualcun altro. CERCA ANCHE IN TUTTO IL WEB, dal 15/09/2026: oltre all'archivio parte una ricerca web vera (come una ricerca Google), che copre quello che l'archivio non ha — classica, rock, pop. La card tiene le due cose SEPARATE perche' non sono la stessa: dall'archivio esce ABC pronto che si puo' TENERE (si apre, si suona, si salva nel percorso) e costa zero; dal web escono INDIRIZZI da APRIRE, e quella ricerca passa da un modello quindi COSTA. GLI INDIRIZZI LI METTE IL PROGRAMMA, non il modello: la ricerca per IMMAGINI (uno spartito E' un'immagine: si vede il pentagramma senza aprire niente — la mossa piu' veloce, e nessun modello la sa fare), la ricerca «solo PDF senza negozi» con filetype:pdf e -site:, e quella dentro IMSLP. IL NUMERO DI CATALOGO: al modello si chiede di trovarlo (RV, BWV, K, Op.) perche' e' la chiave che usano le biblioteche e i negozi molto meno — «RV 269» trova meglio di «La Primavera» — e il programma lo usa per comporre quelle ricerche. Al modello si detta anche COME cercare: operatori, altre lingue, e cambiare chiave invece di insistere se il primo giro da' solo negozi.` },
   { n: `Gli indirizzi li mette il programma`, k: ["indirizzi inventati", "link inventati", "link finti", "da dove vengono i link", "ordine dei risultati"], s: `Gli indirizzi li mette il programma: GLI INDIRIZZI LI METTE IL PROGRAMMA, non il modello: vengono dalle annotazioni della risposta, cioe' da quello che il motore ha davvero restituito. Al modello si vieta di scriverli, e se ne scrive uno lo stesso viene TOLTO e il numero di quelli tolti si dice. Un link ricordato a memoria porta a una pagina che non esiste, ed e' indistinguibile da uno buono finche' non ci clicchi. I risultati sono ORDINATI per quanto sono vicini a qualcosa di usabile qui dentro: prima chi da' ABC, poi MusicXML, poi i PDF e le immagini, ultimi i video. Se il modello ha risposto SENZA fare nessuna ricerca vera, la card lo dice. DAL 15/09/2026 NON SERVE PIU' APRIRE NIENTE: se nessuna pagina aveva ABC ma la ricerca ha trovato un PDF o un'immagine, il programma se li fa leggere da solo — e li prova TUTTI, fino a quattro, non solo quello che il modello ha nominato — vedi la scheda «Leggere da se' il PDF che la ricerca trova». Fino a quel giorno qui c'era scritto di aprire il link, fare uno screenshot e allegarlo a mano: era vero, ed e' esattamente il lavoro che il Ghost non voleva fare.` },
   { n: `Archivi di spartiti che non posso leggere`, k: ["songsterr", "musescore", "ultimate guitar", "spartiti rock", "tablature rock", "spartiti di canzoni", "altri archivi"], s: `Archivi di spartiti che non posso leggere: QUELLO CHE NON SA FARE, e la distinzione che conta: rock, metal e pop in QUELL'archivio non ci sono. Ma ESISTONO ALTROVE, e l'app lo dice per nome invece di far credere che non esistano — il 14/09/2026 il Ghost ha mandato tre schermate di Lateralus dei Tool su MuseScore e Songsterr, con la riga del basso, per smentire la frase «non ce ne sono altri» che l'app gli aveva scritto. Aveva ragione. Quello che e' vero e' un'altra cosa: quegli archivi non si possono LEGGERE da dentro l'app, ed e' misurato, non supposto — Songsterr risponde con i dati giusti ma senza le intestazioni CORS e col preflight a 404, quindi un browser non puo' leggerlo; MuseScore risponde 403 a chiunque non sia un browser vero. Quindi nel caso «non trovato» la card mostra i LINK alla ricerca gia' fatta su quegli archivi: si aprono fuori dall'app, con un tocco del Ghost, e quello che trova la' resta la' — non entra nei percorsi. Se il Ghost chiede uno di quei brani: non dirgli che non esiste e non dire che non hai accesso a internet. Digli che li' non c'e', che altrove c'e', e che i link sono nella card. L'altra strada dentro l'app e' farsi scrivere una linea da un modello, che e' un'invenzione ispirata al brano e NON la sua trascrizione: va detto ogni volta.`},
@@ -9047,6 +9048,30 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     registraAzione({ fase: "eseguita", azioneId: "salva_nel_percorso", etichetta: titolo, percorso: target.title, origine: "immagine", daPulsante: true });
     patchSpartito(mid, { trascritto: null, esito: `✓ Tenuto in "${target.title}" (${pil.toUpperCase()}). Ricontrollalo contro l'originale prima di fidartene.` });
   };
+  // ══ LA RICERCA DIRETTA PER IMMAGINI — 15/09/2026 ═══════════════════════════════════════════════
+  // Risposta alla domanda del Ghost «non le abbiamo già le API per la ricerca online, tipo quella
+  // di Balthasar?»: no, quella (`openrouter:web_search`) è un modello che cerca e RACCONTA — stesso
+  // strumento usato sotto in `cercaSpartitoNelWeb`. Questa invece chiama un'API di ricerca immagini
+  // vera (Serper) e non tocca nessun modello: zero token, ~$0,001 a chiamata contro gli $0,007+token
+  // del plugin, e nessuna prosa da cui estrarre un indirizzo con una regex.
+  // GIRA IN PARALLELO, non in fila: viene lanciata insieme a `cercaSpartitoNelWeb`, non dopo, così
+  // il pentagramma può comparire PRIMA che il modello abbia anche solo finito di rispondere. Se la
+  // chiave SERPER_API_KEY non è configurata su Vercel, l'endpoint lo dice e qui si tace: il resto
+  // della catena (web_search, poi l'eventuale lettura) copre comunque il caso.
+  const cercaImmagineDirettaSerper = async (mid, chiesto) => {
+    const q = [chiesto?.query, chiesto?.autore, "spartito"].filter(Boolean).join(" ").trim();
+    if (!q) return;
+    try {
+      const res = await fetch("/api/cerca-immagine-spartito", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: q }) });
+      const data = await res.json();
+      if (!data.ok) return;
+      const trovate = immaginiSpartitoDaSerper(data.risultati, [chiesto?.query, chiesto?.autore].filter(Boolean).join(" "));
+      // NON SI CANCELLA UN RISULTATO GIA' TROVATO: se `cercaSpartitoNelWeb` (che gira in parallelo)
+      // ha già mostrato un'immagine o una trascrizione vera, questa non la sovrascrive col vuoto —
+      // stessa regola scritta sopra sull'altro lato della gara.
+      if (trovate.length) patchSpartito(mid, { webImmagineMostrabile: trovate[0].url });
+    } catch { /* la ricerca diretta è un extra: se fallisce (rete, quota Serper) il resto della catena copre comunque il caso */ }
+  };
   // ══ CERCARE IN TUTTO IL WEB ═══════════════════════════════════════════════════════════════════
   // Vedi briefRicercaWebSpartito. Costa — passa da un modello con la ricerca attiva — a differenza
   // dell'archivio che è gratis, e la card lo dice. I link mostrati sono quelli delle ANNOTAZIONI,
@@ -9113,7 +9138,11 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // LA MOSSA DEL GHOST: vedere il pentagramma appena la ricerca lo trova, senza aspettare che
       // un modello lo trascriva — è più veloce e non può fallire come una lettura. Si mostra anche
       // se poi la trascrizione va a buon fine: la card sceglie cosa vederne (vedi `!trovati`).
-      patchSpartito(mid, { webImmagineMostrabile: primaImmagineMostrabile(daLeggere) });
+      // SOLO SE HA TROVATO QUALCOSA: la ricerca diretta per immagini (Serper, vedi
+      // cercaImmagineDirettaSerper) gira in parallelo e può essere già arrivata qui — un "non ho
+      // trovato niente" del web_search non deve cancellarla.
+      const immagineDalWeb = primaImmagineMostrabile(daLeggere);
+      if (immagineDalWeb) patchSpartito(mid, { webImmagineMostrabile: immagineDalWeb });
       if (!trovatiAbc.length && daLeggere.length) {
         patchSpartito(mid, { webLetturaImmagine: "in-corso", webProvati: 0, webDaProvare: daLeggere.length });
         let finiti = 0;
@@ -9240,7 +9269,10 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // guasto. Il resto lo dice la card, che ha due stati e non ha bisogno di didascalie.
       esito: esito.errore ? `Errore: ${esito.errore}` : "" });
     // E la ricerca che risponde davvero riparte con le parole NUOVE.
-    if (!esito.tunes.length) cercaSpartitoNelWeb(mid, { query: q, strumento: "", autore: "" });
+    if (!esito.tunes.length) {
+      cercaImmagineDirettaSerper(mid, { query: q, autore: "" });
+      cercaSpartitoNelWeb(mid, { query: q, strumento: "", autore: "" });
+    }
   };
   const tieniSpartitoDallArchivio = (mid, v) => {
     const st = spartitoStato[mid] || {};
@@ -9384,6 +9416,9 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         vibra("vidya");
         // E LA RICERCA SUL WEB, che è quella che copre tutto il resto. Parte dopo, senza far
         // aspettare l'archivio: quello che è gratis si vede subito, il resto arriva quando arriva.
+        // LA RICERCA DIRETTA PER IMMAGINI PARTE INSIEME, non dopo: non passa da nessun modello,
+        // quindi può arrivare prima ancora che web_search abbia finito di rispondere.
+        cercaImmagineDirettaSerper(assistantMsgId, chiestoSpartito);
         cercaSpartitoNelWeb(assistantMsgId, chiestoSpartito);
         return; // il finally esterno rilascia il Wake Lock e rimette a posto lo stato di invio
       }

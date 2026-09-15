@@ -1379,6 +1379,56 @@ describe("primaImmagineMostrabile — cosa si può mostrare subito, senza aspett
   });
 });
 
+// ── LA RICERCA DIRETTA PER IMMAGINI (SERPER) — 15/09/2026 ───────────────────────────────────────
+// «Non le abbiamo già le API per la ricerca online, tipo quella di Balthasar?» No: Balthasar usa
+// `openrouter:web_search`, un modello che cerca e racconta. Qui i risultati arrivano già strutturati
+// da un'API di ricerca immagini vera — stessa forma delle risposte reali di Serper
+// (title, imageUrl, link, domain), e stesso identico filtro di pertinenza di `fontiPerSpartito`:
+// un risultato che non condivide nessuna parola con la richiesta è un altro brano, non uno "zero"
+// da mostrare comunque (il difetto di «Englishman in New York» che restituiva Joplin e Dowland).
+describe("immaginiSpartitoDaSerper — la ricerca vera, non un modello che la descrive", () => {
+  const { immaginiSpartitoDaSerper } = app;
+
+  test("forma vera di Serper: prende imageUrl, scarta chi non ha un indirizzo http(s)", () => {
+    const grezzi = [
+      { title: "Englishman in New York sheet music", imageUrl: "https://musescore.com/static/a.png", link: "https://musescore.com/score/1", domain: "musescore.com" },
+      { title: "senza indirizzo", link: "https://x.org/pagina" },
+      { title: "indirizzo storto", imageUrl: "non-un-indirizzo" },
+    ];
+    const r = immaginiSpartitoDaSerper(grezzi, "englishman in new york");
+    assert.equal(r.length, 1);
+    assert.equal(r[0].url, "https://musescore.com/static/a.png");
+  });
+
+  test("STESSO GUASTO DI «Englishman in New York»: un risultato senza parole in comune non entra", () => {
+    const grezzi = [
+      { title: "Scott Joplin - The Entertainer sheet music", imageUrl: "https://x.org/joplin.png", link: "https://x.org/joplin", domain: "x.org" },
+      { title: "Englishman in New York - Sting", imageUrl: "https://y.org/sting.png", link: "https://y.org/sting", domain: "y.org" },
+    ];
+    const r = immaginiSpartitoDaSerper(grezzi, "englishman in new york sting");
+    assert.deepEqual(r.map((x) => x.url), ["https://y.org/sting.png"], "Joplin non c'entra niente col brano chiesto: fuori");
+  });
+
+  test("query vuota: pertinenza 1 per tutti, non si scarta niente (stessa regola di fontiPerSpartito)", () => {
+    const grezzi = [{ title: "qualunque cosa", imageUrl: "https://x.org/a.png", link: "https://x.org/a", domain: "x.org" }];
+    assert.equal(immaginiSpartitoDaSerper(grezzi, "").length, 1);
+  });
+
+  test("lista assente o non un array: non esplode, restituisce vuoto", () => {
+    assert.deepEqual(immaginiSpartitoDaSerper(undefined, "qualcosa"), []);
+    assert.deepEqual(immaginiSpartitoDaSerper(null, "qualcosa"), []);
+  });
+
+  test("ordina per pertinenza, il più pertinente prima", () => {
+    const grezzi = [
+      { title: "Stratus solo (poco a che vedere)", imageUrl: "https://a.org/1.png", link: "https://a.org/1", domain: "a.org" },
+      { title: "Stratus Billy Cobham bass sheet music", imageUrl: "https://b.org/2.png", link: "https://b.org/2", domain: "b.org" },
+    ];
+    const r = immaginiSpartitoDaSerper(grezzi, "stratus billy cobham");
+    assert.equal(r[0].url, "https://b.org/2.png");
+  });
+});
+
 // ── LA DIAGNOSTICA NON E' UNA RISPOSTA — 15/09/2026 sera ────────────────────────────────────────
 // Nella card, in verde, il Ghost si è trovato: «Ho provato a leggere quello che ho trovato, ma non
 // passa il controllo — da il PDF: Invalid file URL: Empty response body from URL:
