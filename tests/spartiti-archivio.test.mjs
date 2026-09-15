@@ -1429,6 +1429,55 @@ describe("immaginiSpartitoDaSerper — la ricerca vera, non un modello che la de
   });
 });
 
+// ── LO STRUMENTO CHIESTO NON PUO' SPARIRE — 15/09/2026, DUE GUASTI VERI ─────────────────────────
+// «Cerca lo spartito per basso di A Night in Tunisia» ha dato il pentagramma per CLARINETTO.
+// «Cerca la partitura per violoncello della Cavalcata delle Valchirie» ha dato una riduzione per
+// PIANOFORTE. In tutti e due i casi «basso»/«violoncello» non arrivava mai alla ricerca: la query
+// mandata a Serper non lo conteneva, e nemmeno la query usata per giudicare la pertinenza dei
+// risultati — comporle in due punti diversi le ha fatte divergere, ognuna dimenticando un pezzo.
+describe("strumentoInInglese e queryImmagineDiretta — lo strumento non si perde più", () => {
+  const { strumentoInInglese, queryImmagineDiretta, immaginiSpartitoDaSerper } = app;
+
+  test("basso -> bass, violoncello -> cello: il web delle sheet music usa l'inglese", () => {
+    assert.equal(strumentoInInglese("basso"), "bass");
+    assert.equal(strumentoInInglese("violoncello"), "cello");
+    assert.equal(strumentoInInglese("clarinetto"), "clarinet");
+  });
+
+  test("strumento non riconosciuto, vuoto o assente: stringa vuota, non un errore", () => {
+    assert.equal(strumentoInInglese("kazoo"), "");
+    assert.equal(strumentoInInglese(""), "");
+    assert.equal(strumentoInInglese(undefined), "");
+  });
+
+  test("IL GUASTO VERO: la query per A Night in Tunisia per basso contiene «bass»", () => {
+    const q = queryImmagineDiretta({ query: "a night in tunisia", strumento: "basso" });
+    assert.match(q, /\bbass\b/, "senza questa parola la ricerca non distingue dal clarinetto");
+    assert.match(q, /a night in tunisia/);
+  });
+
+  test("IL GUASTO VERO: la query per la Cavalcata delle Valchirie per violoncello contiene «cello»", () => {
+    const q = queryImmagineDiretta({ query: "cavalcata delle valchirie", autore: "Wagner", strumento: "violoncello" });
+    assert.match(q, /\bcello\b/, "senza questa parola la ricerca non distingue dalla riduzione per pianoforte");
+    assert.match(q, /wagner/i);
+  });
+
+  test("query vuota e strumento vuoto: stringa vuota, non 'undefined sheet music'", () => {
+    assert.equal(queryImmagineDiretta({}), "sheet music");
+    assert.equal(queryImmagineDiretta(), "sheet music");
+  });
+
+  test("LA STESSA QUERY SERVE ANCHE A GIUDICARE LA PERTINENZA: un risultato nell'altro strumento perde", () => {
+    const q = queryImmagineDiretta({ query: "a night in tunisia", strumento: "basso" });
+    const grezzi = [
+      { title: "A Night in Tunisia - Clarinet", imageUrl: "https://a.org/clarinet.png", link: "https://a.org/1", domain: "a.org" },
+      { title: "A Night in Tunisia - Bass sheet music", imageUrl: "https://b.org/bass.png", link: "https://b.org/2", domain: "b.org" },
+    ];
+    const r = immaginiSpartitoDaSerper(grezzi, q);
+    assert.equal(r[0].url, "https://b.org/bass.png", "il clarinetto non era stato chiesto: deve perdere");
+  });
+});
+
 // ── LA DIAGNOSTICA NON E' UNA RISPOSTA — 15/09/2026 sera ────────────────────────────────────────
 // Nella card, in verde, il Ghost si è trovato: «Ho provato a leggere quello che ho trovato, ma non
 // passa il controllo — da il PDF: Invalid file URL: Empty response body from URL:
