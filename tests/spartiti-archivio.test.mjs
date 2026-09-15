@@ -1716,3 +1716,83 @@ describe("LEGGERE UN DOCUMENTO HA UN TETTO SUO, PIÙ CORTO DI UNA CONVERSAZIONE"
     assert.match(codice, /\}, tetto \|\| TIMEOUT_MODELLO_MS\)/, "fetchConTetto riceve ancora solo il default");
   });
 });
+
+// ══ UNA SCALA NON È UNA LINEA DI BASSO — 15/09/2026 ═════════════════════════════════════════════
+// Dal Ghost, con lo spartito davanti: «se gli chiedo di creare una linea di basso in un re locrio
+// mi ha messo della scala di re locrio — quello non è una linea di basso».
+// È il modo tipico in cui un modello finge di aver capito una richiesta musicale: gli si nomina una
+// tonalità esotica, non sa cosa farne, e restituisce il MATERIALE invece della MUSICA — le note che
+// quella tonalità contiene, in fila. Ha la forma perfetta e supera ogni requisito che guardi la
+// forma: metro dichiarato, battute che tornano, tonalità giusta.
+describe("IL MATERIALE NON È LA MUSICA", () => {
+  const { requisitiDalBrief, corsaDiScala } = app;
+  const conRequisiti = (abc, brief) => analizzaSpartito(abc, "modello", requisitiDalBrief(brief));
+
+  test("la scala del modo, chiesta come linea di basso, viene fermata", () => {
+    const scala = "X:1\nT:Linea\nM:4/4\nL:1/8\nK:C\nCDEF GABc|defg abc'd'|";
+    const r = conRequisiti(scala, "crea una linea di basso in re locrio per l'atto 1");
+    assert.equal(r.ok, false);
+    assert.match(r.errori.map((e) => e.motivo).join(" "), /è la scala della tonalità, non una linea/);
+  });
+
+  test("ma una linea VERA passa: salti, figura che torna, respiro", () => {
+    // Note dell'accordo e salti, come una linea di basso vera.
+    const linea = "X:1\nT:Linea\nM:4/4\nL:1/8\nK:C\nC2 G,2 C2 E2|G2 E2 C2 G,2|C2 G,2 C2 E2|G2 E2 C4|";
+    const r = conRequisiti(linea, "crea una linea di basso in re locrio per l'atto 1");
+    assert.equal(r.ok, true, r.errori.map((e) => e.motivo).join(" · "));
+  });
+
+  test("E SE LA SCALA È QUELLO CHE HAI CHIESTO, la scala è il risultato giusto", () => {
+    // Un controllo che non sa distinguere «scrivimi una scala» da «scrivimi una linea» boccia la
+    // richiesta giusta. L'eccezione dev'essere esplicita, non un caso fortunato.
+    const scala = "X:1\nT:Scala\nM:4/4\nL:1/8\nK:C\nCDEF GABc|defg abc'd'|";
+    // ATTENZIONE — PRIMA VERSIONE FALSA (trovata dalla verifica di rottura, quarta volta in un
+    // giorno). Usava «scrivimi la scala di re locrio», che NON contiene nessuna parola di linea:
+    // tornava vuota per la PRIMA condizione, e l'eccezione non veniva mai messa alla prova.
+    // Togliendo l'eccezione il banco restava verde. Serve una frase che le attivi TUTTE E DUE.
+    assert.deepEqual(requisitiDalBrief("scrivimi la scala del basso in re locrio"), [],
+      "qui «basso» e «scala» ci sono tutti e due: è il caso che l'eccezione esiste per coprire");
+    assert.deepEqual(requisitiDalBrief("una melodia da usare come esercizio"), []);
+    assert.equal(analizzaSpartito(scala, "modello", requisitiDalBrief("scrivimi la scala del basso")).ok, true);
+  });
+
+  test("il requisito nasce SOLO da una richiesta che nomina una linea", () => {
+    assert.equal(requisitiDalBrief("un tema lento per l'atto IV").length, 1);
+    assert.equal(requisitiDalBrief("una melodia per flauto").length, 1);
+    assert.equal(requisitiDalBrief("un walking bass").length, 1);
+    assert.equal(requisitiDalBrief("un arpeggio di do").length, 0, "un arpeggio è materiale per definizione");
+    assert.equal(requisitiDalBrief("").length, 0);
+  });
+
+  test("una SCALETTA DI PASSAGGIO dentro una linea non è una scala", () => {
+    // Otto gradi congiunti di fila sono un'ottava intera. Quattro sono una figura.
+    const conScaletta = "X:1\nT:L\nM:4/4\nL:1/8\nK:C\nC2 G,2 CDEF|G2 E2 C2 G,2|C2 G,2 C2 E2|G2 E2 C4|";
+    const r = conRequisiti(conScaletta, "una linea di basso");
+    assert.equal(r.ok, true, r.errori.map((e) => e.motivo).join(" · "));
+  });
+
+  test("e la misura è la CORSA più lunga, non la media", () => {
+    assert.equal(corsaDiScala("CDEF GABc").corsa, 8, "un'ottava per gradi");
+    assert.equal(corsaDiScala("C2 G,2 C2 E2 G2 E2 C2 G,2").corsa, 1, "solo salti: nessuna corsa");
+    assert.equal(corsaDiScala("CDE").corsa, 0, "sotto le otto note non si giudica: troppo poco per dire");
+  });
+});
+
+// E IL COLLEGAMENTO, che non era coperto da niente: la verifica di rottura l'ha scoperto togliendo
+// `requisitiDalBrief` dalla generazione senza che una sola prova battesse ciglio. Un requisito
+// perfetto che nessuno applica è un requisito che non esiste — la stessa forma di PIANO_PDF.
+describe("I REQUISITI DEL BRIEF ARRIVANO DAVVERO ALLA GENERAZIONE", () => {
+  const codice = readFileSync(new URL("../app.js", import.meta.url), "utf8")
+    .split("\n").filter((r) => !/^\s*\/\//.test(r)).join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
+
+  test("quello che il Ghost ha chiesto diventa un requisito del controllo", () => {
+    assert.match(codice, /requisitiDalBrief\(spartitoBrief\)/,
+      "il requisito «non è una scala» non arriva a chi genera: nasce e muore inascoltato");
+  });
+
+  test("e si somma a quelli della ricerca invece di sostituirli", () => {
+    // Metro e tonalità trovati dalla ricerca sono requisiti quanto «non è una scala»: se il nuovo
+    // array li scavalcasse, guadagneremmo un controllo e ne perderemmo due.
+    assert.match(codice, /\[\.\.\.requisitiDallaScheda\(scheda\), \.\.\.requisitiDalBrief\(spartitoBrief\)\]/);
+  });
+});
