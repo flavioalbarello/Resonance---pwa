@@ -160,8 +160,40 @@ describe("CHIEDERE UNO SPARTITO A PAROLE", () => {
   test("LA FRASE VERA DEL GHOST, quella che ha prodotto il «non posso cercare online»", () => {
     const r = richiestaDiSpartito("Cerca online lo spartito per basso elettrico di come together dei Beatles e mostramelo");
     assert.ok(r, "non riconosciuta");
-    assert.equal(r.query, "come together Beatles");
+    assert.equal(r.query, "come together", "il TITOLO, non il gruppo");
+    assert.equal(r.autore, "Beatles", "«dei Beatles» è chi l'ha fatta, e va detto invece di finire nella ricerca");
     assert.equal(r.strumento, "basso", "lo strumento si dice al Ghost, anche se non filtra la ricerca");
+  });
+
+  test("IL BRANO STA DOPO «DELLA», L'AUTORE DOPO «DI» — e vanno separati", () => {
+    // La frase vera del Ghost, 15/09: «Cerca lo spartito per flauto traverso della Primavera di
+    // Antonio Vivaldi». L'app cercava «Antonio Vivaldi» — l'AUTORE invece del BRANO — perché
+    // prendeva il primo «di» della frase, e in italiano quello è quasi sempre chi l'ha scritta.
+    const casi = [
+      ["Cerca lo spartito per flauto traverso della primavera di Antonio Vivaldi", "primavera", "Antonio Vivaldi"],
+      // Tre parole in coda: senza il divieto di preposizioni dentro la cattura, «One dei Metallica»
+      // veniva preso tutto insieme e il titolo spariva dentro il nome del gruppo.
+      ["Cerca lo spartito per basso di One dei Metallica", "One", "Metallica"],
+      // Due «di» nella stessa frase: il primo è del titolo, l'ultimo è l'autore.
+      ["trova lo spartito del chiaro di luna di Beethoven", "chiaro luna", "Beethoven"],
+      ["cercami lo spartito del bolero di Ravel", "bolero", "Ravel"],
+      // E il caso in cui NON si toglie: togliendo «di Cooley's» non resterebbe niente da cercare.
+      ["cercami lo spartito di Cooley's", "Cooley's", ""],
+      ["scaricami lo spartito per violino di Egan's polka", "Egan's polka", ""],
+    ];
+    for (const [frase, query, autore] of casi) {
+      const r = richiestaDiSpartito(frase);
+      assert.ok(r, `non riconosciuta: ${frase}`);
+      assert.equal(r.query, query, frase);
+      assert.equal(r.autore || "", autore, `autore, in: ${frase}`);
+    }
+  });
+
+  test("lo strumento non spezza il titolo: esce prima che si guardi l'autore", () => {
+    // «per flauto traverso» sta IN MEZZO fra l'oggetto e il titolo.
+    assert.equal(richiestaDiSpartito("cerca lo spartito per flauto traverso della primavera").query, "primavera");
+    assert.equal(richiestaDiSpartito("cerca lo spartito per violoncello del bolero").query, "bolero");
+    assert.equal(richiestaDiSpartito("cerca lo spartito per flauto traverso della primavera").strumento, "flauto");
   });
 
   test("le forme normali di chiederlo arrivano tutte a una query utile", () => {
@@ -328,10 +360,10 @@ describe("LA SPIEGAZIONE DELLA RICERCA, caso per caso", () => {
   test("ZERO RISPOSTE: non si dice di aver tolto niente, perché non c'era niente", () => {
     const r = di({});
     assert.equal(r.caso, "nessuno");
-    assert.match(r.testo, /non conosce nessun brano con queste parole/);
+    assert.match(r.testo, /: zero\./);
     assert.doesNotMatch(r.testo, /tolt/i, `dice di aver tolto qualcosa: ${r.testo.slice(0, 200)}`);
     assert.doesNotMatch(r.testo, /quei titoli/i, "non ci sono titoli di cui parlare");
-    assert.doesNotMatch(r.testo, /0 brani/, "«ha risposto con 0 brani, ma...» era la frase sbagliata");
+    assert.doesNotMatch(r.testo, /0 brani|0 risultati/, "«ha risposto con 0 brani, ma...» era la frase sbagliata");
   });
 
   test("e il caso zero nasce dal filtro, non solo dal testo: lista vuota, nessuna parola «assente»", () => {
@@ -342,21 +374,22 @@ describe("LA SPIEGAZIONE DELLA RICERCA, caso per caso", () => {
   test("CENTO RISPOSTE NON PERTINENTI: lì sì che si dice quante e quale parola è caduta a vuoto", () => {
     const r = di({ grezzi: 100, scartati: 100, paroleAssenti: ["metallica"] });
     assert.equal(r.caso, "potati");
-    assert.match(r.testo, /ne ha restituiti 100/);
+    assert.match(r.testo, /100 risultati/);
     assert.match(r.testo, /«metallica» non compare/);
-    assert.match(r.testo, /Te li ho tolti/);
+    assert.match(r.testo, /non te la mostro/);
   });
 
   test("il plurale non si sbaglia: una parola «compare», due «compaiono»", () => {
-    assert.match(di({ grezzi: 9, scartati: 9, paroleAssenti: ["metallica"] }).testo, /la parola «metallica» non compare/);
-    assert.match(di({ grezzi: 9, scartati: 9, paroleAssenti: ["lateralus", "tool"] }).testo, /le parole «lateralus», «tool» non compaiono/);
+    assert.match(di({ grezzi: 9, scartati: 9, paroleAssenti: ["metallica"] }).testo, /«metallica» non compare in/);
+    assert.match(di({ grezzi: 9, scartati: 9, paroleAssenti: ["lateralus", "tool"] }).testo, /«lateralus», «tool» non compaiono in/);
+    assert.match(di({ grezzi: 1, scartati: 1, paroleAssenti: ["x"] }).testo, /1 risultato,/, "uno solo non è «1 risultati»");
   });
 
   test("SCARTATI SENZA PAROLE ASSENTI: c'è comunque una frase, e non nomina parole inesistenti", () => {
     // Caso vero: ogni parola compare da qualche parte, ma mai tutte nello stesso titolo.
     const r = di({ grezzi: 40, scartati: 40, paroleAssenti: [] });
     assert.equal(r.caso, "potati");
-    assert.match(r.testo, /nessuno conteneva tutte le parole/);
+    assert.match(r.testo, /nessuno con tutte le parole/);
     assert.doesNotMatch(r.testo, /«»/, "nessuna parola vuota fra virgolette");
   });
 
@@ -364,10 +397,10 @@ describe("LA SPIEGAZIONE DELLA RICERCA, caso per caso", () => {
     const conScarti = spiegazioneRicerca({ query: "morrison", esito: { ...vuoto, tunes: [{}, {}], pertinenti: 2, grezzi: 7, scartati: 5 } });
     assert.equal(conScarti.caso, "trovati");
     assert.match(conScarti.testo, /2 brani/);
-    assert.match(conScarti.testo, /5 non contenevano quello che hai chiesto/);
+    assert.match(conScarti.testo, /5 scartati su 7/);
     const pulito = spiegazioneRicerca({ query: "morrison", esito: { ...vuoto, tunes: [{}], pertinenti: 1, grezzi: 1, scartati: 0 } });
     assert.match(pulito.testo, /: 1 brano\./, pulito.testo.slice(0, 120));
-    assert.doesNotMatch(pulito.testo, /non contenevano/, "senza scarti non si parla di scarti");
+    assert.doesNotMatch(pulito.testo, /scartat/, "senza scarti non si parla di scarti");
   });
 
   test("ERRORE DI RETE: è una ricerca che NON E' PARTITA, e non va confusa con «non c'è»", () => {
@@ -379,8 +412,13 @@ describe("LA SPIEGAZIONE DELLA RICERCA, caso per caso", () => {
   });
 
   test("LO STRUMENTO si dice solo se il Ghost l'ha nominato", () => {
-    assert.match(spiegazioneRicerca({ query: "one", strumento: "basso", esito: vuoto }).testo, /«basso» non l'ho usato per filtrare/);
-    assert.doesNotMatch(di({}).testo, /non l'ho usato per filtrare/);
+    assert.match(spiegazioneRicerca({ query: "one", strumento: "basso", esito: vuoto }).testo, /«basso» non filtra/);
+    assert.doesNotMatch(di({}).testo, /non filtra/);
+    // E l'AUTORE tolto dalla ricerca si dice, o il Ghost non capisce perché ho cercato solo metà
+    // di quello che ha chiesto. È il difetto che ha visto il 15/09 con «la primavera di Vivaldi».
+    assert.match(spiegazioneRicerca({ query: "primavera", autore: "Antonio Vivaldi", esito: vuoto }).testo,
+      /«Antonio Vivaldi» l'ho letto come autore/);
+    assert.doesNotMatch(di({}).testo, /come autore/);
   });
 
   test("«NON CE NE SONO ALTRI» ERA FALSO: esistono, si nominano, e si dice perché non entrano qui", () => {
@@ -391,15 +429,17 @@ describe("LA SPIEGAZIONE DELLA RICERCA, caso per caso", () => {
     const r = di({});
     assert.doesNotMatch(r.testo, /non ne ho altri/, "la frase vecchia, quella sbagliata");
     assert.doesNotMatch(r.testo, /non ci saranno/, "non si profetizza sul repertorio di archivi altrui");
-    assert.match(r.testo, /ESISTONO ALTROVE/);
-    for (const nome of ["Songsterr", "MuseScore"]) assert.ok(r.testo.includes(nome), `manca ${nome}`);
-    assert.match(r.testo, /non posso fare è portarli qui dentro/);
-    assert.match(r.testo, /misurato, non supposto/);
+    assert.match(r.testo, /I link qui sotto portano dove invece c'è/);
+    // I nomi e il motivo tecnico di ciascuno stanno nella CARD, accanto al loro link, non nel
+    // messaggio: il muro di prosa che li elencava era tre schermate (15/09, «un po' scarso»).
+    for (const nome of ["Songsterr", "MuseScore", "IMSLP"]) {
+      assert.ok(r.altrove.some((a) => a.nome === nome), `manca ${nome}`);
+    }
   });
 
   test("i link ci sono davvero, portano la query, e sono link veri", () => {
     const r = di({});
-    assert.equal(r.altrove.length, 2);
+    assert.equal(r.altrove.length, 3, "Songsterr, MuseScore e IMSLP");
     for (const a of r.altrove) {
       assert.match(a.url, /^https:\/\//, a.url);
       assert.ok(a.url.includes(encodeURIComponent("lateralus tool")), `la query non è nell'indirizzo: ${a.url}`);
@@ -414,7 +454,7 @@ describe("LA SPIEGAZIONE DELLA RICERCA, caso per caso", () => {
     // E nemmeno su un guasto di rete: lì non si sa ancora se qui ci sia o no.
     assert.deepEqual(di({ errore: "rete assente" }).altrove, []);
     // Invece quando l'archivio ha risposto e nessuno era pertinente, sì.
-    assert.equal(di({ grezzi: 100, scartati: 100, paroleAssenti: ["metallica"] }).altrove.length, 2);
+    assert.equal(di({ grezzi: 100, scartati: 100, paroleAssenti: ["metallica"] }).altrove.length, 3);
   });
 
   test("ogni archivio dichiarato dice il MURO per cui non si può leggere, non «non si può»", () => {
