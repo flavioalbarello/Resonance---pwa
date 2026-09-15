@@ -220,20 +220,70 @@ function perLaVoce(testo) {
   return fuori.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// L'ANELLO DELLA VOCE — 15/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost: «sente la sua stessa voce e pensa sia stato io a dargli quel comando, infatti mi dice
+// hai ripetuto le mie opzioni». L'app legge ad alta voce, il microfono la sente, il testo rientra
+// come se l'avesse detto lui. Ogni giro è anche una chiamata pagata.
+//
+// LA DIFESA C'ERA E COPRIVA UN CHIAMANTE SU QUATTRO. `speakText` viene invocato da quattro posti —
+// il pulsante 🔊 di un messaggio, un altro pulsante, la navigazione a voce, e SIMBIOSI che parla da
+// sola quando ha qualcosa da dire — e solo la navigazione alzava la guardia. Simbiosi no: è la
+// sorgente più probabile dell'anello, perché parla senza che nessuno l'abbia toccata.
+//
+// È la stessa forma di difetto già scritta nel CLAUDE.md per `saveKey`: 76 chiamanti, zero
+// controlli, e «la correzione NON è controllare 76 chiamanti — il 77° se ne dimentica». Quindi la
+// difesa sta QUI, nell'imbuto, e vale per chiunque parli in futuro senza sapere niente di tutto
+// questo. Due difese indipendenti, perché una sola non basta:
+//  1. IL MICROFONO SI SPEGNE mentre l'app parla, e si riaccende dopo. Un microfono spento non può
+//     sentire niente: nessuna stima di tempo da azzeccare, nessuna corsa da vincere.
+//  2. QUELLO CHE SI E' APPENA DETTO RESTA SCRITTO, perché un risultato può essere CATTURATO mentre
+//     la sintesi parlava e CONSEGNATO dopo che ha finito — lì il microfono era già spento quando
+//     arriva, e la prima difesa non lo vede. Allora si confronta: se quello che si sente è dentro
+//     quello che si è appena detto, è eco.
+let _micSospendi = null, _micRiprendi = null;
+let _ultimoDetto = "", _dettoFinoA = 0;
+function registraMicrofono(sospendi, riprendi) { _micSospendi = sospendi; _micRiprendi = riprendi; }
+// Finestra stretta di proposito: la difesa vera è il microfono spento, questa copre solo il ritardo
+// di consegna. Larga, rischierebbe di scartare un comando vero del Ghost che ripete le stesse parole.
+const ECO_DOPO_MS = 2500;
+const PAROLE_VUOTE_ECO = new Set(["il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "di", "a", "da", "in", "con", "su", "per", "e", "che", "non", "si", "ho", "hai", "ha"]);
+function eEcoDellApp(sentito, ora = Date.now(), detto = _ultimoDetto, finoA = _dettoFinoA) {
+  if (ora > finoA || !detto) return false;
+  const pulisci = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+  const parole = pulisci(sentito).split(" ").filter((p) => p && !PAROLE_VUOTE_ECO.has(p));
+  if (parole.length < 2) return false;            // una parola sola non basta a decidere
+  const dentro = ` ${pulisci(detto)} `;
+  const quante = parole.filter((p) => dentro.includes(` ${p} `)).length;
+  return quante / parole.length >= 0.6;           // due terzi delle parole piene già dette = eco
+}
 function speakText(text, onEnd) {
   if (!window.speechSynthesis || !text) return;
   // L'imbuto: qualunque chiamante, presente o futuro, passa di qui.
   const daLeggere = perLaVoce(text);
   if (!daLeggere) return;
   window.speechSynthesis.cancel(); // sincrono, nello stesso istante del tocco: un ritardo qui fa bloccare l'audio ai browser mobili
+  _ultimoDetto = daLeggere;
+  _dettoFinoA = Number.MAX_SAFE_INTEGER;          // finché parla, tutto quello che somiglia è eco
+  try { _micSospendi && _micSospendi(); } catch { /* la voce non deve mai fallire per il microfono */ }
+  const chiudi = () => {
+    _dettoFinoA = Date.now() + ECO_DOPO_MS;
+    try { _micRiprendi && _micRiprendi(); } catch { /* idem */ }
+    onEnd && onEnd();
+  };
   const utter = new SpeechSynthesisUtterance(daLeggere);
   const voice = pickItalianVoice();
   if (voice) utter.voice = voice;
   utter.lang = voice?.lang || "it-IT";
   utter.rate = 1.0;
-  utter.onend = () => onEnd && onEnd();
-  utter.onerror = () => onEnd && onEnd();
-  window.speechSynthesis.speak(utter);
+  utter.onend = chiudi;
+  utter.onerror = chiudi;
+  // SE `speak` FALLISCE, il microfono resterebbe spento per sempre e la modalità voce morirebbe in
+  // silenzio — nessun errore a schermo, solo una funzione che «non va più». Trovato dal banco nel
+  // browser il 15/09/2026, per via di uno stub imperfetto: il difetto era vero lo stesso.
+  try { window.speechSynthesis.speak(utter); } catch { chiudi(); }
 }
 function stopSpeaking() {
   if (!window.speechSynthesis) return;
@@ -4877,7 +4927,7 @@ Cosa succede quando non ce la fa: il motivo torna al modello e riprova, al massi
   { n: `Memoria del dispositivo piena`, nucleo: true, k: ["memoria piena", "memoria del dispositivo", "striscia rossa", "non salva"], s: `Memoria del dispositivo piena: se lo spazio locale si esaurisce, in cima all'app compare una striscia rossa che lo dice, quante scritture sono andate perdute in questa sessione e su quale chiave l'ultima, con un pulsante che porta al backup. Prima dell'11/09/2026 il fallimento era muto: la funzione di salvataggio restituiva "non fatto" e nessuno dei 76 punti che la chiamano guardava quella risposta. Finche' la striscia c'e', la chat NON viene piu' compattata: non compattare e' meglio che archiviare messaggi in un posto che non c'e'. La striscia sparisce ricaricando l'app, perche' dice "in questa sessione una scrittura e' andata perduta", non "il dispositivo e' pieno per sempre".` },
   { n: `Archivi della chat su Drive`, k: ["archivi della chat", "archivio della chat", "messaggi archiviati", "messaggi compattati"], s: `Archivi della chat su Drive: quando la chat supera i 40 messaggi i piu' vecchi finiscono in un archivio locale (e' la compattazione). Dal 12/09/2026 gli archivi oltre i tre piu' recenti salgono su Drive e lasciano il dispositivo, cosi' non riempiono lo spazio locale — che e' circa 5 MB e senza questo si sarebbe esaurito fra il sesto e il dodicesimo mese di uso. La copia locale viene cancellata SOLO dopo che Drive ha restituito l'identificativo del file: senza quella prova non si cancella niente, e con il sync spento non si sposta niente. Un indice locale tiene il conto di dove sono finiti, e l'indice sta nel backup.` },
   { n: `Quando la chat arriva su Drive`, k: ["quando si sincronizza", "sincronizzazione della chat", "passo del sync"], s: `Quando la chat arriva su Drive: i dati dei pilastri, i percorsi, la memoria e il kernel salgono due secondi dopo ogni modifica, come sempre. La CHAT ha un passo suo, piu' lento: ogni due minuti, e comunque appena l'app va in secondo piano — cioe' quando il Ghost la chiude. Fino all'11/09/2026 ogni singolo messaggio faceva scaricare e ricaricare lo stato intero: con un anno di dati sono 1,1 MB di rete per messaggio, circa cinque secondi in 4G, ed era la ragione per cui l'app sembrava lenta in macchina senza che niente fosse lento. I messaggi sono comunque sul dispositivo appena scritti: il ritardo riguarda solo la copia su Drive.` },
-  { n: `Modalita' voce`, nucleo: true, k: ["modalita voce", "parlare all app", "microfono", "comando vocale", "navigare a voce"], s: `Modalita' voce: c'e' un pulsante microfono nella barra in cima, visibile da OGNI schermata. Acceso, il Ghost parla e succede una di due cose. Se dice un comando di navigazione — "apri magi", "apri la chat con lo Shell", "vai su Adam", "portami in bio", "torna alla home", "apri le impostazioni" — il programma cambia schermata da solo, senza passare dal modello: costa zero, e' istantaneo e si disfa con un altro comando. Qualunque altra frase viene MANDATA allo Shell come un messaggio, e la risposta viene letta ad alta voce. Accendere la modalita' e' il gesto di consenso: da li' in poi quello che si dice parte, perche' in macchina la casella di testo non si puo' usare. Questo NON scavalca le conferme: calendario, mail e Semi in esecuzione continuano ad avere il loro pulsante come prima. Serve un VERBO di apertura perche' sia navigazione: "parliamo di bio" non sposta niente, e "apri il percorso del concept album" resta l'azione di sempre e va allo Shell. Mentre l'app parla il microfono e' sordo di proposito, o sentirebbe la propria voce e la rimanderebbe indietro all'infinito. La barra sotto dice sempre cosa sta capendo e cosa ha fatto.` },
+  { n: `Modalita' voce`, nucleo: true, k: ["modalita voce", "parlare all app", "microfono", "comando vocale", "navigare a voce"], s: `Modalita' voce: c'e' un pulsante microfono nella barra in cima, visibile da OGNI schermata. Acceso, il Ghost parla e succede una di due cose. Se dice un comando di navigazione — "apri magi", "apri la chat con lo Shell", "vai su Adam", "portami in bio", "torna alla home", "apri le impostazioni" — il programma cambia schermata da solo, senza passare dal modello: costa zero, e' istantaneo e si disfa con un altro comando. Qualunque altra frase viene MANDATA allo Shell come un messaggio, e la risposta viene letta ad alta voce. Accendere la modalita' e' il gesto di consenso: da li' in poi quello che si dice parte, perche' in macchina la casella di testo non si puo' usare. Questo NON scavalca le conferme: calendario, mail e Semi in esecuzione continuano ad avere il loro pulsante come prima. Serve un VERBO di apertura perche' sia navigazione: "parliamo di bio" non sposta niente, e "apri il percorso del concept album" resta l'azione di sempre e va allo Shell. Mentre l'app parla il microfono e' sordo di proposito, o sentirebbe la propria voce e la rimanderebbe indietro all'infinito. La barra sotto dice sempre cosa sta capendo e cosa ha fatto. DAL 15/09/2026, TRE RIPARAZIONI trovate dal Ghost usandola davvero: (1) L'APP NON SI SENTE PIU' DA SOLA. Mentre legge qualcosa ad alta voce il microfono viene SPENTO, e riacceso quando ha finito; in piu', se un risultato arriva in ritardo, viene confrontato con quello che l'app ha appena detto e se combacia viene buttato con un avviso («Ho sentito la mia stessa voce e l'ho ignorata»). Prima la difesa copriva UN chiamante su quattro e Simbiosi — che parla da sola — non era coperta: lo Shell riceveva le proprie frasi come se le avesse dette il Ghost. (2) LA FRASE NON PARTE PIU' A PEZZI. Android chiude un risultato a ogni pausa del parlato: «Cerca lo spartito per flauto traverso della Primavera di Vivaldi» arrivava come «Cerca». Adesso i pezzi si accumulano e partono dopo 1,4 secondi di silenzio vero; quello che sta per partire si vede nella barra. (3) GLI ERRORI DICONO COSA E' SUCCESSO: «network» vuol dire che il riconoscimento di Android non ha raggiunto la rete (non e' il microfono), «not-allowed» che il permesso e' negato e va dato dalle impostazioni del browser.` },
   // 14/09/2026 — LA SCHEDA DEGLI SPARTITI ERA DIVENTATA QUATTRO SCHEDE IN UNA. 1386 token, dodici
   // volte la mediana e tre volte la seconda piu' grossa: ogni volta che il Ghost diceva «spartito»
   // partivano tutti, comprese le partiture d'orchestra e l'archivio online. Il tetto del banco sul
@@ -8684,7 +8734,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   // dentro un componente nessuna prova lo raggiungeva. È esattamente lì che il 14/09 ha detto al
   // Ghost «te li ho tolti» su zero risultati, cioè avendo tolto niente.
   const testoRicercaSpartiti = (chiesto, esito) =>
-    spiegazioneRicerca({ query: chiesto.query, strumento: chiesto.strumento, esito }).testo;
+    spiegazioneRicerca({ query: chiesto.query, strumento: chiesto.strumento, autore: chiesto.autore, esito }).testo;
   // ══ LEGGERE UNO SPARTITO DA UN'IMMAGINE ═══════════════════════════════════════════════════
   // Vedi briefDiTrascrizione. Tre tentativi come per gli spartiti generati, e per la stessa ragione:
   // il disaccordo torna al modello come materia del giro dopo, invece di essere scartato in
@@ -11811,11 +11861,9 @@ function App() {
   // la rimanda allo Shell come se l'avesse detta il Ghost. Un anello che si alimenta da solo, e
   // ogni giro è una chiamata pagata. Quindi finché la sintesi parla — e per un momento dopo,
   // perché un risultato può arrivare in ritardo — quello che si sente non conta.
-  const zittoFinoARef = useRef(0);
-  const parlaSenzaRisentirsi = useCallback((testo) => {
-    zittoFinoARef.current = Date.now() + 2000;
-    speakText(testo, () => { zittoFinoARef.current = Date.now() + 900; });
-  }, []);
+  // La difesa contro l'eco vive in `speakText` (vedi «L'ANELLO DELLA VOCE»): qui si registrano solo
+  // i due comandi per spegnere e riaccendere il microfono, e l'imbuto li usa per chiunque parli.
+  const parlaSenzaRisentirsi = useCallback((testo) => { speakText(testo); }, []);
   const ascoltato = useCallback((testo) => {
     const t = String(testo || "").trim();
     if (!t) return;
@@ -11836,6 +11884,23 @@ function App() {
     try { riconoscitoreRef.current?.stop(); } catch { /* già ferma */ }
     setVoceAccesa(false); setVoceParziale("");
   }, []);
+  // ── LA FRASE NON SI SPEZZA SULLE PAUSE — 15/09/2026 ──────────────────────────────────────────
+  // Il Ghost ha detto «Cerca lo spartito per flauto traverso della Primavera di Vivaldi» e allo
+  // Shell è arrivato «Cerca». Android chiude un risultato come DEFINITIVO a ogni pausa del parlato,
+  // e ogni definitivo partiva come un messaggio a sé: chi si ferma un attimo a pensare si ritrova
+  // mezza frase già inviata, e una risposta a una domanda che non ha finito di fare.
+  // Adesso i pezzi definitivi si ACCUMULANO e partono dopo un silenzio vero. Quello che sta per
+  // partire si vede nella barra, così non è una scommessa.
+  const SILENZIO_PRIMA_DI_INVIARE_MS = 1400;
+  const accumuloRef = useRef("");
+  const timerInvioRef = useRef(null);
+  const chiudiFrase = useCallback(() => {
+    if (timerInvioRef.current) { clearTimeout(timerInvioRef.current); timerInvioRef.current = null; }
+    const frase = accumuloRef.current.trim();
+    accumuloRef.current = "";
+    setVoceParziale("");
+    if (frase) ascoltato(frase);
+  }, [ascoltato]);
   const accendiVoce = useCallback(() => {
     const Riconoscitore = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
     if (!Riconoscitore) { setVoceNota("Questo browser non sa ascoltare."); return; }
@@ -11847,9 +11912,24 @@ function App() {
         const r = ev.results[i];
         if (r.isFinal) definitivo += r[0].transcript; else parziale += r[0].transcript;
       }
-      if (Date.now() < zittoFinoARef.current || window.speechSynthesis?.speaking) { setVoceParziale(""); return; }
-      setVoceParziale(parziale.trim());
-      if (definitivo.trim()) { setVoceParziale(""); ascoltato(definitivo); }
+      // Seconda difesa contro l'anello: il risultato può essere stato CATTURATO mentre la sintesi
+      // parlava e CONSEGNATO dopo, quando il microfono era già riacceso. Si butta e si dice perché.
+      const tutto = (definitivo + " " + parziale).trim();
+      if (tutto && eEcoDellApp(tutto)) {
+        setVoceParziale("");
+        setVoceNota("Ho sentito la mia stessa voce e l'ho ignorata.");
+        return;
+      }
+      if (definitivo.trim()) {
+        accumuloRef.current = `${accumuloRef.current} ${definitivo.trim()}`.trim();
+        setVoceParziale(accumuloRef.current);
+        if (timerInvioRef.current) clearTimeout(timerInvioRef.current);
+        timerInvioRef.current = setTimeout(chiudiFrase, SILENZIO_PRIMA_DI_INVIARE_MS);
+      } else if (parziale.trim()) {
+        setVoceParziale(`${accumuloRef.current} ${parziale.trim()}`.trim());
+        // Sta ancora parlando: il conto del silenzio riparte da adesso.
+        if (timerInvioRef.current) { clearTimeout(timerInvioRef.current); timerInvioRef.current = setTimeout(chiudiFrase, SILENZIO_PRIMA_DI_INVIARE_MS); }
+      }
     };
     // Android chiude la sessione da solo dopo una pausa: se il Ghost non ha spento la modalità,
     // si riapre. Senza questo la voce "smette di funzionare" dopo il primo silenzio, che è
@@ -11857,14 +11937,25 @@ function App() {
     rec.onend = () => { if (vogliamoAscoltareRef.current) { try { rec.start(); } catch { setVoceAccesa(false); } } else setVoceAccesa(false); };
     rec.onerror = (ev) => {
       if (ev.error === "no-speech" || ev.error === "aborted") return; // normali: onend riapre
-      setVoceNota(`Il microfono ha detto no: ${ev.error}`);
+      // «network» capita spesso e non è una scelta del Ghost: il riconoscimento di Android passa da
+      // un servizio online. Si dice cosa è successo davvero, invece di «il microfono ha detto no».
+      setVoceNota(ev.error === "network"
+        ? "Il riconoscimento vocale di Android non ha raggiunto la rete. Non è il microfono: riprova quando la linea torna."
+        : ev.error === "not-allowed" || ev.error === "service-not-allowed"
+        ? "Il permesso del microfono è negato. Si dà dalle impostazioni del browser per questo sito."
+        : `Il microfono si è fermato: ${ev.error}`);
       vogliamoAscoltareRef.current = false; setVoceAccesa(false);
     };
     riconoscitoreRef.current = rec;
     vogliamoAscoltareRef.current = true;
+    // L'imbuto della voce può spegnere e riaccendere questo microfono: è la difesa contro l'anello.
+    registraMicrofono(
+      () => { try { rec.stop(); } catch { /* già ferma */ } },
+      () => { if (vogliamoAscoltareRef.current) { try { rec.start(); } catch { /* onend la riapre */ } } },
+    );
     try { rec.start(); setVoceAccesa(true); setVoceNota("Ti ascolto. Di' «apri magi», «apri la chat con lo Shell», oppure parla allo Shell."); }
     catch (e) { setVoceNota("Non sono riuscito ad accendere il microfono: " + (e?.message || "motivo non dichiarato")); }
-  }, [ascoltato]);
+  }, [chiudiFrase]);
   useEffect(() => () => { vogliamoAscoltareRef.current = false; try { riconoscitoreRef.current?.stop(); } catch { /* niente */ } }, []);
 
   const [kernel, setKernel] = useState(() => loadKey("kernel-data", { content: DEFAULT_KERNEL, version: 1, history: [] }));
