@@ -129,7 +129,12 @@ describe("I FALSI POSITIVI DEL MIO GUARDIANO, trovati dal dato vero", () => {
   });
 
   test("UN SECONDO T: a metà brano è il titolo della seconda parte, non un errore", () => {
-    const conSecondoTitolo = "X:1\nT:Prima parte\nM:4/4\nL:1/8\nK:D\nDF FG|B>c BA|\nT:Seconda parte\ndf cd|B>c d>c|";
+    // 15/09/2026 — DATO DI PROVA CORRETTO. Le battute di prima valevano 4 crome invece di 8: questa
+    // prova verifica che un secondo T: non sia un errore, e per farlo usava uno spartito che non
+    // torna. Passava solo perché la regola dell'anacrusi accoppiava qualunque coppia di parziali —
+    // cioè per lo stesso buco che oggi ha fatto passare quattro battute di pause come «spartito
+    // trovato». Sistemato il buco, la prova ha denunciato il proprio dato: è il banco che funziona.
+    const conSecondoTitolo = "X:1\nT:Prima parte\nM:4/4\nL:1/8\nK:D\nDFAF GFED|B>cBA GFED|\nT:Seconda parte\ndfcd BAGF|B>cd>c BAGF|";
     assert.equal(analizzaSpartito(conSecondoTitolo).ok, true, analizzaSpartito(conSecondoTitolo).errori.map((e) => e.motivo).join(" · "));
   });
 
@@ -645,7 +650,7 @@ describe("TRASCRIVERE DA UN'IMMAGINE — e dire quello che non si può controlla
     // rompe su un a capo controlla la mia formattazione invece del contenuto.
     const b = briefDiTrascrizione({}).replace(/\s+/g, " ");
     assert.match(b, /NON INVENTARE/);
-    assert.match(b, /Una battuta inventata è peggio di una battuta mancante/);
+    assert.match(b, /Una battuta inventata è peggio di una mancante/);
     assert.match(b, /PRIMA DI CHIUDERE OGNI STANGHETTA, CONTA/);
   });
 
@@ -1587,5 +1592,122 @@ describe("LEGGERE DUE DOCUMENTI NON DEVE COSTARE IL DOPPIO DEL TEMPO", () => {
   test("e l'uscita NON calpesta un esito già scritto", () => {
     // Spegnere alla cieca trasformerebbe un successo in un fallimento. Si guarda lo stato di prima.
     assert.match(catena, /if \(st0\.webLetturaImmagine !== "in-corso"\) return s;/);
+  });
+});
+
+// ══ UNA RINUNCIA NON È UNO SPARTITO — 15/09/2026 ════════════════════════════════════════════════
+// Il peggio che questo programma abbia fatto, e il Ghost l'ha visto prima di me:
+//   «ora dice che l'ha trovato ma si limita a fornire solo le prime 4 battute, che tra l'altro sono
+//    vuote — se mi dà solo le prime 4 invece dell'intero non so se lo ha trovato davvero o lo sta
+//    inventando»
+// Il modello si era comportato BENE: davanti a un PDF illeggibile l'ha DETTO, nei commenti dell'ABC,
+// e si è rifiutato di inventare note. Il programma ha preso quella rinuncia, l'ha disegnata sul
+// pentagramma e ci ha messo sotto il pulsante «Tieni».
+// «Il modello dice a parole, il programma va a cercarlo davvero» — la regola di casa, rotta da chi
+// la scrive. Una rinuncia dichiarata è la cosa più facile da verificare che esista, e non la
+// verificava nessuno: i commenti uscivano PRIMA di ogni controllo, buttati via a inizio analisi.
+describe("QUELLO CHE L'APP HA DATO AL GHOST COME «SPARTITO TROVATO»", () => {
+  // Copiato dallo schermo, carattere per carattere.
+  const RINUNCIA = [
+    "X:1", "T:Clarinetto", "M:4/4", "L:1/8", "K:C", "%",
+    "% Non riesco a vedere l'immagine dello spartito. Il file fornito è un PDF senza contenuto leggibile.",
+    "% Non posso inventare note: scrivo pause per tutta la durata prevista.", "%",
+    "zzzz|zzzz|zzzz|zzzz|]",
+  ].join("\n");
+
+  test("NON PASSA PIÙ, in nessuna delle tre origini", () => {
+    for (const origine of ["modello", "archivio", "lettura"]) {
+      const r = analizzaSpartito(RINUNCIA, origine);
+      assert.equal(r.ok, false, `come «${origine}» passa ancora: ${r.errori.map((e) => e.motivo).join(" · ")}`);
+    }
+  });
+
+  test("e cade per TRE motivi diversi, ciascuno da solo sufficiente", () => {
+    // Come «lettura» — l'origine vera di questo caso: un modello che guarda un PDF.
+    const r = analizzaSpartito(RINUNCIA, "lettura");
+    const id = r.errori.map((e) => e.id);
+    assert.ok(id.includes("niente-rinuncia-dichiarata"), `la rinuncia scritta nei commenti non viene vista: ${id.join(", ")}`);
+    assert.ok(id.includes("almeno-una-nota"), "quattro battute di sole pause passano ancora per musica");
+    assert.ok(id.includes("battute-che-tornano"), "4 crome su 8 in OGNI battuta non è una levata");
+    // E come «archivio» le battute restano un AVVISO — quella tolleranza è nata da 192 trascrizioni
+    // umane vere e non si tocca. Ma gli altri due motivi bastano da soli a bocciare, ed è giusto
+    // così: una rinuncia dichiarata non è musica scritta male, è musica che non c'è.
+    const arch = analizzaSpartito(RINUNCIA, "archivio");
+    assert.equal(arch.ok, false);
+    assert.ok(arch.avvisi.some((e) => e.id === "battute-che-tornano"), "per l'archivio deve restare un avviso");
+  });
+
+  test("I COMMENTI ARRIVANO AL CONTROLLO, che è la radice di tutto", () => {
+    // Erano buttati via alla prima riga di analizzaSpartito: `if (eCommento(riga)) return`. La cosa
+    // più importante che il modello avesse da dire stava nell'unico posto in cui non si guardava.
+    const a = analizzaSpartito(RINUNCIA);
+    assert.match(a.commenti, /Non riesco a vedere/);
+    assert.match(a.commenti, /senza contenuto leggibile/);
+  });
+
+  test("anche in inglese, e anche scritta in coda a una riga di note", () => {
+    const inglese = "X:1\nT:P\nM:4/4\nL:1/8\nK:C\nCDEF GABc| % unable to read the attached file\nCDEF GABc|";
+    const r = analizzaSpartito(inglese);
+    assert.equal(r.ok, false);
+    assert.ok(r.errori.some((e) => e.id === "niente-rinuncia-dichiarata"));
+  });
+
+  test("MA UNA PAUSA DENTRO LA MUSICA RESTA MUSICA — non ho bandito le pause", () => {
+    // Il requisito dice «non SOLO pause», e la differenza è tutta lì: una battuta di silenzio in
+    // mezzo a un brano è normale, un brano di solo silenzio no.
+    const conPause = "X:1\nT:P\nM:4/4\nL:1/8\nK:C\nCDEF GABc|z4 GABc|CDEF z4|CDEF GABc|";
+    const r = analizzaSpartito(conPause);
+    assert.equal(r.ok, true, r.errori.map((e) => e.motivo).join(" · "));
+  });
+
+  test("e un commento NORMALE non è una rinuncia", () => {
+    const normale = "X:1\nT:P\nM:4/4\nL:1/8\nK:C\n% trascritto dalla seconda pagina\nCDEF GABc|CDEF GABc|";
+    assert.equal(analizzaSpartito(normale).ok, true, analizzaSpartito(normale).errori.map((e) => e.motivo).join(" · "));
+  });
+});
+
+describe("UN'ANACRUSI È UN'ECCEZIONE, NON LA NORMA", () => {
+  test("se le battute parziali sono la maggioranza non è una levata: è uno spartito che non torna", () => {
+    // Il buco che ha fatto passare le quattro battute di pause: la regola accoppiava QUALSIASI
+    // coppia di parziali adiacenti, quindi 4+4=8, 4+4=8, e uno spartito interamente sbagliato
+    // passava purché lo fosse in modo REGOLARE — che è esattamente come sbaglia un modello.
+    const tutteMezze = "X:1\nT:P\nM:4/4\nL:1/8\nK:C\nCDEF|GABc|CDEF|GABc|";
+    const r = analizzaSpartito(tutteMezze, "modello");
+    assert.equal(r.ok, false);
+    assert.match(r.errori.map((e) => e.motivo).join(" "), /non è una levata/);
+  });
+
+  test("ma una levata VERA continua a passare: è musica, e va difesa", () => {
+    // Una battuta di attacco e la finale che la completa, dentro un brano che per il resto torna.
+    const conLevata = "X:1\nT:P\nM:4/4\nL:1/8\nK:C\nD2|CDEF GABc|CDEF GABc|CDEF GABc|DEFD E2|";
+    const r = analizzaSpartito(conLevata, "modello");
+    assert.equal(r.ok, true, r.errori.map((e) => e.motivo).join(" · "));
+  });
+});
+
+// ── «MI BLOCCA A TENERE APERTA LA PAGINA» — 15/09/2026 ──────────────────────────────────────────
+// Dal Ghost: «ci ha messo un sacco di tempo, pensavo si fosse arenato di nuovo — così però blocca
+// me a tenere aperta la pagina e mi impedisce di fare altro col telefono mentre cerca». E poco
+// dopo, con lo screenshot: «in 15 secondi o anche meno io l'ho trovato» (Google Immagini →
+// MuseScore → Englishman in New York, clarinetto in Si bemolle, 48 battute).
+describe("LEGGERE UN DOCUMENTO HA UN TETTO SUO, PIÙ CORTO DI UNA CONVERSAZIONE", () => {
+  const sorgente = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const codice = sorgente.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((r) => !/^\s*\/\//.test(r)).join("\n");
+
+  test("il tetto esiste, ed è molto più corto di quello di una conversazione", () => {
+    const lettura = /const TETTO_LETTURA_DOCUMENTO_MS = (\d+);/.exec(codice);
+    const conversazione = /const TIMEOUT_MODELLO_MS = (\d+);/.exec(codice);
+    assert.ok(lettura, "TETTO_LETTURA_DOCUMENTO_MS non esiste più");
+    assert.ok(Number(lettura[1]) <= 60000, `${Number(lettura[1]) / 1000}s: oltre il minuto il Ghost ha già fatto da sé`);
+    assert.ok(Number(lettura[1]) < Number(conversazione[1]), "una lettura non è una conversazione");
+  });
+
+  test("e la lettura dei documenti lo usa davvero", () => {
+    // Un tetto dichiarato che nessuno passa è un tetto finto — la stessa forma del tetto di spesa
+    // che leggeva un registro a rotazione.
+    const catena = /const cercaSpartitoNelWeb[\s\S]*?\n  \};/.exec(codice)?.[0] || "";
+    assert.match(catena, /tetto: TETTO_LETTURA_DOCUMENTO_MS/, "il tetto non arriva alla chiamata");
+    assert.match(codice, /inviaAOpenRouter\(body, apiKey, image\?\.tetto\)/, "il tetto non arriva alla fetch");
+    assert.match(codice, /\}, tetto \|\| TIMEOUT_MODELLO_MS\)/, "fetchConTetto riceve ancora solo il default");
   });
 });
