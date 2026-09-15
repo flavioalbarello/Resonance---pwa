@@ -70,6 +70,10 @@ import {
   spiegazioneRicerca,
   altroveDoveCercare,
   briefRicercaWebSpartito,
+  riferimentoDaBrief,
+  briefRicercaCaratteristiche,
+  schedaDaRicerca,
+  requisitiDallaScheda,
   fontiPerSpartito,
   senzaIndirizziInventati,
   richiestaDiTrascrizione,
@@ -4965,6 +4969,11 @@ Cosa succede quando non ce la fa: il motivo torna al modello e riprova, al massi
 QUELLO CHE IL PROGRAMMA NON PUO' CONTROLLARE, e che va detto ogni volta: se le note sono LE NOTE GIUSTE. Il controllo vede la forma — intestazione, tonalita', metro, battute che tornano — non la fedelta'. Un SI letto al posto di un LA passa tutti i controlli. Per questo la card mette il pentagramma RIDISEGNATO subito sotto, a un dito dall'immagine appena mandata: quel confronto lo puo' fare solo il Ghost, che e' musicista, e va invitato a farlo. Uno spartito generato e' un'invenzione e se e' brutto si vede; uno trascritto pretende di essere fedele a una cosa che esiste, e se e' sbagliato non si vede.
 DOVE NON CI SONO ARRIVATO: al modello si chiede di scrivere in righe di commento ABC (che cominciano con %) tutto quello che non e' riuscito a leggere — una battuta coperta, un'accordatura, un passaggio sfocato — e il programma le estrae e le mostra in un riquadro suo. Senza quel posto, un "non ci arrivo" finirebbe in mezzo alle note come prosa e verrebbe scartato: il posto per dirlo va DATO, o il modello riempie il buco a orecchio.
 Legge il PENTAGRAMMA e non la tablatura quando ci sono tutti e due: dicono la stessa cosa, ma il pentagramma porta le durate. Il documento salvato porta la PROVENIENZA — che viene da un'immagine, da quale file, quando — perche' fra sei mesi uno spartito letto da una foto e' indistinguibile da uno scritto dal Ghost, ed e' proprio il caso in cui la differenza conta di piu'. NON sa leggere un PDF: quello va prima fotografato o esportato come immagine.` },
+  { n: `Informarsi prima di inventare uno spartito`, k: ["spartito sullo stile", "spartito alla maniera", "informarsi prima", "si informa prima", "cerca prima di generare", "peculiarita del brano", "caratteristiche del brano", "generare sullo stile"], s: `Informarsi prima di inventare uno spartito: quando il brief di generazione nomina un RIFERIMENTO REALE — «una linea di basso sullo stile di Stratus di Billy Cobham», «un tema alla maniera di Bach», «ispirato a Kind of Blue di Miles Davis» — il programma NON manda subito il brief al modello. Prima fa una ricerca sul web sulle caratteristiche musicali di quel brano, e solo dopo genera. Senza, il modello inventa da quello che ricorda: sa che Stratus e' funk e scrive un funk generico in 4/4 in Do.
+ALLA RICERCA SI CHIEDONO DATI, NON UN RACCONTO: tonalita', metro, andamento in bpm, e due-quattro righe su cosa rende riconoscibile quel brano e quella parte (il groove, gli intervalli, la tecnica, la figura ritmica che torna). Al modello si dice di lasciare VUOTO quello che la ricerca non trova, invece di riempirlo a memoria: il programma userebbe un vincolo inventato come se fosse accertato, e produrrebbe musica sbagliata con sicurezza.
+E QUI STA IL GUADAGNO PIU' GRANDE: quello che la ricerca trova non resta contesto da leggere. TONALITA' E METRO DIVENTANO REQUISITI di quel turno, controllati come tutti gli altri — se la ricerca dice 16/16 in Mi minore e il modello scrive 4/4 in Do, il disaccordo torna indietro e il modello riscrive. E' l'accettore d'azione di Anochin nella forma piena: il controllo si forma PRIMA di agire, insieme alla decisione, e specifica che forma dovra' avere il risultato. Quello che la ricerca NON ha trovato non diventa un vincolo: non si pretende cio' che non si sa.
+Il confronto sulla tonalita' guarda la fondamentale e il colore (maggiore/minore), non la scritta esatta: Edor (dorico di MI) vale come Em perche' e' minore quanto lui, mentre Mi maggiore no.
+IL GHOST VEDE COSA E' STATO LETTO, in un riquadro sopra il risultato: tonalita', metro, andamento e peculiarita', con scritto quali sono diventati requisiti. Serve anche a un altro scopo: se li' compare un brano diverso da quello che intendeva, la ricerca ha capito male e lui puo' correggere il nome e rigenerare. Se la ricerca non trova niente di specifico lo dice, e avverte che quello che esce va trattato come un'invenzione libera e non come qualcosa «nello stile di». Se la ricerca fallisce del tutto, si genera lo stesso ma dichiarando di aver scritto al buio: un riferimento non letto e' meno grave di un rifiuto secco.` },
   { n: `Cercare spartiti in tutto il web`, k: ["cercare in tutto il web", "ricerca web", "cercare sul web", "spartiti sul web", "come una ricerca google", "in tutto il web", "ricerca online"], s: `Cercare spartiti in tutto il web: CERCA ANCHE IN TUTTO IL WEB, dal 15/09/2026: oltre all'archivio parte una ricerca web vera (come una ricerca Google), che copre quello che l'archivio non ha — classica, rock, pop. La card tiene le due cose SEPARATE perche' non sono la stessa: dall'archivio esce ABC pronto che si puo' TENERE (si apre, si suona, si salva nel percorso) e costa zero; dal web escono INDIRIZZI da APRIRE, e quella ricerca passa da un modello quindi COSTA. GLI INDIRIZZI LI METTE IL PROGRAMMA, non il modello: vengono dalle annotazioni della risposta, cioe' da quello che il motore ha davvero restituito. Al modello si vieta di scriverli, e se ne scrive uno lo stesso viene TOLTO e il numero di quelli tolti si dice. Un link ricordato a memoria porta a una pagina che non esiste, ed e' indistinguibile da uno buono finche' non ci clicchi. I risultati sono ORDINATI per quanto sono vicini a qualcosa di usabile qui dentro: prima chi da' ABC, poi MusicXML, poi i PDF e le immagini, ultimi i video. Se il modello ha risposto SENZA fare nessuna ricerca vera, la card lo dice. Per portare dentro uno di quei risultati: aprire il link, fare uno screenshot, allegarlo in chat e chiedere di trascriverlo (vedi la scheda «Trascrivere uno spartito da una foto»).` },
   { n: `Archivi di spartiti che non posso leggere`, k: ["songsterr", "musescore", "ultimate guitar", "spartiti rock", "tablature rock", "spartiti di canzoni", "altri archivi"], s: `Archivi di spartiti che non posso leggere: QUELLO CHE NON SA FARE, e la distinzione che conta: rock, metal e pop in QUELL'archivio non ci sono. Ma ESISTONO ALTROVE, e l'app lo dice per nome invece di far credere che non esistano — il 14/09/2026 il Ghost ha mandato tre schermate di Lateralus dei Tool su MuseScore e Songsterr, con la riga del basso, per smentire la frase «non ce ne sono altri» che l'app gli aveva scritto. Aveva ragione. Quello che e' vero e' un'altra cosa: quegli archivi non si possono LEGGERE da dentro l'app, ed e' misurato, non supposto — Songsterr risponde con i dati giusti ma senza le intestazioni CORS e col preflight a 404, quindi un browser non puo' leggerlo; MuseScore risponde 403 a chiunque non sia un browser vero. Quindi nel caso «non trovato» la card mostra i LINK alla ricerca gia' fatta su quegli archivi: si aprono fuori dall'app, con un tocco del Ghost, e quello che trova la' resta la' — non entra nei percorsi. Se il Ghost chiede uno di quei brani: non dirgli che non esiste e non dire che non hai accesso a internet. Digli che li' non c'e', che altrove c'e', e che i link sono nella card. L'altra strada dentro l'app e' farsi scrivere una linea da un modello, che e' un'invenzione ispirata al brano e NON la sua trascrizione: va detto ogni volta.`},
   { n: `Dove stanno i testi dei documenti`, k: ["dove stanno i documenti", "magazzino dei testi", "spazio sul telefono", "memoria del telefono piena"], s: `Dove stanno i testi dei documenti: dal 13/09/2026 il TESTO dei documenti dei percorsi non sta piu' nello spazio piccolo del browser (circa 5 MB, che bastava per ~1.075 documenti da 4.000 caratteri) ma in un magazzino locale piu' grande sullo stesso telefono, che ne tiene decine di migliaia. Non cambia niente di quello che si vede o si fa: i documenti si aprono, si cercano e si rileggono esattamente come prima, anche senza rete, e il file di sync fra i due dispositivi continua a portarli. Lo spostamento dei documenti gia' esistenti avviene da solo alla prima apertura dell'app, e un testo lascia il vecchio posto SOLO dopo che il magazzino l'ha riletto identico. Se il magazzino non e' disponibile (finestra privata, browser vecchio) tutto resta com'era prima, col tetto di prima. Un documento il cui testo non si trova piu' lo dichiara invece di aprirsi vuoto.` },
@@ -7797,19 +7806,54 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
   const [spartitoBusy, setSpartitoBusy] = useState(false);
   const [spartitoMsg, setSpartitoMsg] = useState("");
   const TETTO_GIRI_SPARTITO = 3;
+  const [spartitoScheda, setSpartitoScheda] = useState(null);
   const generaSpartito = async () => {
     if (!spartitoBrief.trim() || spartitoBusy) return;
-    setSpartitoBusy(true); setSpartitoMsg("");
+    setSpartitoBusy(true); setSpartitoMsg(""); setSpartitoScheda(null);
     const sys = `Sei un musicista che scrive in notazione ABC. Rispondi SOLO con ABC valido, mai con spiegazioni.`;
     let disaccordo = "";
     try {
+      // ── INFORMARSI PRIMA DI INVENTARE (15/09/2026) ────────────────────────────────────────────
+      // Il Ghost: «sullo stile di Stratus di Billy Cobham... dovrebbe informarsi online sulle
+      // peculiarità di quel brano PRIMA di generare». Se il brief nomina un riferimento reale, si
+      // va a leggere com'è fatto davvero — e quello che si legge non resta contesto: tonalità e
+      // metro diventano REQUISITI di questo turno, controllati come tutti gli altri.
+      const riferimento = riferimentoDaBrief(spartitoBrief);
+      let scheda = null;
+      if (riferimento) {
+        setSpartitoMsg(`Prima di scrivere vado a informarmi su «${riferimento.brano}»${riferimento.artista ? ` di ${riferimento.artista}` : ""}…`);
+        // IL `try` COPRE SOLO LA CHIAMATA, non quello che viene dopo. Prima copriva anche una riga
+        // di registro che usava un nome non in scope in questo componente (`pushDebugLog`, che
+        // PercorsiPanel non riceve): l'errore finiva nel catch e il riquadro diceva al Ghost «la
+        // ricerca non è riuscita» mentre invece era riuscita benissimo — i vincoli mordevano, la
+        // scheda c'era, e l'app raccontava il contrario di quello che aveva fatto. Trovato dalla
+        // prova nel browser il 15/09/2026. Nota: `?.` non protegge da una variabile che NON ESISTE
+        // — quello è un ReferenceError — ma solo da una che vale undefined.
+        let letto = null;
+        try {
+          letto = await askModel(
+            "Sei un musicologo. Rispondi solo nella forma richiesta, senza commenti.",
+            briefRicercaCaratteristiche({ brano: riferimento.brano, artista: riferimento.artista, strumento: spartitoStrumento }),
+            0.2, 600, settings, true,
+          );
+        } catch (e) {
+          // La ricerca che non riesce NON ferma la generazione: si scrive lo stesso, dicendo che si
+          // è scritto al buio. Un riferimento non letto è meno grave di un rifiuto secco.
+          setSpartitoScheda({ trovato: false, errore: e?.message || "ricerca non riuscita", riferimento });
+        }
+        if (letto !== null) {
+          scheda = schedaDaRicerca(letto);
+          setSpartitoScheda({ ...scheda, riferimento });
+        }
+      }
+      const extra = requisitiDallaScheda(scheda);
       for (let giro = 1; giro <= TETTO_GIRI_SPARTITO; giro++) {
-        const richiesta = briefDelloSpartito({ argomento: spartitoBrief.trim(), strumento: spartitoStrumento, conVersi: spartitoVersi, conVoci: spartitoVoci })
+        const richiesta = briefDelloSpartito({ argomento: spartitoBrief.trim(), strumento: spartitoStrumento, conVersi: spartitoVersi, conVoci: spartitoVoci, scheda })
           + (disaccordo ? `\n\nIl tentativo precedente non andava bene: ${disaccordo}. Riscrivilo per intero correggendo questo.` : "");
         const grezzo = await askModel(sys, richiesta, 0.7, 2000, settings);
         // Un modello ci mette le virgolette di codice anche quando gli si dice di non farlo.
         const abc = String(grezzo || "").replace(/^\s*```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim();
-        const analisi = analizzaSpartito(abc);
+        const analisi = analizzaSpartito(abc, "modello", extra);
         if (analisi.ok) {
           const doc = documentoSpartito({ id: uid(), titolo: analisi.titolo || spartitoBrief.trim().slice(0, 60), abc, strumento: spartitoStrumento });
           onUpdate({ ...percorso, documents: [doc, ...(percorso.documents || [])] });
@@ -8056,6 +8100,25 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
             <button class="r-btn r-btn-ghost" onClick=${nuovoSpartitoVuoto} disabled=${spartitoBusy}>Partine uno a mano</button>
           </div>
           ${spartitoMsg && html`<div class="${spartitoMsg.startsWith("Errore") || spartitoMsg.startsWith("Non ci sono") ? "r-error" : "r-ok"}" style="margin-top:6px">${spartitoMsg}</div>`}
+          ${/* 15/09/2026 — COSA HO LETTO PRIMA DI SCRIVERE. Senza questo riquadro la ricerca sul
+                brano di riferimento sarebbe una scatola nera: il Ghost riceve delle note e non
+                sa su cosa sono state costruite, né può accorgersi se la ricerca ha capito un
+                altro brano. Quello che compare qui è anche quello che è diventato un VINCOLO. */ ""}
+          ${spartitoScheda && html`<div class="r-draft-card" style="margin-top:8px">
+            <div class="r-draft-label">▸ PRIMA HO LETTO SU «${spartitoScheda.riferimento?.brano}»${spartitoScheda.riferimento?.artista ? ` DI ${spartitoScheda.riferimento.artista.toUpperCase()}` : ""}</div>
+            ${spartitoScheda.errore
+              ? html`<div class="r-error">La ricerca non è riuscita (${spartitoScheda.errore}): ho scritto senza informarmi, quindi quello che esce viene dalla memoria del modello e non da una fonte.</div>`
+              : !spartitoScheda.trovato
+              ? html`<div class="r-hub-detail">La ricerca non ha trovato niente di specifico su questo brano. Ho scritto lo stesso, ma senza vincoli presi da una fonte: trattalo come un'invenzione libera, non come qualcosa «nello stile di».</div>`
+              : html`<div>
+                <div class="r-hub-detail">Questi non sono contorno: tonalità e metro sono diventati requisiti, e se lo spartito non li rispettava è tornato indietro.</div>
+                ${spartitoScheda.tonalita && html`<div class="r-draft-body">· tonalità <b>${spartitoScheda.tonalita}</b> — controllata</div>`}
+                ${spartitoScheda.metro && html`<div class="r-draft-body">· metro <b>${spartitoScheda.metro}</b> — controllato</div>`}
+                ${spartitoScheda.bpm > 0 && html`<div class="r-draft-body">· andamento <b>${spartitoScheda.bpm} bpm</b> — suggerito, non imposto</div>`}
+                ${spartitoScheda.peculiarita && html`<div class="r-draft-body" style="margin-top:4px">· ${spartitoScheda.peculiarita}</div>`}
+                <div class="r-hub-detail" style="margin-top:4px">Se qui sopra c'è scritto un brano diverso da quello che intendevi, la ricerca ha capito male: cambia il nome nel riquadro e rigenera.</div>
+              </div>`}
+          </div>`}
 
           <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--border)">
             <div class="r-hub-detail"><b>Cercalo in un archivio</b> — ${ARCHIVIO_SPARTITI.nome}: ${ARCHIVIO_SPARTITI.perChe}. Non passa da nessun modello: costa zero.</div>
