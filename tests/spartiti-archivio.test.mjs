@@ -1295,7 +1295,12 @@ describe("IL MOTORE DEI PDF SI SCRIVE IN OGNI IMBUTO — se no il ripiego OCR co
     const codice = sorgente.split("\n").filter((r) => !/^\s*(?:\/\/|\*|\/\*)/.test(r)).join("\n");
     const imbuti = codice.match(/reasoning: \{ enabled: false \}/g) || [];
     const applicazioni = codice.match(/PIANO_PDF(?!\s*=)/g) || [];
-    assert.equal(imbuti.length, 2, "gli imbuti verso OpenRouter sono due: se sono cambiati, questa prova va riletta, non cancellata");
+    // 15/09/2026 sera — ERANO DUE, SONO TRE, e questa prova l'ha scoperto da sola nel giro in cui
+    // il terzo è nato: `corpoDiLettura`, che costruisce la richiesta per leggere un documento e
+    // serve tutte e due le vie (dalla pagina e dal corriere nel service worker). Il numero si
+    // aggiorna, la prova no — ed è il punto: se il terzo imbuto avesse dimenticato PIANO_PDF,
+    // l'OCR di ripiego sarebbe ripartito a 76 volte il costo senza che nessuno se ne accorgesse.
+    assert.equal(imbuti.length, 3, "gli imbuti verso OpenRouter sono tre: se sono cambiati, questa prova va riletta, non cancellata");
     assert.equal(applicazioni.length, imbuti.length, "ogni imbuto deve applicare PIANO_PDF a un allegato PDF");
   });
 });
@@ -1476,7 +1481,7 @@ describe("LA CARD NON È UNA PAGINA DI RISULTATI", () => {
   // I commenti vanno via DAVVERO, blocchi /* … */ compresi: il primo giro di questa prova cadeva
   // sul mio stesso commento, che elenca le intestazioni morte per dire che sono morte. Un filtro
   // che toglie solo le righe che COMINCIANO per // lascia dentro le righe di mezzo di un blocco.
-  const codice = sorgente.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((r) => !/^\s*\/\//.test(r)).join("\n");
+  const codice = sorgente.split("\n").filter((r) => !/^\s*\/\//.test(r)).join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
 
   test("le intestazioni di sezione sono sparite: erano la spina dorsale della pozza", () => {
     for (const morta of [
@@ -1519,7 +1524,7 @@ describe("LA CARD NON È UNA PAGINA DI RISULTATI", () => {
 // posto nuovo mancava.
 describe("L'AUTORE SI TOGLIE SOLO ALL'ARCHIVIO, e in nessun altro posto", () => {
   const codice = readFileSync(new URL("../app.js", import.meta.url), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((r) => !/^\s*\/\//.test(r)).join("\n");
+    .split("\n").filter((r) => !/^\s*\/\//.test(r)).join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
 
   test("il filtro di pertinenza dei risultati web lo riceve", () => {
     // Senza, «Stratus» pareggia con qualunque pagina che contenga quella parola — altri brani
@@ -1556,7 +1561,7 @@ describe("L'AUTORE SI TOGLIE SOLO ALL'ARCHIVIO, e in nessun altro posto", () => 
 // lento in un modo che da fuori è identico all'appeso. Tre cause sovrapposte, tutte mie.
 describe("LEGGERE DUE DOCUMENTI NON DEVE COSTARE IL DOPPIO DEL TEMPO", () => {
   const codice = readFileSync(new URL("../app.js", import.meta.url), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((r) => !/^\s*\/\//.test(r)).join("\n");
+    .split("\n").filter((r) => !/^\s*\/\//.test(r)).join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
   const catena = /const cercaSpartitoNelWeb[\s\S]*?\n  \};/.exec(codice)?.[0] || "";
 
   test("i documenti si leggono TUTTI INSIEME, non in fila", () => {
@@ -1692,7 +1697,7 @@ describe("UN'ANACRUSI È UN'ECCEZIONE, NON LA NORMA", () => {
 // MuseScore → Englishman in New York, clarinetto in Si bemolle, 48 battute).
 describe("LEGGERE UN DOCUMENTO HA UN TETTO SUO, PIÙ CORTO DI UNA CONVERSAZIONE", () => {
   const sorgente = readFileSync(new URL("../app.js", import.meta.url), "utf8");
-  const codice = sorgente.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((r) => !/^\s*\/\//.test(r)).join("\n");
+  const codice = sorgente.split("\n").filter((r) => !/^\s*\/\//.test(r)).join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
 
   test("il tetto esiste, ed è molto più corto di quello di una conversazione", () => {
     const lettura = /const TETTO_LETTURA_DOCUMENTO_MS = (\d+);/.exec(codice);

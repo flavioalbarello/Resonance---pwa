@@ -2649,7 +2649,15 @@ function dimenticaMemoriaPiena() { _memoriaPiena = null; }
 // torna solo il tetto di prima. Un magazzino che non si apre non deve rompere l'app.
 const IDB_NOME = "resonance";
 const IDB_NEGOZIO = "testi-documenti";
-const IDB_VERSIONE = 1;
+// 15/09/2026 — IL NEGOZIO DEI LAVORI, dove il corriere (sw.js) deposita le risposte mentre la
+// pagina è sospesa. I tre nomi qui sotto sono DUPLICATI in sw.js e devono combaciare: un service
+// worker è uno script classico e non può importare da un modulo ESM, e mettere un build step per
+// tre costanti sarebbe la cura peggiore della malattia. La duplicazione è difesa da una prova
+// (tests/corriere.test.mjs) che confronta i due file — perché una regola che nessun controllo
+// impone dura finché qualcuno se la ricorda, e in questo progetto è già successo col precaricamento
+// di lib/spartito.js, mancato per un giorno intero con un commento che lo vietava.
+const IDB_LAVORI = "lavori";
+const IDB_VERSIONE = 2;
 let _testiDocumenti = new Map(); // id del documento → testo. Vive in RAM, riempita all'avvio.
 let _idbAttivo = false;          // false = comportamento di prima, testo dentro localStorage
 function idbDisponibile() { try { return typeof indexedDB !== "undefined" && indexedDB !== null; } catch { return false; } }
@@ -2658,16 +2666,23 @@ function apriMagazzino() {
     if (!idbDisponibile()) return rifiuta(new Error("IndexedDB non disponibile"));
     let r;
     try { r = indexedDB.open(IDB_NOME, IDB_VERSIONE); } catch (e) { return rifiuta(e); }
-    r.onupgradeneeded = () => { try { r.result.createObjectStore(IDB_NEGOZIO); } catch { /* già c'è */ } };
+    r.onupgradeneeded = () => {
+      // TUTTI i negozi, non solo quello che serve a chi sta aprendo: pagina e corriere aprono lo
+      // stesso magazzino e chi arriva primo alla versione 2 fa l'aggiornamento per entrambi. Se ne
+      // creasse uno solo, il secondo troverebbe mezzo magazzino e nessun onupgradeneeded da girare.
+      for (const nome of [IDB_NEGOZIO, IDB_LAVORI]) {
+        try { r.result.createObjectStore(nome); } catch { /* già c'è */ }
+      }
+    };
     r.onsuccess = () => risolvi(r.result);
     r.onerror = () => rifiuta(r.error || new Error("apertura del magazzino fallita"));
     r.onblocked = () => rifiuta(new Error("magazzino bloccato da un'altra scheda"));
   });
 }
-function conNegozio(modo, fn) {
+function conNegozio(modo, fn, quale = IDB_NEGOZIO) {
   return apriMagazzino().then((db) => new Promise((risolvi, rifiuta) => {
-    const tx = db.transaction([IDB_NEGOZIO], modo);
-    const negozio = tx.objectStore(IDB_NEGOZIO);
+    const tx = db.transaction([quale], modo);
+    const negozio = tx.objectStore(quale);
     let esito;
     try { esito = fn(negozio); } catch (e) { return rifiuta(e); }
     tx.oncomplete = () => risolvi(esito); // risolvere con una promessa la concatena: i risultati delle richieste arrivano comunque prima di oncomplete
@@ -2697,6 +2712,53 @@ async function scriviTestiDocumenti(coppie) {
   await conNegozio("readwrite", (n) => { for (const [id, testo] of coppie) n.put(testo, id); });
   return true;
 }
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// AFFIDARE UN LAVORO AL CORRIERE — 15/09/2026
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// Dal Ghost: «procedi col service worker, così almeno intanto che fallisce non mi incatena a
+// guardarla fallire».
+// Il corriere vive in sw.js, fuori dalla pagina: quando Android sospende la pagina lui continua.
+// Qui c'è solo il banco di consegna e quello di ritiro — lui fa le POST, noi interpretiamo.
+const corriereDisponibile = () => {
+  try { return typeof navigator !== "undefined" && !!navigator.serviceWorker?.controller; } catch { return false; }
+};
+const nuovoIdLavoro = () => `l-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+// Si consegna e si torna subito: da qui in poi il Ghost può spegnere lo schermo.
+// LA CHIAVE viaggia nel messaggio e vive quanto la chiamata: non viene scritta nel magazzino né in
+// cache (vedi il commento in cima al corriere). Il messaggio non passa da nessuna rete.
+function affidaAlCorriere({ id, chiamate, chiave, tetto }) {
+  if (!corriereDisponibile()) return false;
+  try {
+    navigator.serviceWorker.controller.postMessage({ tipo: "lavoro", id, chiamate, chiave, tetto });
+    return true;
+  } catch { return false; }
+}
+
+function ritiraLavoro(id) {
+  return conNegozio("readonly", (n) => daRichiesta(n.get(id)), IDB_LAVORI).catch(() => null);
+}
+function dimenticaLavoro(id) {
+  return conNegozio("readwrite", (n) => { n.delete(id); }, IDB_LAVORI).catch(() => false);
+}
+// Si aspetta che il corriere finisca, SENZA incatenare nessuno: se la pagina viene sospesa questa
+// promessa muore con lei, ma il lavoro no — e al ritorno `ritiraLavoro` lo trova depositato.
+// Il messaggio del corriere è la via veloce; il controllo periodico è la rete di sicurezza per il
+// caso in cui la pagina fosse sospesa proprio mentre il messaggio arrivava (un messaggio a una
+// pagina che dorme non si mette in coda: si perde).
+function aspettaIlCorriere(id, tetto) {
+  return new Promise((risolvi) => {
+    let chiuso = false;
+    const chiudi = (v) => { if (chiuso) return; chiuso = true; clearInterval(battito); clearTimeout(scadenza); try { navigator.serviceWorker.removeEventListener("message", ascolta); } catch {} risolvi(v); };
+    const guarda = async () => { const l = await ritiraLavoro(id); if (l && l.stato !== "in-corso") chiudi(l); };
+    const ascolta = (e) => { if (e.data?.tipo === "lavoro-finito" && e.data.id === id) guarda(); };
+    try { navigator.serviceWorker.addEventListener("message", ascolta); } catch {}
+    const battito = setInterval(guarda, 2000);
+    const scadenza = setTimeout(() => chiudi(null), (Number(tetto) || 45000) + 20000);
+    guarda();
+  });
+}
+
 // La verifica prima di alleggerire: si rilegge dal magazzino e si confronta il testo, non la
 // lunghezza. Stessa regola degli archivi della chat — niente si toglie da dove sta senza una prova
 // che sia arrivato dove doveva.
@@ -5040,6 +5102,7 @@ IL GHOST VEDE COSA E' STATO LETTO, in un riquadro sopra il risultato: tonalita',
   { n: `Gli indirizzi li mette il programma`, k: ["indirizzi inventati", "link inventati", "link finti", "da dove vengono i link", "ordine dei risultati"], s: `Gli indirizzi li mette il programma: GLI INDIRIZZI LI METTE IL PROGRAMMA, non il modello: vengono dalle annotazioni della risposta, cioe' da quello che il motore ha davvero restituito. Al modello si vieta di scriverli, e se ne scrive uno lo stesso viene TOLTO e il numero di quelli tolti si dice. Un link ricordato a memoria porta a una pagina che non esiste, ed e' indistinguibile da uno buono finche' non ci clicchi. I risultati sono ORDINATI per quanto sono vicini a qualcosa di usabile qui dentro: prima chi da' ABC, poi MusicXML, poi i PDF e le immagini, ultimi i video. Se il modello ha risposto SENZA fare nessuna ricerca vera, la card lo dice. DAL 15/09/2026 NON SERVE PIU' APRIRE NIENTE: se nessuna pagina aveva ABC ma la ricerca ha trovato un PDF o un'immagine, il programma se li fa leggere da solo — e li prova TUTTI, fino a quattro, non solo quello che il modello ha nominato — vedi la scheda «Leggere da se' il PDF che la ricerca trova». Fino a quel giorno qui c'era scritto di aprire il link, fare uno screenshot e allegarlo a mano: era vero, ed e' esattamente il lavoro che il Ghost non voleva fare.` },
   { n: `Archivi di spartiti che non posso leggere`, k: ["songsterr", "musescore", "ultimate guitar", "spartiti rock", "tablature rock", "spartiti di canzoni", "altri archivi"], s: `Archivi di spartiti che non posso leggere: QUELLO CHE NON SA FARE, e la distinzione che conta: rock, metal e pop in QUELL'archivio non ci sono. Ma ESISTONO ALTROVE, e l'app lo dice per nome invece di far credere che non esistano — il 14/09/2026 il Ghost ha mandato tre schermate di Lateralus dei Tool su MuseScore e Songsterr, con la riga del basso, per smentire la frase «non ce ne sono altri» che l'app gli aveva scritto. Aveva ragione. Quello che e' vero e' un'altra cosa: quegli archivi non si possono LEGGERE da dentro l'app, ed e' misurato, non supposto — Songsterr risponde con i dati giusti ma senza le intestazioni CORS e col preflight a 404, quindi un browser non puo' leggerlo; MuseScore risponde 403 a chiunque non sia un browser vero. Quindi nel caso «non trovato» la card mostra i LINK alla ricerca gia' fatta su quegli archivi: si aprono fuori dall'app, con un tocco del Ghost, e quello che trova la' resta la' — non entra nei percorsi. Se il Ghost chiede uno di quei brani: non dirgli che non esiste e non dire che non hai accesso a internet. Digli che li' non c'e', che altrove c'e', e che i link sono nella card. L'altra strada dentro l'app e' farsi scrivere una linea da un modello, che e' un'invenzione ispirata al brano e NON la sua trascrizione: va detto ogni volta.`},
   { n: `Leggere da se' il PDF che la ricerca trova`, k: ["legge il pdf", "leggere il pdf", "spartito in pdf", "pdf dello spartito", "apre il pdf", "scaricare il pdf"], s: `Leggere da se' il PDF che la ricerca trova: dal 15/09/2026 la catena si chiude da sola. Se la ricerca sul web non trova notazione ABC in nessuna pagina ma trova un PDF o un'immagine, il programma se li fa LEGGERE e ne tira fuori lo spartito, senza che il Ghost apra niente. I CANDIDATI SONO FINO A QUATTRO, non uno: quelli che il modello dichiara (gliene vengono chiesti fino a tre) PIU' quelli che stanno negli indirizzi veri della ricerca, che il programma ha gia' in mano. Ordine: prima i gratis, poi i PDF sulle immagini — un PDF e' quasi sempre lo spartito INTERO, un'immagine quasi sempre solo la prima pagina o l'anteprima di un negozio. Il 15/09 il programma ne provava UNO: su «La Primavera» ha pescato l'unico che rispondeva vuoto e si e' fermato, mentre sullo schermo c'erano altri cinque PDF gratuiti. Un tentativo su sei non e' un tentativo. UNA RINUNCIA NON E' UNO SPARTITO (15/09/2026, il guasto peggiore della giornata): davanti a un PDF illeggibile il modello l'ha DETTO nei commenti dell'ABC — «Non riesco a vedere l'immagine dello spartito... non posso inventare note: scrivo pause» — e il programma ha disegnato quelle quattro battute di pause sul pentagramma col pulsante «Tieni». I commenti venivano buttati via prima di ogni controllo: la cosa piu' importante che il modello avesse da dire stava nell'unico posto dove nessuno guardava. Adesso tre requisiti la fermano: nessuna rinuncia dichiarata, almeno una nota vera (il silenzio non e' musica), e le battute devono tornare. E un documento letto da un MODELLO non e' piu' trattato come una trascrizione d'archivio: la tolleranza sulle battute e' nata da 192 trascrizioni UMANE vere, e a un modello che guarda un PDF non spetta — un umano sbaglia a contare, un modello inventa. IL TEMPO HA UN TETTO SUO, 45 secondi invece dei 150 di una conversazione: leggere un documento serve a far RISPARMIARE tempo, e oltre il minuto il Ghost ha gia' fatto da se' (lo stesso spartito l'ha trovato a mano in quindici secondi). SE NON CE LA FA NON RACCONTA PERCHE': dice quanti ne ha aperti, e basta — prima finiva nella card il messaggio d'errore grezzo del fornitore, che non e' una risposta. A scaricare il documento e' il server del modello, non il telefono: percio' funziona anche sui siti che al browser non lo lascerebbero prendere (Mutopia, per esempio, non manda le intestazioni CORS — misurato). Quello che ne esce e' trattato come roba d'archivio: passa dall'accettore, e nella card c'e' scritto che e' stato LETTO da un PDF o da un'immagine, perche' una lettura sbaglia le note in un modo che il controllo non vede — il pentagramma va guardato prima di fidarsi. Se nessuno dei due passa il controllo, l'app lo dice e non da' niente, invece di dare uno spartito rotto.` },
+  { n: `Cercare senza restare a guardare`, k: ["cercare in sottofondo", "chiudere l'app mentre cerca", "lavora in sottofondo", "non devo restare", "spegnere lo schermo"], s: `Cercare senza restare a guardare: dal 15/09/2026 la lettura dei documenti la fa un CORRIERE che vive fuori dalla pagina (il service worker). Prima le chiamate partivano dalla pagina, e quando Android la sospende la chiamata muore: il Ghost era costretto a tenere l'app aperta e a guardare uno schermo fermo, per il solo motivo che guardare altrove faceva perdere il lavoro. Sue parole: «blocca me a tenere aperta la pagina e mi impedisce di fare altro col telefono mentre cerca». Adesso si consegna il lavoro e si puo' spegnere lo schermo: al ritorno le risposte sono gia' li'. IL CORRIERE FA IL FATTORINO, NON IL MUSICISTA: fa le chiamate e deposita le risposte grezze, non sa cos'e' uno spartito. Tutta l'intelligenza — l'accettore, i requisiti, l'estrazione — resta in un posto solo, dove c'e' il banco: due copie divergono entro un mese, ed e' gia' successo col piano alimentare. LA CHIAVE API non viene mai scritta nel magazzino ne' in cache: viaggia nel messaggio e vive quanto la chiamata. SE IL CORRIERE NON C'E' (prima apertura, browser che non lo supporta) si fa come prima, dalla pagina: un ripiego che funziona, non un errore. QUELLO CHE NON E' GARANTITO, e va detto: il browser ha il diritto di fermare un service worker quando vuole. Se lo ferma, il lavoro resta segnato come non finito e al ritorno lo si rifa' — peggio di cosi' non va, e comunque non incatena nessuno.` },
   { n: `Dove stanno i testi dei documenti`, k: ["dove stanno i documenti", "magazzino dei testi", "spazio sul telefono", "memoria del telefono piena"], s: `Dove stanno i testi dei documenti: dal 13/09/2026 il TESTO dei documenti dei percorsi non sta piu' nello spazio piccolo del browser (circa 5 MB, che bastava per ~1.075 documenti da 4.000 caratteri) ma in un magazzino locale piu' grande sullo stesso telefono, che ne tiene decine di migliaia. Non cambia niente di quello che si vede o si fa: i documenti si aprono, si cercano e si rileggono esattamente come prima, anche senza rete, e il file di sync fra i due dispositivi continua a portarli. Lo spostamento dei documenti gia' esistenti avviene da solo alla prima apertura dell'app, e un testo lascia il vecchio posto SOLO dopo che il magazzino l'ha riletto identico. Se il magazzino non e' disponibile (finestra privata, browser vecchio) tutto resta com'era prima, col tetto di prima. Un documento il cui testo non si trova piu' lo dichiara invece di aprirsi vuoto.` },
   { n: `Backup e ripristino (Setup)`, k: ["backup", "ripristino"], s: `Backup e ripristino (Setup): scarica in un unico file tutto lo stato locale e sa rileggerlo. La chiave API non finisce mai nel file. Il ripristino sostituisce i dati del dispositivo previa conferma.` },
 ];
@@ -9044,19 +9107,36 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       if (!trovatiAbc.length && daLeggere.length) {
         patchSpartito(mid, { webLetturaImmagine: "in-corso", webProvati: 0, webDaProvare: daLeggere.length });
         let finiti = 0;
+        // ── UNA SOLA COSTRUZIONE, UNA SOLA INTERPRETAZIONE ────────────────────────────────────
+        // Da oggi ci sono DUE vie per fare la stessa chiamata: dalla pagina e dal corriere. Il modo
+        // sicuro di farle divergere è lasciare che ognuna si costruisca la sua richiesta e si legga
+        // la sua risposta — è la forma esatta del difetto che `detta`/`verifica` nella stessa riga
+        // esiste per impedire, e che col piano alimentare era già costato un mese.
+        // Quindi: il corpo lo scrive UNA funzione, la risposta la legge UNA funzione, e le due vie
+        // si distinguono solo per CHI fa la POST.
+        const SISTEMA_LETTURA = "Sei un musicista che legge spartiti e li trascrive in notazione ABC. Rispondi SOLO con ABC valido.";
+        const corpoDiLettura = (tentativo) => corpoPerIlModello({
+          model: settings.model, max_tokens: 2000, temperature: 0.2, reasoning: { enabled: false },
+          messages: [
+            { role: "system", content: SISTEMA_LETTURA },
+            { role: "user", content: buildOpenRouterContent(briefDiTrascrizione({ strumento: chiesto.strumento }), { url: tentativo.url, pdf: tentativo.pdf }) },
+          ],
+          ...(eUnPdf(tentativo) ? { plugins: PIANO_PDF } : {}),
+        });
+        const leggiAbcDaRisposta = (dati, tentativo) => {
+          const letto = (dati?.choices?.[0]?.message?.content || "").trim();
+          if (!letto) return null;
+          const abc = letto.replace(/^\s*```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim();
+          // «lettura», non «archivio»: questo ABC non l'ha scritto una persona che conosce il
+          // brano, l'ha tirato fuori un modello guardando un documento. La tolleranza sulle
+          // battute è nata dalle trascrizioni umane di The Session e non gli spetta.
+          const analisi = analizzaSpartito(abc, "lettura");
+          return analisi.ok ? { abc, analisi, daImmagine: tentativo.url } : null;
+        };
         const leggiUno = async (tentativo) => {
           try {
-            const letto = await askModel(
-              "Sei un musicista che legge spartiti e li trascrive in notazione ABC. Rispondi SOLO con ABC valido.",
-              briefDiTrascrizione({ strumento: chiesto.strumento }),
-              0.2, 2000, settings, false, { url: tentativo.url, pdf: tentativo.pdf, tetto: TETTO_LETTURA_DOCUMENTO_MS },
-            );
-            const abc = String(letto || "").replace(/^\s*```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim();
-            // «lettura», non «archivio»: questo ABC non l'ha scritto una persona che conosce il
-            // brano, l'ha tirato fuori un modello guardando un documento. La tolleranza sulle
-            // battute è nata dalle trascrizioni umane di The Session e non gli spetta.
-            const analisi = analizzaSpartito(abc, "lettura");
-            return analisi.ok ? { abc, analisi, daImmagine: tentativo.url } : null;
+            const dati = await inviaAOpenRouter(corpoDiLettura(tentativo), settings.apiKey, TETTO_LETTURA_DOCUMENTO_MS);
+            return leggiAbcDaRisposta(dati, tentativo);
           } catch {
             // Un documento su tre risponde vuoto, 404, o il modello non lo vede (e allora costa
             // 0,000007 $ e lo dice). Nessuno di questi è un guasto da raccontare: è il motivo per
@@ -9069,8 +9149,31 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
             patchSpartito(mid, { webProvati: finiti });
           }
         };
+        // ── LA VIA DEL CORRIERE ───────────────────────────────────────────────────────────────
+        // Se c'è un service worker attivo, le chiamate le fa LUI: da qui in poi il Ghost può
+        // spegnere lo schermo e andare a fare altro. Al ritorno le risposte sono già depositate.
+        // Se non c'è (prima apertura, browser che non lo supporta, registrazione fallita) si fa
+        // come prima, in pagina: un ripiego che funziona, non un errore.
+        // L'INTERPRETAZIONE RESTA QUI in tutti e due i casi — `leggiAbcDaRisposta` è la stessa
+        // funzione. Il corriere non sa cos'è uno spartito, e non deve saperlo: due copie della
+        // stessa logica divergono entro un mese, ed è già successo col piano alimentare.
+        const perIlCorriere = daLeggere.map((t) => ({
+          url: "https://openrouter.ai/api/v1/chat/completions",
+          corpo: corpoDiLettura(t),
+        }));
+        const idLavoro = nuovoIdLavoro();
+        const affidato = affidaAlCorriere({ id: idLavoro, chiamate: perIlCorriere, chiave: settings.apiKey, tetto: TETTO_LETTURA_DOCUMENTO_MS });
+        if (affidato) patchSpartito(mid, { webCorriere: true });
         try {
-          const esiti = await Promise.all(daLeggere.map(leggiUno));
+          const esiti = affidato
+            ? await (async () => {
+                const lavoro = await aspettaIlCorriere(idLavoro, TETTO_LETTURA_DOCUMENTO_MS);
+                dimenticaLavoro(idLavoro);
+                if (!lavoro || lavoro.stato !== "finito") return daLeggere.map(() => null);
+                patchSpartito(mid, { webProvati: daLeggere.length });
+                return (lavoro.risposte || []).map((r, i) => leggiAbcDaRisposta(r?.dati, daLeggere[i]));
+              })()
+            : await Promise.all(daLeggere.map(leggiUno));
           const buono = esiti.find(Boolean);
           patchSpartito(mid, buono
             ? { webLetturaImmagine: "fatta", webAbc: [buono] }
