@@ -9018,13 +9018,21 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
       // che può contenere tutto, e tenersi l'altro come ripiego.
       // DUE TENTATIVI, NON UNO: se il PDF non si legge, l'immagine è ancora lì. Prima ce n'era uno
       // solo e un PDF trovato al posto di un'immagine avrebbe chiuso la catena a mani vuote.
+      // I DOCUMENTI SI LEGGONO TUTTI INSIEME, NON IN FILA — 15/09/2026, dalla schermata «è fermo
+      // così». Non era appeso: era lento in un modo che da fuori è identico all'appeso.
+      //   · il tetto di una chiamata al modello è 150 secondi;
+      //   · i documenti si leggevano UNO DOPO L'ALTRO → fino a cinque minuti per due;
+      //   · e il messaggio non aveva il contatore (l'avevo tolto io riscrivendo la card), quindi
+      //     sullo schermo non si muoveva NIENTE.
+      // In parallelo il tempo è quello di UN documento, non della loro somma. Costa una lettura in
+      // più quando la prima basta — 0,0003 $ — e il tempo del Ghost vale più di tre centesimi di
+      // centesimo. L'ORDINE DI PREFERENZA NON SI PERDE: si aspettano tutte e si prende la PRIMA
+      // DELLA FILA che passa il controllo, non la prima che arriva.
       const daLeggere = candidatiDaLeggere({ testo: grezzo, fonti });
       if (!trovatiAbc.length && daLeggere.length) {
         patchSpartito(mid, { webLetturaImmagine: "in-corso", webProvati: 0, webDaProvare: daLeggere.length });
-        let riusciti = false, provati = 0;
-        for (const tentativo of daLeggere) {
-          provati += 1;
-          patchSpartito(mid, { webProvati: provati });
+        let finiti = 0;
+        const leggiUno = async (tentativo) => {
           try {
             const letto = await askModel(
               "Sei un musicista che legge spartiti e li trascrive in notazione ABC. Rispondi SOLO con ABC valido.",
@@ -9033,23 +9041,41 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
             );
             const abc = String(letto || "").replace(/^\s*```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim();
             const analisi = analizzaSpartito(abc, "archivio");
-            if (analisi.ok) {
-              patchSpartito(mid, { webLetturaImmagine: "fatta", webAbc: [{ abc, analisi, daImmagine: tentativo.url }] });
-              riusciti = true;
-              break;
-            }
+            return analisi.ok ? { abc, analisi, daImmagine: tentativo.url } : null;
           } catch {
             // Un documento su tre risponde vuoto, 404, o il modello non lo vede (e allora costa
             // 0,000007 $ e lo dice). Nessuno di questi è un guasto da raccontare: è il motivo per
-            // cui i tentativi sono più d'uno. Si passa al prossimo e basta.
+            // cui i tentativi sono più d'uno.
+            return null;
+          } finally {
+            // IL CONTATORE SI MUOVE. Senza, una riga ferma per minuti è indistinguibile da un'app
+            // piantata, ed è esattamente così che il Ghost l'ha letta.
+            finiti += 1;
+            patchSpartito(mid, { webProvati: finiti });
           }
+        };
+        try {
+          const esiti = await Promise.all(daLeggere.map(leggiUno));
+          const buono = esiti.find(Boolean);
+          patchSpartito(mid, buono
+            ? { webLetturaImmagine: "fatta", webAbc: [buono] }
+            // IL MOTIVO PER CUI NON CE L'HO FATTA NON E' UNA RISPOSTA. Prima qui finiva il
+            // messaggio grezzo del fornitore — «Invalid file URL: Empty response body from URL:
+            // https://…» — in mezzo alla card, come se fosse un risultato.
+            : { webLetturaImmagine: "rifiutata", webProvati: daLeggere.length });
+        } finally {
+          // NON SI PUO' RESTARE «IN CORSO». Qualunque cosa sfugga qui sopra, la riga che dice «li
+          // sto leggendo» deve spegnersi: uno stato transitorio senza un'uscita garantita diventa
+          // permanente al primo imprevisto, e l'app resta a dire una cosa che non sta più facendo.
+          // Stessa forma del microfono che restava spento per sempre se speak() lanciava.
+          // Si guarda lo stato di PRIMA per non calpestare un esito già scritto: qui si spegne solo
+          // il caso in cui è rimasto acceso, e non si trasforma un successo in un fallimento.
+          setSpartitoStato((s) => {
+            const st0 = s[mid] || {};
+            if (st0.webLetturaImmagine !== "in-corso") return s;
+            return { ...s, [mid]: { ...st0, webLetturaImmagine: "rifiutata" } };
+          });
         }
-        // IL MOTIVO PER CUI NON CE L'HO FATTA NON E' UNA RISPOSTA. Prima qui finiva il messaggio
-        // grezzo del fornitore — «Invalid file URL: Empty response body from URL: https://…» — in
-        // mezzo alla card, in verde, come se fosse un risultato. Il Ghost cercava uno spartito e si
-        // è trovato a leggere la diagnostica di una libreria. Quanti ne ho provati è un numero, e
-        // sta in una riga; il resto sta nel registro, che è il posto dei dettagli.
-        if (!riusciti) patchSpartito(mid, { webLetturaImmagine: "rifiutata", webProvati: provati });
       }
     } catch (e) {
       patchSpartito(mid, { webStato: "errore", webNota: "La ricerca sul web non è riuscita: " + (e?.message || "motivo non dichiarato") });
@@ -10596,7 +10622,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                   <button class="r-btn r-btn-ghost" style="margin-left:0;margin-top:6px" onClick=${() => patchSpartito(mid, { brano: null, versioni: null })}>Torna ai risultati</button>
                 </div>`}
                 ${/* ── MENTRE LAVORO: UNA RIGA. Non tre stati annunciati uno per uno. ────────── */ ""}
-                ${alLavoro && !trovati && html`<div class="r-hub-detail">${st.webLetturaImmagine === "in-corso" ? `Ho trovato ${st.webDaProvare === 1 ? "un documento" : `${st.webDaProvare} documenti`}, li sto leggendo…` : "Cerco lo spartito…"}</div>`}
+                ${alLavoro && !trovati && html`<div class="r-hub-detail">${st.webLetturaImmagine === "in-corso" ? (st.webDaProvare === 1 ? "Ho trovato un documento, lo sto leggendo…" : `Sto leggendo ${st.webDaProvare} documenti — ${st.webProvati || 0} su ${st.webDaProvare} letti…`) : "Cerco lo spartito…"}</div>`}
                 ${/* ── NON CE L'HO FATTA: UNA RIGA E I TRE POSTI MIGLIORI. ──────────────────── */ ""}
                 ${!alLavoro && !trovati && html`<div>
                   <div class="r-hub-detail">${st.webStato === "errore" ? (st.webNota || "La ricerca non è riuscita.")
