@@ -852,3 +852,140 @@ describe("INFORMARSI PRIMA DI INVENTARE", () => {
     assert.doesNotMatch(briefDelloSpartito({ argomento: "un valzer" }), /HO LETTO SUL BRANO/);
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// GRATIS PRIMA — 15/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost, sui risultati veri di «La Primavera»: «continua a fare ricerche di merda, trovando solo
+// spartiti a pagamento quando invece il web è pieno di soluzioni». Misurato sui SUOI dieci domini:
+// zero riconosciuti dalla lista che avevo scritto — quindi l'ordinamento era inerte e restava
+// quello del motore, che mette davanti chi vende perché chi vende fa SEO.
+describe("GRATIS PRIMA, e gli archivi liberi che il motore sotterra", () => {
+  const { fontiPerSpartito, archiviLiberiMancanti, ARCHIVI_LIBERI } = app;
+  // I domini VERI comparsi nella ricerca del Ghost, non quelli che immaginavo io.
+  const suoi = ["lucioimbriglio.it", "it.cantorion.org", "it.sheetmusicdirect.com", "musicologie.org",
+    "it.sheetmusicdirect.com", "tomplay.com", "musicarteconegliano.com", "laflutedepan.com", "www.imslp.org"];
+  const comeFonti = (domini) => domini.map((d, i) => ({ url: `https://${d}/x${i}`, dominio: d }));
+
+  test("IL PREFISSO DI LINGUA NON DEVE NASCONDERE IL DOMINIO — era 0 riconosciuti su 10", () => {
+    // «it.sheetmusicdirect.com» è lo stesso posto di «sheetmusicdirect.com». Senza togliere il
+    // prefisso la lista non riconosce quasi niente, ed è esattamente quello che è successo.
+    const f = fontiPerSpartito(comeFonti(suoi));
+    assert.ok(f.filter((x) => x.costo).length >= 8, `riconosciuti ${f.filter((x) => x.costo).length} su ${f.length}`);
+    assert.equal(f.find((x) => x.dominio === "www.imslp.org").costo, "gratis");
+    assert.equal(f.find((x) => x.dominio === "it.sheetmusicdirect.com").costo, "pagamento");
+  });
+
+  test("I NEGOZI FINISCONO IN FONDO, i gratis davanti", () => {
+    const f = fontiPerSpartito(comeFonti(suoi));
+    const costi = f.map((x) => x.costo || "?");
+    const primoPagamento = costi.indexOf("pagamento");
+    const ultimoGratis = costi.lastIndexOf("gratis");
+    assert.ok(ultimoGratis < primoPagamento, `ordine sbagliato: ${costi.join(" ")}`);
+    assert.equal(costi[0], "gratis");
+    assert.equal(costi[costi.length - 1], "pagamento");
+  });
+
+  test("a parità di costo, chi si può portare dentro l'app va davanti", () => {
+    const f = fontiPerSpartito(comeFonti(["imslp.org", "thesession.org", "mutopiaproject.org"]));
+    assert.deepEqual(f.map((x) => x.portabile), ["abc", "musicxml", "immagine"]);
+  });
+
+  test("GLI ARCHIVI LIBERI ARRIVANO DAL PROGRAMMA, non dal motore", () => {
+    // Nei risultati veri del Ghost, IMSLP e Mutopia erano dichiarati gratis NEL TESTO ma non
+    // avevano il link: il motore non li aveva restituiti. Questi il programma li sa.
+    const liberi = archiviLiberiMancanti("La Primavera Vivaldi", []);
+    assert.ok(liberi.length >= 4);
+    for (const a of liberi) {
+      assert.match(a.url, /^https:\/\//, a.url);
+      assert.ok(a.url.includes(encodeURIComponent("La Primavera Vivaldi")) || a.url.includes("La%20Primavera"), a.url);
+      assert.ok(a.nome && a.che);
+    }
+    assert.ok(liberi.some((a) => a.nome === "IMSLP"), "manca IMSLP");
+  });
+
+  test("ma NON si ripete quello che la ricerca ha già portato: due link allo stesso posto sono rumore", () => {
+    const conImslp = fontiPerSpartito(comeFonti(["www.imslp.org", "tomplay.com"]));
+    const liberi = archiviLiberiMancanti("x", conImslp);
+    assert.ok(!liberi.some((a) => a.nome === "IMSLP"), "IMSLP c'era già fra i risultati");
+    assert.ok(liberi.some((a) => a.nome === "Mutopia"), "Mutopia invece mancava e va aggiunto");
+  });
+
+  test("ogni archivio libero si dichiara e compone il suo indirizzo da sé", () => {
+    for (const a of ARCHIVI_LIBERI) {
+      assert.ok(a.id && a.nome && a.che, `${a.id} si dichiara a metà`);
+      assert.match(a.cerca("due parole"), /^https:\/\/[^ ]+due(%20|\+)parole/, a.cerca("due parole"));
+    }
+  });
+
+  test("IL BRIEF CHIEDE IL GRATUITO, e dice perché i motori non lo fanno da soli", () => {
+    const b = app.briefRicercaWebSpartito({ query: "la primavera", autore: "Vivaldi" }).replace(/\s+/g, " ");
+    assert.match(b, /PRIVILEGIA QUELLO CHE SI PUO' AVERE GRATIS/);
+    assert.match(b, /I motori mettono davanti chi vende, perché chi vende fa SEO/);
+    assert.match(b, /IMSLP\/Petrucci, Mutopia, CPDL, Musopen/);
+    assert.match(b, /I negozi .* mettili per ultimi/);
+    assert.match(b, /morto da più di settant'anni il brano è di PUBBLICO DOMINIO/);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// COME CERCHEREBBE UNA PERSONA SCALTRA — 15/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// Domanda del Ghost, ed è quella giusta: uno scaltro non scrive il titolo su Google e guarda i
+// primi dieci. Usa il numero di catalogo, gli operatori, le altre lingue, e guarda le IMMAGINI.
+describe("LE MOSSE DI UNO SCALTRO", () => {
+  const { queryScaltre, ricercheAMano, catalogoDaRicerca } = app;
+
+  test("IL NUMERO DI CATALOGO è la chiave: lo usano le biblioteche, i negozi molto meno", () => {
+    assert.equal(catalogoDaRicerca("CATALOGO: RV 269\n- IMSLP — PDF — gratis"), "RV 269");
+    // E se non lo dichiara ma lo scrive, si prende lo stesso.
+    assert.equal(catalogoDaRicerca("Il concerto Op. 8 No. 1 di Vivaldi"), "Op. 8 No. 1");
+    assert.equal(catalogoDaRicerca("La sinfonia K. 550 di Mozart"), "K. 550");
+    assert.equal(catalogoDaRicerca("il terzo BWV 1048"), "BWV 1048");
+    // Quello che non c'è non si inventa.
+    assert.equal(catalogoDaRicerca("un brano qualsiasi senza numeri"), "");
+    assert.equal(catalogoDaRicerca("CATALOGO: -"), "", "un campo lasciato vuoto non è un catalogo");
+    assert.equal(catalogoDaRicerca(null), "");
+  });
+
+  test("le query mirate usano gli operatori, non solo parole", () => {
+    const q = queryScaltre({ query: "la primavera", autore: "Vivaldi", catalogo: "RV 269" });
+    assert.ok(q.some((x) => x.includes('"RV 269"') && x.includes("filetype:pdf")), "manca la query col catalogo");
+    assert.ok(q.some((x) => x.includes("site:imslp.org")), "manca quella dentro l'archivio");
+    assert.ok(q.some((x) => x.includes("-site:sheetmusicdirect.com")), "i negozi non vengono esclusi");
+    // Senza catalogo si cerca lo stesso, con una query in meno.
+    assert.ok(queryScaltre({ query: "x" }).length >= 3);
+    assert.ok(!queryScaltre({ query: "x" }).some((y) => y.includes('""')), "nessuna query con virgolette vuote");
+  });
+
+  test("LA RICERCA PER IMMAGINI è la mossa più utile, e nessun modello la sa fare", () => {
+    // Uno spartito È un'immagine: si vede il pentagramma senza aprire niente. È quello che il Ghost
+    // aveva fatto a mano dopo che l'app gli aveva dato solo negozi.
+    const r = ricercheAMano({ query: "la primavera", autore: "Vivaldi", catalogo: "RV 269" });
+    const img = r.find((x) => x.id === "immagini");
+    assert.ok(img, "manca la ricerca per immagini");
+    assert.match(img.url, /tbm=isch/);
+    assert.ok(decodeURIComponent(img.url).includes("la primavera Vivaldi spartito"));
+  });
+
+  test("le ricerche pronte usano il CATALOGO quando c'è, il titolo quando non c'è", () => {
+    const conCat = ricercheAMano({ query: "la primavera", autore: "Vivaldi", catalogo: "RV 269" });
+    assert.ok(decodeURIComponent(conCat.find((x) => x.id === "pdf").url).includes("RV 269"));
+    const senza = ricercheAMano({ query: "la primavera", autore: "Vivaldi" });
+    assert.ok(decodeURIComponent(senza.find((x) => x.id === "pdf").url).includes("la primavera"));
+    for (const r of [...conCat, ...senza]) {
+      assert.match(r.url, /^https:\/\/www\.google\.com\/search\?/, r.url);
+      assert.ok(r.nome && r.che, `${r.id} si dichiara a metà`);
+    }
+  });
+
+  test("IL BRIEF DETTA LE MOSSE, non «cerca meglio»", () => {
+    const b = app.briefRicercaWebSpartito({ query: "la primavera", autore: "Vivaldi" }).replace(/\s+/g, " ");
+    assert.match(b, /trova prima il NUMERO DI CATALOGO/);
+    assert.match(b, /filetype:pdf per andare al documento invece che alla pagina di vendita/);
+    assert.match(b, /site:imslp\.org/);
+    assert.match(b, /prova anche il titolo nelle ALTRE LINGUE/);
+    assert.match(b, /se il primo giro dà solo negozi, CAMBIA CHIAVE invece di insistere/);
+    assert.match(b, /CATALOGO: RV 269/, "deve dire come dichiararlo, o il programma non lo legge");
+  });
+});
