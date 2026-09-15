@@ -1,4 +1,4 @@
-const CACHE = "resonance-v32"; // bump di versione: invalida qualunque cache residua e serve il nuovo app.js
+const CACHE = "resonance-v33"; // bump di versione: invalida qualunque cache residua e serve il nuovo app.js
 // 31/08/2026 — I TRE MODULI ESTRATTI DEVONO STARE QUI DENTRO. app.js non e' piu' un file solo: se
 // lib/*.js non fosse precaricato, online non cambierebbe niente (la strategia e' rete-prima), ma la
 // prima apertura SENZA rete dopo un aggiornamento troverebbe app.js in cache e i suoi import no —
@@ -15,6 +15,12 @@ const SHELL = [
   "./lib/plasmide.js",
   "./lib/capitolato.js",
   "./lib/alimentare.js",
+  // 15/09/2026 — MANCAVA DA QUANDO ESISTE (14/09). app.js lo importa, questo elenco no: la prima
+  // apertura SENZA rete dopo un aggiornamento trovava app.js in cache e questo import no, e l'app
+  // non si disegnava affatto. Esattamente il guasto descritto qui sopra, in un commento scritto il
+  // 31/08 proprio per impedirlo: una regola scritta e basta non e' una regola. Da oggi la impone
+  // una prova (tests/service-worker.test.mjs), che confronta questo elenco con gli import veri.
+  "./lib/spartito.js",
   "./config.js",
   // 14/09/2026 — il banco microfono. Precaricato perche' la prova si fa in macchina, e un garage o
   // un parcheggio interrato senza campo e' esattamente il posto dove si finisce per provarlo.
@@ -25,6 +31,8 @@ const SHELL = [
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
+  // index.html lo chiede, quindi senza rete lo chiederebbe alla cache e non lo troverebbe.
+  "./icons/apple-touch-icon.png",
 ];
 
 self.addEventListener("install", (e) => {
