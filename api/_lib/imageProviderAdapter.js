@@ -13,10 +13,13 @@
 // ritorno { ok, pngBase64, error } — nessun altro file deve cambiare.
 const API_URL = "https://api.stability.ai/v2beta/stable-image/generate/core";
 
-async function generateRasterImage(prompt) {
-  const apiKey = process.env.STABILITY_API_KEY;
+// Autenticazione — DUE strade, non una (15/09/2026, stessa ragione di serperClient.js): la chiave
+// del CHIAMANTE, in Setup nell'app come la chiave OpenRouter (ognuno il proprio account Stability),
+// con ripiego su STABILITY_API_KEY come variabile d'ambiente Vercel. Quella del chiamante vince se c'è.
+async function generateRasterImage(prompt, chiaveDelChiamante) {
+  const apiKey = String(chiaveDelChiamante || "").trim() || process.env.STABILITY_API_KEY;
   if (!apiKey) {
-    return { ok: false, error: "STABILITY_API_KEY non configurata su Vercel — effettore immagine_raster non ancora attivo (chiave non fornita in questa sessione)." };
+    return { ok: false, error: "Nessuna chiave Stability: né in Setup, né STABILITY_API_KEY su Vercel — effettore immagine_raster non attivo finché non ne imposti una." };
   }
   const form = new FormData();
   form.append("prompt", prompt);
