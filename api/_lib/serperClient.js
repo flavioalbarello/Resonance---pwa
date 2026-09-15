@@ -9,9 +9,14 @@
 // da $1/1000 a $0,30/1000 a volume — contro gli $0,007 A CHIAMATA del plugin web_search di
 // OpenRouter, più i token, più eventuali letture di documenti a valle.
 //
-// Autenticazione: chiave dalla dashboard serper.dev. Vive SOLO come variabile d'ambiente su Vercel
-// (SERPER_API_KEY), mai nel repository e mai nel frontend — stessa regola di PRINTIFY_API_TOKEN
-// (vedi printifyClient.js): una chiave dentro un file che gira è una chiave bruciata.
+// Autenticazione — DUE strade, non una (15/09/2026, dalla domanda del Ghost su come dare la chiave
+// a un futuro nuovo utente senza fargli toccare Vercel):
+//  1. la chiave del CHIAMANTE, mandata nel corpo della richiesta — sta in Setup nell'app, come la
+//     chiave OpenRouter: vive solo sul suo dispositivo, non serve nessun accesso a Vercel.
+//  2. SERPER_API_KEY come variabile d'ambiente su Vercel — ripiego per chi preferisce una chiave
+//     unica di progetto invece che per persona.
+// Quella del chiamante vince se c'è. Non è mai il codice del repository a contenerla: quella
+// resterebbe una chiave bruciata (vedi PRINTIFY_API_TOKEN in printifyClient.js).
 //
 // Nota su Serper stesso, da dire al Ghost e non nascondere: non è un'API ufficiale di Google, è
 // scraping dei risultati veri — zona grigia rispetto ai Termini di servizio di Google, anche se
@@ -19,14 +24,14 @@
 // rischio pratico è trascurabile, ma è una scelta diversa da un contratto diretto con Google.
 const SERPER_BASE = "https://google.serper.dev";
 
-function leggiChiave() {
-  return process.env.SERPER_API_KEY || "";
+function leggiChiave(chiaveDelChiamante) {
+  return String(chiaveDelChiamante || "").trim() || process.env.SERPER_API_KEY || "";
 }
 
-async function cercaImmagini(query, num = 10) {
+async function cercaImmagini(query, chiave, num = 10) {
   const res = await fetch(`${SERPER_BASE}/images`, {
     method: "POST",
-    headers: { "X-API-KEY": leggiChiave(), "Content-Type": "application/json" },
+    headers: { "X-API-KEY": chiave, "Content-Type": "application/json" },
     body: JSON.stringify({ q: query, num }),
   });
   const text = await res.text();
