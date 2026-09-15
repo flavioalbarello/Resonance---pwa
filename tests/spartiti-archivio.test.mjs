@@ -757,3 +757,98 @@ describe("LA RICERCA WEB — e i link che nessun modello può inventare", () => 
     assert.deepEqual(senzaIndirizziInventati(null, null), { testo: "", inventati: 0 });
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INFORMARSI PRIMA DI INVENTARE — 15/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost: «se chiedessi una linea di basso sullo stile di Stratus di Billy Cobham, non basta che
+// trovi lo spartito: dovrebbe informarsi online sulle peculiarità di quel brano PRIMA di generare».
+// E il guadagno più grande non è il contesto: è che tonalità e metro trovati sono DATI, e un dato
+// si può controllare. La ricerca diventa l'accettore di questo turno.
+describe("INFORMARSI PRIMA DI INVENTARE", () => {
+  const { riferimentoDaBrief, briefRicercaCaratteristiche, schedaDaRicerca, requisitiDallaScheda, briefDelloSpartito } = app;
+
+  test("«sullo stile di X di Y» si legge: il brano e chi l'ha fatto", () => {
+    const r = riferimentoDaBrief("una linea di basso sullo stile di Stratus di Billy Cobham");
+    assert.equal(r.brano, "Stratus");
+    assert.equal(r.artista, "Billy Cobham");
+    for (const [frase, brano] of [
+      ["un tema alla maniera di Bach", "Bach"],
+      ["qualcosa di ispirato a Kind of Blue di Miles Davis", "Kind of Blue"],
+      ["un riff nello stile di Paranoid dei Black Sabbath", "Paranoid"],
+    ]) assert.equal(riferimentoDaBrief(frase).brano, brano, frase);
+  });
+
+  test("si ferma dove finisce il riferimento e comincia un'altra idea", () => {
+    const r = riferimentoDaBrief("un basso sullo stile di Stratus di Billy Cobham, ma più lento e in minore");
+    assert.equal(r.brano, "Stratus", "«ma più lento» non fa parte del titolo");
+    assert.equal(r.artista, "Billy Cobham");
+  });
+
+  test("SENZA un riferimento reale non si cerca niente, e non si spende niente", () => {
+    for (const f of ["il tema dell'Atto IV, lento, in minore", "scrivi un valzer triste", "una melodia per flauto", ""]) {
+      assert.equal(riferimentoDaBrief(f), null, f);
+    }
+  });
+
+  test("al modello si chiedono DATI, non un racconto — e si dice di lasciare vuoto invece di inventare", () => {
+    const b = briefRicercaCaratteristiche({ brano: "Stratus", artista: "Billy Cobham", strumento: "basso" }).replace(/\s+/g, " ");
+    for (const campo of ["TONALITA:", "METRO:", "ANDAMENTO:", "PECULIARITA:"]) assert.ok(b.includes(campo), `manca ${campo}`);
+    assert.match(b, /lascia vuoto quello che la ricerca non dice invece di riempirlo a memoria/);
+    assert.match(b, /un vincolo inventato produce musica sbagliata con sicurezza/);
+    assert.ok(b.includes("Stratus") && b.includes("di Billy Cobham") && b.includes("parte di basso"));
+  });
+
+  test("la scheda si legge in italiano e in inglese, e quello che non c'è resta vuoto", () => {
+    const a = schedaDaRicerca("TONALITA: Mi minore\nMETRO: 16/16\nANDAMENTO: 120 bpm\nPECULIARITA: groove funk");
+    assert.deepEqual([a.tonalita, a.metro, a.bpm, a.trovato], ["Em", "16/16", 120, true]);
+    assert.equal(schedaDaRicerca("TONALITA: E minor\nMETRO: 4/4").tonalita, "Em");
+    assert.equal(schedaDaRicerca("TONALITA: Do maggiore").tonalita, "C");
+    assert.equal(schedaDaRicerca("TONALITA: Fa diesis minore").tonalita, "F#m");
+    const vuota = schedaDaRicerca("TONALITA: \nMETRO: \nANDAMENTO: \nPECULIARITA: non trovato");
+    assert.equal(vuota.trovato, false, "«non trovato» non è una peculiarità");
+    assert.deepEqual([vuota.tonalita, vuota.metro, vuota.bpm], ["", "", 0]);
+  });
+
+  test("QUELLO CHE LA RICERCA HA TROVATO DIVENTA UN REQUISITO, non un suggerimento", () => {
+    const scheda = schedaDaRicerca("TONALITA: Mi minore\nMETRO: 16/16\nANDAMENTO: 120\nPECULIARITA: groove funk");
+    const extra = requisitiDallaScheda(scheda);
+    assert.deepEqual(extra.map((r) => r.id), ["metro-della-ricerca", "tonalita-della-ricerca"]);
+    const storto = "X:1\nT:P\nM:4/4\nL:1/8\nK:C\nCDEF GABc|cBAG FEDC|";
+    const r = analizzaSpartito(storto, "modello", extra);
+    assert.equal(r.ok, false, "un modello che ignora tonalità e metro letti deve tornare indietro");
+    const motivi = r.errori.map((e) => e.motivo).join(" | ");
+    assert.match(motivi, /la ricerca dice che il brano è in 16\/16/);
+    assert.match(motivi, /la ricerca dice tonalità Em/);
+  });
+
+  test("QUELLO CHE NON SI E' TROVATO NON DIVENTA UN VINCOLO: non si pretende ciò che non si sa", () => {
+    assert.deepEqual(requisitiDallaScheda(schedaDaRicerca("PECULIARITA: non trovato")), []);
+    assert.deepEqual(requisitiDallaScheda(null), []);
+    // Solo il metro trovato = solo quel vincolo.
+    assert.deepEqual(requisitiDallaScheda(schedaDaRicerca("METRO: 6/8")).map((r) => r.id), ["metro-della-ricerca"]);
+  });
+
+  test("il modo scritto per esteso non è un errore da rifare: Edor vale come Em", () => {
+    const extra = requisitiDallaScheda({ tonalita: "Em" });
+    const conDorico = "X:1\nT:P\nM:4/4\nL:1/8\nK:Edor\nEBBA B2 EB|B2 AB dBAG|";
+    assert.equal(analizzaSpartito(conDorico, "modello", extra).ok, true, "il dorico di MI è minore quanto Em: è una variante, non un errore");
+    assert.equal(analizzaSpartito("X:1\nT:P\nM:4/4\nL:1/8\nK:G\nGABc defg|gfed cBAG|", "modello", extra).ok, false, "una fondamentale diversa sì");
+    // Ma MI MAGGIORE contro MI MINORE è un colore diverso, e quello si rifà.
+    assert.equal(analizzaSpartito("X:1\nT:P\nM:4/4\nL:1/8\nK:E\nEFGA Bcde|edcB AGFE|", "modello", extra).ok, false, "maggiore al posto di minore non è una variante");
+    assert.equal(analizzaSpartito("X:1\nT:P\nM:4/4\nL:1/8\nK:Eaeo\nEFGA Bcde|edcB AGFE|", "modello", extra).ok, true, "eolio = minore naturale");
+  });
+
+  test("il brief DICHIARA cosa ha letto e da dove, separato da quello che il modello immagina", () => {
+    const scheda = schedaDaRicerca("TONALITA: Mi minore\nMETRO: 16/16\nANDAMENTO: 120\nPECULIARITA: groove funk, sedicesimi fantasma");
+    const b = briefDelloSpartito({ argomento: "una linea di basso", strumento: "basso", scheda }).replace(/\s+/g, " ");
+    assert.match(b, /QUELLO CHE HO LETTO SUL BRANO DI RIFERIMENTO \(ricerca sul web, non memoria tua\)/);
+    assert.match(b, /groove funk, sedicesimi fantasma/);
+    assert.match(b, /Non copiarlo: è un riferimento, non un modello da riprodurre/);
+    // E i vincoli sono DETTATI, non solo verificati: la regola di casa, un oggetto letto due volte.
+    assert.match(b, /La ricerca dice che questo brano è in 16\/16/);
+    assert.match(b, /La ricerca dice che la tonalità è Em/);
+    // Senza scheda il brief resta quello di prima: chi non nomina un riferimento non paga niente.
+    assert.doesNotMatch(briefDelloSpartito({ argomento: "un valzer" }), /HO LETTO SUL BRANO/);
+  });
+});
