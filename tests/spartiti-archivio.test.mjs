@@ -673,3 +673,87 @@ describe("TRASCRIVERE DA UN'IMMAGINE — e dire quello che non si può controlla
     assert.match(r.errori.map((e) => e.motivo).join(" "), /parziale spaiata|più lunga del metro/);
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CERCARE IN TUTTO IL WEB — 15/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost: «deve cercare online, in tutto il web, come una ricerca Google, non solo in archivi».
+// Il rischio da non spedire è che il modello ELENCHI LINK A MEMORIA: un indirizzo ricordato male
+// porta a una pagina che non esiste, ed è indistinguibile da uno buono finché non ci clicchi.
+// Stessa classe degli appuntamenti inventati, stessa cura: il programma mostra il DATO (le
+// annotazioni della ricerca), non la prosa che lo racconta.
+describe("LA RICERCA WEB — e i link che nessun modello può inventare", () => {
+  const { briefRicercaWebSpartito, fontiPerSpartito, senzaIndirizziInventati, leggiDiagnosticaRicerca, diagnosticaVuota } = app;
+
+  test("il brief VIETA al modello di scrivere indirizzi, e dice perché", () => {
+    const b = briefRicercaWebSpartito({ query: "la primavera", autore: "Vivaldi", strumento: "flauto" }).replace(/\s+/g, " ");
+    assert.match(b, /NON SCRIVERE GLI INDIRIZZI/);
+    assert.match(b, /li mette il programma, presi dai risultati veri/);
+    assert.match(b, /Cerca in tutto il web, non in un archivio solo/);
+    assert.ok(b.includes("la primavera") && b.includes("di Vivaldi") && b.includes("per flauto"), b.slice(0, 160));
+  });
+
+  test("GLI INDIRIZZI VERI SI LEGGONO DALLE ANNOTAZIONI, non dal testo", () => {
+    // La forma che OpenRouter restituisce davvero con il plugin di ricerca attivo.
+    const raw = { choices: [{ message: { content: "ecco cosa ho trovato", annotations: [
+      { type: "url_citation", url_citation: { url: "https://imslp.org/wiki/Le_quattro_stagioni", title: "Le quattro stagioni — IMSLP" } },
+      { type: "url_citation", url_citation: { url: "https://musescore.com/user/1/scores/2", title: "Primavera" } },
+      { type: "url_citation", url_citation: { url: "https://imslp.org/wiki/Le_quattro_stagioni", title: "doppione" } },
+    ] } }] };
+    const d = leggiDiagnosticaRicerca(raw, diagnosticaVuota());
+    assert.equal(d.toolInvoked, true);
+    assert.equal(d.fonti.length, 2, "il doppione non si mostra due volte");
+    assert.equal(d.fonti[0].dominio, "imslp.org", "il «www.» non si mostra");
+    assert.equal(d.fonti[0].titolo, "Le quattro stagioni — IMSLP");
+    // E i domini, che servivano già a Balthasar, restano come prima.
+    assert.deepEqual(d.citationDomains.sort(), ["imslp.org", "musescore.com"]);
+  });
+
+  test("nessuna ricerca eseguita = nessuna fonte, e si vede", () => {
+    const d = leggiDiagnosticaRicerca({ choices: [{ message: { content: "credo sia su IMSLP" } }] }, diagnosticaVuota());
+    assert.equal(d.toolInvoked, false, "così la card può dire che viene dalla memoria, non dal web");
+    assert.deepEqual(d.fonti, []);
+  });
+
+  test("UN INDIRIZZO CHE LA RICERCA NON HA RESTITUITO VIENE TOLTO, e si conta", () => {
+    const fonti = [{ url: "https://imslp.org/wiki/X" }];
+    const r = senzaIndirizziInventati(
+      "Lo trovi su IMSLP https://imslp.org/wiki/X e anche su https://spartiti-inventati.example/vivaldi",
+      fonti);
+    assert.ok(r.testo.includes("https://imslp.org/wiki/X"), "quello vero resta");
+    assert.ok(!r.testo.includes("spartiti-inventati"), "quello inventato sparisce");
+    assert.equal(r.inventati, 1, "e si conta, perché un modello che continua a farlo è un fatto");
+  });
+
+  test("senza indirizzi inventati il testo non viene toccato", () => {
+    const t = "Su IMSLP c'è la partitura completa, gratis.";
+    assert.deepEqual(senzaIndirizziInventati(t, []), { testo: t, inventati: 0 });
+  });
+
+  test("I RISULTATI SI ORDINANO PER QUANTO SONO VICINI A QUALCOSA DI USABILE QUI", () => {
+    // Una pagina che dà ABC si può portare dentro l'app; un PDF si può solo guardare; un video
+    // nemmeno quello. È un giudizio del PROGRAMMA sul dominio, non una domanda al modello.
+    const ordinate = fontiPerSpartito([
+      { url: "https://www.youtube.com/watch?v=1", dominio: "youtube.com" },
+      { url: "https://imslp.org/wiki/X", dominio: "imslp.org" },
+      { url: "https://thesession.org/tunes/1", dominio: "thesession.org" },
+      { url: "https://www.mutopiaproject.org/x", dominio: "mutopiaproject.org" },
+    ]);
+    assert.deepEqual(ordinate.map((f) => f.dominio), ["thesession.org", "mutopiaproject.org", "imslp.org", "youtube.com"]);
+    assert.equal(ordinate[0].portabile, "abc");
+    assert.ok(ordinate[0].che, "ogni dominio noto dice cosa ci si trova");
+  });
+
+  test("un dominio che non conosco non viene buttato: si mostra senza giudizio", () => {
+    const r = fontiPerSpartito([{ url: "https://sito-mai-visto.it/x", dominio: "sito-mai-visto.it" }]);
+    assert.equal(r.length, 1);
+    assert.equal(r[0].che, "");
+    assert.equal(r[0].portabile, "");
+  });
+
+  test("dati storti non fanno esplodere niente", () => {
+    assert.deepEqual(fontiPerSpartito(null), []);
+    assert.deepEqual(fontiPerSpartito([{ dominio: "x" }]), [], "senza url non è una fonte");
+    assert.deepEqual(senzaIndirizziInventati(null, null), { testo: "", inventati: 0 });
+  });
+});
