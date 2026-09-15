@@ -32,7 +32,7 @@ module.exports = async (request, response) => {
     response.status(400).json({ ok: false, error: "Campo 'azione' mancante o non valido. Ammessi: statoNegozi, pubblica." });
     return;
   }
-  const { token, shopId, complete } = leggiCredenziali();
+  const { token, shopId, complete } = leggiCredenziali(request.body);
 
   if (dryRun) {
     if (azione === "statoNegozi") {
@@ -55,7 +55,7 @@ module.exports = async (request, response) => {
   }
 
   if (!complete) {
-    response.status(200).json({ ok: false, error: "PRINTIFY_API_TOKEN e/o PRINTIFY_SHOP_ID non configurate su Vercel. Finché mancano, nessuna pubblicazione è possibile — e questo è il comportamento voluto, non un guasto." });
+    response.status(200).json({ ok: false, error: "Nessuna credenziale Printify (né in Setup né su Vercel). Finché manca, nessuna pubblicazione è possibile — e questo è il comportamento voluto, non un guasto." });
     return;
   }
 

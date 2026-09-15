@@ -31,9 +31,9 @@ module.exports = async (request, response) => {
     ));
     return;
   }
-  const { token, complete } = leggiCredenziali();
+  const { token, complete } = leggiCredenziali(request.body);
   if (!complete) {
-    response.status(200).json({ ok: false, error: "PRINTIFY_API_TOKEN e/o PRINTIFY_SHOP_ID non configurate su Vercel. Il catalogo non è interrogabile finché non le imposti." });
+    response.status(200).json({ ok: false, error: "Nessuna credenziale Printify (né in Setup né su Vercel). Il catalogo non è interrogabile finché non ne imposti una." });
     return;
   }
   try {
