@@ -1,4 +1,6 @@
-# Due controlli, trenta secondi, su ogni proposta di modifica.
+# Tre controlli su ogni proposta di modifica: marcatori di conflitto, sintassi di app.js,
+# e il banco di prove (tests/*.test.mjs). Aggiunto il 15/09/2026: prima le 966 prove
+# giravano solo a mano, quindi un banco che nessuno esegue era un commento.
 #
 # Perché esiste: il 23/08/2026 una risoluzione di conflitto incompleta ha lasciato dentro app.js i
 # marcatori che git scrive quando due modifiche si toccano (<<<<<<<, =======, >>>>>>>). Quei
@@ -22,6 +24,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+
       - name: Nessun marcatore di conflitto rimasto nei file
         run: |
           if grep -rInE '^(<{7}|={7}|>{7})( |$)' --include='*.js' --include='*.mjs' --include='*.html' --include='*.css' --include='*.json' .; then
@@ -39,3 +45,6 @@ jobs:
           # `import` e Node lo tratta come script. La forma corretta e' questa.
           node --input-type=module --check < app.js
           echo "La sintassi di app.js e' valida."
+
+      - name: Banco di prove
+        run: node --test "tests/*.test.mjs"
