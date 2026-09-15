@@ -1182,3 +1182,102 @@ describe("LO SPARTITO, NON L'ELENCO", () => {
     assert.equal(r.avvisi.length, 1);
   });
 });
+
+// ── IL PDF — 15/09/2026 ─────────────────────────────────────────────────────────────────────────
+// Il Ghost: «magari non trova il database ma trova un PDF o un immagine».
+// Questo blocco non è dedotto: ogni numero qui dentro è stato MISURATO con la chiave vera, su un
+// PDF vero (Mutopia, «Mentre dormi amor», 131 KB, 200 application/pdf verificato prima di partire).
+// Il tentativo precedente usava un indirizzo che mi ero inventato: 404, e un 404 non misura niente.
+describe("IL PDF SI LEGGE — e nella forma giusta, che non è quella delle immagini", () => {
+  const { pdfDaRicerca, immagineDaRicerca, eUnPdf, buildOpenRouterContent, briefRicercaWebSpartito } = app;
+  const PDF_VERO = "https://www.mutopiaproject.org/ftp/VivaldiA/rv725/MentreDormi/MentreDormi-a4.pdf";
+
+  test("l'indirizzo di un PDF dichiarato dalla ricerca si riconosce", () => {
+    assert.equal(pdfDaRicerca(`CATALOGO: RV 725\nPDF: ${PDF_VERO}\n- mutopia — pentagramma, PDF — gratis`), PDF_VERO);
+    assert.equal(pdfDaRicerca("PDF: https://esempio.org/a.pdf?dl=1"), "https://esempio.org/a.pdf?dl=1");
+    assert.equal(pdfDaRicerca("PDF: https://esempio.org/a.pdf)."), "https://esempio.org/a.pdf", "la punteggiatura di fine riga non fa parte dell'indirizzo");
+  });
+
+  test("quello che NON è un PDF non diventa un PDF", () => {
+    assert.equal(pdfDaRicerca("PDF: https://esempio.org/pagina-con-pdf"), "", "una pagina che PARLA di un pdf non è un pdf");
+    assert.equal(pdfDaRicerca("PDF: nessuna pagina ne aveva"), "");
+    assert.equal(pdfDaRicerca("PDF: -"), "");
+    assert.equal(pdfDaRicerca("Ho trovato un PDF su mutopia.org, gratis."), "", "senza il campo dichiarato non si indovina");
+    assert.equal(pdfDaRicerca(null), "");
+  });
+
+  test("i due imbuti non si confondono: un PDF non è un'immagine e viceversa", () => {
+    // Serve perché OpenRouter RIFIUTA un PDF dentro image_url, con parole sue (misurate):
+    // «Unsupported image format for URL: … Supported formats: PNG, JPEG, WebP, GIF».
+    assert.equal(immagineDaRicerca(`IMMAGINE: ${PDF_VERO}`), "", "un PDF non passa dalla porta delle immagini");
+    assert.equal(pdfDaRicerca("PDF: https://esempio.org/spartito.png"), "", "e un PNG non passa da quella dei PDF");
+  });
+
+  test("UN PDF SI SPEDISCE COME `file`, NON COME `image_url` — è la misura, non un'opinione", () => {
+    const parti = buildOpenRouterContent("leggi questo", { url: PDF_VERO, pdf: true });
+    assert.equal(parti[1].type, "file");
+    assert.equal(parti[1].file.file_data, PDF_VERO, "l'URL va nudo: a scaricarlo è il loro server, non il browser");
+    assert.match(parti[1].file.filename, /\.pdf$/);
+    // E il controllo: un'immagine deve continuare a passare come prima.
+    const img = buildOpenRouterContent("leggi questo", { url: "https://esempio.org/a.png" });
+    assert.equal(img[1].type, "image_url");
+    assert.equal(img[1].image_url.url, "https://esempio.org/a.png");
+  });
+
+  test("un PDF si riconosce dall'estensione, dal tipo, o perché lo si dichiara", () => {
+    assert.equal(eUnPdf({ url: PDF_VERO }), true, "dall'estensione — anche se nessuno l'ha dichiarato");
+    assert.equal(eUnPdf({ url: "https://esempio.org/x.pdf?v=2" }), true);
+    assert.equal(eUnPdf({ mediaType: "application/pdf", base64: "..." }), true, "un PDF allegato a mano dal Ghost, senza URL");
+    assert.equal(eUnPdf({ pdf: true, url: "https://esempio.org/scarica?id=9" }), true, "dichiarato, quando l'indirizzo non dice niente");
+    assert.equal(eUnPdf({ url: "https://esempio.org/a.png" }), false);
+    assert.equal(eUnPdf({ mediaType: "image/png", base64: "..." }), false);
+    assert.equal(eUnPdf(null), false);
+  });
+
+  test("IL BRIEF CHIEDE IL PDF, e lo mette davanti all'immagine", () => {
+    const b = briefRicercaWebSpartito({ query: "la primavera" });
+    assert.match(b, /^PDF: https/m, "il campo va chiesto con un esempio, o il modello scrive la pagina");
+    assert.match(b, /Dev'essere il file \.pdf, non la pagina/);
+    assert.match(b, /un PDF è quasi sempre lo spartito INTERO/);
+  });
+});
+
+// ── IL MOTORE DEI PDF È UNA SPESA, NON UN DETTAGLIO ─────────────────────────────────────────────
+// Misurato il 15/09/2026, stesso PDF, stessa domanda, stessa risposta giusta:
+//   · engine "native" su un modello che i PDF li vede  → 0,00026 $
+//   · NESSUN motore scritto, su Llama 3.3 70B (la nostra produzione, che i PDF non li vede)
+//                                                      → 0,0201 $, SETTANTASEI VOLTE TANTO
+// Il secondo non è un modello più caro: è il loro ripiego OCR (2 $/1000 pagine) acceso da solo.
+// Stessa forma del tetto che leggeva `debug-log`: una spesa che si vede solo andandola a cercare.
+// Questa prova NON guarda una costante — guarda che OGNI imbuto che parla con OpenRouter lo scriva.
+// Una costante giusta e un imbuto che non la usa è esattamente il guasto di `saveKey`.
+describe("IL MOTORE DEI PDF SI SCRIVE IN OGNI IMBUTO — se no il ripiego OCR costa 76 volte tanto", () => {
+  const sorgente = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+  test("il motore scelto è `native`, e non un ripiego a pagamento", () => {
+    const riga = /const PIANO_PDF = (\[.*\]);/.exec(sorgente);
+    assert.ok(riga, "PIANO_PDF non esiste più: se l'hai rinominato, aggiorna questa prova");
+    assert.match(riga[1], /engine:\s*"native"/);
+    assert.doesNotMatch(riga[1], /mistral-ocr/, "mistral-ocr costa 2 $ ogni 1000 pagine");
+  });
+
+  test("TUTTI i corpi di richiesta a OpenRouter lo applicano, non solo quello degli spartiti", () => {
+    // Gli imbuti sono due — askOpenRouter e askModelWithHistory — e il secondo è quello della CHAT,
+    // dove il Ghost può allegare un PDF a mano. Se domani ne nasce un terzo senza questa riga, il
+    // PDF ci passa e la spesa parte senza che nessuno l'abbia decisa: questa prova lo fa cadere.
+    // NON conto le righe `const body = {`: ce ne sono quattro, e due sono di Google Calendar. Un
+    // conteggio che prende dentro roba estranea non è una misura — è un numero che sembra una
+    // misura, ed è il primo giro di questa prova che ha sbagliato così.
+    // I corpi di OpenRouter si riconoscono da `reasoning: { enabled: false }`: è loro e di nessun
+    // altro, ed è lì che sta il parametro fratello di plugins.
+    // E I COMMENTI NON SONO CODICE. Secondo giro sbagliato della stessa prova: contava 3 imbuti
+    // perché una riga di commento, cento righe più in là, NOMINA `reasoning: { enabled: false }`
+    // spiegando perché non bastava. Un conteggio che legge la prosa come se fosse codice trova
+    // guasti che non esistono — ed è l'altra faccia di quello che non trova quelli che ci sono.
+    const codice = sorgente.split("\n").filter((r) => !/^\s*(?:\/\/|\*|\/\*)/.test(r)).join("\n");
+    const imbuti = codice.match(/reasoning: \{ enabled: false \}/g) || [];
+    const applicazioni = codice.match(/PIANO_PDF(?!\s*=)/g) || [];
+    assert.equal(imbuti.length, 2, "gli imbuti verso OpenRouter sono due: se sono cambiati, questa prova va riletta, non cancellata");
+    assert.equal(applicazioni.length, imbuti.length, "ogni imbuto deve applicare PIANO_PDF a un allegato PDF");
+  });
+});
