@@ -2425,13 +2425,19 @@ const DEFAULT_SETTINGS = {
   driveSyncEnabled: false,
   provider: "openrouter",
   apiKey: "",
-  // 15/09/2026 — la chiave di Serper (ricerca diretta per immagini). A differenza di
-  // PRINTIFY_API_TOKEN/STABILITY_API_KEY, che restano SOLO in Vercel perché sono chiavi che
-  // pagano per conto del Ghost su un servizio terzo e non tornano indietro, questa vive qui — come
-  // apiKey — perché e' SUA, la mette lei/lui, e la procedura non deve passare da un accesso a
-  // Vercel che un futuro nuovo utente non avrebbe. Facoltativa: senza, la ricerca diretta per
-  // immagini semplicemente non parte e il resto della catena copre comunque il caso.
+  // 15/09/2026 — la chiave di Serper (ricerca diretta per immagini). Facoltativa: senza, la ricerca
+  // diretta per immagini semplicemente non parte e il resto della catena copre comunque il caso.
   serperApiKey: "",
+  // 15/09/2026, dal Ghost: «tutte le chiavi API dovrebbero avere un loro posto in setup, in
+  // previsione di utenti futuri». Prima PRINTIFY_API_TOKEN/PRINTIFY_SHOP_ID/STABILITY_API_KEY
+  // vivevano SOLO come variabili d'ambiente Vercel — una procedura che richiede accesso al
+  // dashboard del progetto, impraticabile per un utente che non è Flavio. Ora ognuno mette le
+  // proprie qui, come la chiave OpenRouter: un domani con più utenti, ognuno ha il proprio account
+  // Printify/Etsy e la propria spesa Stability, non condivisi. Il ripiego su Vercel resta per chi
+  // preferisce una coppia unica di progetto (vedi leggiCredenziali in api/_lib/printifyClient.js).
+  printifyApiToken: "",
+  printifyShopId: "",
+  stabilityApiKey: "",
   // 22/08/2026 — era "google/gemini-3.1-pro-preview" mentre il file di progetto dichiara Llama 3.3
   // 70B come modello di produzione. Uno scarto fra cio' che il progetto dice e cio' che il codice fa,
   // della stessa famiglia di `reversibile` e `costoStimato`: allineato al vero.
@@ -4666,19 +4672,32 @@ function formatRealResultNote(contract, risultato) {
   const dettagli = Object.entries(dati).filter(([k]) => k !== "driveFileId" || dati.driveFileId).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join(", ");
   return `Eseguito "${contract.effettore}" — ${dettagli || "nessun dettaglio restituito"}`;
 }
+// LE CREDENZIALI DI CHI STA USANDO L'EFFETTORE, non quelle di un progetto — 15/09/2026, dal Ghost:
+// «tutte le chiavi API dovrebbero avere un loro posto in setup, in previsione di utenti futuri».
+// Un oggetto solo, letto qui: quale campo di Setup serve a quale effettore. Il modello che compone
+// il contratto (schemaParametri in EFFECTOR_REGISTRY) non vede né sceglie mai queste chiavi — sono
+// iniettate dal programma, non dettate. Se manca il valore in Setup, l'endpoint ha comunque il
+// ripiego sulla variabile d'ambiente Vercel (vedi leggiCredenziali/generateRasterImage lato server).
+const EFFECTOR_CREDENZIALI = {
+  immagine_raster: (s) => ({ apiKey: s?.stabilityApiKey || "" }),
+  printify_crea_prodotto: (s) => ({ printifyApiToken: s?.printifyApiToken || "", printifyShopId: s?.printifyShopId || "" }),
+  printify_cerca_prodotto_base: (s) => ({ printifyApiToken: s?.printifyApiToken || "", printifyShopId: s?.printifyShopId || "" }),
+  printify_pubblica_su_etsy: (s) => ({ printifyApiToken: s?.printifyApiToken || "", printifyShopId: s?.printifyShopId || "" }),
+};
 // Esecutore di basso livello: chiama l'endpoint /api mappato, non decide MAI se eseguire (quello
 // è compito di executeSeedContract, che verifica gate/AIR PRIMA di chiamare questa funzione).
 // Per gli effettori che producono un'immagine, deposita SEMPRE il PNG su Drive dopo la chiamata
 // (riusando createDriveFile, che vive nel client — Drive usa l'OAuth del Ghost, mai accessibile
 // da un endpoint /api) e include l'id del file Drive nel risultato restituito al chiamante.
-async function invokeEffector(effectorId, parametri, pushDebugLog) {
+async function invokeEffector(effectorId, parametri, pushDebugLog, settings) {
   const endpoint = EFFECTOR_ENDPOINTS[effectorId];
   if (!endpoint) return { ok: false, error: `Nessun endpoint /api mappato per l'effettore "${effectorId}".` };
   // FASE 2 — il flag viaggia nel corpo della richiesta, così è l'endpoint stesso a fermarsi:
   // un interruttore che vive solo nel frontend proteggerebbe solo finché nessuno chiama /api
   // direttamente, cioè non proteggerebbe.
   const provaAVuoto = isProvaAVuoto();
-  const corpo = provaAVuoto ? { ...parametri, dryRun: true } : parametri;
+  const credenziali = EFFECTOR_CREDENZIALI[effectorId]?.(settings) || {};
+  const corpo = { ...parametri, ...credenziali, ...(provaAVuoto ? { dryRun: true } : {}) };
   let data;
   try {
     const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
@@ -4722,7 +4741,7 @@ async function executeSeedContract(contract, profile, settings, pushDebugLog = n
   // stepText testuale: nessun bypass introdotto per gli effettori a richiedeGate:false.
   const gate = await runSeedGateCheck(contract, profile, settings, pushDebugLog);
   if (gate.gated) return { esito: "gate", gated: true, reason: gate.reason, contract };
-  const risultato = await invokeEffector(contract.effettore, contract.parametri, pushDebugLog);
+  const risultato = await invokeEffector(contract.effettore, contract.parametri, pushDebugLog, settings);
   return { esito: risultato.ok ? "eseguito" : "errore", gated: false, contract, risultato };
 }
 // Euristica leggera, zero costo — stesso stile di detectWebSearchIntent: riconosce un'idea grezza
@@ -5053,7 +5072,7 @@ Come funziona, e perché è fatto così: il programma monta un CAPITOLATO — l'
 Cosa succede quando non ce la fa: il motivo torna al modello e riprova, al massimo tre volte — ogni giro è una chiamata pagata. Se non ci arriva, la RINUNCIA resta scritta, con cosa è mancato. I tentativi non riusciti si vedono sotto, nel riquadro "Cosa ha provato a scriversi", e non si cancellano da soli: dicono a cosa il generatore non arriva ancora, ed è l'unico posto in cui si legge. Uno strumento ammesso entra SPENTO, esattamente come uno arrivato da un'altra app: l'ultimo passo è un gesto del Ghost, dopo aver letto il codice.` },
   { n: `Rinunce di parametro`, k: ["rinuncia", "rinunce", "parametro"], s: `Rinunce di parametro: l'app aggiunge alla richiesta al modello alcuni parametri facoltativi (spegnere il ragionamento interno per non pagarlo, la temperatura, i freni anti-ripetizione, la ricerca web). Non tutti i modelli li accettano. Se il fornitore ne rifiuta uno, il programma toglie QUEL parametro e rimanda la richiesta invece di lasciare il Ghost senza risposta, e da lì in poi a quel modello non lo manda più — la scoperta si paga una volta sola. Non ripiega su errori che non parlano di parametri (credito esaurito, modello inesistente): quelli si dichiarano. In Setup compare il riquadro "A cosa ho rinunciato per farti arrivare una risposta", con cosa è stato tolto e cosa costa. È importante: se è caduta la ricerca web, la risposta è arrivata SENZA cercare, e va detto invece di lasciar credere il contrario.` },
   { n: `L'anello (accettore d'azione)`, k: ["anello", "accettore", "bersaglio osservabile"], s: `L'anello (accettore d'azione): quando il sistema compie un atto deliberato — una perturbazione Magi mirata a un pilastro, o un percorso proposto da Simbiosi e aperto davvero — dichiara SUBITO un bersaglio osservabile ("mi aspetto che entro 21 giorni un nodo di quel pilastro si muova dallo stato in cui è nato") e congela la misura di partenza. Dopo, è il programma a contare nei dati dell'app se quel movimento c'è stato: due conteggi e una sottrazione, nessun modello, nessun giudizio. Il risultato compare in Simbiosi nel riquadro "L'anello" ed entra nella valutazione successiva. Cosa NON è, e va detto se il Ghost lo chiede: non è un punteggio sulle previsioni del sistema, e non è un dato sul Ghost. Un atto che non muove niente vuol dire che la proposta era troppo prudente o troppo ovvia — mai che il Ghost non ha fatto la sua parte. Il gradiente è voluto in questo verso: una proposta cauta non smuove nulla e quindi qui risulta peggio di una audace.` },
-  { n: `Catena Printify → Etsy`, k: ["printify", "etsy"], s: `Catena Printify → Etsy: uno dei modi in cui un Seme AIR può produrre qualcosa nel mondo. Va dal disegno all'anteprima del prodotto.` },
+  { n: `Catena Printify → Etsy`, k: ["printify", "etsy"], s: `Catena Printify → Etsy: uno dei modi in cui un Seme AIR può produrre qualcosa nel mondo. Va dal disegno all'anteprima del prodotto. LE CREDENZIALI (token Printify, id del negozio, chiave Stability per l'immagine) si mettono in Setup — dal 15/09/2026, come la chiave OpenRouter: ognuno il proprio account, non condiviso. Senza, quel passo del Seme si ferma e lo dice, il resto dell'app funziona lo stesso.` },
   { n: `Postura e respiro`, k: ["postura", "respiro"], s: `Postura e respiro: gli esercizi brevi che l'app propone, con il loro ritorno aptico.` },
   { n: `Piano di controllo conversazionale`, s: `Piano di controllo conversazionale: l'impianto per cui il Ghost chiede una cosa a parole e il programma la esegue. Il modello sceglie l'azione, il programma la compie. Ha tre parti: il fuoco conversazionale, l'inventario, il registro delle azioni.` },
   { n: `Fuoco conversazionale`, nucleo: true, s: `Fuoco conversazionale: il percorso o il Seme su cui si sta lavorando adesso. Compare in una barra sopra la chat, sopravvive a ricarica e riapertura, e scade da solo dopo otto ore. Si chiude con un gesto sulla barra, oppure a parole (vedi chiudi_percorso qui sotto).` },
@@ -11836,6 +11855,17 @@ function SettingsView({ settings, updateSettings, driveStatus, debugLog, clearDe
       <div class="r-hub-detail">Serve solo a cercare direttamente il pentagramma di uno spartito, senza passare da un modello (2500 ricerche gratis su serper.dev, poi a pagamento). Senza chiave la ricerca spartiti funziona lo stesso, solo un po' più lenta su quella parte. Resta solo su questo dispositivo, come la chiave sopra.</div>
     </${Card}>
     <${Card} accent=${C.core}>
+      <div class="r-hub-title" style="color:#3A4750">Printify → Etsy (pilastro AIR, facoltativo)</div>
+      <${Field} label="Token Printify"><input type="password" class="r-input" value=${settings.printifyApiToken} onInput=${(e) => updateSettings({ printifyApiToken: e.target.value })} placeholder="da printify.com → My Profile → Connections" /></${Field}>
+      <${Field} label="ID negozio Printify"><input class="r-input" value=${settings.printifyShopId} onInput=${(e) => updateSettings({ printifyShopId: e.target.value })} placeholder="visibile nell'URL della dashboard del negozio" /></${Field}>
+      <div class="r-hub-detail">Servono solo se un Seme AIR prova a creare o pubblicare un prodotto: senza, quel passo si ferma dicendolo, il resto dell'app funziona lo stesso. Ognuno mette il proprio account: il tuo negozio ed Etsy restano tuoi.</div>
+    </${Card}>
+    <${Card} accent=${C.core}>
+      <div class="r-hub-title" style="color:#3A4750">Generazione immagini (pilastro AIR, facoltativo)</div>
+      <${Field} label="Chiave Stability AI"><input type="password" class="r-input" value=${settings.stabilityApiKey} onInput=${(e) => updateSettings({ stabilityApiKey: e.target.value })} placeholder="da platform.stability.ai" /></${Field}>
+      <div class="r-hub-detail">Serve solo all'effettore che genera un'immagine raster per un prodotto Printify. Senza, quel passo si ferma dicendolo.</div>
+    </${Card}>
+    <${Card} accent=${C.core}>
       <div class="r-hub-title" style="color:#3A4750">Vincoli dichiarati</div>
       <div class="r-hub-detail">Ogni vincolo è un'istanza dichiarata da te, rieditabile in qualunque momento — non più cablata nel codice. Aggiungerne o toglierne uno sostituisce lo stato salvato, non lo accumula.</div>
       ${hardConstraints.filter((c) => c.tipo !== "identita-professionale").length === 0 && html`<div class="r-hub-detail" style="margin-top:8px">Nessun vincolo dichiarato.</div>`}
@@ -12905,7 +12935,7 @@ function App() {
       pushDebugLog({ type: "seme-unlocked", id, hadPendingAction: !!confirmedAction, error: null });
       return;
     }
-    const risultato = await invokeEffector(contract.effettore, contract.parametri, pushDebugLog);
+    const risultato = await invokeEffector(contract.effettore, contract.parametri, pushDebugLog, settings);
     const note = formatRealResultNote(contract, risultato);
     setSemiSync(stateRef.current.semi.map((s) => (s.id === id
       ? { ...s, status: "executing", gateReason: null, gatedActionPreview: null, gatedActionContract: null, executionLog: [...s.executionLog, { date: new Date().toISOString(), note }] }

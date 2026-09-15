@@ -18,9 +18,14 @@
 //    sulla pubblicazione prodotti.
 const PRINTIFY_BASE = "https://api.printify.com/v1";
 
-function leggiCredenziali() {
-  const token = process.env.PRINTIFY_API_TOKEN;
-  const shopId = process.env.PRINTIFY_SHOP_ID;
+// Autenticazione — DUE strade, non una (15/09/2026, stessa ragione di serperClient.js): la coppia
+// token/shop del CHIAMANTE, mandata nel corpo della richiesta e messa in Setup nell'app (ognuno il
+// proprio account Printify — un domani con più utenti, ognuno ha il proprio negozio ed Etsy suo),
+// con ripiego su PRINTIFY_API_TOKEN/PRINTIFY_SHOP_ID come variabili d'ambiente Vercel per chi
+// preferisce una coppia unica di progetto. Quella del chiamante vince se c'è.
+function leggiCredenziali(corpo = {}) {
+  const token = String(corpo?.printifyApiToken || "").trim() || process.env.PRINTIFY_API_TOKEN;
+  const shopId = String(corpo?.printifyShopId || "").trim() || process.env.PRINTIFY_SHOP_ID;
   return { token, shopId, complete: Boolean(token && shopId) };
 }
 

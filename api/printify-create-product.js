@@ -6,8 +6,10 @@
 //
 // Autenticazione Printify: header "Authorization: Bearer <token>" — token generato dalla dashboard
 // Printify (My Profile → Connections → Personal Access Token), NON OAuth. Richiede anche uno Shop
-// ID (visibile nell'URL della dashboard del negozio Printify). Entrambi vanno impostati come
-// variabili d'ambiente Vercel: PRINTIFY_API_TOKEN, PRINTIFY_SHOP_ID — mai in config.js, mai nel repo.
+// ID (visibile nell'URL della dashboard del negozio Printify). DAL 15/09/2026 arrivano dal
+// CHIAMANTE (Setup nell'app, come la chiave OpenRouter), con ripiego su PRINTIFY_API_TOKEN/
+// PRINTIFY_SHOP_ID come variabili d'ambiente Vercel — vedi leggiCredenziali in printifyClient.js.
+// Mai in config.js, mai nel repo.
 //
 // Due chiamate Printify in sequenza:
 // 1) POST /v1/uploads/images.json — carica l'immagine (base64), ottiene un id di upload.
@@ -24,7 +26,7 @@ const DEFAULT_PRICE_CENTS = 2000; // segnaposto ($20.00) — NON un prezzo reale
 module.exports = async (request, response) => {
   if (request.method !== "POST") { response.status(405).json({ ok: false, error: "Metodo non consentito, usa POST." }); return; }
   const { imagePngBase64, blueprintId, printProviderId, variantIds, title, description, priceCents, dryRun } = request.body || {};
-  const { token, shopId, complete } = leggiCredenziali();
+  const { token, shopId, complete } = leggiCredenziali(request.body);
 
   // Modalità "prova a vuoto": percorre la validazione e mostra le due chiamate che partirebbero,
   // senza crearne nemmeno una. Serve a verificare la catena a costo zero — e a mostrare al Ghost
@@ -52,7 +54,7 @@ module.exports = async (request, response) => {
   }
 
   if (!complete) {
-    response.status(200).json({ ok: false, error: "PRINTIFY_API_TOKEN e/o PRINTIFY_SHOP_ID non configurate su Vercel — nessuna chiave fornita in questa sessione." });
+    response.status(200).json({ ok: false, error: "Nessuna credenziale Printify: né in Setup (token/negozio), né PRINTIFY_API_TOKEN/PRINTIFY_SHOP_ID su Vercel." });
     return;
   }
   if (!imagePngBase64 || typeof imagePngBase64 !== "string") {
