@@ -1496,6 +1496,52 @@ describe("LA CARD NON È UNA PAGINA DI RISULTATI", () => {
     const fn = /const testoRicercaSpartiti = [\s\S]*?\n  \};/.exec(codice)?.[0] || "";
     assert.ok(fn, "testoRicercaSpartiti non si trova più");
     assert.match(fn, /caso === "trovati"/, "solo il caso «trovati» può nominare l'archivio");
-    assert.match(fn, /non filtra\|come autore/, "le note sulla DOMANDA restano: dicono che ho cercato un'altra cosa");
+    // 15/09/2026, un'ora dopo: questa riga controllava che le note («"Sting" l'ho letto come
+    // autore») SOPRAVVIVESSERO. Le avevo tenute dicendo che erano un fatto, ed era vero. Le ho
+    // tolte lo stesso, e la prova che non servivano è che il Ghost, leggendole, ha chiesto «perché
+    // togliere l'autore?»: una nota che genera la domanda a cui doveva rispondere è un indovinello.
+    // Il fatto non è sparito — ha cambiato forma: la casella in fondo alla card MOSTRA le parole
+    // cercate davvero, autore compreso, e si correggono toccandole. Mostrare batte raccontare.
+    assert.doesNotMatch(fn, /non filtra|come autore/, "la spiegazione a parole è sostituita dalla casella che mostra la query vera");
+  });
+});
+
+// ── «PERCHÉ TOGLIERE L'AUTORE?» — 15/09/2026 ────────────────────────────────────────────────────
+// La domanda del Ghost, e la risposta vera: l'autore si toglie SOLO dalla ricerca d'archivio,
+// perché The Session indicizza i NOMI DEI BRANI e non i compositori — «primavera vivaldi» lì dà
+// zero perché nessun brano si chiama «vivaldi». È una regola di QUELL'archivio, non una regola.
+// Dovunque altro l'autore è la parola che discrimina di più, e la domanda ha scoperto che in un
+// posto nuovo mancava.
+describe("L'AUTORE SI TOGLIE SOLO ALL'ARCHIVIO, e in nessun altro posto", () => {
+  const codice = readFileSync(new URL("../app.js", import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((r) => !/^\s*\/\//.test(r)).join("\n");
+
+  test("il filtro di pertinenza dei risultati web lo riceve", () => {
+    // Senza, «Stratus» pareggia con qualunque pagina che contenga quella parola — altri brani
+    // omonimi, previsioni del tempo — perché «billy cobham» non entra mai nel confronto.
+    assert.match(codice, /fontiPerSpartito\(diag\.fonti, \[chiesto\.query, chiesto\.autore\]/,
+      "il filtro scritto ieri confrontava solo il titolo: l'autore non entrava nella pertinenza");
+  });
+
+  test("il brief della ricerca web e le ricerche a mano lo ricevono", () => {
+    assert.match(codice, /briefRicercaWebSpartito\(\{ query: chiesto\.query, autore: chiesto\.autore/);
+    assert.match(codice, /ricercheAMano\(\{ query: chiesto\.query, autore: chiesto\.autore/);
+  });
+
+  test("LA CASELLA MOSTRA QUELLO CHE HO CERCATO DAVVERO, autore compreso", () => {
+    // Mostrare «english man in new york» avendo cercato «english man in new york Sting» è una
+    // didascalia che mente. Il Ghost l'ha beccata dalla parte opposta.
+    assert.match(codice, /const cercatoDavvero = \[query, m\.ricercaSpartiti\.autore\]/);
+    assert.match(codice, /«\$\{cercatoDavvero\}» — non sono le parole giuste\?/);
+  });
+
+  test("«CERCA ANCORA» RIFÀ ANCHE LA RICERCA WEB, non solo quella d'archivio", () => {
+    // Prima rilanciava solo l'archivio: quello che su nove richieste su dieci non ha niente e che
+    // ormai non si vede nemmeno. Correggere le parole non correggeva la risposta.
+    const fn = /const rifaiRicercaSpartiti = [\s\S]*?\n  \};/.exec(codice)?.[0] || "";
+    assert.ok(fn, "rifaiRicercaSpartiti non si trova più");
+    assert.match(fn, /cercaSpartitoNelWeb\(mid/, "la ricerca che risponde deve ripartire con le parole nuove");
+    assert.doesNotMatch(fn, /L'archivio ne ha restituiti/, "la prosa dell'archivio rientrava da questa porta");
+    assert.doesNotMatch(fn, /Nessun brano che/, "idem");
   });
 });
