@@ -86,6 +86,7 @@ import {
   candidatiDaLeggere,
   primaImmagineMostrabile,
   immaginiSpartitoDaSerper,
+  queryImmagineDiretta,
   senzaIndirizziInventati,
   richiestaDiTrascrizione,
   briefDiTrascrizione,
@@ -9088,17 +9089,27 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   // Senza chiave (né qui né su Vercel) l'endpoint lo dice e qui si tace: il resto della catena
   // (web_search, poi l'eventuale lettura) copre comunque il caso.
   const cercaImmagineDirettaSerper = async (mid, chiesto) => {
-    const q = [chiesto?.query, chiesto?.autore, "spartito"].filter(Boolean).join(" ").trim();
+    // LA STESSA QUERY VA A SERPER E AL FILTRO DI PERTINENZA — vedi queryImmagineDiretta in
+    // lib/spartito.js: comporle in due punti diversi ha già prodotto due guasti reali (basso →
+    // clarinetto, violoncello → riduzione per pianoforte), perché lo strumento restava fuori da uno
+    // dei due punti.
+    const q = queryImmagineDiretta(chiesto || {});
     if (!q) return;
     try {
       const res = await fetch("/api/cerca-immagine-spartito", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: q, apiKey: settings.serperApiKey || "" }) });
       const data = await res.json();
       if (!data.ok) return;
-      const trovate = immaginiSpartitoDaSerper(data.risultati, [chiesto?.query, chiesto?.autore].filter(Boolean).join(" "));
+      const trovate = immaginiSpartitoDaSerper(data.risultati, q);
       // NON SI CANCELLA UN RISULTATO GIA' TROVATO: se `cercaSpartitoNelWeb` (che gira in parallelo)
       // ha già mostrato un'immagine o una trascrizione vera, questa non la sovrascrive col vuoto —
       // stessa regola scritta sopra sull'altro lato della gara.
-      if (trovate.length) patchSpartito(mid, { webImmagineMostrabile: trovate[0].url });
+      // LA PAGINA D'ORIGINE, non solo il file immagine: un'immagine è quasi sempre UNA pagina sola
+      // (è così che i motori la indicizzano), e sul Ghost è arrivata due volte la stessa domanda —
+      // «mi dà solo una parte dello spartito», «idem, mi dà solo la prima pagina». La pagina
+      // d'origine (MuseScore, free-scores, …) spesso ha il resto: un visualizzatore con tutte le
+      // pagine, o il file intero da scaricare. Il programma non lo sa con certezza — lo dice come
+      // strada in più, non come garanzia.
+      if (trovate.length) patchSpartito(mid, { webImmagineMostrabile: trovate[0].url, webImmaginePagina: trovate[0].pagina || "" });
     } catch { /* la ricerca diretta è un extra: se fallisce (rete, quota Serper) il resto della catena copre comunque il caso */ }
   };
   // ══ CERCARE IN TUTTO IL WEB ═══════════════════════════════════════════════════════════════════
@@ -9107,7 +9118,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   // cioè quelli che il motore ha davvero restituito: il modello scrive solo il commento.
   const cercaSpartitoNelWeb = async (mid, chiesto) => {
     if (!settings.apiKey) { patchSpartito(mid, { webStato: "spenta", webNota: "Per cercare sul web serve la chiave API (Setup). La ricerca in archivio invece è gratis e l'ho già fatta." }); return; }
-    patchSpartito(mid, { webStato: "in-corso", webNota: "", webImmagineMostrabile: "" });
+    patchSpartito(mid, { webStato: "in-corso", webNota: "", webImmagineMostrabile: "", webImmaginePagina: "" });
     const diag = { toolInvoked: false, citationCount: 0, citationDomains: [], fonti: [] };
     try {
       const grezzo = await askModel(
@@ -9291,7 +9302,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
   const rifaiRicercaSpartiti = async (mid, query) => {
     const q = String(query || "").trim();
     if (!q) return;
-    patchSpartito(mid, { busy: true, esito: "", brano: null, versioni: null, webAbc: [], webFonti: [], webStato: "", webLetturaImmagine: "", webImmagineMostrabile: "" });
+    patchSpartito(mid, { busy: true, esito: "", brano: null, versioni: null, webAbc: [], webFonti: [], webStato: "", webLetturaImmagine: "", webImmagineMostrabile: "", webImmaginePagina: "" });
     const esito = await cercaNellArchivio(q);
     patchSpartito(mid, { query: q, bozzaQuery: q, tunes: esito.tunes, pertinenti: esito.pertinenti, grezzi: esito.grezzi, scartati: esito.scartati, paroleAssenti: esito.paroleAssenti, errore: esito.errore, busy: false,
       // L'esito resta SOLO quando è una cosa che il Ghost deve sapere e non può vedere da sé: un
@@ -10822,7 +10833,16 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                 ${!trovati && st.webImmagineMostrabile && html`<div style="margin-top:4px">
                   <div class="r-hub-detail">Il pentagramma trovato in rete — guardalo direttamente, non serve aspettare che lo trascriva:</div>
                   <img src=${st.webImmagineMostrabile} alt="spartito trovato in rete" loading="lazy" style="max-width:100%;border-radius:8px;margin-top:4px;display:block" onError=${(e) => { e.target.style.display = "none"; }} />
-                  <a href=${st.webImmagineMostrabile} target="_blank" rel="noopener noreferrer" style="color:${C.vidya};font-size:12px">Apri a schermo intero ↗</a>
+                  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+                    <a href=${st.webImmagineMostrabile} target="_blank" rel="noopener noreferrer" style="color:${C.vidya};font-size:12px">Apri a schermo intero ↗</a>
+                    ${/* QUESTA E' UN'IMMAGINE SOLA, QUASI SEMPRE UNA PAGINA — dal Ghost, due volte:
+                          «mi dà solo una parte dello spartito», «idem, mi dà solo la prima pagina».
+                          È come i motori indicizzano le immagini: una pagina alla volta, non un
+                          documento intero. La pagina d'origine spesso ha il resto (un
+                          visualizzatore con tutte le pagine, o il file completo) — non è garantito,
+                          è una strada in più, e va detto come tale. */ ""}
+                    ${st.webImmaginePagina && html`<a href=${st.webImmaginePagina} target="_blank" rel="noopener noreferrer" style="color:${C.vidya};font-size:12px">Vedi la pagina intera (potrebbe avercene altre) ↗</a>`}
+                  </div>
                 </div>`}
                 ${/* ── MENTRE LAVORO: UNA RIGA. Non tre stati annunciati uno per uno. ────────── */ ""}
                 ${alLavoro && !trovati && html`<div class="r-hub-detail">${st.webLetturaImmagine === "in-corso" ? (st.webDaProvare === 1 ? "Ho trovato un documento, lo sto leggendo…" : `Sto leggendo ${st.webDaProvare} documenti — ${st.webProvati || 0} su ${st.webDaProvare} letti…`) : "Cerco lo spartito…"}</div>`}
