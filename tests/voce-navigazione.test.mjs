@@ -119,18 +119,44 @@ describe("UN OGGETTO SOLO, LETTO DUE VOLTE", () => {
 
 describe("DOVE IL BANCO NON ARRIVA, e lo dico", () => {
   test("PIN sul sorgente: l'app non deve poter sentire sé stessa", () => {
-    // SESTA occorrenza della stessa forma di buco. Il difetto da evitare è un anello: l'app legge
-    // la risposta ad alta voce, il riconoscimento la sente, la rimanda allo Shell come se l'avesse
-    // detta il Ghost, e ogni giro è una chiamata pagata. La difesa è una finestra di silenzio
-    // mentre la sintesi parla — ed è COMPORTAMENTO DI UN COMPONENTE, che qui non gira.
-    // Provato davvero in Chromium (scratchpad/fumo-anello.mjs): consegnando al riconoscimento
-    // proprio la frase che l'app aveva appena pronunciato, mentre `speaking` è true, la schermata
-    // non si muove; finita la finestra, un comando vero passa ancora. Questo PIN difende solo che
-    // le due righe non spariscano.
+    // SETTIMA occorrenza della stessa forma di buco: sono proprietà d'ORDINE — «X viene chiamato da
+    // Y» — e in ESM non c'è modo di provarle se non guardando il sorgente.
+    //
+    // QUI C'ERA UNA DIFESA DIVERSA, E NON BASTAVA (Legge 14: si registra, non si cancella).
+    // Fino al 15/09/2026 questo PIN difendeva `zittoFinoARef`: una finestra di silenzio alzata da
+    // `parlaSenzaRisentirsi`. Il difetto è che `speakText` ha QUATTRO chiamanti — il 🔊 di un
+    // messaggio, un altro pulsante, la navigazione a voce, e Simbiosi che parla DA SOLA — e solo la
+    // navigazione la alzava. Il Ghost l'ha visto succedere: «sente la sua stessa voce e pensa sia
+    // stato io a dargli quel comando». Stessa forma di `saveKey` con 76 chiamanti e zero controlli:
+    // la correzione non è coprire i chiamanti uno per uno, è metterla nell'imbuto.
     const src = readFileSync(new URL("../app.js", import.meta.url), "utf8");
-    assert.ok(src.includes("zittoFinoARef"), "la finestra di silenzio non c'è più");
-    assert.match(src, /if \(Date\.now\(\) < zittoFinoARef\.current \|\| window\.speechSynthesis\?\.speaking\)/,
-      "il controllo che impedisce all'app di risentirsi non è più nel punto in cui arriva il risultato");
+    // 1. il microfono si SPEGNE mentre l'app parla: un microfono spento non può sentire niente.
+    assert.match(src, /function speakText\([\s\S]{0,1200}_micSospendi && _micSospendi\(\)/,
+      "speakText non spegne più il microfono prima di parlare");
+    assert.match(src, /_micRiprendi && _micRiprendi\(\)/, "il microfono non viene più riacceso dopo");
+    // 2. e la modalità voce deve REGISTRARE quei due comandi, o l'imbuto non ha niente da spegnere.
+    assert.match(src, /registraMicrofono\(\s*\n?\s*\(\) => \{ try \{ rec\.stop/,
+      "accendiVoce non registra più il microfono presso l'imbuto della voce");
+    // 3. seconda difesa, per il risultato catturato mentre parlava e consegnato dopo.
+    assert.match(src, /if \(tutto && eEcoDellApp\(tutto\)\)/,
+      "il confronto con quello che l'app ha appena detto non è più nel punto in cui arriva il risultato");
+    // 4. e se la sintesi FALLISCE il microfono deve tornare acceso, o la voce muore in silenzio.
+    assert.match(src, /try \{ window\.speechSynthesis\.speak\(utter\); \} catch \{ chiudi\(\); \}/,
+      'se speak() lancia, nessuno riaccende il microfono e la modalità voce smette di funzionare senza dirlo');
+  });
+
+  test("PIN sul sorgente: una frase non parte a pezzi sulle pause", () => {
+    // Il Ghost ha detto «Cerca lo spartito per flauto traverso della Primavera di Vivaldi» e allo
+    // Shell è arrivato «Cerca». Android chiude un risultato come definitivo a ogni pausa, e ogni
+    // definitivo partiva da solo. Anche questa è una proprietà d'ordine: l'accumulo esiste solo se
+    // il timer viene rimesso a ogni pezzo e l'invio avviene alla sua scadenza, non prima.
+    const src = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+    assert.match(src, /accumuloRef\.current = `\$\{accumuloRef\.current\} \$\{definitivo\.trim\(\)\}`/,
+      "i pezzi definitivi non si accumulano più");
+    assert.match(src, /timerInvioRef\.current = setTimeout\(chiudiFrase, SILENZIO_PRIMA_DI_INVIARE_MS\)/,
+      "l'invio non aspetta più il silenzio");
+    assert.doesNotMatch(src, /if \(definitivo\.trim\(\)\) \{ setVoceParziale\(""\); ascoltato\(definitivo\); \}/,
+      "è tornato l'invio immediato al primo pezzo definitivo");
   });
 
   test("PIN sul sorgente: la voce non scavalca i pulsanti di ciò che tocca il mondo fuori", () => {
@@ -142,5 +168,54 @@ describe("DOVE IL BANCO NON ARRIVA, e lo dico", () => {
     const i = src.indexOf("useEffect(() => {\n    if (!voceDaInviare?.testo) return;");
     assert.ok(i > 0, "l'invio della voce non è più dove era");
     assert.match(src.slice(i - 900, i), /Legge 8/, "manca il motivo scritto accanto alla decisione");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// L'ANELLO DELLA VOCE — 15/09/2026
+// ══════════════════════════════════════════════════════════════════════════════
+// Il Ghost: «sente la sua stessa voce e pensa sia stato io a dargli quel comando, infatti mi dice
+// hai ripetuto le mie opzioni». La difesa c'era e copriva UN chiamante su quattro — Simbiosi, che
+// parla da sola senza che nessuno l'abbia toccata, non era coperta. Adesso sta nell'imbuto.
+describe("SENTIRE LA PROPRIA VOCE E NON CREDERCI", () => {
+  const { eEcoDellApp } = app;
+  const ORA = 1_000_000;
+  const dentroFinestra = ORA + 1000;
+
+  test("quello che l'app ha appena detto, risentito, è eco", () => {
+    const detto = "Puoi dire: apri magi, apri la chat con lo Shell, vai su Adam, torna alla home.";
+    assert.equal(eEcoDellApp("puoi dire apri magi apri la chat con lo shell", ORA, detto, dentroFinestra), true);
+    assert.equal(eEcoDellApp("vai su adam torna alla home", ORA, detto, dentroFinestra), true);
+  });
+
+  test("una frase VERA del Ghost non è eco, anche detta subito dopo", () => {
+    const detto = "Puoi dire: apri magi, apri la chat con lo Shell, vai su Adam, torna alla home.";
+    assert.equal(eEcoDellApp("cerca lo spartito per flauto traverso della primavera di Vivaldi", ORA, detto, dentroFinestra), false);
+    assert.equal(eEcoDellApp("oggi ho dormito sei ore e mezza", ORA, detto, dentroFinestra), false);
+  });
+
+  test("FUORI DALLA FINESTRA non si giudica: la difesa vera è il microfono spento", () => {
+    const detto = "Apro Magi.";
+    assert.equal(eEcoDellApp("apro magi", ORA, detto, ORA - 1), false, "passata la finestra, quello che si sente è del Ghost");
+  });
+
+  test("una parola sola non basta a dichiarare un'eco", () => {
+    // «magi» detto dal Ghost subito dopo «Apro Magi» deve passare: il costo di un falso positivo è
+    // un comando ignorato senza che si capisca perché.
+    assert.equal(eEcoDellApp("magi", ORA, "Apro Magi.", dentroFinestra), false);
+  });
+
+  test("le parole vuote non contano: sono in qualunque frase italiana", () => {
+    // Senza toglierle, «il che non si» basterebbe a far somigliare due frasi che non c'entrano.
+    assert.equal(eEcoDellApp("il che non si ha", ORA, "Il piano che non si è ancora fatto, ha due parti.", dentroFinestra), false);
+  });
+
+  test("accenti e punteggiatura non cambiano il verdetto", () => {
+    assert.equal(eEcoDellApp("PERCHE' NON E' POSSIBILE!", ORA, "perché non è possibile", dentroFinestra), true);
+  });
+
+  test("senza niente di detto non c'è eco possibile", () => {
+    assert.equal(eEcoDellApp("qualunque cosa detta adesso", ORA, "", dentroFinestra), false);
+    assert.equal(eEcoDellApp("", ORA, "qualcosa", dentroFinestra), false);
   });
 });
