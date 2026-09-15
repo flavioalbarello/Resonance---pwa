@@ -1545,3 +1545,47 @@ describe("L'AUTORE SI TOGLIE SOLO ALL'ARCHIVIO, e in nessun altro posto", () => 
     assert.doesNotMatch(fn, /Nessun brano che/, "idem");
   });
 });
+
+// ── «È FERMO COSÌ» — 15/09/2026 ─────────────────────────────────────────────────────────────────
+// Schermata del Ghost: «Ho trovato 2 documenti, li sto leggendo…», immobile. Non era appeso: era
+// lento in un modo che da fuori è identico all'appeso. Tre cause sovrapposte, tutte mie.
+describe("LEGGERE DUE DOCUMENTI NON DEVE COSTARE IL DOPPIO DEL TEMPO", () => {
+  const codice = readFileSync(new URL("../app.js", import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((r) => !/^\s*\/\//.test(r)).join("\n");
+  const catena = /const cercaSpartitoNelWeb[\s\S]*?\n  \};/.exec(codice)?.[0] || "";
+
+  test("i documenti si leggono TUTTI INSIEME, non in fila", () => {
+    assert.ok(catena, "cercaSpartitoNelWeb non si trova più");
+    // Il tetto di una chiamata al modello è 150 secondi: in fila, due documenti sono cinque minuti.
+    // In parallelo il tempo è quello di UNO. Costa una lettura in più quando la prima basta —
+    // 0,0003 $ — e il tempo del Ghost vale più di tre centesimi di centesimo.
+    assert.match(catena, /await Promise\.all\(daLeggere\.map\(/, "erano letti uno dopo l'altro");
+    assert.doesNotMatch(catena, /for \(const tentativo of daLeggere\)/, "il ciclo in fila è tornato");
+  });
+
+  test("ma L'ORDINE DI PREFERENZA non si perde: vince il primo della fila, non il primo arrivato", () => {
+    // Un PDF è quasi sempre lo spartito intero, un'immagine la prima pagina. Se l'immagine risponde
+    // prima non deve battere il PDF solo perché è più leggera.
+    assert.match(catena, /esiti\.find\(Boolean\)/, "prendere il primo che ARRIVA perderebbe la priorità");
+  });
+
+  test("IL CONTATORE SI MUOVE mentre legge", () => {
+    // Senza, una riga ferma per minuti è indistinguibile da un'app piantata — ed è esattamente
+    // così che il Ghost l'ha letta. Il contatore c'era, l'ho tolto io riscrivendo la card.
+    assert.match(catena, /finally \{[\s\S]*?webProvati: finiti/, "ogni lettura che finisce deve farsi vedere");
+    assert.match(codice, /su \$\{st\.webDaProvare\} letti/, "il messaggio deve mostrare quanti ne ha finiti");
+  });
+
+  test("«IN CORSO» HA SEMPRE UN'USCITA, qualunque cosa succeda", () => {
+    // Uno stato transitorio senza uscita garantita diventa permanente al primo imprevisto, e l'app
+    // resta a dire una cosa che non sta più facendo. Stessa forma del microfono che restava spento
+    // per sempre quando speak() lanciava.
+    assert.match(catena, /\} finally \{[\s\S]*?webLetturaImmagine !== "in-corso"[\s\S]*?webLetturaImmagine: "rifiutata"/,
+      "manca l'uscita garantita dallo stato «sto leggendo»");
+  });
+
+  test("e l'uscita NON calpesta un esito già scritto", () => {
+    // Spegnere alla cieca trasformerebbe un successo in un fallimento. Si guarda lo stato di prima.
+    assert.match(catena, /if \(st0\.webLetturaImmagine !== "in-corso"\) return s;/);
+  });
+});
