@@ -1354,6 +1354,31 @@ describe("SI PROVANO TUTTI I DOCUMENTI TROVATI, non solo quello che il modello h
   });
 });
 
+// ── ARRIVARE DIRETTAMENTE ALL'IMMAGINE — 15/09/2026 ─────────────────────────────────────────────
+// `webImmagine`/`webPdf` erano calcolati e salvati nello stato e nessuna schermata li leggeva: un
+// valore che nessuno guarda è un fallimento muto, qui su un dato invece che su un booleano.
+// `primaImmagineMostrabile` è la funzione pura che sceglie COSA mostrare da quello che
+// `candidatiDaLeggere` ha già messo in fila — un PDF non si disegna con un tag <img>.
+describe("primaImmagineMostrabile — cosa si può mostrare subito, senza aspettare la trascrizione", () => {
+  const { candidatiDaLeggere, primaImmagineMostrabile } = app;
+
+  test("un PDF in testa alla fila non si mostra: si prende la prima IMMAGINE vera", () => {
+    const c = candidatiDaLeggere({ testo: "IMMAGINE: https://x.org/anteprima.png\nPDF: https://x.org/tutto.pdf" });
+    assert.equal(c[0].pdf, true, "il PDF viene prima nella fila di lettura");
+    assert.equal(primaImmagineMostrabile(c), "https://x.org/anteprima.png");
+  });
+
+  test("solo PDF trovati: niente da mostrare subito, non un indirizzo sbagliato", () => {
+    const c = candidatiDaLeggere({ testo: "PDF: https://a.org/1.pdf\nPDF: https://b.org/2.pdf" });
+    assert.equal(primaImmagineMostrabile(c), "");
+  });
+
+  test("nessun candidato, lista vuota o assente: stringa vuota, non un errore", () => {
+    assert.equal(primaImmagineMostrabile([]), "");
+    assert.equal(primaImmagineMostrabile(undefined), "");
+  });
+});
+
 // ── LA DIAGNOSTICA NON E' UNA RISPOSTA — 15/09/2026 sera ────────────────────────────────────────
 // Nella card, in verde, il Ghost si è trovato: «Ho provato a leggere quello che ho trovato, ma non
 // passa il controllo — da il PDF: Invalid file URL: Empty response body from URL:
