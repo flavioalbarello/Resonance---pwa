@@ -1371,3 +1371,131 @@ describe("QUELLO CHE NON E' UN RISULTATO NON STA NELLA CARD", () => {
     assert.doesNotMatch(sorgente, /\$\{st\.webCommento && html/, "webCommento era il blocco di prosa non reso");
   });
 });
+
+// ══ 15/09/2026 SERA — «PIÙ DEL 90% È SPAZZATURA» ════════════════════════════════════════════════
+// Il Ghost, quarta segnalazione in un giorno, con nove schermate in mano:
+//   «così è come cercare su Google, anzi peggio! si perde il senso stesso dell'app. deve essere un
+//    facilitatore, un'estensione digitale del Ghost, non un impaccio»
+// Le tre risposte precedenti — accorcia, piega, accorcia ancora — erano tutte e tre sbagliate nello
+// stesso modo: nessuna TOGLIEVA. Queste prove tengono ferma la forma nuova.
+describe("UN RISULTATO GRATIS SUL BRANO SBAGLIATO NON È UN RISULTATO", () => {
+  const { fontiPerSpartito } = app;
+  // I primi cinque risultati veri di «Englishman in New York di Sting», dallo schermo del Ghost.
+  // Tutti marcati GRATIS, tutti in cima, nessuno che c'entrasse niente — mentre le trascrizioni
+  // vere del brano stavano sotto, perché ScoreExchange non è marcato gratis.
+  const VERI = [
+    { url: "https://www.free-scores.com/sheet-music-shop.php", titolo: "Sheet Music Shop", dominio: "free-scores.com" },
+    { url: "https://www.free-scores.com/dowland.php", titolo: "John Dowland Sheet Music to download and print", dominio: "free-scores.com" },
+    { url: "https://www.free-scores.com/joplin-entertainer.php", titolo: "Joplin, Scott - The Entertainer (Clarinet and Piano)", dominio: "free-scores.com" },
+    { url: "https://www.scoreexchange.com/scores/1", titolo: "Englishman in New York (Sting, Branford Marsalis) for Clarinet quartet", dominio: "scoreexchange.com" },
+    { url: "https://www.scoreexchange.com/scores/2", titolo: "Sting - Englishman In New York - Score and parts - Download PDF file", dominio: "scoreexchange.com" },
+  ];
+
+  test("quello che non parla del brano chiesto non si mostra affatto", () => {
+    const r = fontiPerSpartito(VERI, "englishman in new york sting");
+    const domini = r.map((f) => f.titolo);
+    assert.ok(!domini.some((t) => /Dowland|Entertainer|Sheet Music Shop/.test(t)),
+      `Joplin e Dowland sono ancora nella risposta a una ricerca su Sting: ${domini.join(" | ")}`);
+    assert.equal(r.length, 2, "restano le due trascrizioni vere");
+  });
+
+  test("LA PERTINENZA VIENE PRIMA DEL COSTO: gratis e quasi a tema perde contro a pagamento e a tema", () => {
+    // ATTENZIONE, PRIMA VERSIONE SBAGLIATA (15/09 sera, trovata dalla verifica di rottura — terza
+    // volta in un giorno). Metteva a confronto Joplin, che ha pertinenza ZERO e quindi viene TOLTO
+    // dal filtro: restava un elemento solo e l'ordine non contava. Passava con qualunque
+    // ordinamento, compreso quello rotto. Una prova sull'ordine vuole DUE elementi che l'ordine lo
+    // possano avere: due che passano il filtro, con pertinenza diversa.
+    const r = fontiPerSpartito([
+      { url: "https://free-scores.com/x.php", titolo: "New York jazz standards", dominio: "free-scores.com" },      // 1 parola su 4, gratis
+      { url: "https://sheetmusicdirect.com/y", titolo: "Englishman in New York - Sting", dominio: "it.sheetmusicdirect.com" }, // 4 su 4, a pagamento
+    ], "englishman new york sting");
+    assert.equal(r.length, 2, "tutti e due passano il filtro: qui si misura l'ORDINE, non l'esclusione");
+    assert.equal(r[0].dominio, "it.sheetmusicdirect.com", "l'ordinamento metteva il costo davanti a tutto: è per questo che Joplin stava in cima");
+  });
+
+  test("a PARITÀ di pertinenza il gratis vince ancora — non ho rotto la regola di ieri", () => {
+    const r = fontiPerSpartito([
+      { url: "https://it.sheetmusicdirect.com/a", titolo: "Englishman in New York", dominio: "it.sheetmusicdirect.com" },
+      { url: "https://imslp.org/b", titolo: "Englishman in New York", dominio: "imslp.org" },
+    ], "englishman in new york");
+    assert.equal(r[0].dominio, "imslp.org");
+  });
+
+  test("SENZA QUERY non si scarta niente: non si afferma l'irrilevanza da un confronto non fatto", () => {
+    assert.equal(fontiPerSpartito(VERI).length, VERI.length, "è la stessa regola di paroleAssenti su lista vuota");
+    assert.equal(fontiPerSpartito(VERI, "   ").length, VERI.length);
+    assert.equal(fontiPerSpartito(VERI, "il di the").length, VERI.length, "solo parole vuote = nessun confronto possibile");
+  });
+
+  test("l'indirizzo conta quanto il titolo: un PDF senza titolo ma col nome del brano dentro resta", () => {
+    const r = fontiPerSpartito([{ url: "https://x.org/englishman-in-new-york.pdf", titolo: "", dominio: "x.org" }], "englishman new york");
+    assert.equal(r.length, 1);
+  });
+});
+
+describe("UNA PREPOSIZIONE NON È UNA PAROLA CHE PUÒ MANCARE DA UN TITOLO", () => {
+  const { risultatiCheRispondono } = app;
+  test("«in» non viene mai riportato come parola assente", () => {
+    // Dallo schermo: «Non è in The Session: 393 risultati, nessuno che contenga «man», «in»».
+    // Pretendere che «in» compaia in un titolo è pretendere il nulla, e dirlo è peggio che tacere.
+    const r = risultatiCheRispondono("english man in new york", [{ name: "The New Policeman", type: "reel" }]);
+    assert.ok(!r.paroleAssenti.includes("in"), `«in» è ancora fra le parole che mancano: ${r.paroleAssenti.join(", ")}`);
+  });
+  test("ma una parola vera resta una parola vera", () => {
+    const r = risultatiCheRispondono("lateralus tool", [{ name: "The New Policeman", type: "reel" }]);
+    assert.deepEqual(r.paroleAssenti, ["lateralus", "tool"]);
+  });
+});
+
+describe("UN NUMERO DI CATALOGO CHE NON È UN NUMERO DI CATALOGO AVVELENA OGNI RICERCA A VALLE", () => {
+  const { catalogoDaRicerca } = app;
+  test("un campo vuoto non si mangia l'etichetta della riga dopo", () => {
+    // Misurato sullo schermo: la card diceva «il numero di catalogo è TITOLO_EN: Englishman in New
+    // Y», e quel testo finiva DENTRO le ricerche già pronte. Google riceveva
+    // «TITOLO_EN: Englishman in New Y Sting spartito filetype:pdf -site:…» e rispondeva
+    // «non ha prodotto risultati in nessun documento». Sei link su sei, tutti morti.
+    assert.equal(catalogoDaRicerca("CATALOGO:\nTITOLO_EN: Englishman in New York\nTITOLO_ZH:"), "");
+    assert.equal(catalogoDaRicerca("CATALOGO: TITOLO_EN: Englishman in New York"), "");
+    assert.equal(catalogoDaRicerca("CATALOGO: nessuno"), "");
+  });
+  test("ma un numero di catalogo vero si prende ancora, dichiarato o dentro al testo", () => {
+    assert.equal(catalogoDaRicerca("CATALOGO: RV 269"), "RV 269");
+    assert.equal(catalogoDaRicerca("CATALOGO: Op. 8 No. 1"), "Op. 8 No. 1");
+    assert.equal(catalogoDaRicerca("CATALOGO: BWV 1048"), "BWV 1048");
+    assert.equal(catalogoDaRicerca("Il concerto, BWV 1048, è il terzo."), "BWV 1048", "non dichiarato ma scritto nel testo");
+  });
+});
+
+describe("LA CARD NON È UNA PAGINA DI RISULTATI", () => {
+  const sorgente = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  // I commenti vanno via DAVVERO, blocchi /* … */ compresi: il primo giro di questa prova cadeva
+  // sul mio stesso commento, che elenca le intestazioni morte per dire che sono morte. Un filtro
+  // che toglie solo le righe che COMINCIANO per // lascia dentro le righe di mezzo di un blocco.
+  const codice = sorgente.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((r) => !/^\s*\/\//.test(r)).join("\n");
+
+  test("le intestazioni di sezione sono sparite: erano la spina dorsale della pozza", () => {
+    for (const morta of [
+      "E IN TUTTO IL RESTO DEL WEB",
+      "Cerca come cercherebbe uno scaltro",
+      "E dove sta la roba gratis",
+      "Dove cercare a mano",
+      "HO CERCATO «",
+    ]) {
+      assert.ok(!codice.includes(morta), `«${morta}» è ancora nella card`);
+    }
+  });
+
+  test("i link mostrati sono al massimo tre, non dieci", () => {
+    assert.match(codice, /\(st\.webFonti \|\| \[\]\)\.slice\(0, 3\)/,
+      "la card mostrava dieci link: i primi tre sono i tre che parlano del brano chiesto");
+  });
+
+  test("L'ARCHIVIO NON SI NOMINA QUANDO NON HA TROVATO NIENTE", () => {
+    // Quarta segnalazione: «ancora la parte di the session». Un archivio di musica tradizionale
+    // irlandese che non ha Sting non è un fatto: è la sua definizione. Dirlo in una riga è dirlo.
+    const fn = /const testoRicercaSpartiti = [\s\S]*?\n  \};/.exec(codice)?.[0] || "";
+    assert.ok(fn, "testoRicercaSpartiti non si trova più");
+    assert.match(fn, /caso === "trovati"/, "solo il caso «trovati» può nominare l'archivio");
+    assert.match(fn, /non filtra\|come autore/, "le note sulla DOMANDA restano: dicono che ho cercato un'altra cosa");
+  });
+});
