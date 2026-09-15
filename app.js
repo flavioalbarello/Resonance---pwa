@@ -9452,7 +9452,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
         chiudiRichiestaInSospeso();
         pushDebugLog?.({ type: "ricerca-spartiti-archivio", query: chiestoSpartito.query, strumento: chiestoSpartito.strumento, trovati: esitoRicerca.tunes.length, pertinenti: esitoRicerca.pertinenti, grezzi: esitoRicerca.grezzi, scartati: esitoRicerca.scartati, paroleAssenti: esitoRicerca.paroleAssenti, error: esitoRicerca.errore || null });
         patchSpartito(assistantMsgId, { query: chiestoSpartito.query, tunes: esitoRicerca.tunes, pertinenti: esitoRicerca.pertinenti, grezzi: esitoRicerca.grezzi, scartati: esitoRicerca.scartati, paroleAssenti: esitoRicerca.paroleAssenti, errore: esitoRicerca.errore, pil: pilastroDelFuoco(), percorsoId: percorsoDelFuoco(leggiFuoco())?.id || "" });
-        setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: testoRicercaSpartiti(chiestoSpartito, esitoRicerca), time: new Date().toISOString(), actions: [], alerts: [], ricercaSpartiti: { query: chiestoSpartito.query, strumento: chiestoSpartito.strumento } }]);
+        setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: testoRicercaSpartiti(chiestoSpartito, esitoRicerca), time: new Date().toISOString(), actions: [], alerts: [], ricercaSpartiti: { query: chiestoSpartito.query, strumento: chiestoSpartito.strumento, autore: chiestoSpartito.autore } }]);
         vibra("vidya");
         // E LA RICERCA SUL WEB, che è quella che copre tutto il resto. Parte dopo, senza far
         // aspettare l'archivio: quello che è gratis si vede subito, il resto arriva quando arriva.

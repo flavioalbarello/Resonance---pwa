@@ -170,6 +170,18 @@ describe("CHIEDERE UNO SPARTITO A PAROLE", () => {
     assert.equal(r.strumento, "basso", "lo strumento si dice al Ghost, anche se non filtra la ricerca");
   });
 
+  test("DUE SINONIMI NELLA STESSA FRASE non sporcano più il titolo", () => {
+    // Frase vera del Ghost, 15/09 sera: «Cerca la tablatura e lo spartito per basso di Red dei
+    // king crimson». L'ancora prende il PRIMO oggetto («tablatura»): senza questa correzione «e lo
+    // spartito» restava appiccicato in testa al resto, e la query mostrata diventava «e spartito
+    // Red» — con King Crimson perso, mentre l'autore veniva comunque estratto giusto altrove.
+    const r = richiestaDiSpartito("Cerca la tablatura e lo spartito per basso di Red dei king crimson");
+    assert.ok(r, "non riconosciuta");
+    assert.equal(r.query, "Red");
+    assert.equal(r.autore, "king crimson");
+    assert.equal(r.strumento, "basso");
+  });
+
   test("IL BRANO STA DOPO «DELLA», L'AUTORE DOPO «DI» — e vanno separati", () => {
     // La frase vera del Ghost, 15/09: «Cerca lo spartito per flauto traverso della Primavera di
     // Antonio Vivaldi». L'app cercava «Antonio Vivaldi» — l'AUTORE invece del BRANO — perché
