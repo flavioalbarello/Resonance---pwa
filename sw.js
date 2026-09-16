@@ -1,4 +1,4 @@
-const CACHE = "resonance-v49"; // bump di versione: invalida qualunque cache residua e serve il nuovo app.js
+const CACHE = "resonance-v50"; // bump di versione: invalida qualunque cache residua e serve il nuovo app.js
 // 31/08/2026 — I TRE MODULI ESTRATTI DEVONO STARE QUI DENTRO. app.js non e' piu' un file solo: se
 // lib/*.js non fosse precaricato, online non cambierebbe niente (la strategia e' rete-prima), ma la
 // prima apertura SENZA rete dopo un aggiornamento troverebbe app.js in cache e i suoi import no —
@@ -21,6 +21,9 @@ const SHELL = [
   // 31/08 proprio per impedirlo: una regola scritta e basta non e' una regola. Da oggi la impone
   // una prova (tests/service-worker.test.mjs), che confronta questo elenco con gli import veri.
   "./lib/spartito.js",
+  // 16/09/2026 — stessa regola di sempre, questa volta imposta subito invece che scoperta dopo:
+  // il gioco è un modulo estratto come gli altri, e va precaricato o l'app non si disegna offline.
+  "./lib/gioco.js",
   "./config.js",
   // 14/09/2026 — il banco microfono. Precaricato perche' la prova si fa in macchina, e un garage o
   // un parcheggio interrato senza campo e' esattamente il posto dove si finisce per provarlo.
