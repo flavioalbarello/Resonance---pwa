@@ -239,19 +239,22 @@ describe("B.3 · una capacità non dichiarata è invisibile allo Shell", () => {
       `azioni eseguibili che il modello non sa di avere: ${mute.map((a) => a.id).join(", ")}`);
   });
 
-  test("QUINDICI azioni, non dieci — il numero che il RAPPORTO_STATO sbaglia ancora", () => {
-    // Pinta qui perché è la deriva misurata dal report del 09/09 e non ancora corretta nel rapporto.
-    assert.equal(app.AZIONI_CONVERSAZIONALI.length, 15);
+  test("SEDICI azioni, non quindici — cancella_documento è la sedicesima (16/09/2026)", () => {
+    // Prima era "quindici, non dieci" contro il RAPPORTO_STATO del 09/09. Ora sono sedici: il
+    // guasto del 16/09 (cancella_documento inventato dal modello, mai eseguito davvero) ha avuto
+    // come cura una vera azione nel registro, non una correzione di prosa.
+    assert.equal(app.AZIONI_CONVERSAZIONALI.length, 16);
     for (const id of ["invia_mail", "cancella_evento_calendario", "sposta_evento_calendario",
-                      "leggi_calendario", "trova_evento_calendario"]) {
+                      "leggi_calendario", "trova_evento_calendario", "cancella_documento"]) {
       assert.ok(app.AZIONI_CONVERSAZIONALI.some((a) => a.id === id), `manca "${id}"`);
     }
   });
 
   test("con tutte spente il modello lo sa, invece di proporre cose che verrebbero rifiutate", () => {
-    // Nota misurata scrivendo questa prova: uno store VUOTO non vuol dire "tutte spente" — nove
-    // azioni su quindici sono accese per impostazione predefinita. Vanno spente esplicitamente,
-    // altrimenti si proverebbe il caso sbagliato credendo di provare questo.
+    // Nota misurata scrivendo questa prova: uno store VUOTO non vuol dire "tutte spente" — dieci
+    // azioni su sedici sono accese per impostazione predefinita (cancella_documento inclusa: è di
+    // Classe A, come le altre azioni interne). Vanno spente esplicitamente, altrimenti si
+    // proverebbe il caso sbagliato credendo di provare questo.
     globalThis.__store.clear();
     for (const a of app.AZIONI_CONVERSAZIONALI) app.scriviInterruttore(a.id, false);
     assert.equal(app.azioniAttive().length, 0);

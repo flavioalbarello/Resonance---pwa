@@ -280,6 +280,61 @@ describe("la guardia del compiuto: la nominalizzazione (01/09/2026)", () => {
   });
 });
 
+describe("la guardia del compiuto: il punto al posto dei due punti, e i verbi di lettura (16/09/2026)", () => {
+  // Il guasto vero: un «cancella X poi apri Y» apriva il documento sbagliato (vedi
+  // documenti-nel-contesto.test.mjs), e lo Shell — ricevuto il testo sbagliato — ha comunque scritto,
+  // come prima riga della sua risposta: "Percorso 'Divenire' aperto. Fuoco agganciato, fascicolo
+  // caricato." Tre affermazioni, nessuna vera: nessun percorso è stato aperto in quel turno, nessun
+  // fuoco è stato agganciato, nessun fascicolo caricato. La guardia di prima cercava solo i due punti
+  // a fine intestazione; qui non ce n'è nessuno, solo punti fermi e una virgola.
+  const tolto = (t) => app.ripulisciAffermazioniDiEsito(t, false);
+
+  test("LA RIGA ESATTA CHE È PASSATA — tutte e tre le clausole vanno tolte", () => {
+    const r = tolto("Percorso 'Divenire' aperto. Fuoco agganciato, fascicolo caricato.");
+    assert.doesNotMatch(r.testo, /Percorso 'Divenire' aperto/);
+    assert.doesNotMatch(r.testo, /Fuoco agganciato/);
+    assert.doesNotMatch(r.testo, /fascicolo caricato/);
+    assert.equal(r.affermazioni.length, 3, `trovate: ${JSON.stringify(r.affermazioni)}`);
+  });
+  test("«il documento è stato letto» — 'letto' ora è un participio riconosciuto", () => {
+    const r = tolto("Il documento è stato letto.");
+    assert.doesNotMatch(r.testo, /stato letto/);
+  });
+  test("UN BUCO TROVATO SCRIVENDO QUESTA PROVA, NON ANCORA CHIUSO: la parola 'conferma' come sostantivo disinnesca la guardia", () => {
+    // "Aspetto conferma: il documento è stato letto." dovrebbe essere tolto tanto quanto la frase
+    // sopra — ma IPOTETICO_RE tratta "conferma" come marcatore di domanda/ipotesi ovunque compaia
+    // nella rincorsa, non solo quando introduce davvero una domanda o una condizione. Qui "conferma"
+    // è un sostantivo oggetto di "Aspetto", e la frase intera afferma comunque un fatto compiuto.
+    // Non lo chiudo in questa prova: la stessa ambiguità copre "se confermi" (dove "se" già basta) e
+    // non ho trovato, in questa sessione, un banco che dipenda dal tenere "conferma" come trigger da
+    // solo. Restringerlo è probabilmente sicuro ma è un cambio al cuore di un filtro con 60+ prove
+    // alle spalle: si merita un giro suo, non l'ultimo minuto di questo.
+    const r = tolto("Aspetto conferma: il documento è stato letto.");
+    assert.equal(r.risparmiate?.[0]?.motivo, "è un'ipotesi o una domanda", "documenta il buco, non lo nasconde");
+  });
+  test("«Testo completo, riletto dal percorso:» — anche 'riletto' con l'ausiliare", () => {
+    const r = tolto("Ho riletto il documento dal percorso.");
+    assert.doesNotMatch(r.testo, /riletto/);
+  });
+  test("il freno contro i mobili: 'letto' da solo, senza ausiliare, resta prosa", () => {
+    const t = "Il letto era ancora disfatto quando sono tornato.";
+    assert.equal(tolto(t).testo, t);
+  });
+  test("le forme già coperte non regrediscono", () => {
+    assert.doesNotMatch(tolto("Percorso aperto: **Divenire — Concept album** (VIDYA)").testo, /Percorso aperto:/);
+    assert.doesNotMatch(tolto("Salvataggio dei testi elaborati nel percorso attivo.").testo, /Salvataggio dei testi/);
+    assert.doesNotMatch(tolto("Ho salvato la nota.").testo, /Ho salvato/);
+  });
+  test("prosa legittima che nomina fuoco o fascicolo fuori da un'intestazione resta intatta", () => {
+    const t = "Il fuoco è simbolo di rinascita in questo verso, e il fascicolo raccoglie tutte le bozze.";
+    assert.equal(tolto(t).testo, t);
+  });
+  test("una domanda o un'ipotesi restano tali, anche con le nuove parole di innesco", () => {
+    assert.equal(tolto("Vuoi che il fascicolo venga caricato adesso?").testo, "Vuoi che il fascicolo venga caricato adesso?");
+    assert.equal(tolto("Se il documento viene letto per intero, ti aggiorno.").testo, "Se il documento viene letto per intero, ti aggiorno.");
+  });
+});
+
 describe("salvare qualcosa detto PRIMA dell'ultimo messaggio (01/09/2026)", () => {
   // Il Ghost: "Genera un percorso in vidya per questo concept, comprensivo dei file di testo
   // elaborati a riguardo fin'ora". I testi dell'Atto I erano di due ore prima, non nel messaggio
