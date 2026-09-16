@@ -116,3 +116,41 @@ describe("applicaModificaDocumento — il taglia-e-cuci vero, mai una riscrittur
     assert.match(r.anteprima.dopo, /^\s*Due note/);
   });
 });
+
+describe("applicaModificaManuale — il gemello senza ancora, quando il Ghost scrive lui stesso (16/09/2026, notte)", () => {
+  const doc = () => ({ id: "d1", title: "ATTO I: Origine", text: "Pulsazione. Battito.", date: "2026-09-16T08:00:00Z" });
+
+  test("un testo diverso sostituisce quello vecchio, che scende in versioniPrecedenti — Legge 14", () => {
+    const r = app.applicaModificaManuale(doc(), "Pulsazione. Battito. Accade.");
+    assert.equal(r.ok, true);
+    assert.equal(r.doc.text, "Pulsazione. Battito. Accade.");
+    assert.equal(r.doc.versioniPrecedenti.length, 1);
+    assert.equal(r.doc.versioniPrecedenti[0].text, "Pulsazione. Battito.");
+    assert.equal(r.doc.versioniPrecedenti[0].date, "2026-09-16T08:00:00Z");
+  });
+
+  test("le versioni si accumulano nell'ordine giusto, la più recente per prima", () => {
+    const dopoUnGiro = app.applicaModificaManuale(doc(), "Prima modifica.").doc;
+    const dopoDueGiri = app.applicaModificaManuale(dopoUnGiro, "Seconda modifica.");
+    assert.equal(dopoDueGiri.doc.versioniPrecedenti.length, 2);
+    assert.equal(dopoDueGiri.doc.versioniPrecedenti[0].text, "Prima modifica.");
+    assert.equal(dopoDueGiri.doc.versioniPrecedenti[1].text, "Pulsazione. Battito.");
+  });
+
+  test("IL FRENO: salvare senza aver cambiato niente non accumula una versione identica", () => {
+    const r = app.applicaModificaManuale(doc(), "Pulsazione. Battito.");
+    assert.equal(r.ok, false);
+    assert.match(r.motivo, /non è cambiato/);
+  });
+
+  test("senza un documento non c'è niente da modificare", () => {
+    assert.equal(app.applicaModificaManuale(null, "qualcosa").ok, false);
+    assert.equal(app.applicaModificaManuale(undefined, "qualcosa").ok, false);
+  });
+
+  test("cancellare tutto il testo è una modifica valida quanto le altre — non è compito di questa funzione impedirlo", () => {
+    const r = app.applicaModificaManuale(doc(), "");
+    assert.equal(r.ok, true);
+    assert.equal(r.doc.text, "");
+  });
+});
