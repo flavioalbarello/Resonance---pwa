@@ -146,7 +146,7 @@ const EXPORT_NAMES = [
   "contaPercorso", "costruisciInventario",
   "finestraConversazione", "ORE_DI_STACCO_CONVERSAZIONE", "titoloSuggeritoDaTesto",
   "senzaDeliberazione", "testoDelMagio", "LUNGHEZZA_MINIMA_MAGI", "MAGI_TETTO_PAROLE",
-  "documentoDaContesto", "cercaNellaMemoria", "TETTO_DOCUMENTO_IN_RICERCA",
+  "documentoDaContesto", "documentiDaCancellare", "cercaNellaMemoria", "TETTO_DOCUMENTO_IN_RICERCA",
   "montaGriglia", "scegliMenoRecente", "DISTANZA_MINIMA_RIPETIZIONE", "MARCHI_NOTI",
   "OSSERVABILI", "osservabileDi", "registraAtto", "leggiAtti", "statoAtto", "formatAnelloBlock",
   "ATTI_KEY", "ATTI_TETTO", "buildResonanceDigest",

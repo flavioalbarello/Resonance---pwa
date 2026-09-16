@@ -562,7 +562,21 @@ function trovaDocumentoNelPercorso(percorso, riferimento) {
       ? "questo percorso non contiene ancora nessun documento con il testo dentro"
       : "non c'è nessun percorso aperto da cui prendere un documento" };
   }
-  const chiave = paroleUtili(String(riferimento || "").replace(RUMORE_DOCUMENTO_RE, " "));
+  // UN "CANCELLA X POI APRI Y" NON DEVE FAR VINCERE X — 16/09/2026, guasto vero del Ghost:
+  // «Cancella motis primis e il basso che divora poi Apri origine e dammi il testo» ha aperto (e
+  // fatto RILEGGERE al modello) "Atto I - Il basso che divora" — il documento da BUTTARE, non
+  // quello chiesto — perché il punteggio guarda l'intera frase, e "il basso che divora" vale più
+  // parole in comune di "origine" da solo. Misurato con trovaDocumentoNelPercorso vero e i titoli
+  // reali del Ghost: senza questa riga il documento restituito è "trovato: Atto I - Il basso che
+  // divora"; con questa riga diventa quello giusto. Quello che si vuole CANCELLARE non è un indizio
+  // su cosa si vuole LEGGERE, quindi si toglie prima di contare le parole — solo la clausola di
+  // cancellazione, fino al prossimo "poi" o verbo di apertura: le frasi senza un verbo di
+  // cancellazione non cambiano (nessuna delle prove già scritte lo usa).
+  const senzaCancellazione = String(riferimento || "").replace(
+    /\b(?:cancella|elimina|togli|rimuovi)\b[\s\S]*?(?=\bpoi\b|\b(?:apri|apr[ìi]mi|mostra|mostrami|dammi|rileggi|rileggimi|riprendi|riprendiamo|leggimi|leggi)\b|$)/gi,
+    " "
+  );
+  const chiave = paroleUtili(senzaCancellazione.replace(RUMORE_DOCUMENTO_RE, " "));
   // Nessuna parola utile ("rileggimelo"): con un solo documento non c'è ambiguità da risolvere.
   if (!chiave.length) {
     return docs.length === 1
@@ -647,6 +661,37 @@ function documentoDaContesto(percorso, frase) {
   // da solo di mettere un documento intero davanti al modello. Un numero che compare per caso in
   // una frase — una data, un'ora, «il quarto giorno» — non è un motivo sufficiente.
   return trovato.esito === "trovato" && trovato.viaPunteggio && !trovato.viaSoloNumero ? { ...trovato, automatico: true } : null;
+}
+// ── 16/09/2026 — CANCELLARE UN DOCUMENTO ERA UNA FRASE, NON UN'AZIONE ────────────────────────────
+// Il Ghost: «Cancella motis primis e il basso che divora poi Apri origine e dammi il testo». Nel
+// registro non esisteva NESSUNA azione per cancellare un documento di un percorso — solo
+// `cancella_evento_calendario`, per il calendario. Il modello ha scritto «Cancellazione: ... .
+// Conferma con il pulsante», un pulsante che non è mai esistito da nessuna parte: la stessa forma
+// del guasto già trovato il 31/08 per `crea_percorso` («il modello dice quale materiale salvare, il
+// PROGRAMMA va a prendersi il testo... non farlo dire e basta»), qui mai corretta per la
+// cancellazione. In più, senza un'azione propria per «cancella», il turno di selezione la
+// scambiava con un'azione di calendario — misurato: la stessa frase faceva comparire una card
+// calendario mai chiesta.
+// La frase spesso nomina PIÙ documenti insieme ("X e Y"): si spezza sui connettivi e si cerca ogni
+// pezzo per conto suo con `trovaDocumentoNelPercorso`, che già esiste e già passa le sue prove.
+// Un pezzo ambiguo o non trovato NON blocca gli altri — si dichiara, non si tace (stessa regola di
+// "un fallimento muto non esiste").
+function documentiDaCancellare(percorso, riferimento) {
+  const pezzi = String(riferimento || "")
+    .split(/\s*(?:,|\be\b|\bed\b)\s*/i)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const trovati = [];
+  const ambigui = [];
+  const nonTrovati = [];
+  const visti = new Set();
+  for (const pezzo of pezzi) {
+    const esito = trovaDocumentoNelPercorso(percorso, pezzo);
+    if (esito.esito === "trovato" && !visti.has(esito.doc.id)) { visti.add(esito.doc.id); trovati.push(esito.doc); }
+    else if (esito.esito === "ambiguo") ambigui.push({ pezzo, candidati: esito.candidati });
+    else if (esito.esito === "nessuno") nonTrovati.push(pezzo);
+  }
+  return { trovati, ambigui, nonTrovati };
 }
 // Il tetto esiste perché un documento può essere lungo quanto si vuole e il turno no. Tagliare
 // dichiarandolo è l'unica forma onesta: il modello sa di avere una parte, non crede di avere tutto.
@@ -1020,6 +1065,27 @@ const AZIONI_CONVERSAZIONALI = [
     richiedeGate: false,
     effetto: "lettura",
     reversibile: true,
+    accesaDiDefault: true,
+  },
+  // ── 16/09/2026 — CANCELLARE UN DOCUMENTO NON ERA UN'AZIONE, ERA UNA FRASE ────────────────────
+  // Il Ghost: «Cancella motis primis e il basso che divora poi Apri origine e dammi il testo». Nel
+  // registro c'era `cancella_evento_calendario` ma NESSUNA azione per cancellare un documento di un
+  // percorso. Il modello ha scritto «Cancellazione: ... . Conferma con il pulsante» — un pulsante
+  // che non è mai esistito — e il turno di selezione, senza un'azione propria per «cancella» su cui
+  // atterrare, ha scelto un'azione di calendario: la stessa frase ha fatto comparire una card
+  // "non c'è nessun impegno nei prossimi 90 giorni" mai chiesta. Stessa forma del guasto già
+  // trovato il 31/08 per crea_percorso, mai corretta per questo verbo.
+  {
+    id: "cancella_documento",
+    classe: "A",
+    etichetta: "Cancellare uno o più documenti dal percorso aperto",
+    descrizione: 'Toglie per sempre uno o più documenti dal percorso aperto. Usa questa quando il Ghost dice "cancella X", "elimina X e Y", "togli quel documento" riferendosi a materiale GIÀ SALVATO in un percorso. MAI per un appuntamento sul calendario (quella è cancella_evento_calendario) e MAI per un file appena allegato in chat che non è stato ancora salvato da nessuna parte.',
+    perSelettore: 'cancellare per sempre uno o più documenti GIÀ SALVATI nel percorso aperto ("cancella X", "elimina X e Y", "togli quel documento") — non un appuntamento sul calendario, non un allegato appena arrivato',
+    perConversazione: "Togliere per sempre uno o più documenti dal percorso aperto, dopo conferma esplicita: non torna indietro.",
+    parametri: { contenuto: "string — le parole con cui il Ghost ha indicato quali documenti, così come le ha dette. Se più di uno, separale con \"e\" o una virgola — una per ognuno, senza aggiungere altro." },
+    richiedeGate: true,
+    effetto: "scrittura",
+    reversibile: false,
     accesaDiDefault: true,
   },
   // BLOCCO 2 (16/08/2026) — le quattro azioni approvate dal Ghost (D2). La sesta (invocare Magi)
@@ -1451,7 +1517,13 @@ function ripulisciTagAzione(testo) {
 // il pezzo di lingua che sta tagliando.
 const CONF_S = "(?<![\\p{L}'’])";  // inizio di parola: ne' lettera ne' apostrofo prima
 const CONF_E = "(?![\\p{L}'’])";   // fine di parola, accenti ed elisioni comprese
-const PARTICIPI = "aggiornat|aggiunt|salvat|creat|inviat|fissat|inserit|impostat|registrat|segnat|mess|spedit|mandat";
+// 16/09/2026 — "lett"/"rilett" aggiunti dopo «il documento è stato letto», «Testo completo,
+// riletto dal percorso» passati intatti: nessuna azione di lettura aveva davvero avuto luogo,
+// perché il documento aperto per sbaglio (vedi trovaDocumentoNelPercorso, guasto dello stesso
+// giorno) non era nemmeno quello nominato. "letto" da solo è anche un mobile — ma qui serve sempre
+// preceduto da un ausiliare ("è stato", "ho"), dove non è ambiguo: non si dice "sono stato letto"
+// per un mobile.
+const PARTICIPI = "aggiornat|aggiunt|salvat|creat|inviat|fissat|inserit|impostat|registrat|segnat|mess|spedit|mandat|lett|rilett";
 const ESITO_COMPIUTO_RE = new RegExp(
   "(" +
   // "è stato aggiornato/aggiunto/salvato/creato/inviato/fissato/inserito/impostato/registrato"
@@ -1498,6 +1570,19 @@ const ESITO_COMPIUTO_RE = new RegExp(
   "|(?:^|\\n)[ \\t]*(?:\\*\\*)?(?:salvataggio|creazione|aggiunta|registrazione|invio|inserimento|archiviazione|apertura|chiusura|generazione|aggiornamento|eliminazione|cancellazione)" +
   "\\s+(?:del|dello|della|dei|degli|delle|di|d['’])[^\\n.!?]{0,70}?" +
   "(?:percors\\w*|calendario|agenda|memoria|pilastr\\w*|document\\w*|drive|event\\w*|mail|sem[ei]|voce|nod\\w*)" +
+  // 16/09/2026 — LA STESSA INTESTAZIONE, MA CON IL PUNTO INVECE DEI DUE PUNTI, e PRIMA che un gate
+  // fosse anche solo confermato. Lo Shell ha scritto, come prima riga della sua risposta:
+  //     "Percorso 'Divenire' aperto. Fuoco agganciato, fascicolo caricato."
+  // Stessa forma esatta del 31/08 (un participio a fare da titolo, senza verbo coniugato) ma la
+  // guardia di allora cercava SOLO i due punti che aprono un blocco. Qui l'ancora si allarga anche
+  // a dopo un punto o un punto esclamativo (una frase nuova nello stesso paragrafo, non solo
+  // un'intestazione a inizio riga), e si accetta un nome fra virgolette in mezzo ("Divenire").
+  "|(?:^|\\n|(?<=[.,!?]\\s))[ \\t]*(?:\\*\\*)?(?:percors\\w+|nod\\w+|document\\w+|artefatt\\w+|voce|semi?|event\\w+|pian\\w+|file|fuoco|fascicol\\w*)" +
+  "(?:\\s+['\"’‘][^'\"’‘]{0,60}['\"’‘])?\\s+(?:\\d+\\s+)?(?:\\*\\*)?" +
+  // La virgola conta come il punto: "Fuoco agganciato, fascicolo caricato." è la stessa frase di
+  // prima, con le due affermazioni separate da una virgola invece che da un punto — e la seconda,
+  // "fascicolo caricato", ricade di nuovo qui grazie all'ancora dopo il punto precedente.
+  `(?:${PARTICIPI}|apert|completat|chius|archiviat|generat|prodott|agganciat|caricat)[oaie](?:\\*\\*)?\\s*[.,]` +
   ")", "giu");
 const ESITO_SOSTITUZIONE = "[non ancora — serve la tua conferma]";
 // azioneVerificata: true SOLO quando in questo turno c'e' stata un'azione esterna riletta dalla
@@ -5043,6 +5128,7 @@ const CAPACITA = [
   { n: `Salvare un testo con un gesto, senza dire niente`, nucleo: true, s: `Salvare un testo con un gesto, senza dire niente: ogni risposta dello Shell abbastanza lunga ha accanto a 🔊 un pulsante 💾. Toccarlo apre un pannello con il titolo già proposto dal testo, il pilastro e il percorso di destinazione (preselezionato su quello aperto, se c'è), e un pulsante che salva. Non passa dal modello, non richiede una frase particolare, non richiede che un percorso sia aperto: è la strada che funziona sempre. Il testo salvato è quello INTERO e finisce sotto il nodo giusto se il titolo corrisponde a uno.` },
   { n: `Salvare nel percorso quello che lo Shell ha appena prodotto`, k: ["salvalo nel percorso", "tienilo", "mettilo nel percorso", "salvare nel percorso"], s: `Salvare nel percorso quello che lo Shell ha appena prodotto: "salvalo nel percorso", "tienilo", "mettilo nel percorso attivo". Il testo NON viene riscritto dal modello: lo copia il programma dalla conversazione, per intero, e finisce nei documenti del percorso aperto. La card mostra prima quanto è lungo e come comincia, così si vede se sta per salvare il messaggio giusto. Serve perché la conversazione ha due limiti: lo Shell rivede solo gli ultimi sei messaggi, e sopra i quaranta messaggi i più vecchi escono dalla vista e finiscono in un archivio locale. Un contenuto lungo che resta solo in chat, fra un mese, non è più raggiungibile né dal Ghost né dallo Shell; dentro il percorso sì.` },
   { n: `Rileggere un documento del percorso`, s: `Rileggere un documento del percorso: "rileggimi l'Atto I", "riprendi i testi che abbiamo salvato", "mostrami quel pezzo". Il programma va a prendere il testo COMPLETO dal percorso aperto e lo mette davanti allo Shell PRIMA che risponda, così ci lavora sopra davvero invece di ricordarlo. Non chiede conferma: leggere non cambia niente. Se più di un documento corrisponde chiede quale, e se non lo trova lo dichiara invece di rispondere a memoria. Un documento molto lungo viene tagliato e la cosa viene detta.` },
+  { n: `Cancellare un documento del percorso`, k: ["cancella documento", "elimina documento", "togli quel documento"], s: `Cancellare un documento del percorso: "cancella X", "elimina X e Y", "togli quel documento" riferito a materiale GIÀ SALVATO in un percorso — non un evento sul calendario (quella è cancellare un evento) e non un file appena allegato in chat e mai salvato. Nato il 16/09/2026: prima non esisteva nessuna azione per questo, il modello scriveva "Cancellazione: fatta, conferma con il pulsante" senza che nessun pulsante esistesse mai, e "cancella" veniva confuso con un'azione di calendario. Ora mostra una card con i titoli VERI che sta per togliere prima di farlo — non torna indietro, non c'è un cestino. Se il Ghost nomina più documenti insieme ("cancella X e Y"), quelli trovati si cancellano e quelli non trovati o ambigui si dichiarano, senza bloccare gli altri.` },
   { n: `Il percorso aperto viaggia con il suo fascicolo`, nucleo: true, s: `Il percorso aperto viaggia con il suo fascicolo: quando c'è un percorso aperto (il fuoco), lo Shell riceve a ogni turno i suoi nodi con lo stato, le competenze, la memoria del percorso e l'indice dei documenti. È per questo che "continuiamo con l'Atto III" funziona senza dover rispiegare cos'è stato fatto. Il fuoco scade da solo dopo otto ore.` },
   { n: `Voci gemelle nel log`, s: `Voci gemelle nel log: quando lo Shell scrive da solo una voce in un pilastro e quella voce dice sostanzialmente la stessa cosa di un'altra dello STESSO GIORNO, non ne crea una seconda: aggiorna quella che c'è già, e il testo precedente scende nello storico della voce invece di essere perso. Nel log la voce mostra "N versioni di questa voce" e si tocca per rileggerle tutte. Sotto il messaggio in chat il segno dice "→ VIDYA · 3ª versione" invece di "→ VIDYA", così è visibile che ha aggiornato e non aggiunto. Le voci che contengono una misura (peso, sonno) non vengono mai fuse: due pesate nello stesso giorno sono due dati, non un doppione. Le voci scritte a mano dal Ghost non passano da qui e non vengono mai toccate.` },
   { n: `Fonti di Balthasar, controllate dal programma`, s: `Fonti di Balthasar, controllate dal programma: quando l'Agorà Magi gira su OpenRouter, Balthasar ha la ricerca web. Sotto la sua risposta compare una riga che dice se la ricerca è stata eseguita DAVVERO — letta dalle citazioni che la risposta porta con sé, non dichiarata dal modello — quante citazioni e da quali domini. Se Balthasar nomina un servizio o un sito che non trova riscontro in nessun dominio realmente citato, compare un avviso di possibile fonte inventata: non blocca niente, è un sospetto da verificare. Esisteva già per la ricerca dei Semi dal 26/07/2026 e da oggi vale anche per l'Agorà. Le sessioni Magi precedenti a oggi non hanno questa riga: non è un errore, quel dato allora non veniva raccolto.` },
@@ -5079,7 +5165,7 @@ Cosa succede quando non ce la fa: il motivo torna al modello e riprova, al massi
   { n: `Fuoco conversazionale`, nucleo: true, s: `Fuoco conversazionale: il percorso o il Seme su cui si sta lavorando adesso. Compare in una barra sopra la chat, sopravvive a ricarica e riapertura, e scade da solo dopo otto ore. Si chiude con un gesto sulla barra, oppure a parole (vedi chiudi_percorso qui sotto).` },
   { n: `Inventario`, nucleo: true, s: `Inventario: l'elenco di percorsi e Semi che lo Shell riceve a ogni turno, così sa cosa esiste davvero senza doverlo indovinare.` },
   { n: `Registro delle azioni`, k: ["registro", "registro delle azioni"], s: `Registro delle azioni: ogni proposta, conferma, esecuzione ed esito, con l'orario. Si legge in Setup. È il posto dove si scopre dopo perché una cosa è andata storta.` },
-  { n: `Azioni parlando`, nucleo: true, s: `Azioni parlando: dodici azioni che il Ghost può far partire dicendole. Sei interne (aprire o riprendere un percorso, chiudere il percorso aperto, scrivere su un pilastro, creare un Seme, interrogare la memoria, avanzare un percorso) e sei che toccano il mondo fuori (creare un evento, leggere il calendario, trovare quando è un appuntamento preciso, cancellare un evento, spostare un evento a un altro giorno o ora, inviare una mail). Le sei esterne nascono spente e si accendono in Setup, una per una; le sei interne nascono accese.` },
+  { n: `Azioni parlando`, nucleo: true, s: `Azioni parlando: sedici azioni che il Ghost può far partire dicendole. Dieci interne (aprire o riprendere un percorso, crearne uno, salvarci dentro, aprire o cancellare un documento, scrivere su un pilastro, creare un Seme, interrogare la memoria, avanzare o chiudere un percorso) e sei che toccano il mondo fuori (creare un evento, leggere il calendario, trovare quando è un appuntamento preciso, cancellare un evento, spostare un evento a un altro giorno o ora, inviare una mail). Le sei esterne nascono spente e si accendono in Setup, una per una; le dieci interne nascono accese.` },
   { n: `Aprire, chiudere e riprendere un percorso, tutto a parole`, k: ["apri", "riprendi", "chiudi"], s: `Aprire, chiudere e riprendere un percorso, tutto a parole: "apri X" o "riprendi X" porta il fuoco su un percorso o un Seme che esiste già (non ne crea uno nuovo); "chiudi questo", "chiudiamo qui", "basta per oggi" chiude il fuoco senza cancellare né archiviare niente — il percorso resta intatto con tutta la sua storia, smette solo di essere quello su cui si sta lavorando adesso; "e adesso?", "andiamo avanti" chiede il prossimo passo su quello aperto. Ogni comando mostra una card di conferma prima di eseguire, con l'etichetta di ciò che è davvero aperto in quel momento.` },
   { n: `Interruttori`, nucleo: true, s: `Interruttori: gli accendi-e-spegni delle capacità che toccano il mondo fuori, in Setup. Lo Shell riceve a ogni turno l'elenco vero di cosa è acceso e cosa è spento adesso, quindi non deve indovinarlo. Se dichiara spenta una capacità che è accesa, il programma toglie la frase e avvisa il Ghost.` },
   { n: `Leggere il calendario`, nucleo: true, s: `Leggere il calendario: lo Shell va a leggere davvero gli impegni dal Calendar del Ghost. Non chiede conferma — leggere non cambia niente — e l'unico gate è l'interruttore. Il programma sceglie l'azione, legge, e solo dopo genera la risposta, così parla di impegni che ha in mano. Se la lettura fallisce lo dichiara con il motivo tecnico invece di indovinare.` },
@@ -10458,6 +10544,36 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     aggiornaAzione(mid, { tipo: "salvato-nel-percorso", percorso: target.title, titolo, caratteri: materiale.testo.length, nodo: etichettaNodo, perRiferimento: materiale.perRiferimento });
     registraAzione({ fase: "eseguita", azioneId: "salva_nel_percorso", etichetta: titolo, percorso: target.title, caratteri: materiale.testo.length });
   };
+  // Il gemello di eseguiSalvaNelPercorso, dalla parte opposta — 16/09/2026. Il fuoco si legge AL
+  // MOMENTO DEL TOCCO, stessa regola di sempre: fra la proposta e la conferma il Ghost può aver
+  // cambiato percorso. UN PEZZO CHE NON SI TROVA NON BLOCCA GLI ALTRI: si cancellano quelli trovati
+  // e si dichiarano quelli no — un fallimento muto non esiste.
+  const eseguiCancellaDocumento = (mid, parametro) => {
+    const f = leggiFuoco();
+    if (f.tipo !== "percorso") {
+      aggiornaAzione(mid, { tipo: "rifiutato", motivo: "non c'è nessun percorso aperto da cui cancellare" });
+      registraAzione({ fase: "rifiutata", azioneId: "cancella_documento", motivo: "nessun percorso nel fuoco" });
+      return;
+    }
+    const pil = PILASTRI_NOMI.find((k) => (percorsi[k] || []).some((p) => p.id === f.id));
+    const target = pil ? percorsi[pil].find((p) => p.id === f.id) : null;
+    if (!target) {
+      aggiornaAzione(mid, { tipo: "rifiutato", motivo: "il percorso aperto non esiste più: forse è stato cancellato" });
+      registraAzione({ fase: "rifiutata", azioneId: "cancella_documento", motivo: "percorso del fuoco inesistente", id: f.id });
+      return;
+    }
+    const { trovati, ambigui, nonTrovati } = documentiDaCancellare(target, parametro);
+    if (!trovati.length) {
+      aggiornaAzione(mid, { tipo: "rifiutato", motivo: `nessun documento di "${target.title}" corrisponde a "${parametro}"`, ambigui, nonTrovati });
+      registraAzione({ fase: "rifiutata", azioneId: "cancella_documento", motivo: "nessuna corrispondenza", parametro });
+      return;
+    }
+    vibra(pil);
+    const idDaTogliere = new Set(trovati.map((d) => d.id));
+    setPercorsi[pil](percorsi[pil].map((p) => (p.id === target.id ? { ...p, documents: (p.documents || []).filter((d) => !idDaTogliere.has(d.id)) } : p)));
+    aggiornaAzione(mid, { tipo: "documenti-cancellati", percorso: target.title, titoli: trovati.map((d) => d.title || d.name), ambigui, nonTrovati });
+    registraAzione({ fase: "eseguita", azioneId: "cancella_documento", percorso: target.title, etichetta: trovati.map((d) => d.title || d.name).join(", "), quanti: trovati.length, ambigui: ambigui.length, nonTrovati: nonTrovati.length });
+  };
   // ── BLOCCO 3 — esecutori di Classe B ──────────────────────────────────────────────
   // Differenza dalla Classe A: qui si tocca il mondo fuori. Quindi (a) si conferma sempre prima,
   // (b) dopo si RILEGGE dalla fonte, (c) la chiave di idempotenza impedisce il doppio invio.
@@ -11037,6 +11153,33 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                   </div>
                 </div>`;
               })()}
+              ${/* 16/09/2026 — la card mostra i documenti VERI che sta per cancellare, non il
+                    riassunto del modello: stessa disciplina di rispostaProvaAVuoto (C.10, "si
+                    ferma e mostra, non decide"). Un pezzo non trovato o ambiguo si dichiara qui, e
+                    non si tocca — non tutto o niente: quello che si capisce si esegue, quello che
+                    non si capisce resta e si dice perché. */ ""}
+              ${m.azioneProposta.esito === "diretto" && m.azioneProposta.azioneId === "cancella_documento" && (() => {
+                const pil = fuoco.tipo === "percorso" ? PILASTRI_NOMI.find((k) => (percorsi[k] || []).some((p) => p.id === fuoco.id)) : null;
+                const target = pil ? percorsi[pil].find((p) => p.id === fuoco.id) : null;
+                const anteprima = target ? documentiDaCancellare(target, m.azioneProposta.parametro) : null;
+                return html`<div>
+                  <div class="r-draft-label">▸ CANCELLO QUESTO PER SEMPRE — conferma prima che accada</div>
+                  ${!target
+                    ? html`<div class="r-hub-detail">Non c'è nessun percorso aperto in questo momento.</div>`
+                    : !anteprima.trovati.length
+                    ? html`<div class="r-hub-detail">Nessun documento di "${target.title}" corrisponde a "${m.azioneProposta.parametro}".</div>`
+                    : html`<div>
+                        <div class="r-draft-body">${anteprima.trovati.map((d) => `"${d.title || d.name}"`).join(", ")}</div>
+                        <div class="r-hub-detail">Da "${target.title}". Non torna indietro: non c'è un cestino.</div>
+                        ${anteprima.nonTrovati.length > 0 && html`<div class="r-hub-detail">Non ho trovato niente per: ${anteprima.nonTrovati.map((p) => `"${p}"`).join(", ")} — quelli non li tocco.</div>`}
+                        ${anteprima.ambigui.length > 0 && html`<div class="r-hub-detail">Per ${anteprima.ambigui.map((a) => `"${a.pezzo}"`).join(", ")} c'è più di un documento che corrisponde: dimmi il titolo per intero, per ora non li tocco.</div>`}
+                      </div>`}
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    ${target && anteprima?.trovati.length ? html`<button class="r-btn r-draft-copy" onClick=${() => eseguiCancellaDocumento(mid, m.azioneProposta.parametro)}>Sì, cancella</button>` : ""}
+                    <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Annulla</button>
+                  </div>
+                </div>`;
+              })()}
               ${/* 25/08/2026 — il gemello: chiudere il fuoco. Mostra sempre l'etichetta di cio' che
                     e' aperto ADESSO (letta al render, non a quando la card e' nata), cosi' se il
                     Ghost lo ha gia' chiuso o cambiato nel frattempo la card non mente. */ ""}
@@ -11228,6 +11371,14 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
             ${azioneStatus[mid]?.tipo === "scegli-percorso" && html`<div class="r-hub-detail">Non c'è nessun percorso aperto: scegline uno qui sotto e lo salvo lì.</div>`}
             ${azioneStatus[mid]?.tipo === "percorso-creato" && html`<div class="r-ok">✓ Percorso "${azioneStatus[mid].titolo}" creato in ${azioneStatus[mid].pilastro.toUpperCase()}, ${azioneStatus[mid].nodi} nodi. È quello aperto adesso: quello che generiamo lo posso salvare lì dentro.</div>`}
             ${azioneStatus[mid]?.tipo === "salvato-nel-percorso" && html`<div class="r-ok">✓ "${azioneStatus[mid].titolo}" salvato per intero (${azioneStatus[mid].caratteri} caratteri) nel percorso ${azioneStatus[mid].percorso}${azioneStatus[mid].nodo ? `, sotto il nodo "${azioneStatus[mid].nodo}"` : ""}. Lo ritrovi lì fra un mese, anche quando questa conversazione sarà stata compattata.</div>`}
+            ${/* UN PEZZO CHE NON SI TROVA NON SI TACE — 16/09/2026: se il Ghost ha nominato più
+                  documenti e uno non corrisponde a niente, lo si dice per nome invece di far finta
+                  che sia andato tutto liscio. */ ""}
+            ${azioneStatus[mid]?.tipo === "documenti-cancellati" && html`<div>
+              <div class="r-ok">✓ Cancellat${azioneStatus[mid].titoli.length === 1 ? "o" : "i"} per sempre da "${azioneStatus[mid].percorso}": ${azioneStatus[mid].titoli.map((t) => `"${t}"`).join(", ")}.</div>
+              ${azioneStatus[mid].nonTrovati?.length > 0 && html`<div class="r-hub-detail">Non ho trovato niente per: ${azioneStatus[mid].nonTrovati.map((p) => `"${p}"`).join(", ")} — se il nome è un altro, dimmelo e riprovo.</div>`}
+              ${azioneStatus[mid].ambigui?.length > 0 && html`<div class="r-hub-detail">Per ${azioneStatus[mid].ambigui.map((a) => `"${a.pezzo}"`).join(", ")} c'è più di un documento che corrisponde: dimmi il titolo per intero.</div>`}
+            </div>`}
             ${/* BLOCCO 3 §3.1 — la verifica di ritorno mostrata al Ghost. "Verificata" vuol dire
                   una cosa sola: sono tornato a chiedere alla fonte e l'ho visto. Ogni altro esito
                   e' scritto come un fallimento, anche quando l'invio potrebbe essere riuscito —

@@ -71,6 +71,98 @@ describe("documentoDaContesto — il documento che nessuno aveva chiesto di apri
     const senzaTesto = { ...percorso, documents: [{ id: "x", title: "Atto III — la rottura", text: "", date: "2026-08-01" }] };
     assert.equal(app.documentoDaContesto(senzaTesto, "riprendiamo l'Atto III"), null);
   });
+
+  // ── IL GUASTO VERO DEL 16/09/2026 ─────────────────────────────────────────────────────────────
+  // Frase del Ghost: «Cancella motis primis e il basso che divora poi Apri origine e dammi il
+  // testo». Aveva chiesto di APRIRE "ATTO I: Origine" — invece si apriva "Atto I - Il basso che
+  // divora", il documento che stava CHIEDENDO DI BUTTARE, perché quella clausola ha più parole in
+  // comune con la frase intera di quante ne abbia "origine" da sola. Il modello, ricevuto IL TESTO
+  // SBAGLIATO, ha comunque scritto "Apro 'ATTO I: Origine'... riletto dal percorso" e inventato
+  // testi che non esistono in nessuno dei due documenti: un sintomo diverso, non coperto qui, ma
+  // la causa di QUESTO — il documento sbagliato in mano al modello — sì.
+  test("UN «CANCELLA X POI APRI Y» APRE Y, NON X — il guasto vero del 16/09/2026", () => {
+    const percorsoReale = {
+      id: "p2", title: "Divenire", topics: [],
+      documents: [
+        doc("d1", "Actus I - Motus Primus: Linea Bassi Locria", "spartito abc 1"),
+        doc("d2", "Atto I - Il basso che divora", "spartito abc 2"),
+        doc("d3", "ATTO I: Origine", "TESTO VERO: Prima del prima. Prima del limite."),
+        doc("d4", "Atto I — testi e note", "appunto di sistema"),
+      ],
+    };
+    const frase = "Cancella motis primis e il basso che divora poi Apri origine e dammi il testo";
+    const aperto = app.documentoDaContesto(percorsoReale, frase);
+    assert.ok(aperto, "deve trovare qualcosa da aprire");
+    assert.equal(aperto.doc.id, "d3", "doveva aprire ATTO I: Origine, non uno dei due da cancellare");
+  });
+
+  test("senza un verbo di cancellazione, la frase non cambia (nessuna regressione)", () => {
+    assert.equal(app.documentoDaContesto(percorso, "riprendiamo l'Atto III dove eravamo rimasti").doc.id, "d2");
+    assert.equal(app.documentoDaContesto(percorso, "riprendiamo l'Atto I").doc.id, "d1");
+  });
+});
+
+describe("documentiDaCancellare — dietro l'azione cancella_documento (16/09/2026)", () => {
+  // Nata dallo stesso guasto vero: «Cancella motis primis e il basso che divora». La frase nomina
+  // PIÙ documenti insieme, separati da "e" o virgola: si spezza e si cerca ogni pezzo per conto suo
+  // con trovaDocumentoNelPercorso, che già esiste. Un pezzo ambiguo o non trovato non deve bloccare
+  // gli altri — "un fallimento muto non esiste".
+  const percorsoReale = {
+    id: "p2", title: "Divenire", topics: [],
+    documents: [
+      doc("d1", "Bozza vecchia dell'assolo di basso", "spartito abc 1"),
+      doc("d2", "Mappa sonora dell'album", "spartito abc 2"),
+      doc("d3", "ATTO I: Origine", "TESTO VERO: Prima del prima."),
+    ],
+  };
+
+  test("IL CASO REALE (parole pulite): «bozza vecchia e mappa sonora» trova ENTRAMBI i documenti da buttare", () => {
+    const { trovati, ambigui, nonTrovati } = app.documentiDaCancellare(percorsoReale, "bozza vecchia e mappa sonora");
+    assert.deepEqual(trovati.map((d) => d.id).sort(), ["d1", "d2"]);
+    assert.equal(ambigui.length, 0);
+    assert.equal(nonTrovati.length, 0);
+  });
+
+  test("un solo nome cancella un solo documento", () => {
+    const { trovati } = app.documentiDaCancellare(percorsoReale, "bozza vecchia");
+    assert.equal(trovati.length, 1);
+    assert.equal(trovati[0].id, "d1");
+  });
+
+  test("separati da virgola, non solo da 'e'", () => {
+    const { trovati } = app.documentiDaCancellare(percorsoReale, "bozza vecchia, mappa sonora");
+    assert.deepEqual(trovati.map((d) => d.id).sort(), ["d1", "d2"]);
+  });
+
+  test("UN PEZZO CHE NON SI TROVA NON BLOCCA GLI ALTRI — si dichiara, non si tace", () => {
+    const { trovati, nonTrovati } = app.documentiDaCancellare(percorsoReale, "bozza vecchia e la ricetta del pane");
+    assert.equal(trovati.length, 1);
+    assert.equal(trovati[0].id, "d1");
+    assert.deepEqual(nonTrovati, ["la ricetta del pane"]);
+  });
+
+  test("un pezzo ambiguo si dichiara con i suoi candidati, senza cancellare a caso", () => {
+    const ambiguo = {
+      id: "p3", title: "Note", topics: [],
+      documents: [doc("a", "Note di lavoro", "prima"), doc("b", "Note di lavoro", "seconda")],
+    };
+    const { trovati, ambigui } = app.documentiDaCancellare(ambiguo, "note di lavoro");
+    assert.equal(trovati.length, 0);
+    assert.equal(ambigui.length, 1);
+    assert.equal(ambigui[0].pezzo, "note di lavoro");
+  });
+
+  test("lo stesso documento nominato due volte non compare due volte", () => {
+    const { trovati } = app.documentiDaCancellare(percorsoReale, "bozza vecchia e bozza vecchia");
+    assert.equal(trovati.length, 1);
+  });
+
+  test("un percorso senza documenti, o un riferimento vuoto, non esplode e non trova niente", () => {
+    assert.deepEqual(app.documentiDaCancellare({ documents: [] }, "qualcosa"), { trovati: [], ambigui: [], nonTrovati: ["qualcosa"] });
+    const r = app.documentiDaCancellare(percorsoReale, "");
+    assert.equal(r.trovati.length, 0);
+    assert.equal(r.nonTrovati.length, 0);
+  });
 });
 
 describe("cercaNellaMemoria — adesso guarda anche dove c'era più roba", () => {
