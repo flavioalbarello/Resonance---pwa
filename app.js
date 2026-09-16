@@ -99,6 +99,14 @@ import {
   promemoriaOrfani,
   SPARTITO_ESEMPIO,
 } from "./lib/spartito.js";
+import {
+  TIPO_GIOCO,
+  eGioco,
+  calcolaEsitoGioco,
+  valutaRispostaGioco,
+  validaMazzoTestuale,
+  generaMazzoAudioSenzaModello,
+} from "./lib/gioco.js";
 
 const html = htm.bind(h);
 
@@ -308,6 +316,36 @@ function stopSpeaking() {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   setTimeout(() => { try { window.speechSynthesis.cancel(); } catch {} }, 60); // bug noto Chrome Android: cancel() a volte non interrompe al primo colpo
+}
+// ── IL GIOCO, FAMIGLIA AUDIO — la parte che tocca il browser — 16/09/2026 ──────────────────────────
+// generaRoundIntervallo/generaRoundModo (lib/gioco.js) calcolano le frequenze: pura aritmetica,
+// provata in Node. Suonarle davvero richiede AudioContext, che in Node non esiste — stessa
+// separazione già in uso per il microfono (accendiVoce) e la sintesi vocale (speakText) qui sopra.
+// Non tocca il ciclo di eco/microfono di speakText: un tono non è la voce dello Shell, e ascoltare
+// un intervallo con il microfono acceso è normale, non un anello che si alimenta da solo.
+function suonaSequenzaGioco(frequenze, durataMs = 550) {
+  const Ctx = typeof window !== "undefined" && (window.AudioContext || window.webkitAudioContext);
+  if (!Ctx || !Array.isArray(frequenze) || !frequenze.length) return;
+  const ctx = new Ctx();
+  const durataSec = durataMs / 1000;
+  frequenze.forEach((f, i) => {
+    if (typeof f !== "number" || !isFinite(f)) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = f;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    const t0 = ctx.currentTime + i * durataSec;
+    gain.gain.setValueAtTime(0.001, t0);
+    gain.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0 + durataSec * 0.9);
+    osc.start(t0);
+    osc.stop(t0 + durataSec);
+  });
+  // Chiude il context dopo l'ultima nota: un AudioContext lasciato aperto per ogni "Ascolta" toccato
+  // in una sessione di gioco lunga è la stessa forma di dimenticanza già vista altrove nel progetto.
+  setTimeout(() => { try { ctx.close(); } catch { /* già chiuso */ } }, frequenze.length * durataMs + 200);
 }
 
 
@@ -5259,6 +5297,7 @@ const CAPACITA = [
   { n: `Eliminare un percorso dalla lista`, k: ["eliminare un percorso", "cancellare un percorso"], s: `Eliminare un percorso dalla lista: in ogni pilastro, sotto Percorsi, ogni percorso ha una ✕ di fianco. Non elimina subito: chiede una volta e dice cosa sta per sparire, contato (quanti nodi, quante sessioni, quanti documenti col loro testo, se ci sono competenze e memoria del percorso). Serve perché da quando i documenti contengono il testo intero, un percorso vale molto più di una voce di log. Resta anche il pulsante "Elimina percorso" dentro il percorso stesso.` },
   { n: `L'inventario dice anche cosa contiene un percorso`, s: `L'inventario dice anche cosa contiene un percorso: accanto al nome di ogni percorso lo Shell riceve quanti nodi ha, quanti sono consolidati e quanti documenti ci sono dentro — conteggi veri, letti dai dati in quel momento. Se un percorso ha "NESSUN documento salvato", allora non contiene niente di quello che è stato prodotto parlando, e lo Shell deve dirlo invece di supporre il contrario. Un percorso può avere il nome giusto ed essere vuoto: è il caso normale appena viene creato, perché per farci entrare qualcosa serve toccare il pulsante di salvataggio.` },
   { n: `Nodi del percorso`, s: `Nodi del percorso: ogni nodo si tocca e si apre, mostrando il materiale che gli è stato legato — i documenti col loro testo intero e le sessioni che lo nominano. Un nodo senza niente lo dichiara invece di aprirsi vuoto. La verifica (il quiz) è diventata un pulsante DENTRO il nodo aperto: prima era l'effetto obbligato del tocco, ora è una scelta.` },
+  { n: `Giochi di verifica su un nodo`, k: ["gioco", "giochi", "quiz sonoro", "intervalli", "modo di una scala"], s: `Giochi di verifica su un nodo: dentro un nodo aperto, oltre a "Verificati su questo nodo" (il quiz), tre pulsanti generano un gioco vero, che diventa un documento del percorso come gli altri — si cancella, ha uno storico, si trova a voce. "🎮 Gioco testuale" chiede al modello un mazzo di 6 domande a risposta multipla TUTTE INSIEME, prima di giocare: il programma scarta i round malformati e poi VERIFICA da solo ogni risposta, mai il modello a posteriori. "🎧 Intervalli" e "🎧 Modi di una scala" (solo VIDYA) non chiamano il modello per niente: il programma calcola le frequenze vere col temperamento equabile, le suona con l'audio del telefono, e conosce già la risposta perché l'ha scelta lui — zero costo, zero ambiguità. A mazzo finito il nodo si aggiorna con lo stesso stato del quiz (introdotto/praticato/consolidato), calcolato per conteggio, non deciso dal modello. Nato il 16/09/2026 in direzione Adam; il ritmo/platform visivo resta un giro successivo, dichiarato tale.` },
   { n: `Sotto quale nodo finisce quello che si salva`, s: `Sotto quale nodo finisce quello che si salva: quando il Ghost dice "salvalo nel percorso", il programma confronta il titolo del materiale con le etichette dei nodi e lo lega a quello giusto — con lo spareggio sui numeri, così "Atto I" non finisce sotto "Atto II". Se nessun nodo corrisponde o se due corrispondono allo stesso modo, il documento resta del percorso senza nodo: meglio senza che sotto quello sbagliato.` },
   { n: `Salvare qualcosa detto PRIMA dell'ultimo messaggio`, k: ["salva i testi", "salva quello di prima", "salvare un messaggio vecchio"], s: `Salvare qualcosa detto PRIMA dell'ultimo messaggio: il titolo che si dà al materiale fa anche da riferimento. "Salva i testi dell'Atto I nel percorso" fa cercare al programma, dentro la conversazione, il messaggio che parla dell'Atto I — non prende ciecamente il precedente. Se il riferimento non corrisponde a niente vale il più recente, e la card mostra sempre come comincia ciò che sta per essere salvato.` },
   { n: `Quando manca il percorso aperto`, s: `Quando manca il percorso aperto: se il Ghost chiede a voce di salvare qualcosa ma non c'è nessun percorso nel fuoco, l'azione non si rifiuta più — si apre lo stesso pannello del pulsante 💾, con il testo già trovato, e il percorso lo si sceglie lì. Serve perché il fuoco non c'è in due casi comunissimi: un percorso creato dal pannello del pilastro invece che dalla chat, e le otto ore di scadenza passate.` },
@@ -7154,6 +7193,22 @@ async function evaluateQuizAnswer(pillar, topic, question, answer, settings) {
     0.3, 1300, settings
   );
 }
+// ── IL GIOCO, FAMIGLIA TESTUALE — 16/09/2026 ──────────────────────────────────────────────────────
+// Una chiamata sola per l'intero mazzo (non una per round): il modello propone domanda+opzioni+
+// risposta corretta TUTTE INSIEME, prima che il Ghost giochi anche solo il primo round — è
+// l'accettore che nasce insieme alla decisione di generare, non un giudizio scritto a posteriori
+// sulla propria domanda. validaMazzoTestuale (lib/gioco.js) scarta ciò che arriva storto PRIMA che
+// compaia in una card: lo stesso principio di extractJsonBlock altrove nel progetto, un modello
+// economico non viene creduto sulla parola.
+async function generaMazzoGiocoTestuale(pillar, percorso, nodo, settings) {
+  const grezzo = await askModelJSON(
+    `Sei lo Shell, pilastro ${pillar.toUpperCase()}. ${PILLAR_CTX[pillar]}\nGenera un mazzo di 6 domande a risposta multipla per un gioco di verifica sul nodo indicato. Ogni domanda ha esattamente 4 opzioni, UNA SOLA corretta — il testo della risposta corretta deve comparire IDENTICO, carattere per carattere, anche in una delle opzioni — e una spiegazione breve (max 25 parole).`,
+    `Percorso: ${percorso.title}\nNodo da verificare: ${nodo.label}\nCompetenze note: ${percorso.competenze || "nessuna"}${indiceDocumentiBlock(percorso.documents)}\n\nRispondi SOLO con questo JSON: {"round": [{"domanda": "...", "opzioni": ["...","...","...","..."], "corretta": "...", "spiegazione": "..."}]}`,
+    0.6, 1800, settings
+  );
+  if (!grezzo || !Array.isArray(grezzo.round)) return { ok: false, motivo: "il modello non ha risposto con un mazzo leggibile", round: [], scartati: 0 };
+  return validaMazzoTestuale(grezzo.round);
+}
 async function closeSession(pillar, percorso, sessionNote, settings) {
   return askModel(
     `Sei lo Shell, pilastro ${pillar.toUpperCase()}. Riscrivi l'INTERO paragrafo di sintesi delle competenze del Ghost su questo percorso, integrando quanto emerso ora (non aggiungere solo in coda). Italiano, max 90 parole, denso ma concreto.`,
@@ -7573,6 +7628,47 @@ function loadAbcLib() {
 // 139→201px (quattro). Ukulele e banjo li accetta senza lamentarsi e NON disegnano niente: non
 // stanno in questo elenco, perché un menù che offre una cosa che non succede è peggio di un menù
 // corto.
+// ── LA CARD DEL GIOCO — 16/09/2026 ────────────────────────────────────────────────────────────────
+// onAggiorna riceve il documento intero, come SpartitoView qui sotto: chi chiama decide anche se e
+// come aggiornare lo stato del nodo collegato (vedi il sito di chiamata in PercorsoDetail), questo
+// componente conosce solo il gioco, non il resto del percorso.
+function GiocoView({ doc, color, onAggiorna }) {
+  const round = doc.round?.[doc.turno];
+  const finito = doc.stato !== "in-corso";
+  const rispondi = (opzione) => {
+    if (finito || !round) return;
+    const corretto = valutaRispostaGioco(round, opzione);
+    const risposte = [...(doc.risposte || []), corretto];
+    const turno = doc.turno + 1;
+    if (turno >= doc.round.length) {
+      onAggiorna({ ...doc, risposte, turno, stato: "concluso", esito: calcolaEsitoGioco(risposte) });
+    } else {
+      onAggiorna({ ...doc, risposte, turno });
+    }
+  };
+  if (finito) {
+    return html`<div class="r-magi-text" style="margin-top:4px">
+      ${doc.stato === "abbandonato"
+        ? html`<div>Abbandonato al round ${doc.turno + 1} di ${doc.round?.length || 0}.</div>`
+        : html`<div><b>${doc.esito?.corrette}/${doc.esito?.totali} corrette</b> — ${doc.esito?.livello}.</div>`}
+      <button class="r-btn r-btn-ghost" style="margin-top:6px;margin-left:0" onClick=${() => onAggiorna({ ...doc, turno: 0, risposte: [], stato: "in-corso", esito: null })}>Rigioca lo stesso mazzo</button>
+    </div>`;
+  }
+  if (!round) return html`<div class="r-hub-detail" style="margin-top:4px">Questo gioco non ha round da mostrare.</div>`;
+  return html`<div style="margin-top:4px">
+    <div class="r-hub-detail">Round ${doc.turno + 1}/${doc.round.length}${doc.meccanica === "audio" ? ` · ${round.sottotipo === "modo" ? "modo di una scala" : "intervallo"}` : ""}</div>
+    ${round.meccanica === "audio"
+      ? html`<div>
+          <div class="r-magi-text" style="margin-top:4px">${round.sottotipo === "modo" ? "Ascolta la scala: che modo è?" : "Ascolta le due note: che intervallo è?"}</div>
+          <button class="r-btn" style="background:${color};margin-top:6px" onClick=${() => suonaSequenzaGioco(round.frequenze)}>▶ Ascolta</button>
+        </div>`
+      : html`<div class="r-magi-text" style="margin-top:4px">${round.domanda}</div>`}
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
+      ${round.opzioni.map((o) => html`<button key=${o} class="r-btn r-btn-ghost" style="margin-left:0;text-align:left" onClick=${() => rispondi(o)}>${o}</button>`)}
+    </div>
+    <button class="r-btn r-btn-ghost" style="margin-top:8px;margin-left:0" onClick=${() => onAggiorna({ ...doc, stato: "abbandonato" })}>Abbandona</button>
+  </div>`;
+}
 const STRUMENTI_TABLATURA = [
   { id: "", etichetta: "solo pentagramma" },
   { id: "guitar", etichetta: "chitarra (tablatura)" },
@@ -8108,6 +8204,39 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
   // prodotto su quel nodo. La verifica resta, ma come pulsante dentro il nodo aperto: una scelta,
   // non l'effetto obbligato di un tocco.
   const [nodoAperto, setNodoAperto] = useState(null);
+  // "Su richiesta, poter creare dei giochi da sottoporre per progredire in un percorso" — 16/09/2026
+  // (notte), in direzione Adam. Due famiglie, due costi diversi: quella testuale chiama il modello
+  // UNA VOLTA per l'intero mazzo (mai una domanda alla volta, mai un giudizio a posteriori sulla
+  // propria domanda); quella audio è pura aritmetica — genaraMazzoAudioSenzaModello non chiama
+  // il modello, quindi non c'è "creandoGioco" da mostrare, il mazzo esiste già al ritorno.
+  const [creandoGioco, setCreandoGioco] = useState(false);
+  const [erroreGioco, setErroreGioco] = useState("");
+  const creaGiocoTestuale = async (t) => {
+    setCreandoGioco(true); setErroreGioco("");
+    try {
+      const esito = await generaMazzoGiocoTestuale(pillar, percorso, t, settings);
+      if (!esito.ok) { setErroreGioco(esito.motivo); return; }
+      const doc = {
+        id: uid(), tipo: TIPO_GIOCO, name: `Gioco — ${t.label}.gioco`, title: `Gioco: ${t.label}`,
+        date: new Date().toISOString(), nodoId: t.id, meccanica: "testuale",
+        round: esito.round, turno: 0, risposte: [], stato: "in-corso", esito: null,
+      };
+      onUpdate({ ...percorso, documents: [doc, ...(percorso.documents || [])] });
+      setDocAperto(doc.id);
+    } catch (e) { setErroreGioco(e.message || String(e)); }
+    finally { setCreandoGioco(false); }
+  };
+  const creaGiocoAudio = (t, sottotipo) => {
+    const round = generaMazzoAudioSenzaModello(sottotipo, 6);
+    const doc = {
+      id: uid(), tipo: TIPO_GIOCO, name: `Gioco — ${t.label}.gioco`,
+      title: `Gioco: ${t.label} (${sottotipo === "modo" ? "modi di una scala" : "intervalli"})`,
+      date: new Date().toISOString(), nodoId: t.id, meccanica: "audio", sottotipo,
+      round, turno: 0, risposte: [], stato: "in-corso", esito: null,
+    };
+    onUpdate({ ...percorso, documents: [doc, ...(percorso.documents || [])] });
+    setDocAperto(doc.id);
+  };
   const [artBrief, setArtBrief] = useState("");
   const [artTitle, setArtTitle] = useState("");
   const [artText, setArtText] = useState("");
@@ -8395,7 +8524,13 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
                         <div class="r-entry-notes">${se.summary}</div>
                       </div>`)}
                     </div>`}
-                <button class="r-btn r-btn-ghost" style="margin-top:8px;margin-left:0" onClick=${() => startQuiz(t)}>Verificati su questo nodo</button>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                  <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => startQuiz(t)}>Verificati su questo nodo</button>
+                  <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => creaGiocoTestuale(t)} disabled=${creandoGioco}>${creandoGioco ? "…" : "🎮 Gioco testuale"}</button>
+                  ${pillar === "vidya" && html`<button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => creaGiocoAudio(t, "intervallo")}>🎧 Intervalli</button>`}
+                  ${pillar === "vidya" && html`<button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${() => creaGiocoAudio(t, "modo")}>🎧 Modi di una scala</button>`}
+                </div>
+                ${erroreGioco && html`<div class="r-error" style="margin-top:6px">${erroreGioco}</div>`}
               </div>`}
             </div>`;
           })}
@@ -8533,7 +8668,7 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
             <div class="r-entry-row" style="cursor:pointer" onClick=${() => setDocAperto(docAperto === d.id ? null : d.id)}>
               <div class="r-entry-line">${docAperto === d.id ? "▾" : "▸"} ${d.name}${d.driveId ? " · Drive" : ""}${d.origine === "chat" ? " · dalla conversazione" : ""}<span
                 style="opacity:0.5;font-size:11px"> · ${fmtDate(d.date)}${d.text ? ` · ${d.text.length} caratteri` : ""}</span></div>
-              ${!eSpartito(d) && html`<button class="r-icon-btn" title="Modifica a mano"
+              ${!eSpartito(d) && !eGioco(d) && html`<button class="r-icon-btn" title="Modifica a mano"
                 onClick=${(e) => { e.stopPropagation(); setDocAperto(d.id); setBozzaDocumento(d.text || ""); setDocInModifica(docInModifica === d.id ? null : d.id); }}>✎</button>`}
               <button class="r-icon-btn" title="Elimina questo documento"
                 onClick=${(e) => { e.stopPropagation(); setDocDaCancellare(docDaCancellare === d.id ? null : d.id); }}>✕</button>
@@ -8560,6 +8695,16 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
                     <button class="r-btn r-btn-ghost" onClick=${() => setDocInModifica(null)}>Annulla</button>
                   </div>
                 </div>`
+              : docAperto === d.id && eGioco(d)
+              ? html`<${GiocoView} doc=${d} color=${color} onAggiorna=${(nuovo) => {
+                  // Un gioco concluso aggiorna il nodo con lo STESSO vocabolario del quiz
+                  // (introdotto/praticato/consolidato) — non un secondo sistema di stati.
+                  const documents = (percorso.documents || []).map((x) => (x.id === d.id ? nuovo : x));
+                  const topics = nuovo.stato === "concluso" && nuovo.esito?.livello && d.nodoId
+                    ? percorso.topics.map((t) => (t.id === d.nodoId ? { ...t, status: nuovo.esito.livello, lastTouched: new Date().toISOString() } : t))
+                    : percorso.topics;
+                  onUpdate({ ...percorso, documents, topics });
+                }} />`
               : docAperto === d.id && (eSpartito(d)
                 ? html`<${SpartitoView} doc=${d} color=${color} onAggiorna=${(nuovo) => onUpdate({ ...percorso, documents: (percorso.documents || []).map((x) => (x.id === d.id ? nuovo : x)) })} />`
                 : html`<div class="r-magi-text" style="white-space:pre-wrap;margin-top:4px">${d.text || "— questo documento non ha il testo salvato: è stato creato prima del 31/08/2026, quando si conservava solo il nome. Il file scaricato o su Drive resta valido. —"}</div>`)}
