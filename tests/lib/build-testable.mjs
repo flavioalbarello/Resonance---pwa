@@ -27,7 +27,7 @@ const OUT_PATH = join(HERE, `.generated-app.${process.pid}.mjs`);
 
 // I moduli estratti da app.js: importati davvero, non ritagliati. L'elenco sta qui perche' la
 // generazione deve fallire subito e a voce alta se un modulo viene rinominato o sparisce.
-const MODULI = ["lib/base.js", "lib/misure.js", "lib/griglia.js", "lib/plasmide.js", "lib/capitolato.js", "lib/alimentare.js", "lib/spartito.js"];
+const MODULI = ["lib/base.js", "lib/misure.js", "lib/griglia.js", "lib/plasmide.js", "lib/capitolato.js", "lib/alimentare.js", "lib/spartito.js", "lib/gioco.js"];
 
 const STUB_HEADER = `// FILE GENERATO — non modificare a mano. Rigenerato da tests/lib/build-testable.mjs
 // da app.js ad ogni esecuzione dei test. Se lo modifichi qui, il prossimo test lo sovrascrive.
@@ -148,6 +148,9 @@ const EXPORT_NAMES = [
   "senzaDeliberazione", "testoDelMagio", "LUNGHEZZA_MINIMA_MAGI", "MAGI_TETTO_PAROLE",
   "documentoDaContesto", "documentiDaCancellare", "applicaModificaDocumento", "parametriModificaDocumento",
   "applicaModificaManuale", "fondiFrammentoVocale",
+  "eGioco", "calcolaEsitoGioco", "valutaRispostaGioco", "validaMazzoTestuale",
+  "generaMazzoAudioSenzaModello", "generaRoundIntervallo", "generaRoundModo", "frequenzaDiNota",
+  "INTERVALLI", "MODI", "SOGLIA_CONSOLIDATO", "SOGLIA_PRATICATO", "TIPO_GIOCO",
   "cercaNellaMemoria", "TETTO_DOCUMENTO_IN_RICERCA",
   "montaGriglia", "scegliMenoRecente", "DISTANZA_MINIMA_RIPETIZIONE", "MARCHI_NOTI",
   "OSSERVABILI", "osservabileDi", "registraAtto", "leggiAtti", "statoAtto", "formatAnelloBlock",
