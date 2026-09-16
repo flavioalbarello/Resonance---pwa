@@ -693,6 +693,91 @@ function documentiDaCancellare(percorso, riferimento) {
   }
   return { trovati, ambigui, nonTrovati };
 }
+// ── 16/09/2026 (sera) — MODIFICARE UN DOCUMENTO ERA IMPOSSIBILE, SOLO SOVRASCRIVIBILE ────────────
+// Il Ghost, con lo schermo davanti, voleva solo aggiungere una parola al testo di un documento.
+// L'unica via che il sistema offriva era "cancella tutto, riscrivi tutto" — la stessa sproporzione
+// già vista per crea_percorso/salva_nel_percorso prima delle loro azioni dedicate, ma qui il rischio
+// è più alto: far RISCRIVERE l'intero documento a un modello economico (Llama 3.3 70B) per aggiungere
+// tre parole rimette in mano sua l'intero testo, con lo stesso rischio di alterazioni silenziose già
+// documentato per il piano alimentare. Quindi NESSUNA riscrittura: il modello individua SOLO dove
+// (un'ancora — un frammento ESATTO già nel testo) e cosa (il testo nuovo, parola per parola), il
+// programma fa il taglia-e-cuci — verificabile, mai indovinato.
+// L'ancora deve comparire ESATTAMENTE UNA VOLTA: zero o più di una e il programma dichiara il
+// problema invece di scegliere a caso — stessa regola di nodoPerDocumento, "a parità non si sceglie".
+// Unisce due pezzi senza incollare due parole ("Accade.Pulsazione") ne' senza aggiungere uno spazio
+// dove non serve (a inizio/fine stringa, o dove uno dei due lati e' gia' spazio bianco). Il modello
+// non deve preoccuparsi di ricordarsi uno spazio finale — cosa che, con .trim() a monte, perderebbe
+// comunque: la punteggiatura resta un problema del programma, non della sua trascrizione.
+function unisciConSpazio(sx, dx) {
+  if (!sx || !dx) return sx + dx;
+  if (/\s/.test(sx.slice(-1)) || /\s/.test(dx.slice(0, 1))) return sx + dx;
+  return `${sx} ${dx}`;
+}
+function applicaModificaDocumento(doc, { ancora, posizione, testo } = {}) {
+  const testoNuovo = String(testo || "");
+  if (!doc || typeof doc.text !== "string") return { ok: false, motivo: "questo documento non ha un testo su cui lavorare" };
+  if (!testoNuovo.trim()) return { ok: false, motivo: "non c'è nessun testo da inserire" };
+  const pos = String(posizione || "").toLowerCase().trim();
+  const originale = doc.text;
+
+  if (pos === "inizio") {
+    return { ok: true, nuovo: `${testoNuovo}\n\n${originale}`, anteprima: { prima: "", inserito: testoNuovo, dopo: originale.slice(0, 120) } };
+  }
+  if (pos === "fine") {
+    return { ok: true, nuovo: `${originale}\n\n${testoNuovo}`, anteprima: { prima: originale.slice(-120), inserito: testoNuovo, dopo: "" } };
+  }
+
+  const anc = String(ancora || "").trim();
+  if (!anc) return { ok: false, motivo: `serve un frammento di testo già presente nel documento vicino al punto da modificare (posizione "${pos}" richiede un'ancora)` };
+  const trovaOccorrenze = (hay, needle) => {
+    const idx = [];
+    let i = hay.indexOf(needle);
+    while (i !== -1) { idx.push(i); i = hay.indexOf(needle, i + needle.length); }
+    return idx;
+  };
+  let occorrenze = trovaOccorrenze(originale, anc);
+  let ancoraUsata = anc;
+  if (!occorrenze.length) {
+    // Fallback case-insensitive: il modello può aver trascritto l'ancora con maiuscole diverse
+    // da come compaiono davvero — ma solo se resta comunque un'unica corrispondenza.
+    const idxLower = trovaOccorrenze(originale.toLowerCase(), anc.toLowerCase());
+    if (idxLower.length === 1) { occorrenze = idxLower; ancoraUsata = originale.slice(idxLower[0], idxLower[0] + anc.length); }
+  }
+  if (!occorrenze.length) return { ok: false, motivo: `non trovo "${anc}" nel testo di questo documento: non ho modificato niente` };
+  if (occorrenze.length > 1) return { ok: false, motivo: `"${anc}" compare ${occorrenze.length} volte in questo documento: serve un frammento più preciso, non scelgo a caso` };
+
+  const i = occorrenze[0];
+  if (pos === "sostituisci") {
+    const fine = i + ancoraUsata.length;
+    return { ok: true, nuovo: originale.slice(0, i) + testoNuovo + originale.slice(fine),
+      anteprima: { prima: originale.slice(Math.max(0, i - 60), i), rimosso: ancoraUsata, inserito: testoNuovo, dopo: originale.slice(fine, fine + 60) } };
+  }
+  if (pos === "prima") {
+    const nuovo = unisciConSpazio(unisciConSpazio(originale.slice(0, i), testoNuovo), originale.slice(i));
+    return { ok: true, nuovo, anteprima: { prima: originale.slice(Math.max(0, i - 60), i), inserito: testoNuovo, dopo: originale.slice(i, i + 60) } };
+  }
+  if (pos === "dopo") {
+    const fine = i + ancoraUsata.length;
+    const nuovo = unisciConSpazio(unisciConSpazio(originale.slice(0, fine), testoNuovo), originale.slice(fine));
+    return { ok: true, nuovo, anteprima: { prima: originale.slice(Math.max(0, fine - 60), fine), inserito: testoNuovo, dopo: originale.slice(fine, fine + 60) } };
+  }
+  return { ok: false, motivo: `posizione "${pos}" non riconosciuta: uso inizio, fine, prima, dopo o sostituisci` };
+}
+// Stessa convenzione di analizzaParametroPercorso/invia_mail: un solo parametro di registro, pezzi
+// separati da "|". L'ultimo campo (il testo nuovo) assorbe eventuali "|" che contenesse per conto suo.
+function parametriModificaDocumento(grezzo) {
+  const pezzi = String(grezzo || "").split("|");
+  return {
+    documento: (pezzi[0] || "").trim(),
+    ancora: (pezzi[1] || "").trim(),
+    posizione: (pezzi[2] || "").trim().toLowerCase(),
+    testo: pezzi.slice(3).join("|").trim(),
+  };
+}
+// Cap allo storico delle versioni di un documento modificato — stesso numero e stessa ragione di
+// TETTO_VERSIONI_VOCE: la Legge 14 impone di non perdere il testo precedente, non di conservarne
+// un numero illimitato di copie.
+const TETTO_VERSIONI_DOCUMENTO = 12;
 // Il tetto esiste perché un documento può essere lungo quanto si vuole e il turno no. Tagliare
 // dichiarandolo è l'unica forma onesta: il modello sa di avere una parte, non crede di avere tutto.
 const TETTO_DOCUMENTO_NEL_TURNO = 12000;
@@ -1086,6 +1171,26 @@ const AZIONI_CONVERSAZIONALI = [
     richiedeGate: true,
     effetto: "scrittura",
     reversibile: false,
+    accesaDiDefault: true,
+  },
+  // ── 16/09/2026 (sera) — AGGIUNGERE UNA PAROLA A UN DOCUMENTO ERA IMPOSSIBILE ─────────────────
+  // Il Ghost voleva solo aggiungere un paio di parole al testo dell'Atto I. L'unica risposta che lo
+  // Shell sapeva dare era "sovrascrivo tutto, creo un documento nuovo, o lo salvo qui sotto come nota
+  // a parte" — nessuna delle tre è "aggiungi tre parole". Non fa riscrivere l'intero documento al
+  // modello (rischio di alterazioni silenziose, come nel piano alimentare): il modello indica solo
+  // DOVE (un'ancora copiata parola per parola dal testo che ha appena letto) e COSA (il testo nuovo),
+  // il programma fa il taglia-e-cuci vero — vedi applicaModificaDocumento.
+  {
+    id: "modifica_documento",
+    classe: "A",
+    etichetta: "Aggiungere o sostituire del testo in un punto preciso di un documento del percorso aperto",
+    descrizione: 'Aggiunge o sostituisce del testo in un punto preciso di un documento GIÀ SALVATO nel percorso aperto — non lo riscrive per intero e non ne crea uno nuovo. Usa questa quando il Ghost chiede di aggiungere, inserire o sostituire una parte del testo di un documento esistente ("aggiungi X all\'inizio", "metti Y dopo Z", "sostituisci Z con Y"). Nel parametro, il campo ancora deve essere un frammento ESATTO di testo che hai appena letto in quel documento, copiato parola per parola — mai riformulato, mai ricordato a memoria: se non è testuale il programma non lo troverà. Lascialo vuoto SOLO se la posizione è "inizio" o "fine" dell\'intero documento. MAI per creare un documento nuovo (quella è salva_nel_percorso) e MAI per riscrivere tutto il testo.',
+    perSelettore: 'aggiungere o sostituire del testo in un punto preciso di un documento GIÀ SALVATO nel percorso ("aggiungi X all\'inizio", "metti Y dopo Z", "sostituisci Z con Y") — non crea un documento nuovo e non riscrive tutto il testo',
+    perConversazione: "Aggiungere o sostituire del testo in un punto preciso di un documento del percorso aperto, mostrando esattamente cosa cambia prima di farlo: il testo precedente resta leggibile nello storico del documento, non sparisce.",
+    parametri: { contenuto: 'string — nella forma "documento | ancora | posizione | testo nuovo". "documento" sono le parole con cui il Ghost ha indicato il documento. "ancora" è un frammento ESATTO già presente nel testo (copiato, non riformulato) vicino al punto della modifica — vuoto solo se posizione è inizio o fine. "posizione" è una di: inizio, fine, prima, dopo, sostituisci (le ultime tre riferite all\'ancora). "testo nuovo" è il testo da inserire o da mettere al posto dell\'ancora, senza preoccuparti degli spazi intorno: li aggiunge il programma. Esempio: "ATTO I: Origine | Pulsazione. Battito. | prima | Accade."' },
+    richiedeGate: true,
+    effetto: "scrittura",
+    reversibile: true,
     accesaDiDefault: true,
   },
   // BLOCCO 2 (16/08/2026) — le quattro azioni approvate dal Ghost (D2). La sesta (invocare Magi)
@@ -5128,7 +5233,8 @@ const CAPACITA = [
   { n: `Salvare un testo con un gesto, senza dire niente`, nucleo: true, s: `Salvare un testo con un gesto, senza dire niente: ogni risposta dello Shell abbastanza lunga ha accanto a 🔊 un pulsante 💾. Toccarlo apre un pannello con il titolo già proposto dal testo, il pilastro e il percorso di destinazione (preselezionato su quello aperto, se c'è), e un pulsante che salva. Non passa dal modello, non richiede una frase particolare, non richiede che un percorso sia aperto: è la strada che funziona sempre. Il testo salvato è quello INTERO e finisce sotto il nodo giusto se il titolo corrisponde a uno.` },
   { n: `Salvare nel percorso quello che lo Shell ha appena prodotto`, k: ["salvalo nel percorso", "tienilo", "mettilo nel percorso", "salvare nel percorso"], s: `Salvare nel percorso quello che lo Shell ha appena prodotto: "salvalo nel percorso", "tienilo", "mettilo nel percorso attivo". Il testo NON viene riscritto dal modello: lo copia il programma dalla conversazione, per intero, e finisce nei documenti del percorso aperto. La card mostra prima quanto è lungo e come comincia, così si vede se sta per salvare il messaggio giusto. Serve perché la conversazione ha due limiti: lo Shell rivede solo gli ultimi sei messaggi, e sopra i quaranta messaggi i più vecchi escono dalla vista e finiscono in un archivio locale. Un contenuto lungo che resta solo in chat, fra un mese, non è più raggiungibile né dal Ghost né dallo Shell; dentro il percorso sì.` },
   { n: `Rileggere un documento del percorso`, s: `Rileggere un documento del percorso: "rileggimi l'Atto I", "riprendi i testi che abbiamo salvato", "mostrami quel pezzo". Il programma va a prendere il testo COMPLETO dal percorso aperto e lo mette davanti allo Shell PRIMA che risponda, così ci lavora sopra davvero invece di ricordarlo. Non chiede conferma: leggere non cambia niente. Se più di un documento corrisponde chiede quale, e se non lo trova lo dichiara invece di rispondere a memoria. Un documento molto lungo viene tagliato e la cosa viene detta.` },
-  { n: `Cancellare un documento del percorso`, k: ["cancella documento", "elimina documento", "togli quel documento"], s: `Cancellare un documento del percorso: "cancella X", "elimina X e Y", "togli quel documento" riferito a materiale GIÀ SALVATO in un percorso — non un evento sul calendario (quella è cancellare un evento) e non un file appena allegato in chat e mai salvato. Nato il 16/09/2026: prima non esisteva nessuna azione per questo, il modello scriveva "Cancellazione: fatta, conferma con il pulsante" senza che nessun pulsante esistesse mai, e "cancella" veniva confuso con un'azione di calendario. Ora mostra una card con i titoli VERI che sta per togliere prima di farlo — non torna indietro, non c'è un cestino. Se il Ghost nomina più documenti insieme ("cancella X e Y"), quelli trovati si cancellano e quelli non trovati o ambigui si dichiarano, senza bloccare gli altri.` },
+  { n: `Cancellare un documento del percorso`, k: ["cancella documento", "elimina documento", "togli quel documento"], s: `Cancellare un documento del percorso: "cancella X", "elimina X e Y", "togli quel documento" riferito a materiale GIÀ SALVATO in un percorso — non un evento sul calendario (quella è cancellare un evento) e non un file appena allegato in chat e mai salvato. Nato il 16/09/2026: prima non esisteva nessuna azione per questo, il modello scriveva "Cancellazione: fatta, conferma con il pulsante" senza che nessun pulsante esistesse mai, e "cancella" veniva confuso con un'azione di calendario. Ora mostra una card con i titoli VERI che sta per togliere prima di farlo — non torna indietro, non c'è un cestino. Se il Ghost nomina più documenti insieme ("cancella X e Y"), quelli trovati si cancellano e quelli non trovati o ambigui si dichiarano, senza bloccare gli altri. C'è anche una ✕ diretta accanto a ogni documento in "Documenti del percorso", per chi preferisce il tocco alla voce.` },
+  { n: `Aggiungere o sostituire del testo in un documento`, k: ["aggiungi testo", "inserisci nel documento", "sostituisci nel testo", "modifica il documento"], s: `Aggiungere o sostituire del testo in un documento: "aggiungi X all'inizio", "metti Y dopo Z", "sostituisci Z con Y" su un documento GIÀ SALVATO in un percorso — non lo riscrive per intero e non ne crea uno nuovo. Nato il 16/09/2026 (sera): l'unica risposta possibile prima era "sovrascrivo tutto, creo un documento nuovo, o lo salvo come nota a parte" — nessuna delle tre è "aggiungi tre parole". Il modello NON riscrive il documento: indica solo un'ancora (un frammento ESATTO già presente nel testo) e il testo nuovo, e il programma fa il taglia-e-cuci vero, mostrandolo prima di applicarlo. Se l'ancora non si trova, o compare più di una volta, non succede niente e viene detto perché — mai una scelta a caso. Il testo precedente non sparisce: resta leggibile nello storico del documento (si apre toccando "N versioni precedenti" sotto il testo), anche se oggi non c'è ancora un pulsante che lo ripristini da solo.` },
   { n: `Il percorso aperto viaggia con il suo fascicolo`, nucleo: true, s: `Il percorso aperto viaggia con il suo fascicolo: quando c'è un percorso aperto (il fuoco), lo Shell riceve a ogni turno i suoi nodi con lo stato, le competenze, la memoria del percorso e l'indice dei documenti. È per questo che "continuiamo con l'Atto III" funziona senza dover rispiegare cos'è stato fatto. Il fuoco scade da solo dopo otto ore.` },
   { n: `Voci gemelle nel log`, s: `Voci gemelle nel log: quando lo Shell scrive da solo una voce in un pilastro e quella voce dice sostanzialmente la stessa cosa di un'altra dello STESSO GIORNO, non ne crea una seconda: aggiorna quella che c'è già, e il testo precedente scende nello storico della voce invece di essere perso. Nel log la voce mostra "N versioni di questa voce" e si tocca per rileggerle tutte. Sotto il messaggio in chat il segno dice "→ VIDYA · 3ª versione" invece di "→ VIDYA", così è visibile che ha aggiornato e non aggiunto. Le voci che contengono una misura (peso, sonno) non vengono mai fuse: due pesate nello stesso giorno sono due dati, non un doppione. Le voci scritte a mano dal Ghost non passano da qui e non vengono mai toccate.` },
   { n: `Fonti di Balthasar, controllate dal programma`, s: `Fonti di Balthasar, controllate dal programma: quando l'Agorà Magi gira su OpenRouter, Balthasar ha la ricerca web. Sotto la sua risposta compare una riga che dice se la ricerca è stata eseguita DAVVERO — letta dalle citazioni che la risposta porta con sé, non dichiarata dal modello — quante citazioni e da quali domini. Se Balthasar nomina un servizio o un sito che non trova riscontro in nessun dominio realmente citato, compare un avviso di possibile fonte inventata: non blocca niente, è un sospetto da verificare. Esisteva già per la ricerca dei Semi dal 26/07/2026 e da oggi vale anche per l'Agorà. Le sessioni Magi precedenti a oggi non hanno questa riga: non è un errore, quel dato allora non veniva raccolto.` },
@@ -5165,7 +5271,7 @@ Cosa succede quando non ce la fa: il motivo torna al modello e riprova, al massi
   { n: `Fuoco conversazionale`, nucleo: true, s: `Fuoco conversazionale: il percorso o il Seme su cui si sta lavorando adesso. Compare in una barra sopra la chat, sopravvive a ricarica e riapertura, e scade da solo dopo otto ore. Si chiude con un gesto sulla barra, oppure a parole (vedi chiudi_percorso qui sotto).` },
   { n: `Inventario`, nucleo: true, s: `Inventario: l'elenco di percorsi e Semi che lo Shell riceve a ogni turno, così sa cosa esiste davvero senza doverlo indovinare.` },
   { n: `Registro delle azioni`, k: ["registro", "registro delle azioni"], s: `Registro delle azioni: ogni proposta, conferma, esecuzione ed esito, con l'orario. Si legge in Setup. È il posto dove si scopre dopo perché una cosa è andata storta.` },
-  { n: `Azioni parlando`, nucleo: true, s: `Azioni parlando: sedici azioni che il Ghost può far partire dicendole. Dieci interne (aprire o riprendere un percorso, crearne uno, salvarci dentro, aprire o cancellare un documento, scrivere su un pilastro, creare un Seme, interrogare la memoria, avanzare o chiudere un percorso) e sei che toccano il mondo fuori (creare un evento, leggere il calendario, trovare quando è un appuntamento preciso, cancellare un evento, spostare un evento a un altro giorno o ora, inviare una mail). Le sei esterne nascono spente e si accendono in Setup, una per una; le dieci interne nascono accese.` },
+  { n: `Azioni parlando`, nucleo: true, s: `Azioni parlando: diciassette azioni che il Ghost può far partire dicendole. Undici interne (aprire o riprendere un percorso, crearne uno, salvarci dentro, aprire, cancellare o modificare un documento, scrivere su un pilastro, creare un Seme, interrogare la memoria, avanzare o chiudere un percorso) e sei che toccano il mondo fuori (creare un evento, leggere il calendario, trovare quando è un appuntamento preciso, cancellare un evento, spostare un evento a un altro giorno o ora, inviare una mail). Le sei esterne nascono spente e si accendono in Setup, una per una; le undici interne nascono accese.` },
   { n: `Aprire, chiudere e riprendere un percorso, tutto a parole`, k: ["apri", "riprendi", "chiudi"], s: `Aprire, chiudere e riprendere un percorso, tutto a parole: "apri X" o "riprendi X" porta il fuoco su un percorso o un Seme che esiste già (non ne crea uno nuovo); "chiudi questo", "chiudiamo qui", "basta per oggi" chiude il fuoco senza cancellare né archiviare niente — il percorso resta intatto con tutta la sua storia, smette solo di essere quello su cui si sta lavorando adesso; "e adesso?", "andiamo avanti" chiede il prossimo passo su quello aperto. Ogni comando mostra una card di conferma prima di eseguire, con l'etichetta di ciò che è davvero aperto in quel momento.` },
   { n: `Interruttori`, nucleo: true, s: `Interruttori: gli accendi-e-spegni delle capacità che toccano il mondo fuori, in Setup. Lo Shell riceve a ogni turno l'elenco vero di cosa è acceso e cosa è spento adesso, quindi non deve indovinarlo. Se dichiara spenta una capacità che è accesa, il programma toglie la frase e avvisa il Ghost.` },
   { n: `Leggere il calendario`, nucleo: true, s: `Leggere il calendario: lo Shell va a leggere davvero gli impegni dal Calendar del Ghost. Non chiede conferma — leggere non cambia niente — e l'unico gate è l'interruttore. Il programma sceglie l'azione, legge, e solo dopo genera la risposta, così parla di impegni che ha in mano. Se la lettura fallisce lo dichiara con il motivo tecnico invece di indovinare.` },
@@ -7973,6 +8079,9 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
   // dall'app. Salvare qualcosa che poi non si puo' riaprire e' quasi come non salvarlo — ed era
   // esattamente la domanda del Ghost: "riuscirebbe a riprendere tutto in mano fra un mese?".
   const [docAperto, setDocAperto] = useState(null);
+  // Un tasto elimina anche qui, non solo via chat — 16/09/2026 (sera). Stesso gesto di ✕ sui
+  // percorsi (setDaEliminare lì sotto): un tocco chiede, un secondo tocco conferma cosa sparisce.
+  const [docDaCancellare, setDocDaCancellare] = useState(null);
   // Quale nodo e' aperto. Toccare un nodo apriva il quiz: era l'unica cosa che si potesse fare con
   // un nodo, e non era quella che serve — il Ghost si aspetta di trovarci dentro cio' che e' stato
   // prodotto su quel nodo. La verifica resta, ma come pulsante dentro il nodo aperto: una scelta,
@@ -8403,10 +8512,23 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
             <div class="r-entry-row" style="cursor:pointer" onClick=${() => setDocAperto(docAperto === d.id ? null : d.id)}>
               <div class="r-entry-line">${docAperto === d.id ? "▾" : "▸"} ${d.name}${d.driveId ? " · Drive" : ""}${d.origine === "chat" ? " · dalla conversazione" : ""}<span
                 style="opacity:0.5;font-size:11px"> · ${fmtDate(d.date)}${d.text ? ` · ${d.text.length} caratteri` : ""}</span></div>
+              <button class="r-icon-btn" title="Elimina questo documento"
+                onClick=${(e) => { e.stopPropagation(); setDocDaCancellare(docDaCancellare === d.id ? null : d.id); }}>✕</button>
             </div>
+            ${docDaCancellare === d.id && html`<div class="r-error" style="margin-top:8px">
+              <div>Elimino <b>${d.title || d.name}</b>? Non torna indietro: non c'è un cestino.</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                <button class="r-btn r-draft-copy" onClick=${(e) => {
+                  e.stopPropagation(); vibra(pillar); setDocDaCancellare(null);
+                  onUpdate({ ...percorso, documents: (percorso.documents || []).filter((x) => x.id !== d.id) });
+                }}>Sì, elimina</button>
+                <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${(e) => { e.stopPropagation(); setDocDaCancellare(null); }}>Annulla</button>
+              </div>
+            </div>`}
             ${docAperto === d.id && (eSpartito(d)
               ? html`<${SpartitoView} doc=${d} color=${color} onAggiorna=${(nuovo) => onUpdate({ ...percorso, documents: (percorso.documents || []).map((x) => (x.id === d.id ? nuovo : x)) })} />`
               : html`<div class="r-magi-text" style="white-space:pre-wrap;margin-top:4px">${d.text || "— questo documento non ha il testo salvato: è stato creato prima del 31/08/2026, quando si conservava solo il nome. Il file scaricato o su Drive resta valido. —"}</div>`)}
+            ${docAperto === d.id && html`<${StoricoDocumento} doc=${d} />`}
           </div>`)}
         </div>`}
       </${Card}>
@@ -8557,6 +8679,23 @@ function StoricoVoce({ voce, color }) {
     </div>
     ${aperto && versioni.map((v, i) => html`<div key=${i} class="r-entry-notes" style="opacity:.7;margin-top:4px">
       <b>${versioni.length - i}\u00aa</b> ${fmtDate(v.date)} \u2014 ${v.title ? v.title + ". " : ""}${v.notes || ""}
+    </div>`)}
+  </div>`;
+}
+// Il gemello per i documenti dei percorsi \u2014 16/09/2026 (sera). Compare SOLO se modifica_documento ha
+// davvero toccato questo documento almeno una volta: un documento mai modificato resta identico a
+// prima. Stessa meta' visibile della Legge 14: il testo che modifica_documento sostituisce non
+// sparisce, resta leggibile qui \u2014 anche senza un pulsante di ripristino dedicato.
+function StoricoDocumento({ doc }) {
+  const versioni = doc?.versioniPrecedenti || [];
+  const [aperto, setAperto] = useState(false);
+  if (!versioni.length) return null;
+  return html`<div style="margin-top:6px">
+    <div class="r-hub-detail" style="cursor:pointer" onClick=${(e) => { e.stopPropagation(); setAperto(!aperto); }}>
+      ${aperto ? "\u25be" : "\u25b8"} ${versioni.length} version${versioni.length === 1 ? "e precedente" : "i precedenti"} di questo testo
+    </div>
+    ${aperto && versioni.map((v, i) => html`<div key=${i} class="r-magi-text" style="white-space:pre-wrap;opacity:.65;margin-top:4px;border-left:2px solid currentColor;padding-left:8px">
+      <b>${fmtDate(v.date)}</b><br/>${v.text}
     </div>`)}
   </div>`;
 }
@@ -10574,6 +10713,48 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     aggiornaAzione(mid, { tipo: "documenti-cancellati", percorso: target.title, titoli: trovati.map((d) => d.title || d.name), ambigui, nonTrovati });
     registraAzione({ fase: "eseguita", azioneId: "cancella_documento", percorso: target.title, etichetta: trovati.map((d) => d.title || d.name).join(", "), quanti: trovati.length, ambigui: ambigui.length, nonTrovati: nonTrovati.length });
   };
+  // Il terzo della famiglia — 16/09/2026 (sera). Stessa lettura del fuoco AL MOMENTO DEL TOCCO. Il
+  // testo precedente non sparisce mai: scende in versioniPrecedenti (Legge 14), leggibile da
+  // StoricoDocumento anche senza un pulsante di ripristino dedicato.
+  const eseguiModificaDocumento = (mid, parametro) => {
+    const f = leggiFuoco();
+    if (f.tipo !== "percorso") {
+      aggiornaAzione(mid, { tipo: "rifiutato", motivo: "non c'è nessun percorso aperto di cui modificare un documento" });
+      registraAzione({ fase: "rifiutata", azioneId: "modifica_documento", motivo: "nessun percorso nel fuoco" });
+      return;
+    }
+    const pil = PILASTRI_NOMI.find((k) => (percorsi[k] || []).some((p) => p.id === f.id));
+    const target = pil ? percorsi[pil].find((p) => p.id === f.id) : null;
+    if (!target) {
+      aggiornaAzione(mid, { tipo: "rifiutato", motivo: "il percorso aperto non esiste più: forse è stato cancellato" });
+      registraAzione({ fase: "rifiutata", azioneId: "modifica_documento", motivo: "percorso del fuoco inesistente", id: f.id });
+      return;
+    }
+    const { documento, ancora, posizione, testo } = parametriModificaDocumento(parametro);
+    const trovato = trovaDocumentoNelPercorso(target, documento);
+    if (trovato.esito !== "trovato") {
+      aggiornaAzione(mid, { tipo: "rifiutato", motivo: trovato.motivo || `nessun documento di "${target.title}" corrisponde a "${documento}"` });
+      registraAzione({ fase: "rifiutata", azioneId: "modifica_documento", motivo: trovato.esito, parametro });
+      return;
+    }
+    const esito = applicaModificaDocumento(trovato.doc, { ancora, posizione, testo });
+    if (!esito.ok) {
+      aggiornaAzione(mid, { tipo: "rifiutato", motivo: esito.motivo });
+      registraAzione({ fase: "rifiutata", azioneId: "modifica_documento", motivo: esito.motivo, parametro });
+      return;
+    }
+    vibra(pil);
+    const precedente = { text: trovato.doc.text, date: trovato.doc.date || new Date().toISOString() };
+    const nuovoDoc = {
+      ...trovato.doc,
+      text: esito.nuovo,
+      date: new Date().toISOString(),
+      versioniPrecedenti: [precedente, ...(trovato.doc.versioniPrecedenti || [])].slice(0, TETTO_VERSIONI_DOCUMENTO),
+    };
+    setPercorsi[pil](percorsi[pil].map((p) => (p.id === target.id ? { ...p, documents: (p.documents || []).map((d) => (d.id === nuovoDoc.id ? nuovoDoc : d)) } : p)));
+    aggiornaAzione(mid, { tipo: "documento-modificato", percorso: target.title, titolo: nuovoDoc.title || nuovoDoc.name });
+    registraAzione({ fase: "eseguita", azioneId: "modifica_documento", percorso: target.title, etichetta: nuovoDoc.title || nuovoDoc.name });
+  };
   // ── BLOCCO 3 — esecutori di Classe B ──────────────────────────────────────────────
   // Differenza dalla Classe A: qui si tocca il mondo fuori. Quindi (a) si conferma sempre prima,
   // (b) dopo si RILEGGE dalla fonte, (c) la chiave di idempotenza impedisce il doppio invio.
@@ -11180,6 +11361,35 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
                   </div>
                 </div>`;
               })()}
+              ${/* 16/09/2026 (sera) — la card mostra il taglia-e-cuci VERO, calcolato dal programma
+                    sull'ancora e il testo esatti, non un riassunto del modello: stessa disciplina
+                    della card di cancella_documento qui sopra. Se l'ancora non si trova o compare
+                    più di una volta, non c'è nessun pulsante — si dichiara il motivo e basta. */ ""}
+              ${m.azioneProposta.esito === "diretto" && m.azioneProposta.azioneId === "modifica_documento" && (() => {
+                const pil = fuoco.tipo === "percorso" ? PILASTRI_NOMI.find((k) => (percorsi[k] || []).some((p) => p.id === fuoco.id)) : null;
+                const target = pil ? percorsi[pil].find((p) => p.id === fuoco.id) : null;
+                const { documento, ancora, posizione, testo } = parametriModificaDocumento(m.azioneProposta.parametro);
+                const trovato = target ? trovaDocumentoNelPercorso(target, documento) : null;
+                const esito = trovato?.esito === "trovato" ? applicaModificaDocumento(trovato.doc, { ancora, posizione, testo }) : null;
+                return html`<div>
+                  <div class="r-draft-label">▸ MODIFICO QUESTO DOCUMENTO — conferma prima che accada</div>
+                  ${!target
+                    ? html`<div class="r-hub-detail">Non c'è nessun percorso aperto in questo momento.</div>`
+                    : trovato?.esito !== "trovato"
+                    ? html`<div class="r-hub-detail">${trovato?.motivo || `Nessun documento di "${target.title}" corrisponde a "${documento}".`}</div>`
+                    : !esito?.ok
+                    ? html`<div class="r-hub-detail">${esito?.motivo}</div>`
+                    : html`<div>
+                        <div class="r-hub-detail">In "${trovato.doc.title || trovato.doc.name}":</div>
+                        <div class="r-draft-body">${esito.anteprima.prima ? `…${esito.anteprima.prima}` : ""}${esito.anteprima.rimosso ? html`<span style="text-decoration:line-through;opacity:.6"> ${esito.anteprima.rimosso} </span>` : " "}<b>${esito.anteprima.inserito}</b>${esito.anteprima.dopo ? ` ${esito.anteprima.dopo}…` : ""}</div>
+                        <div class="r-hub-detail">Il testo precedente resta leggibile nello storico del documento: non sparisce.</div>
+                      </div>`}
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    ${target && esito?.ok ? html`<button class="r-btn r-draft-copy" onClick=${() => eseguiModificaDocumento(mid, m.azioneProposta.parametro)}>Sì, applica</button>` : ""}
+                    <button class="r-btn r-btn-ghost" onClick=${() => annullaAzione(mid)}>Annulla</button>
+                  </div>
+                </div>`;
+              })()}
               ${/* 25/08/2026 — il gemello: chiudere il fuoco. Mostra sempre l'etichetta di cio' che
                     e' aperto ADESSO (letta al render, non a quando la card e' nata), cosi' se il
                     Ghost lo ha gia' chiuso o cambiato nel frattempo la card non mente. */ ""}
@@ -11379,6 +11589,7 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
               ${azioneStatus[mid].nonTrovati?.length > 0 && html`<div class="r-hub-detail">Non ho trovato niente per: ${azioneStatus[mid].nonTrovati.map((p) => `"${p}"`).join(", ")} — se il nome è un altro, dimmelo e riprovo.</div>`}
               ${azioneStatus[mid].ambigui?.length > 0 && html`<div class="r-hub-detail">Per ${azioneStatus[mid].ambigui.map((a) => `"${a.pezzo}"`).join(", ")} c'è più di un documento che corrisponde: dimmi il titolo per intero.</div>`}
             </div>`}
+            ${azioneStatus[mid]?.tipo === "documento-modificato" && html`<div class="r-ok">✓ "${azioneStatus[mid].titolo}" modificato in "${azioneStatus[mid].percorso}". Il testo precedente resta nello storico del documento.</div>`}
             ${/* BLOCCO 3 §3.1 — la verifica di ritorno mostrata al Ghost. "Verificata" vuol dire
                   una cosa sola: sono tornato a chiedere alla fonte e l'ho visto. Ogni altro esito
                   e' scritto come un fallimento, anche quando l'invio potrebbe essere riuscito —
