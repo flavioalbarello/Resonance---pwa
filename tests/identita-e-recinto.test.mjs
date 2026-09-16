@@ -239,21 +239,21 @@ describe("B.3 · una capacità non dichiarata è invisibile allo Shell", () => {
       `azioni eseguibili che il modello non sa di avere: ${mute.map((a) => a.id).join(", ")}`);
   });
 
-  test("SEDICI azioni, non quindici — cancella_documento è la sedicesima (16/09/2026)", () => {
-    // Prima era "quindici, non dieci" contro il RAPPORTO_STATO del 09/09. Ora sono sedici: il
-    // guasto del 16/09 (cancella_documento inventato dal modello, mai eseguito davvero) ha avuto
-    // come cura una vera azione nel registro, non una correzione di prosa.
-    assert.equal(app.AZIONI_CONVERSAZIONALI.length, 16);
+  test("DICIASSETTE azioni, non sedici — modifica_documento è la diciassettesima (16/09/2026, sera)", () => {
+    // Prima era "sedici, non quindici" per cancella_documento. Ora modifica_documento: il Ghost
+    // voleva solo aggiungere una parola a un documento, e l'unica risposta possibile era
+    // "sovrascrivo tutto, o creo un documento nuovo" — nessuna delle due è "aggiungi tre parole".
+    assert.equal(app.AZIONI_CONVERSAZIONALI.length, 17);
     for (const id of ["invia_mail", "cancella_evento_calendario", "sposta_evento_calendario",
-                      "leggi_calendario", "trova_evento_calendario", "cancella_documento"]) {
+                      "leggi_calendario", "trova_evento_calendario", "cancella_documento", "modifica_documento"]) {
       assert.ok(app.AZIONI_CONVERSAZIONALI.some((a) => a.id === id), `manca "${id}"`);
     }
   });
 
   test("con tutte spente il modello lo sa, invece di proporre cose che verrebbero rifiutate", () => {
-    // Nota misurata scrivendo questa prova: uno store VUOTO non vuol dire "tutte spente" — dieci
-    // azioni su sedici sono accese per impostazione predefinita (cancella_documento inclusa: è di
-    // Classe A, come le altre azioni interne). Vanno spente esplicitamente, altrimenti si
+    // Nota misurata scrivendo questa prova: uno store VUOTO non vuol dire "tutte spente" — undici
+    // azioni su diciassette sono accese per impostazione predefinita (modifica_documento inclusa: è
+    // di Classe A, come le altre azioni interne). Vanno spente esplicitamente, altrimenti si
     // proverebbe il caso sbagliato credendo di provare questo.
     globalThis.__store.clear();
     for (const a of app.AZIONI_CONVERSAZIONALI) app.scriviInterruttore(a.id, false);
