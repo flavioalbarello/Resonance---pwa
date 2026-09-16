@@ -147,6 +147,7 @@ const EXPORT_NAMES = [
   "finestraConversazione", "ORE_DI_STACCO_CONVERSAZIONE", "titoloSuggeritoDaTesto",
   "senzaDeliberazione", "testoDelMagio", "LUNGHEZZA_MINIMA_MAGI", "MAGI_TETTO_PAROLE",
   "documentoDaContesto", "documentiDaCancellare", "applicaModificaDocumento", "parametriModificaDocumento",
+  "applicaModificaManuale", "fondiFrammentoVocale",
   "cercaNellaMemoria", "TETTO_DOCUMENTO_IN_RICERCA",
   "montaGriglia", "scegliMenoRecente", "DISTANZA_MINIMA_RIPETIZIONE", "MARCHI_NOTI",
   "OSSERVABILI", "osservabileDi", "registraAtto", "leggiAtti", "statoAtto", "formatAnelloBlock",

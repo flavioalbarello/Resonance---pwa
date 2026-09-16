@@ -778,6 +778,22 @@ function parametriModificaDocumento(grezzo) {
 // TETTO_VERSIONI_VOCE: la Legge 14 impone di non perdere il testo precedente, non di conservarne
 // un numero illimitato di copie.
 const TETTO_VERSIONI_DOCUMENTO = 12;
+// Il gemello MANUALE di applicaModificaDocumento — 16/09/2026 (notte), su richiesta esplicita del
+// Ghost: "voglio poterlo editare anche a mano". Qui non c'è nessun'ancora da cercare — il Ghost ha
+// scritto il testo intero lui stesso — ma la Legge 14 vale allo stesso modo: il testo precedente
+// scende in versioniPrecedenti, mai buttato. L'unico controllo è che sia cambiato DAVVERO qualcosa:
+// altrimenti ogni tocco di "Salva" senza modifiche accumulerebbe una versione identica nello storico.
+function applicaModificaManuale(doc, nuovoTesto) {
+  const testo = String(nuovoTesto ?? "");
+  if (!doc) return { ok: false, motivo: "nessun documento da modificare" };
+  if (testo === (doc.text || "")) return { ok: false, motivo: "il testo non è cambiato" };
+  return { ok: true, doc: {
+    ...doc,
+    text: testo,
+    date: new Date().toISOString(),
+    versioniPrecedenti: [{ text: doc.text || "", date: doc.date || new Date().toISOString() }, ...(doc.versioniPrecedenti || [])].slice(0, TETTO_VERSIONI_DOCUMENTO),
+  } };
+}
 // Il tetto esiste perché un documento può essere lungo quanto si vuole e il turno no. Tagliare
 // dichiarandolo è l'unica forma onesta: il modello sa di avere una parte, non crede di avere tutto.
 const TETTO_DOCUMENTO_NEL_TURNO = 12000;
@@ -5234,7 +5250,8 @@ const CAPACITA = [
   { n: `Salvare nel percorso quello che lo Shell ha appena prodotto`, k: ["salvalo nel percorso", "tienilo", "mettilo nel percorso", "salvare nel percorso"], s: `Salvare nel percorso quello che lo Shell ha appena prodotto: "salvalo nel percorso", "tienilo", "mettilo nel percorso attivo". Il testo NON viene riscritto dal modello: lo copia il programma dalla conversazione, per intero, e finisce nei documenti del percorso aperto. La card mostra prima quanto è lungo e come comincia, così si vede se sta per salvare il messaggio giusto. Serve perché la conversazione ha due limiti: lo Shell rivede solo gli ultimi sei messaggi, e sopra i quaranta messaggi i più vecchi escono dalla vista e finiscono in un archivio locale. Un contenuto lungo che resta solo in chat, fra un mese, non è più raggiungibile né dal Ghost né dallo Shell; dentro il percorso sì.` },
   { n: `Rileggere un documento del percorso`, s: `Rileggere un documento del percorso: "rileggimi l'Atto I", "riprendi i testi che abbiamo salvato", "mostrami quel pezzo". Il programma va a prendere il testo COMPLETO dal percorso aperto e lo mette davanti allo Shell PRIMA che risponda, così ci lavora sopra davvero invece di ricordarlo. Non chiede conferma: leggere non cambia niente. Se più di un documento corrisponde chiede quale, e se non lo trova lo dichiara invece di rispondere a memoria. Un documento molto lungo viene tagliato e la cosa viene detta.` },
   { n: `Cancellare un documento del percorso`, k: ["cancella documento", "elimina documento", "togli quel documento"], s: `Cancellare un documento del percorso: "cancella X", "elimina X e Y", "togli quel documento" riferito a materiale GIÀ SALVATO in un percorso — non un evento sul calendario (quella è cancellare un evento) e non un file appena allegato in chat e mai salvato. Nato il 16/09/2026: prima non esisteva nessuna azione per questo, il modello scriveva "Cancellazione: fatta, conferma con il pulsante" senza che nessun pulsante esistesse mai, e "cancella" veniva confuso con un'azione di calendario. Ora mostra una card con i titoli VERI che sta per togliere prima di farlo — non torna indietro, non c'è un cestino. Se il Ghost nomina più documenti insieme ("cancella X e Y"), quelli trovati si cancellano e quelli non trovati o ambigui si dichiarano, senza bloccare gli altri. C'è anche una ✕ diretta accanto a ogni documento in "Documenti del percorso", per chi preferisce il tocco alla voce.` },
-  { n: `Aggiungere o sostituire del testo in un documento`, k: ["aggiungi testo", "inserisci nel documento", "sostituisci nel testo", "modifica il documento"], s: `Aggiungere o sostituire del testo in un documento: "aggiungi X all'inizio", "metti Y dopo Z", "sostituisci Z con Y" su un documento GIÀ SALVATO in un percorso — non lo riscrive per intero e non ne crea uno nuovo. Nato il 16/09/2026 (sera): l'unica risposta possibile prima era "sovrascrivo tutto, creo un documento nuovo, o lo salvo come nota a parte" — nessuna delle tre è "aggiungi tre parole". Il modello NON riscrive il documento: indica solo un'ancora (un frammento ESATTO già presente nel testo) e il testo nuovo, e il programma fa il taglia-e-cuci vero, mostrandolo prima di applicarlo. Se l'ancora non si trova, o compare più di una volta, non succede niente e viene detto perché — mai una scelta a caso. Il testo precedente non sparisce: resta leggibile nello storico del documento (si apre toccando "N versioni precedenti" sotto il testo), anche se oggi non c'è ancora un pulsante che lo ripristini da solo.` },
+  { n: `Aggiungere o sostituire del testo in un documento`, k: ["aggiungi testo", "inserisci nel documento", "sostituisci nel testo", "modifica il documento"], s: `Aggiungere o sostituire del testo in un documento: "aggiungi X all'inizio", "metti Y dopo Z", "sostituisci Z con Y" su un documento GIÀ SALVATO in un percorso — non lo riscrive per intero e non ne crea uno nuovo. Nato il 16/09/2026 (sera): l'unica risposta possibile prima era "sovrascrivo tutto, creo un documento nuovo, o lo salvo come nota a parte" — nessuna delle tre è "aggiungi tre parole". Il modello NON riscrive il documento: indica solo un'ancora (un frammento ESATTO già presente nel testo) e il testo nuovo, e il programma fa il taglia-e-cuci vero, mostrandolo prima di applicarlo. Se l'ancora non si trova, o compare più di una volta, non succede niente e viene detto perché — mai una scelta a caso. Il testo precedente non sparisce: resta leggibile nello storico del documento (si apre toccando "N versioni precedenti" sotto il testo), anche se oggi non c'è ancora un pulsante che lo ripristini da solo. Per aggiungere, togliere o cambiare più cose insieme senza passare dalla voce o dalla chat, vedi "Modificare un documento a mano".` },
+  { n: `Modificare un documento a mano`, k: ["modifica a mano", "editare il documento", "modifica manuale"], s: `Modificare un documento a mano: un ✎ accanto a ogni documento — sia nel percorso, sotto "Documenti del percorso", sia in chat quando lo Shell ha appena riaperto un documento per intero — apre il testo intero in una casella scrivibile. Si può aggiungere, togliere o cambiare qualunque cosa, tutta insieme, con "Salva" o "Annulla". Nato il 16/09/2026 (notte) su richiesta esplicita: "voglio poterlo editare anche a mano", perché l'ancora di modifica_documento chiede al modello di copiare un frammento esatto — comodo per un'aggiunta piccola, scomodo per un lavoro di editing vero. Stessa Legge 14 del resto: il testo precedente scende nello storico, non sparisce. Salvare senza aver cambiato niente non fa nulla: non si accumula una versione identica a ogni tocco distratto di "Salva".` },
   { n: `Il percorso aperto viaggia con il suo fascicolo`, nucleo: true, s: `Il percorso aperto viaggia con il suo fascicolo: quando c'è un percorso aperto (il fuoco), lo Shell riceve a ogni turno i suoi nodi con lo stato, le competenze, la memoria del percorso e l'indice dei documenti. È per questo che "continuiamo con l'Atto III" funziona senza dover rispiegare cos'è stato fatto. Il fuoco scade da solo dopo otto ore.` },
   { n: `Voci gemelle nel log`, s: `Voci gemelle nel log: quando lo Shell scrive da solo una voce in un pilastro e quella voce dice sostanzialmente la stessa cosa di un'altra dello STESSO GIORNO, non ne crea una seconda: aggiorna quella che c'è già, e il testo precedente scende nello storico della voce invece di essere perso. Nel log la voce mostra "N versioni di questa voce" e si tocca per rileggerle tutte. Sotto il messaggio in chat il segno dice "→ VIDYA · 3ª versione" invece di "→ VIDYA", così è visibile che ha aggiornato e non aggiunto. Le voci che contengono una misura (peso, sonno) non vengono mai fuse: due pesate nello stesso giorno sono due dati, non un doppione. Le voci scritte a mano dal Ghost non passano da qui e non vengono mai toccate.` },
   { n: `Fonti di Balthasar, controllate dal programma`, s: `Fonti di Balthasar, controllate dal programma: quando l'Agorà Magi gira su OpenRouter, Balthasar ha la ricerca web. Sotto la sua risposta compare una riga che dice se la ricerca è stata eseguita DAVVERO — letta dalle citazioni che la risposta porta con sé, non dichiarata dal modello — quante citazioni e da quali domini. Se Balthasar nomina un servizio o un sito che non trova riscontro in nessun dominio realmente citato, compare un avviso di possibile fonte inventata: non blocca niente, è un sospetto da verificare. Esisteva già per la ricerca dei Semi dal 26/07/2026 e da oggi vale anche per l'Agorà. Le sessioni Magi precedenti a oggi non hanno questa riga: non è un errore, quel dato allora non veniva raccolto.` },
@@ -8082,6 +8099,10 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
   // Un tasto elimina anche qui, non solo via chat — 16/09/2026 (sera). Stesso gesto di ✕ sui
   // percorsi (setDaEliminare lì sotto): un tocco chiede, un secondo tocco conferma cosa sparisce.
   const [docDaCancellare, setDocDaCancellare] = useState(null);
+  // "Voglio poterlo editare anche a mano" — 16/09/2026 (notte). Il gemello di modifica_documento
+  // senza passare dal modello: qui il Ghost scrive il testo intero lui stesso.
+  const [docInModifica, setDocInModifica] = useState(null);
+  const [bozzaDocumento, setBozzaDocumento] = useState("");
   // Quale nodo e' aperto. Toccare un nodo apriva il quiz: era l'unica cosa che si potesse fare con
   // un nodo, e non era quella che serve — il Ghost si aspetta di trovarci dentro cio' che e' stato
   // prodotto su quel nodo. La verifica resta, ma come pulsante dentro il nodo aperto: una scelta,
@@ -8512,6 +8533,8 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
             <div class="r-entry-row" style="cursor:pointer" onClick=${() => setDocAperto(docAperto === d.id ? null : d.id)}>
               <div class="r-entry-line">${docAperto === d.id ? "▾" : "▸"} ${d.name}${d.driveId ? " · Drive" : ""}${d.origine === "chat" ? " · dalla conversazione" : ""}<span
                 style="opacity:0.5;font-size:11px"> · ${fmtDate(d.date)}${d.text ? ` · ${d.text.length} caratteri` : ""}</span></div>
+              ${!eSpartito(d) && html`<button class="r-icon-btn" title="Modifica a mano"
+                onClick=${(e) => { e.stopPropagation(); setDocAperto(d.id); setBozzaDocumento(d.text || ""); setDocInModifica(docInModifica === d.id ? null : d.id); }}>✎</button>`}
               <button class="r-icon-btn" title="Elimina questo documento"
                 onClick=${(e) => { e.stopPropagation(); setDocDaCancellare(docDaCancellare === d.id ? null : d.id); }}>✕</button>
             </div>
@@ -8525,9 +8548,21 @@ function PercorsoDetail({ pillar, color, percorso, onUpdate, onBack, onDelete, s
                 <button class="r-btn r-btn-ghost" style="margin-left:0" onClick=${(e) => { e.stopPropagation(); setDocDaCancellare(null); }}>Annulla</button>
               </div>
             </div>`}
-            ${docAperto === d.id && (eSpartito(d)
-              ? html`<${SpartitoView} doc=${d} color=${color} onAggiorna=${(nuovo) => onUpdate({ ...percorso, documents: (percorso.documents || []).map((x) => (x.id === d.id ? nuovo : x)) })} />`
-              : html`<div class="r-magi-text" style="white-space:pre-wrap;margin-top:4px">${d.text || "— questo documento non ha il testo salvato: è stato creato prima del 31/08/2026, quando si conservava solo il nome. Il file scaricato o su Drive resta valido. —"}</div>`)}
+            ${docAperto === d.id && docInModifica === d.id
+              ? html`<div style="margin-top:4px">
+                  <textarea class="r-textarea" style="min-height:200px" value=${bozzaDocumento} onInput=${(e) => setBozzaDocumento(e.target.value)} />
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+                    <button class="r-btn r-draft-copy" onClick=${() => {
+                      const esito = applicaModificaManuale(d, bozzaDocumento);
+                      if (esito.ok) { vibra(pillar); onUpdate({ ...percorso, documents: (percorso.documents || []).map((x) => (x.id === d.id ? esito.doc : x)) }); }
+                      setDocInModifica(null);
+                    }}>Salva</button>
+                    <button class="r-btn r-btn-ghost" onClick=${() => setDocInModifica(null)}>Annulla</button>
+                  </div>
+                </div>`
+              : docAperto === d.id && (eSpartito(d)
+                ? html`<${SpartitoView} doc=${d} color=${color} onAggiorna=${(nuovo) => onUpdate({ ...percorso, documents: (percorso.documents || []).map((x) => (x.id === d.id ? nuovo : x)) })} />`
+                : html`<div class="r-magi-text" style="white-space:pre-wrap;margin-top:4px">${d.text || "— questo documento non ha il testo salvato: è stato creato prima del 31/08/2026, quando si conservava solo il nome. Il file scaricato o su Drive resta valido. —"}</div>`)}
             ${docAperto === d.id && html`<${StoricoDocumento} doc=${d} />`}
           </div>`)}
         </div>`}
@@ -10227,8 +10262,19 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
           pushDebugLog?.({ type: "calendario-spento-senza-dirlo", userText: userText.slice(0, 100), spente: speneCalendario.map((a) => a.id) });
         }
       }
+      // 16/09/2026 (notte) — "voglio poter aprire il documento sia dallo Shell che dal percorso".
+      // Il testo intero, quando apri_documento/documentoDaContesto scatta, finisce dentro la PROSA
+      // della risposta (formatDocumentoAperto va nel prompt, non in un blocco a parte) — quindi non
+      // c'è modo di legare un pulsante al "punto" dove compare nel messaggio. Quello che si può fare
+      // ONESTAMENTE è agganciare al MESSAGGIO l'identità del documento appena aperto in questo
+      // turno, cosi' la card sotto sa esattamente quale documento modificare a mano senza dover
+      // ri-cercare o indovinare nulla.
+      const documentoApertoQui = documentoAperto?.esito === "trovato"
+        ? { id: documentoAperto.doc.id, titolo: documentoAperto.doc.title || documentoAperto.doc.name,
+            percorsoId: percorsoDelFuoco(leggiFuoco())?.id || "", pilastro: pilastroDelFuoco() }
+        : null;
       setMessages((prev) => {
-        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: [], anochin, proposal, alerts: [], draft, usedWebSearch, seedSuggestion, azioneProposta, esitiFalsi, confermaSenzaBersaglio, capacitaSmentite, capacitaAccese, contenutiCalendarioInventati, letturaCalendario, offerteInesistenti, dubbiIdentita: [], rispostaTroncata, scartiDelPiano, vincoliProposti }];
+        const next = [...prev, { id: assistantMsgId, role: "assistant", content: replyPulita, time: new Date().toISOString(), actions: [], anochin, proposal, alerts: [], draft, usedWebSearch, seedSuggestion, azioneProposta, esitiFalsi, confermaSenzaBersaglio, capacitaSmentite, capacitaAccese, contenutiCalendarioInventati, letturaCalendario, offerteInesistenti, dubbiIdentita: [], rispostaTroncata, scartiDelPiano, vincoliProposti, documentoApertoQui }];
         return compactShellChatIfNeeded(next) || next; // Opzione 3: compatta+archivia (Legge 14) se sopra soglia, altrimenti passa
       });
       // I tre puntini si fermano QUI, non alla fine dello sfondo: il Ghost puo' gia' scrivere.
@@ -10754,6 +10800,27 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
     setPercorsi[pil](percorsi[pil].map((p) => (p.id === target.id ? { ...p, documents: (p.documents || []).map((d) => (d.id === nuovoDoc.id ? nuovoDoc : d)) } : p)));
     aggiornaAzione(mid, { tipo: "documento-modificato", percorso: target.title, titolo: nuovoDoc.title || nuovoDoc.name });
     registraAzione({ fase: "eseguita", azioneId: "modifica_documento", percorso: target.title, etichetta: nuovoDoc.title || nuovoDoc.name });
+  };
+  // "Voglio poterlo editare anche a mano" — 16/09/2026 (notte). Il gemello manuale, raggiungibile
+  // dallo Shell dove il documento è appena stato letto: niente ancora da cercare, il Ghost scrive il
+  // testo intero e lo conferma. Stessa Legge 14 (applicaModificaManuale tiene la versione precedente).
+  const [modificaManualeAperta, setModificaManualeAperta] = useState({}); // mid -> bool
+  const [bozzaManuale, setBozzaManuale] = useState({}); // mid -> testo in scrittura
+  const eseguiModificaManualeDalloShell = (mid, riferimento, testo) => {
+    const { id, percorsoId, pilastro, titolo } = riferimento || {};
+    const target = (percorsi[pilastro] || []).find((p) => p.id === percorsoId);
+    const doc = target?.documents?.find((d) => d.id === id);
+    const esito = applicaModificaManuale(doc, testo);
+    if (!esito.ok) {
+      aggiornaAzione(mid, { tipo: "rifiutato", motivo: doc ? esito.motivo : "il documento o il percorso non esistono più" });
+      registraAzione({ fase: "rifiutata", azioneId: "modifica_documento", motivo: esito.motivo || "documento introvabile" });
+      return;
+    }
+    vibra(pilastro);
+    setPercorsi[pilastro](percorsi[pilastro].map((p) => (p.id === target.id ? { ...p, documents: p.documents.map((d) => (d.id === esito.doc.id ? esito.doc : d)) } : p)));
+    setModificaManualeAperta((m) => ({ ...m, [mid]: false }));
+    aggiornaAzione(mid, { tipo: "documento-modificato", percorso: target.title, titolo: titolo || esito.doc.title || esito.doc.name });
+    registraAzione({ fase: "eseguita", azioneId: "modifica_documento", percorso: target.title, etichetta: titolo || esito.doc.title, manuale: true });
   };
   // ── BLOCCO 3 — esecutori di Classe B ──────────────────────────────────────────────
   // Differenza dalla Classe A: qui si tocca il mondo fuori. Quindi (a) si conferma sempre prima,
@@ -11716,7 +11783,29 @@ function ShellView({ messages, setMessages, settings, addBio, addAir, addVidya, 
               ${m.role === "assistant" && String(m.content || "").trim().length >= LUNGHEZZA_MINIMA_SALVABILE && html`<button class="r-shell-speak-btn"
                 title="Salva questo testo in un percorso"
                 onClick=${() => (salvaDa?.mid === mid ? setSalvaDa(null) : apriSalvataggio(mid, m.content))}>${salvaDa?.mid === mid ? "✕" : "💾"}</button>`}
+              ${/* "voglio poter aprire il documento sia dallo Shell che dal percorso" — 16/09/2026
+                    (notte). Compare solo quando QUESTO turno ha davvero riaperto un documento
+                    (documentoApertoQui, agganciato al messaggio quando è successo, non indovinato
+                    dal testo). */ ""}
+              ${m.role === "assistant" && m.documentoApertoQui && html`<button class="r-shell-speak-btn"
+                title="Modifica a mano il documento appena letto"
+                onClick=${() => setModificaManualeAperta((s) => {
+                  const apri = !s[mid];
+                  if (apri) {
+                    const doc = (percorsi[m.documentoApertoQui.pilastro] || []).find((p) => p.id === m.documentoApertoQui.percorsoId)?.documents?.find((d) => d.id === m.documentoApertoQui.id);
+                    setBozzaManuale((b) => ({ ...b, [mid]: doc?.text || "" }));
+                  }
+                  return { ...s, [mid]: apri };
+                })}>${modificaManualeAperta[mid] ? "✕" : "✎"}</button>`}
             </div>
+            ${modificaManualeAperta[mid] && m.documentoApertoQui && html`<div class="r-draft-card">
+              <div class="r-draft-label">▸ MODIFICO A MANO "${m.documentoApertoQui.titolo}"</div>
+              <textarea class="r-textarea" style="min-height:180px" value=${bozzaManuale[mid] ?? ""} onInput=${(e) => setBozzaManuale((s) => ({ ...s, [mid]: e.target.value }))} />
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+                <button class="r-btn r-draft-copy" onClick=${() => eseguiModificaManualeDalloShell(mid, m.documentoApertoQui, bozzaManuale[mid] ?? "")}>Salva</button>
+                <button class="r-btn r-btn-ghost" onClick=${() => setModificaManualeAperta((s) => ({ ...s, [mid]: false }))}>Annulla</button>
+              </div>
+            </div>`}
             ${salvaDa?.mid === mid && html`<div class="r-draft-card">
               <div class="r-draft-label">▸ SALVO QUESTO TESTO IN UN PERCORSO</div>
               <div class="r-hub-detail">${salvaDa.testo.length} caratteri, per intero. Resta lì anche quando questa conversazione sarà stata compattata.</div>
@@ -12484,6 +12573,38 @@ function comandoDiNavigazione(frase) {
   }
   return scelta;
 }
+// ── 16/09/2026 (notte) — LA DETTATURA RIPETEVA PAROLE, E CRESCEVANO INSIEME AL RIPETERSI ─────────
+// Osservato dal vivo: "Apri Apri Apri Apri atto Apri atto Apri atto 1 Apri atto 1 origine Apri
+// atto 1 origine" per dire "Apri atto 1 origine" una volta sola. Il riconoscimento vocale, in
+// continuous mode su Android, a volte RI-FINALIZZA la stessa frase con un pezzo in più ("Apri" poi
+// "Apri atto" poi "Apri atto 1" ecc.) invece di finalizzarla una volta sola alla fine — e il codice
+// sommava ogni ri-finalizzazione in coda a quello che c'era già, invece di riconoscerla come LA
+// STESSA frase, più lunga.
+// LA CURA: prima di accodare un pezzo nuovo, si cerca la sovrapposizione fra la CODA di quello che
+// c'è già e la TESTA del pezzo nuovo — parola per parola, non carattere per carattere, e senza
+// badare alle maiuscole — e si accoda solo quello che va oltre la sovrapposizione. Verificato a
+// mano sulla sequenza reale qui sopra: applicando questa funzione a ogni pezzo, in qualunque punto
+// la ri-finalizzazione fosse arrivata, il risultato finale torna "Apri atto 1 origine".
+// QUELLO CHE QUESTA FUNZIONE NON PUÒ GARANTIRE, e non finge: è verificata sulla logica e sulla
+// sequenza ricostruita dagli screenshot, non su una chiamata vera al riconoscimento vocale di
+// Android — quella verifica vuole il banco microfono (prova-voce.html) o l'uso reale in macchina.
+function fondiFrammentoVocale(accumulo, pezzo) {
+  const a = String(accumulo || "").trim();
+  const p = String(pezzo || "").trim();
+  if (!p) return a;
+  if (!a) return p;
+  const paroleA = a.split(/\s+/);
+  const paroleP = p.split(/\s+/);
+  const maxK = Math.min(paroleA.length, paroleP.length);
+  let overlap = 0;
+  for (let k = maxK; k > 0; k--) {
+    const codaA = paroleA.slice(paroleA.length - k).join(" ").toLowerCase();
+    const testaP = paroleP.slice(0, k).join(" ").toLowerCase();
+    if (codaA === testaP) { overlap = k; break; }
+  }
+  const resto = paroleP.slice(overlap).join(" ");
+  return resto ? `${a} ${resto}` : a;
+}
 function hexPoints(cx, cy, r) {
   return Array.from({ length: 6 }, (_, i) => { const a = (Math.PI / 3) * i - Math.PI / 6; return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`; }).join(" ");
 }
@@ -12902,12 +13023,14 @@ function App() {
         return;
       }
       if (definitivo.trim()) {
-        accumuloRef.current = `${accumuloRef.current} ${definitivo.trim()}`.trim();
+        // fondiFrammentoVocale, non concatenazione cieca: una ri-finalizzazione di Android che
+        // ripete "Apri" poi "Apri atto" poi "Apri atto 1" non deve sommarsi, deve sostituirsi.
+        accumuloRef.current = fondiFrammentoVocale(accumuloRef.current, definitivo.trim());
         setVoceParziale(accumuloRef.current);
         if (timerInvioRef.current) clearTimeout(timerInvioRef.current);
         timerInvioRef.current = setTimeout(chiudiFrase, SILENZIO_PRIMA_DI_INVIARE_MS);
       } else if (parziale.trim()) {
-        setVoceParziale(`${accumuloRef.current} ${parziale.trim()}`.trim());
+        setVoceParziale(fondiFrammentoVocale(accumuloRef.current, parziale.trim()));
         // Sta ancora parlando: il conto del silenzio riparte da adesso.
         if (timerInvioRef.current) { clearTimeout(timerInvioRef.current); timerInvioRef.current = setTimeout(chiudiFrase, SILENZIO_PRIMA_DI_INVIARE_MS); }
       }

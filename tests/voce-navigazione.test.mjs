@@ -150,9 +150,20 @@ describe("DOVE IL BANCO NON ARRIVA, e lo dico", () => {
     // Shell è arrivato «Cerca». Android chiude un risultato come definitivo a ogni pausa, e ogni
     // definitivo partiva da solo. Anche questa è una proprietà d'ordine: l'accumulo esiste solo se
     // il timer viene rimesso a ogni pezzo e l'invio avviene alla sua scadenza, non prima.
+    //
+    // 16/09/2026 (notte) — Legge 14, si registra invece di cancellare: fino a stanotte l'accumulo
+    // era una concatenazione cieca (`${accumuloRef.current} ${definitivo.trim()}`), ed è quella riga
+    // che il PIN controllava. Il difetto vero, trovato dal vivo, non era che i pezzi smettessero di
+    // accumularsi — accumulavano fin troppo bene: quando Android RI-FINALIZZA la stessa frase con un
+    // pezzo in più invece di finalizzarla una volta sola ("Apri" poi "Apri atto" poi "Apri atto 1"),
+    // la concatenazione cieca sommava ogni ri-finalizzazione invece di riconoscerla come la STESSA
+    // frase, più lunga — risultato osservato: "Apri Apri Apri Apri atto Apri atto Apri atto 1...".
+    // Ora l'accumulo passa da fondiFrammentoVocale, che cerca la sovrapposizione fra la coda di
+    // quello che c'è già e la testa del pezzo nuovo prima di accodare — vedi
+    // tests/dettatura-vocale.test.mjs per il comportamento vero, provato sulla funzione pura.
     const src = readFileSync(new URL("../app.js", import.meta.url), "utf8");
-    assert.match(src, /accumuloRef\.current = `\$\{accumuloRef\.current\} \$\{definitivo\.trim\(\)\}`/,
-      "i pezzi definitivi non si accumulano più");
+    assert.match(src, /accumuloRef\.current = fondiFrammentoVocale\(accumuloRef\.current, definitivo\.trim\(\)\)/,
+      "i pezzi definitivi non passano più da fondiFrammentoVocale prima di accumularsi");
     assert.match(src, /timerInvioRef\.current = setTimeout\(chiudiFrase, SILENZIO_PRIMA_DI_INVIARE_MS\)/,
       "l'invio non aspetta più il silenzio");
     assert.doesNotMatch(src, /if \(definitivo\.trim\(\)\) \{ setVoceParziale\(""\); ascoltato\(definitivo\); \}/,
