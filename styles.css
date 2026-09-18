@@ -371,13 +371,13 @@ body {
 .r-striscia-piena b { color: #B4553A; }
 
 /* 14/09/2026 — LA MODALITÀ VOCE.
-   Il pulsante vive nella barra in cima, quindi la navigazione a voce funziona da ogni schermata.
+   Il pulsante viveva qui (.r-voce-btn, nella barra in cima) perché la navigazione a voce deve
+   funzionare da ogni schermata. Il 18/09/2026 (sera) si è spostato dentro il menù rotativo
+   (.r-menu-rotativo-item-voce più sotto), su richiesta del Ghost: stesso motivo, nuova posizione
+   — anche il menù rotativo è globale. .r-voce-btn non è più usato da app.js.
    La barra di stato sotto è sticky per la stessa ragione della striscia della memoria piena: dice
    cosa sta succedendo adesso, e una cosa che succede adesso non deve scorrere via. */
 .r-topbar { justify-content: space-between; }
-.r-voce-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 999px;
-  width: 40px; height: 40px; font-size: 18px; line-height: 1; cursor: pointer; flex-shrink: 0; }
-.r-voce-btn.accesa { border-color: #B4553A; background: #F6E4DE; animation: r-voce-pulsa 1.6s ease-in-out infinite; }
 @keyframes r-voce-pulsa { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
 .r-voce-barra { position: sticky; top: 0; z-index: 11; max-width: 456px; margin: 6px auto;
   padding: 9px 12px; border-radius: 8px; font-size: 13px; line-height: 1.4;
@@ -399,7 +399,10 @@ body {
    in app.js su MENU_ROTATIVO_DESTINAZIONI). Fisso sul bordo destro, a "un terzo dell'altezza dello
    schermo" letto dal basso: top:66% e' il punto di riposo naturale del pollice in presa a una mano,
    non quello che lo costringe ad allungarsi. z-index 15/14: sopra la barra dei tab (10) e sopra la
-   striscia della memoria piena (11), perché quando è aperto è l'unica cosa toccabile. */
+   striscia della memoria piena (11), perché quando è aperto è l'unica cosa toccabile.
+   18/09/2026 (sera) — spicchi ridotti da 48 a 44px e raggio portato da 92 a 140 (vedi `raggio` in
+   MenuRotativo, app.js): con sei spicchi invece di cinque (si è aggiunta la voce) uno stretto li
+   faceva toccare fra loro. */
 .r-menu-rotativo { position: fixed; right: 14px; top: 66%; transform: translateY(-50%); z-index: 15; }
 .r-menu-rotativo-scrim { position: fixed; inset: 0; z-index: 0; background: transparent; }
 .r-menu-rotativo-anchor {
@@ -410,10 +413,14 @@ body {
 }
 .r-menu-rotativo-anchor.aperto { transform: rotate(90deg); }
 .r-menu-rotativo-item {
-  position: absolute; top: 0; left: 0; z-index: 1; width: 48px; height: 48px; border-radius: 50%;
-  border: none; font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; cursor: pointer;
+  position: absolute; top: 0; left: 0; z-index: 1; width: 44px; height: 44px; border-radius: 50%;
+  border: none; font-size: 10px; font-weight: 700; letter-spacing: 0.02em; cursor: pointer;
   display: flex; align-items: center; justify-content: center; text-align: center;
   box-shadow: 0 4px 14px rgba(20,20,20,0.22);
   transition: transform 0.22s cubic-bezier(.22,.9,.3,1), opacity 0.18s;
 }
 .r-menu-rotativo-item[aria-hidden="true"] { pointer-events: none; }
+/* Lo spicchio del microfono: stessa forma degli altri, ma non ha un colore di pilastro — è
+   neutro finché è spento, si accende con lo stesso rosso/pulsazione di prima (r-voce-pulsa). */
+.r-menu-rotativo-item-voce { background: var(--surface2); border: 1px solid var(--border); font-size: 18px; color: var(--text); }
+.r-menu-rotativo-item-voce.accesa { border-color: #B4553A; background: #F6E4DE; animation: r-voce-pulsa 1.6s ease-in-out infinite; }
