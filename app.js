@@ -113,7 +113,8 @@ const html = htm.bind(h);
 // Versione build visibile in Setup: verifica in un colpo d'occhio che il deploy live sia questo file.
 const APP_BUILD = "2026-09-11 · la-voce-non-legge-gli-asterischi";
 
-const C = { bio: "#3F7860", air: "#3A3F4A", vidya: "#B8863A", core: "#C9A96E", muted: "#8B92A0" };
+// 18/09/2026 — palette più viva, stessa struttura: vedi il cambio gemello in styles.css :root.
+const C = { bio: "#12B76A", air: "#4F6BFF", vidya: "#E8672B", core: "#FFB020", muted: "#8B92A0" };
 // ── Allegati Shell: immagini (viste dal modello), PDF (testo estratto), testo semplice ──
 function readImageAsBase64(file) {
   return new Promise((resolve, reject) => {
@@ -12684,6 +12685,47 @@ const DESTINAZIONI = [
   { key: "settings", label: "Setup", voce: ["setup", "impostazioni", "configurazione"] },
 ];
 const TABS = DESTINAZIONI.map(({ key, label }) => ({ key, label }));
+
+// ── MENÙ ROTATIVO — 18/09/2026 ──────────────────────────────────────────────
+// Dal Ghost, sul restyle: «un menù rotativo attorno ad un tasto sul lato destro ad un terzo
+// dell'altezza dello schermo». AFFIANCA la barra dei tab qui sopra, non la sostituisce: stessa
+// navigazione, una scorciatoia in più per la mano destra che non deve spostare la presa sul telefono.
+// "Un terzo" e' letto dal BASSO (quindi ~2/3 dall'alto, `top:66%` sotto): e' il punto in cui il
+// pollice, in presa a una mano sola, riposa senza doversi allungare — non quello dove arriva solo
+// stirandosi. Cinque destinazioni, non tutte e nove di DESTINAZIONI: le stesse che il resto
+// dell'app tratta come i punti fermi (i tre pilastri, la Shell, l'Hub) — le altre restano
+// raggiungibili dalla barra dei tab.
+const MENU_ROTATIVO_DESTINAZIONI = [
+  { key: "hub", label: "Hub" },
+  { key: "shell", label: "Shell" },
+  { key: "bio", label: "Bio" },
+  { key: "air", label: "Air" },
+  { key: "vidya", label: "Vidya" },
+];
+function MenuRotativo({ setView }) {
+  const [aperto, setAperto] = useState(false);
+  const colore = { hub: C.core, shell: C.core, bio: C.bio, air: C.air, vidya: C.vidya };
+  const testoScuro = new Set(["hub", "shell"]); // sfondo ambra chiaro: serve testo scuro, non bianco
+  const N = MENU_ROTATIVO_DESTINAZIONI.length;
+  const raggio = 92;
+  return html`<div class="r-menu-rotativo">
+    ${aperto && html`<div class="r-menu-rotativo-scrim" onClick=${() => setAperto(false)}></div>`}
+    ${MENU_ROTATIVO_DESTINAZIONI.map((d, i) => {
+      // Ventaglio da 170° (quasi a sinistra) a 90° (dritto in alto): l'ancora sta sul bordo destro,
+      // a destra non c'e' spazio. dy negativo = verso l'alto, dove lo schermo lascia posto davvero.
+      const angoloGradi = 170 - i * (80 / (N - 1));
+      const angolo = (angoloGradi * Math.PI) / 180;
+      const dx = aperto ? Math.cos(angolo) * raggio : 0;
+      const dy = aperto ? -Math.sin(angolo) * raggio : 0;
+      return html`<button key=${d.key} class="r-menu-rotativo-item"
+        style=${`transform:translate(${dx}px,${dy}px) scale(${aperto ? 1 : 0.3});opacity:${aperto ? 1 : 0};transition-delay:${aperto ? i * 25 : 0}ms;background:${colore[d.key]};color:${testoScuro.has(d.key) ? "#2A1A02" : "#fff"}`}
+        onClick=${() => { setView(d.key); setAperto(false); }}
+        tabindex=${aperto ? 0 : -1} aria-hidden=${aperto ? "false" : "true"}>${d.label}</button>`;
+    })}
+    <button class="r-menu-rotativo-anchor ${aperto ? "aperto" : ""}" onClick=${() => setAperto((a) => !a)}
+      title="Menù rapido" aria-expanded=${aperto ? "true" : "false"}>${aperto ? "✕" : "◎"}</button>
+  </div>`;
+}
 // Serve un VERBO di apertura, sempre. Senza, «parliamo di bio» porterebbe via il Ghost dalla
 // schermata in cui sta mentre racconta una cosa — e una frase della vita non è un comando.
 const VERBI_NAVIGAZIONE = new Set(["apri", "aprimi", "apra", "apriamo", "vai", "andiamo", "vado", "portami", "passa", "passiamo", "mostrami", "torna", "torniamo", "entra", "entriamo", "fammi"]);
@@ -13862,6 +13904,7 @@ function App() {
     ${view === "simbiosi" && html`<${SimbiosiView} resonance=${resonance} onRecalc=${recalcResonance} calculating=${resCalculating} error=${resError} onPromoteIdentity=${promoteToIdentity} onDismissIdentity=${dismissIdentityHint} onAcceptPercorsoSuggestion=${acceptPercorsoSuggestion} onDismissPercorsoSuggestion=${dismissPercorsoSuggestion} percorsoSuggeritoStatus=${percorsoSuggeritoStatus} atti=${leggiAtti()} datiPerAnello=${{ voci: { bio, air, vidya }, percorsi: { bio: pBio, air: pAir, vidya: pVidya } }} />`}
     ${view === "kernel" && html`<${KernelView} kernel=${kernel} onSave=${saveKernel} driveStatus=${driveStatus} />`}
     ${view === "settings" && html`<${SettingsView} settings=${settings} updateSettings=${updateSettings} driveStatus=${driveStatus} debugLog=${debugLog} clearDebugLog=${clearDebugLog} pullAndMergeOnce=${pullAndMergeOnce} ghostProfile=${ghostProfile} saveGhostProfile=${saveGhostProfile} />`}
+    <${MenuRotativo} setView=${setView} />
     <div class="r-tab-bar"><div class="r-tab-bar-inner">${TABS.map((t) => html`<button class="r-tab ${view === t.key ? "active" : ""}" onClick=${() => setView(t.key)}>${t.label}${t.key === "air" && activeSeedCount > 0 ? html`<span class="r-tab-badge">${activeSeedCount}</span>` : ""}</button>`)}</div></div>
     </div>`}
   </div>`;
