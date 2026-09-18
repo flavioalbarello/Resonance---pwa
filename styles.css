@@ -11,14 +11,18 @@
   --border: rgba(255,255,255,0.92);
   --text: #2A2E35;
   --muted: #8B92A0;
-  --bio: #3F7860;
-  --bio-glow: #8FBC9A;
-  --air: #3A3F4A;
-  --air-glow: #8A93A3;
-  --vidya: #B8863A;
-  --vidya-glow: #E8C77A;
-  --core: #C9A96E;
-  --ink-warm: #7A6033;
+  /* 18/09/2026 — palette rifatta più viva su richiesta esplicita ("non mi fa impazzire la palette
+     così smorta", dopo l'artifact di restyle "Il quadrante e la ruota"): stessa struttura di
+     token, tinte più sature. bio/air/vidya restano tre identità diverse, core resta il quarto
+     colore di sistema — nessuno dei tre pilastri. */
+  --bio: #12B76A;
+  --bio-glow: #6EE7B7;
+  --air: #4F6BFF;
+  --air-glow: #A8B6FF;
+  --vidya: #E8672B;
+  --vidya-glow: #F5A97B;
+  --core: #FFB020;
+  --ink-warm: #7A4A00;
   --holo-1: #E8B8D0;
   --holo-2: #B8CDE8;
   --holo-3: #C7E8B8;
@@ -63,9 +67,9 @@ body {
   color: rgba(255,255,255,0.92);
 }
 .r-ring-node span:first-child { font-weight: 500; }
-.r-ring-node-bio { background: radial-gradient(circle at 35% 28%, var(--bio-glow), var(--bio) 75%); box-shadow: 0 4px 16px rgba(63,120,96,0.35), inset 0 1px 2px rgba(255,255,255,0.3); }
-.r-ring-node-air { background: radial-gradient(circle at 35% 28%, var(--air-glow), var(--air) 75%); box-shadow: 0 4px 16px rgba(58,63,74,0.35), inset 0 1px 2px rgba(255,255,255,0.22); }
-.r-ring-node-vidya { background: radial-gradient(circle at 35% 28%, var(--vidya-glow), var(--vidya) 75%); box-shadow: 0 4px 16px rgba(184,134,58,0.35), inset 0 1px 2px rgba(255,255,255,0.3); color: #0A0D12; }
+.r-ring-node-bio { background: radial-gradient(circle at 35% 28%, var(--bio-glow), var(--bio) 75%); box-shadow: 0 4px 16px rgba(18,183,106,0.35), inset 0 1px 2px rgba(255,255,255,0.3); }
+.r-ring-node-air { background: radial-gradient(circle at 35% 28%, var(--air-glow), var(--air) 75%); box-shadow: 0 4px 16px rgba(79,107,255,0.35), inset 0 1px 2px rgba(255,255,255,0.22); }
+.r-ring-node-vidya { background: radial-gradient(circle at 35% 28%, var(--vidya-glow), var(--vidya) 75%); box-shadow: 0 4px 16px rgba(232,103,43,0.35), inset 0 1px 2px rgba(255,255,255,0.3); color: #0A0D12; }
 .r-ring-count { position: absolute; top: -4px; right: -4px; background: #fff; border: 1px solid rgba(200,215,218,0.8); border-radius: 8px; font-size: 9px; color: var(--muted); padding: 0 4px; }
 .r-hero-sub { text-align: center; color: var(--muted); font-size: 12.5px; margin: 10px 0 22px; }
 
@@ -134,7 +138,7 @@ body {
 .r-shell-row.user { align-items: flex-end; }
 .r-shell-row.assistant { align-items: flex-start; }
 .r-shell-bubble { max-width: 85%; padding: 10px 14px; border-radius: 16px; font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; }
-.r-shell-bubble.user { background: rgba(217,184,114,0.4); color: #6b5426; border: 1px solid rgba(217,184,114,0.55); border-bottom-right-radius: 4px; }
+.r-shell-bubble.user { background: rgba(255,176,32,0.28); color: #7A4A00; border: 1px solid rgba(255,176,32,0.5); border-bottom-right-radius: 4px; }
 .r-shell-bubble.assistant { background: var(--surface); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.9); box-shadow: 0 6px 18px rgba(140,170,180,0.14); border-bottom-left-radius: 4px; }
 .r-shell-actions { display: flex; gap: 6px; margin-top: 4px; }
 .r-shell-digest { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
@@ -146,7 +150,7 @@ body {
   display: block; width: 100%; text-align: left;
   background: linear-gradient(135deg, rgba(255,255,255,0.62), rgba(255,255,255,0.42));
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-  border: 1.5px solid rgba(201,169,110,0.4);
+  border: 1.5px solid rgba(255,176,32,0.4);
   border-radius: 18px; padding: 16px 18px; margin-bottom: 16px; cursor: pointer;
   box-shadow: 0 8px 22px rgba(58,63,74,0.1);
 }
@@ -203,8 +207,8 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
-  background: rgba(217, 184, 114, 0.10);
-  border: 1px solid rgba(217, 184, 114, 0.35);
+  background: rgba(255, 176, 32, 0.12);
+  border: 1px solid rgba(255, 176, 32, 0.4);
   border-radius: 14px;
   padding: 14px 18px;
   margin: 4px 0 16px;
@@ -212,7 +216,7 @@ body {
   backdrop-filter: blur(6px);
   transition: background 0.2s;
 }
-.r-identity-countdown:active { background: rgba(217, 184, 114, 0.18); }
+.r-identity-countdown:active { background: rgba(255, 176, 32, 0.2); }
 .r-identity-count {
   font-size: 2.4rem;
   font-weight: 700;
@@ -276,8 +280,8 @@ body {
 /* ═══ AGGIUNTA 19/07 — Balthasar-a-margine: card distinta da draft/calendar, tono perturbatore non risolutivo ═══ */
 .r-balthasar-margin-card {
   margin-top: 8px; max-width: 92%;
-  background: linear-gradient(135deg, rgba(184,134,58,0.10), rgba(184,134,58,0.04));
-  border: 1px solid rgba(184,134,58,0.28);
+  background: linear-gradient(135deg, rgba(232,103,43,0.10), rgba(232,103,43,0.04));
+  border: 1px solid rgba(232,103,43,0.28);
   border-radius: 12px; padding: 10px 14px;
 }
 .r-balthasar-margin-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.05em; color: var(--vidya); margin-bottom: 4px; }
@@ -390,3 +394,26 @@ body {
 .r-spartito .abcjs-note_selected path { fill: #B4553A; }
 .r-spartito-avviso { margin-top: 8px; padding: 10px 12px; border: 1px solid #B4553A; border-radius: 8px;
   background: #F6E4DE; font-size: 13.5px; line-height: 1.45; }
+
+/* 18/09/2026 — IL MENÙ ROTATIVO. Affianca .r-tab-bar, non la sostituisce (vedi il commento gemello
+   in app.js su MENU_ROTATIVO_DESTINAZIONI). Fisso sul bordo destro, a "un terzo dell'altezza dello
+   schermo" letto dal basso: top:66% e' il punto di riposo naturale del pollice in presa a una mano,
+   non quello che lo costringe ad allungarsi. z-index 15/14: sopra la barra dei tab (10) e sopra la
+   striscia della memoria piena (11), perché quando è aperto è l'unica cosa toccabile. */
+.r-menu-rotativo { position: fixed; right: 14px; top: 66%; transform: translateY(-50%); z-index: 15; }
+.r-menu-rotativo-scrim { position: fixed; inset: 0; z-index: 0; background: transparent; }
+.r-menu-rotativo-anchor {
+  position: relative; z-index: 2; width: 52px; height: 52px; border-radius: 50%; border: none;
+  background: var(--core); color: #2A1A02; font-size: 20px; line-height: 1; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(255,176,32,0.45), inset 0 1px 2px rgba(255,255,255,0.4);
+  transition: transform 0.2s;
+}
+.r-menu-rotativo-anchor.aperto { transform: rotate(90deg); }
+.r-menu-rotativo-item {
+  position: absolute; top: 0; left: 0; z-index: 1; width: 48px; height: 48px; border-radius: 50%;
+  border: none; font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  box-shadow: 0 4px 14px rgba(20,20,20,0.22);
+  transition: transform 0.22s cubic-bezier(.22,.9,.3,1), opacity 0.18s;
+}
+.r-menu-rotativo-item[aria-hidden="true"] { pointer-events: none; }
