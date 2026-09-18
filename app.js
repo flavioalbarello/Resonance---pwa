@@ -12686,7 +12686,7 @@ const DESTINAZIONI = [
 ];
 const TABS = DESTINAZIONI.map(({ key, label }) => ({ key, label }));
 
-// ── MENÙ ROTATIVO — 18/09/2026 ──────────────────────────────────────────────
+// ── MENÙ ROTATIVO — 18/09/2026, allargato il 18/09/2026 (sera) ──────────────
 // Dal Ghost, sul restyle: «un menù rotativo attorno ad un tasto sul lato destro ad un terzo
 // dell'altezza dello schermo». AFFIANCA la barra dei tab qui sopra, non la sostituisce: stessa
 // navigazione, una scorciatoia in più per la mano destra che non deve spostare la presa sul telefono.
@@ -12695,6 +12695,12 @@ const TABS = DESTINAZIONI.map(({ key, label }) => ({ key, label }));
 // stirandosi. Cinque destinazioni, non tutte e nove di DESTINAZIONI: le stesse che il resto
 // dell'app tratta come i punti fermi (i tre pilastri, la Shell, l'Hub) — le altre restano
 // raggiungibili dalla barra dei tab.
+//
+// SERA: il pulsante del microfono si è spostato qui dalla barra in cima (era `r-voce-btn`
+// dentro `.r-topbar`), su richiesta esplicita del Ghost — diventa il sesto spicchio del
+// ventaglio, non un tasto a parte. Il motivo per cui viveva in cima resta vero e si sposta con
+// lui: la voce deve accendersi DA OVUNQUE, e il menù rotativo è globale quanto lo era la barra
+// in cima (vive nello stesso punto del render, fuori da ogni singola vista).
 const MENU_ROTATIVO_DESTINAZIONI = [
   { key: "hub", label: "Hub" },
   { key: "shell", label: "Shell" },
@@ -12702,23 +12708,37 @@ const MENU_ROTATIVO_DESTINAZIONI = [
   { key: "air", label: "Air" },
   { key: "vidya", label: "Vidya" },
 ];
-function MenuRotativo({ setView }) {
+function MenuRotativo({ setView, voceDisponibile, voceAccesa, onToggleVoce }) {
   const [aperto, setAperto] = useState(false);
   const colore = { hub: C.core, shell: C.core, bio: C.bio, air: C.air, vidya: C.vidya };
   const testoScuro = new Set(["hub", "shell"]); // sfondo ambra chiaro: serve testo scuro, non bianco
-  const N = MENU_ROTATIVO_DESTINAZIONI.length;
-  const raggio = 92;
+  // Il microfono è una voce in più nello stesso ventaglio, non un pulsante a parte: compare solo
+  // se il browser sa ascoltare (stessa condizione di prima), e lo spicchio si allarga da solo.
+  const voci = voceDisponibile ? [...MENU_ROTATIVO_DESTINAZIONI, { key: "voce" }] : MENU_ROTATIVO_DESTINAZIONI;
+  const N = voci.length;
+  // Raggio grande apposta: con sei spicchi, un raggio stretto li fa toccare fra loro. 140px tiene
+  // gli spicchi separati anche con tutti e sei aperti (richiesta del Ghost, 18/09 sera).
+  const raggio = 140;
   return html`<div class="r-menu-rotativo">
     ${aperto && html`<div class="r-menu-rotativo-scrim" onClick=${() => setAperto(false)}></div>`}
-    ${MENU_ROTATIVO_DESTINAZIONI.map((d, i) => {
-      // Ventaglio da 170° (quasi a sinistra) a 90° (dritto in alto): l'ancora sta sul bordo destro,
-      // a destra non c'e' spazio. dy negativo = verso l'alto, dove lo schermo lascia posto davvero.
-      const angoloGradi = 170 - i * (80 / (N - 1));
+    ${voci.map((d, i) => {
+      // Ventaglio da 195° (sotto il livello dell'ancora, verso sinistra) a 90° (dritto in alto,
+      // mai oltre: un angolo minore metterebbe uno spicchio a DESTRA dell'ancora, che sta sul
+      // bordo — fuori schermo). dy negativo = verso l'alto, dove lo schermo lascia posto davvero.
+      const angoloGradi = 195 - i * (105 / (N - 1));
       const angolo = (angoloGradi * Math.PI) / 180;
       const dx = aperto ? Math.cos(angolo) * raggio : 0;
       const dy = aperto ? -Math.sin(angolo) * raggio : 0;
+      const posizione = `transform:translate(${dx}px,${dy}px) scale(${aperto ? 1 : 0.3});opacity:${aperto ? 1 : 0};transition-delay:${aperto ? i * 25 : 0}ms`;
+      if (d.key === "voce") {
+        return html`<button key="voce" class="r-menu-rotativo-item r-menu-rotativo-item-voce ${voceAccesa ? "accesa" : ""}"
+          style=${posizione}
+          onClick=${() => { onToggleVoce(); setAperto(false); }}
+          title=${voceAccesa ? "Spegni la voce" : "Modalità auto — parla all'app"}
+          tabindex=${aperto ? 0 : -1} aria-hidden=${aperto ? "false" : "true"}>${voceAccesa ? "🔴" : "🎤"}</button>`;
+      }
       return html`<button key=${d.key} class="r-menu-rotativo-item"
-        style=${`transform:translate(${dx}px,${dy}px) scale(${aperto ? 1 : 0.3});opacity:${aperto ? 1 : 0};transition-delay:${aperto ? i * 25 : 0}ms;background:${colore[d.key]};color:${testoScuro.has(d.key) ? "#2A1A02" : "#fff"}`}
+        style=${`${posizione};background:${colore[d.key]};color:${testoScuro.has(d.key) ? "#2A1A02" : "#fff"}`}
         onClick=${() => { setView(d.key); setAperto(false); }}
         tabindex=${aperto ? 0 : -1} aria-hidden=${aperto ? "false" : "true"}>${d.label}</button>`;
     })}
@@ -13868,15 +13888,12 @@ function App() {
   return html`<div>
     <div class="r-ghost-texture"></div>
     <${HexTexture} />
-    ${/* 14/09/2026 — il microfono sta nella barra in cima e non in una schermata, perché la
-          navigazione a voce deve funzionare DA OVUNQUE: se per dire «apri magi» bisogna prima
-          arrivare in una certa pagina, non serve a niente. Compare solo se il browser sa ascoltare;
-          dove non sa, non c'è un pulsante che non fa niente. */ ""}
-    <div class="r-topbar"><div class="r-brand">RESONANCE<span>•</span></div>
-      ${(typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition)) && html`
-        <button class="r-voce-btn ${voceAccesa ? "accesa" : ""}" onClick=${() => (voceAccesa ? spegniVoce() : accendiVoce())}
-          title=${voceAccesa ? "Spegni la voce" : "Parla all'app"}>${voceAccesa ? "🔴" : "🎤"}</button>`}
-    </div>
+    ${/* 18/09/2026 (sera) — il microfono non sta più qui: è il sesto spicchio del menù rotativo
+          (vedi MenuRotativo), su richiesta del Ghost. Resta vero il motivo per cui viveva in
+          cima — la navigazione a voce deve funzionare DA OVUNQUE — ma il menù rotativo è
+          altrettanto globale (stesso punto del render, fuori da ogni singola vista), quindi il
+          vincolo resta rispettato nella nuova posizione. */ ""}
+    <div class="r-topbar"><div class="r-brand">RESONANCE<span>•</span></div></div>
     ${(voceAccesa || voceNota) && html`<div class="r-voce-barra ${voceAccesa ? "accesa" : ""}">
       <div><b>${voceAccesa ? "Ti ascolto" : "Voce spenta"}</b>${voceParziale ? html` · <span style="opacity:.75">${voceParziale}…</span>` : ""}</div>
       ${voceNota && html`<div class="r-hub-detail" style="margin-top:2px">${voceNota}</div>`}
@@ -13904,7 +13921,9 @@ function App() {
     ${view === "simbiosi" && html`<${SimbiosiView} resonance=${resonance} onRecalc=${recalcResonance} calculating=${resCalculating} error=${resError} onPromoteIdentity=${promoteToIdentity} onDismissIdentity=${dismissIdentityHint} onAcceptPercorsoSuggestion=${acceptPercorsoSuggestion} onDismissPercorsoSuggestion=${dismissPercorsoSuggestion} percorsoSuggeritoStatus=${percorsoSuggeritoStatus} atti=${leggiAtti()} datiPerAnello=${{ voci: { bio, air, vidya }, percorsi: { bio: pBio, air: pAir, vidya: pVidya } }} />`}
     ${view === "kernel" && html`<${KernelView} kernel=${kernel} onSave=${saveKernel} driveStatus=${driveStatus} />`}
     ${view === "settings" && html`<${SettingsView} settings=${settings} updateSettings=${updateSettings} driveStatus=${driveStatus} debugLog=${debugLog} clearDebugLog=${clearDebugLog} pullAndMergeOnce=${pullAndMergeOnce} ghostProfile=${ghostProfile} saveGhostProfile=${saveGhostProfile} />`}
-    <${MenuRotativo} setView=${setView} />
+    <${MenuRotativo} setView=${setView}
+      voceDisponibile=${typeof window !== "undefined" && !!(window.SpeechRecognition || window.webkitSpeechRecognition)}
+      voceAccesa=${voceAccesa} onToggleVoce=${() => (voceAccesa ? spegniVoce() : accendiVoce())} />
     <div class="r-tab-bar"><div class="r-tab-bar-inner">${TABS.map((t) => html`<button class="r-tab ${view === t.key ? "active" : ""}" onClick=${() => setView(t.key)}>${t.label}${t.key === "air" && activeSeedCount > 0 ? html`<span class="r-tab-badge">${activeSeedCount}</span>` : ""}</button>`)}</div></div>
     </div>`}
   </div>`;
