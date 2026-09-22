@@ -383,6 +383,13 @@ body {
   padding: 9px 12px; border-radius: 8px; font-size: 13px; line-height: 1.4;
   background: var(--surface2); border: 1px solid var(--border); }
 .r-voce-barra.accesa { border-color: #B4553A; background: #F6E4DE; }
+/* 22/09/2026 — il tasto "Ferma" vive DENTRO questa barra (già sempre in cima quando si ascolta),
+   non nel menù rotativo: spegnere la voce non deve dipendere dal trovare lo spicchio giusto. */
+.r-voce-barra-riga { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.r-voce-barra-btn { flex-shrink: 0; background: #B4553A; color: #fff; border: none; border-radius: 999px;
+  padding: 5px 14px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.r-voce-barra-chiudi { flex-shrink: 0; background: none; border: none; color: var(--muted);
+  font-size: 14px; line-height: 1; cursor: pointer; padding: 2px 4px; }
 
 /* 14/09/2026 — GLI SPARTITI. Il disegno di abcjs è un SVG che si adatta alla larghezza: su un
    telefono in verticale una battuta lunga sfora, quindi scorre in orizzontale invece di rimpicciolire
