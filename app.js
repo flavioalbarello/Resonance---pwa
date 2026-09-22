@@ -13892,10 +13892,22 @@ function App() {
           (vedi MenuRotativo), su richiesta del Ghost. Resta vero il motivo per cui viveva in
           cima — la navigazione a voce deve funzionare DA OVUNQUE — ma il menù rotativo è
           altrettanto globale (stesso punto del render, fuori da ogni singola vista), quindi il
-          vincolo resta rispettato nella nuova posizione. */ ""}
+          vincolo resta rispettato nella nuova posizione.
+          22/09/2026 — REGRESSIONE TROVATA DAL GHOST: spegnere la voce chiede di aprire il
+          ventaglio, trovare lo spicchio giusto e toccarlo — tre gesti dove prima ne bastava uno,
+          proprio nel momento (auricolari, in macchina, un fraintendimento in corso) in cui un
+          gesto in più è il peggior momento per chiederlo. "Devo poterlo disattivare" — accendere
+          può restare nel ventaglio (è un gesto raro e deliberato), ma FERMARE non può dipendere
+          da trovare lo spicchio giusto: il pulsante "Ferma" qui sotto, dentro la barra che è già
+          sempre in cima quando si ascolta, risolve senza disfare la scelta del ventaglio. */ ""}
     <div class="r-topbar"><div class="r-brand">RESONANCE<span>•</span></div></div>
     ${(voceAccesa || voceNota) && html`<div class="r-voce-barra ${voceAccesa ? "accesa" : ""}">
-      <div><b>${voceAccesa ? "Ti ascolto" : "Voce spenta"}</b>${voceParziale ? html` · <span style="opacity:.75">${voceParziale}…</span>` : ""}</div>
+      <div class="r-voce-barra-riga">
+        <div><b>${voceAccesa ? "Ti ascolto" : "Voce spenta"}</b>${voceParziale ? html` · <span style="opacity:.75">${voceParziale}…</span>` : ""}</div>
+        ${voceAccesa
+          ? html`<button class="r-voce-barra-btn" onClick=${spegniVoce}>Ferma</button>`
+          : html`<button class="r-voce-barra-chiudi" onClick=${() => setVoceNota("")} aria-label="Chiudi">✕</button>`}
+      </div>
       ${voceNota && html`<div class="r-hub-detail" style="margin-top:2px">${voceNota}</div>`}
       ${voceAccesa && html`<div class="r-hub-detail" style="margin-top:4px;opacity:.7">Puoi dire: apri magi · apri la chat con lo Shell · vai su Adam · torna alla home. Tutto il resto va allo Shell.</div>`}
     </div>`}
