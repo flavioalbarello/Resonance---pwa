@@ -1,3 +1,7 @@
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -14,10 +18,15 @@ android {
         applicationId = "it.resonance.adam"
         minSdk = 28
         targetSdk = 36
-        // Cresce a ogni commit: un APK nuovo si installa sopra il vecchio senza perdere i dati.
-        versionCode = providers.exec { commandLine("git", "rev-list", "--count", "HEAD"); isIgnoreExitValue = true }
-            .standardOutput.asText.map { it.trim().toIntOrNull() ?: 1 }.get()
-        versionName = "2.0.$versionCode"
+        // Il numero di versione viene dall'ORA dell'ultimo commit (minuti dal 1/1/2026), non dal conto dei commit.
+        // Il conto dipende da quanta storia ha la copia: su GitHub (storia intera) veniva 360, in una copia parziale
+        // 156. Il Ghost aveva installato il 360 dalla CI, e ogni APK successivo era per Android una versione più
+        // vecchia: «pacchetto non valido» (24/09/2026). L'ora del commit è la stessa ovunque e cresce sempre.
+        val istante = providers.exec { commandLine("git", "log", "-1", "--format=%ct"); isIgnoreExitValue = true }
+            .standardOutput.asText.map { it.trim().toLongOrNull() ?: (System.currentTimeMillis() / 1000) }.get()
+        versionCode = ((istante - 1_767_225_600L) / 60).toInt()
+        versionName = Instant.ofEpochSecond(istante).atZone(ZoneId.of("Europe/Rome"))
+            .format(DateTimeFormatter.ofPattern("'2.'yyMMdd.HHmm"))
     }
 
     // La chiave NON sta nel repository (è pubblico): arriva dall'ambiente o dai segreti della CI.

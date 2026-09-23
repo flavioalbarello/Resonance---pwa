@@ -113,7 +113,13 @@ cd android
 
 La chiave di firma **non è nel repository** (è pubblico). Per la CI: segreti `RESONANCE_KEYSTORE_B64`
 (il file .jks in base64) e `RESONANCE_KEYSTORE_PASSWORD`. Senza, la CI produce un APK di debug che
-non si installa sopra quello firmato. `versionCode` = numero di commit: ogni build è un aggiornamento valido.
+non si installa sopra quello firmato.
+
+`versionCode` = minuti fra il 1/1/2026 e l'ora dell'ultimo commit; `versionName` = «2.aammgg.hhmm». Fino al 24/09/2026
+era il numero di commit (`git rev-list --count`): dipende da quanta storia ha la copia, e una copia parziale dava 156
+dove la CI dava 360. Installato il 360 dalla CI, ogni APK dopo era un «ritorno indietro» e il telefono lo rifiutava
+come «pacchetto non valido». Un numero che decide se un aggiornamento si installa non può dipendere da quanta storia
+c'è nella copia: stessa lezione del tetto di spesa che leggeva un registro a rotazione.
 
 Maven Central qui limita le richieste: il progetto usa il mirror di Google, anche per Robolectric.
 
