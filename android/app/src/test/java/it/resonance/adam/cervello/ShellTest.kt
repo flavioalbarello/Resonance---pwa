@@ -215,6 +215,19 @@ class ShellTest {
         assertTrue(richiesta, richiesta.startsWith("[Nota del programma, non del Ghost]"))
     }
 
+    // Visto sul telefono il 24/09: quattro giri di strumenti e nessuna risposta, restava solo la nota.
+    @Test fun finitiIGiriLoShellRispondeComunque() = runBlocking {
+        val giri = (1..Shell.GIRI_MASSIMI).map { chiama("cerca", """{"testo":"Rino Gaetano $it"}""") }.toTypedArray()
+        val modello = FintoModello(*giri, testo("Non trovo niente sulla band nei tuoi appunti: raccontami chi sono i musicisti."))
+        val esito = Shell(archivio, imp, modello, FintoMondo()).turno("sono stato contattato per un tributo a Rino Gaetano")
+        assertEquals("Non trovo niente sulla band nei tuoi appunti: raccontami chi sono i musicisti.", esito.testo)
+        assertEquals(Shell.GIRI_MASSIMI + 1, modello.modelli.size)
+        val ultima = modello.ricevuti.last().last().jsonObject["content"]!!.jsonPrimitive.content
+        assertTrue(ultima, ultima.contains("Hai finito i giri di strumenti"))
+        assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.NOTA && it.testo.contains("cerca letto") })
+        assertEquals(1, db.messaggi().elenco().count { it.ruolo == Ruolo.SHELL })
+    }
+
     // ── Scelta automatica del motore ──
 
     private fun conScelta(corpo: suspend () -> Unit) = runBlocking {

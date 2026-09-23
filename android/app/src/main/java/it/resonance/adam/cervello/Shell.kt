@@ -141,6 +141,9 @@ class Shell(
         var costoTurno = costoIniziale
         val proposte = mutableListOf<Long>()
         var testo = ""
+        // Cosa ha fatto lo Shell con gli strumenti, in breve: se finisce i giri, il Ghost vede dove si è impigliato.
+        val traccia = mutableListOf<String>()
+        var esauriti = false
 
         try {
             for (giro in 0 until GIRI_MASSIMI) {
@@ -153,7 +156,7 @@ class Shell(
                         else "La risposta è stata tagliata dal limite di lunghezza.")
                     break
                 }
-                if (giro == GIRI_MASSIMI - 1) nota("Lo Shell ha usato tutti i giri di strumenti disponibili in questo turno.")
+                if (giro == GIRI_MASSIMI - 1) esauriti = true
                 lavoro += buildJsonObject {
                     put("role", "assistant"); put("content", r.testo)
                     put("tool_calls", buildJsonArray {
@@ -185,10 +188,29 @@ class Shell(
                             }
                         }
                     }
+                    traccia += c.nome + when {
+                        risultato.startsWith("Rifiutata") || risultato.startsWith("Chiamata non eseguita") -> " rifiutato (${Testi.corto(risultato.substringAfter(": "), 70)})"
+                        risultato.startsWith("Non proposta") -> " fermato (${Testi.corto(risultato.substringAfter(": "), 70)})"
+                        risultato.startsWith("Proposta mostrata") -> " proposto"
+                        else -> " letto"
+                    }
                     lavoro += buildJsonObject {
                         put("role", "tool"); put("tool_call_id", c.id); put("name", c.nome); put("content", risultato)
                     }
                 }
+            }
+            // Finiti i giri con uno strumento ancora in mano, il Ghost restava senza risposta (visto il 24/09):
+            // un'ultima chiamata SENZA strumenti lo obbliga a rispondere con ciò che ha.
+            if (esauriti) {
+                lavoro += buildJsonObject {
+                    put("role", "user")
+                    put("content", "[Nota del programma, non del Ghost] Hai finito i giri di strumenti. Rispondi ora al Ghost, in testo, con ciò che hai. Se qualcosa è stato rifiutato, di' cosa e perché, e cosa ti serve da lui.")
+                }
+                val r = client.completa(impostazioni.chiave, modello, JsonArray(lavoro), null, MAX_TOKEN)
+                registraCosto(r)
+                costoTurno += r.costo ?: 0.0
+                testo = r.testo
+                nota("Lo Shell ha finito i giri di strumenti (${traccia.joinToString("; ")}): gli è stato chiesto di rispondere con ciò che aveva.")
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
