@@ -20,7 +20,8 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - uses: android-actions/setup-android@v3
+      # L'SDK Android è già sul runner; il plugin scarica da solo piattaforma e build-tools mancanti.
+      # (setup-android@v3 chiede il pacchetto "tools", che nel repository di Google non esiste più.)
       - name: Prove (logica, archivio su Room, schermate)
         run: ./gradlew testDebugUnitTest --console=plain
       - name: Chiave di firma dai segreti, se c'è
