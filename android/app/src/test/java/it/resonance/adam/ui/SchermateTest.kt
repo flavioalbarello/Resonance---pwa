@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import it.resonance.adam.dati.Documento
 import it.resonance.adam.dati.Messaggio
 import it.resonance.adam.dati.Misura
@@ -85,6 +86,13 @@ class SchermateTest {
         listOf("Atto I: Origine" to StatoNodo.CONSOLIDATO, "Atto II: Complessità" to StatoNodo.PRATICATO, "Atto III: Mitosi" to StatoNodo.INTRODOTTO, "Mixaggio" to StatoNodo.NON_INIZIATO)
             .forEachIndexed { i, (e, s) -> db.percorsi().inserisciNodo(Nodo(percorsoId = p, etichetta = e, stato = s, ordine = i)) }
         db.percorsi().inserisciDocumento(Documento(percorsoId = p, titolo = "ATTO I: Origine", testo = "Il seme. Un'unica cellula che ancora non sa di essere musica.", creato = 0, aggiornato = 0))
+        db.esperimenti().inserisci(it.resonance.adam.dati.Esperimento(titolo = "A letto entro le 23", tipo = TipoMisura.SONNO,
+            direzione = it.resonance.adam.dati.Direzione.SU, soglia = 15.0, giorni = 14, inizio = g(4), fine = oggi.plusDays(10).toString(),
+            base = 400.0, origine = "shell", creato = 2))
+        db.esperimenti().inserisci(it.resonance.adam.dati.Esperimento(titolo = "Suonare 10 minuti appena sveglio", tipo = TipoMisura.PRATICA,
+            direzione = it.resonance.adam.dati.Direzione.SU, soglia = 30.0, giorni = 14, inizio = g(30), fine = g(16), base = 40.0,
+            origine = "perturbazione", creato = 1, stato = it.resonance.adam.dati.StatoEsperimento.CHIUSO, finale = 200.0,
+            esito = it.resonance.adam.dati.EsitoEsperimento.MOSSO, chiuso = 1))
         db.quaderni().salva(Quaderno(Pilastro.BIO, "Il giovedì dorme meno: turno lungo.\nCamminata al mattino.", 0))
         db.voci().inserisci(Voce(pilastro = Pilastro.BIO, giorno = g(1), testo = "Schiena rigida al mattino, meglio dopo la camminata.", fonte = "manuale", creato = 0, aggiornato = 0))
         val t = System.currentTimeMillis()
@@ -119,6 +127,9 @@ class SchermateTest {
         regola.onNodeWithText("Stabilità mantenuta", substring = true, ignoreCase = true).assertExists()
         regola.onNodeWithText("Entrate che non vendono tempo", substring = true).assertExists()
         regola.onNodeWithText("10:30–11:15 Dentista (Via Roma 12)").assertExists()
+        regola.onNodeWithText("Suonare 10 minuti appena sveglio", substring = true).performScrollTo()
+        scatta("1b-esperimenti")
+        regola.onNodeWithText("A letto entro le 23").assertExists()
 
         regola.onNodeWithTag("ancora").performClick()
         regola.mainClock.advanceTimeBy(600)

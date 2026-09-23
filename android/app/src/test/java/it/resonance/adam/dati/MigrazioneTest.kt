@@ -5,6 +5,7 @@ import androidx.room.testing.MigrationTestHelper
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -36,6 +37,14 @@ class MigrazioneTest {
             assertEquals("", p.nomiProtetti)
             assertEquals(82.4, db.misure().elenco().single().valore, 0.0)
         }
+        db.close()
+    }
+
+    @Test fun dallaQuattroAllaCinqueNasconoGliEsperimenti() {
+        aiuto.createDatabase("cinque.db", 4).close()
+        aiuto.runMigrationsAndValidate("cinque.db", 5, true).close()
+        val db = Room.databaseBuilder(RuntimeEnvironment.getApplication(), Db::class.java, "cinque.db").allowMainThreadQueries().build()
+        runBlocking { assertTrue(db.esperimenti().elenco().isEmpty()) }
         db.close()
     }
 

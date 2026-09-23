@@ -3,6 +3,7 @@ package it.resonance.adam.dati
 import androidx.room.withTransaction
 import it.resonance.adam.logica.Azioni
 import it.resonance.adam.logica.Esiti
+import it.resonance.adam.logica.Esperimenti
 import it.resonance.adam.logica.Giorni
 import it.resonance.adam.logica.Importato
 import it.resonance.adam.logica.Proposta
@@ -24,6 +25,7 @@ data class Copia(
     val rituali: List<Rituale>, val spunte: List<Spunta>,
     val percorsi: List<Percorso>, val nodi: List<Nodo>, val documenti: List<Documento>,
     val quaderni: List<Quaderno>, val messaggi: List<Messaggio>, val spesa: List<SpesaMese>, val profilo: Profilo?,
+    val esperimenti: List<Esperimento> = emptyList(),
 )
 
 class Ambiguo(m: String) : Exception(m)
@@ -120,9 +122,51 @@ class Archivio(val db: Db) {
             db.percorsi().aggiornaNodo(n.copy(stato = p.stato))
             Esecuzione(true, "«${per.titolo}» › ${n.etichetta}: ${n.stato.etichetta} → ${p.stato.etichetta}")
         }
+        is Proposta.ApriEsperimento -> {
+            val tutti = db.esperimenti().elenco()
+            val aperti = Esperimenti.aperti(tutti)
+            // L'archivio ricontrolla: fra la proposta e la conferma può esserne stato aperto un altro.
+            when {
+                aperti.size >= Esperimenti.APERTI_MASSIMI -> Esecuzione(false, "Non aperto: ci sono già ${aperti.size} esperimenti aperti")
+                aperti.any { it.tipo == p.tipo } -> Esecuzione(false, "Non aperto: c'è già un esperimento aperto su ${Esperimenti.nomeMisura(p.tipo)}")
+                else -> {
+                    val base = Esperimenti.partenza(db.misure().dal(oggi.minusDays(p.giorni.toLong()).toString()), p.tipo, oggi, p.giorni)
+                    if (base == null) Esecuzione(false, "Non aperto: per ${Esperimenti.nomeMisura(p.tipo)} nei ${p.giorni} giorni prima ci sono meno di 3 giorni di dati. " +
+                        "Senza un punto di partenza non c'è confronto: collega i sensori o registra qualche giorno, poi riprova")
+                    else {
+                        val fine = oggi.plusDays(p.giorni.toLong())
+                        db.esperimenti().inserisci(Esperimento(titolo = p.titolo, tipo = p.tipo, direzione = p.direzione, soglia = p.soglia,
+                            giorni = p.giorni, inizio = oggi.toString(), fine = fine.toString(), base = base, origine = p.origine, creato = ora))
+                        Esecuzione(true, "Esperimento aperto: «${p.titolo}», ${p.giorni} giorni, fino a ${Giorni.leggibile(fine.minusDays(1).toString(), oggi)}. " +
+                            "Partenza congelata: ${Esperimenti.nomeMisura(p.tipo)} ${Esiti.formatta(p.tipo, base)}")
+                    }
+                }
+            }
+        }
+        is Proposta.LasciaEsperimento -> {
+            val e = trova(Esperimenti.aperti(db.esperimenti().elenco()), p.titolo, { it.titolo }, "esperimento aperto")
+            db.esperimenti().aggiorna(e.copy(stato = StatoEsperimento.ABBANDONATO, chiuso = ora, nota = p.motivo))
+            db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = oggi.toString(), fonte = "esperimento", creato = ora, aggiornato = ora,
+                testo = "Esperimento lasciato prima della fine: «${e.titolo}»" + (if (p.motivo.isNotBlank()) " — ${p.motivo}" else "") + "."))
+            Esecuzione(true, "Esperimento «${e.titolo}» lasciato. Traccia nel diario di Adam")
+        }
         // Calendario e posta stanno fuori dall'archivio: li esegue il Mondo (cervello/Mondo.kt).
         is Proposta.CreaEvento, is Proposta.SpostaEvento, is Proposta.TogliEvento, is Proposta.ScriviMail ->
             Esecuzione(false, "Non eseguito: calendario e posta non sono nell'archivio")
+    }
+
+    // ── L'anello: alla scadenza confronta il programma, e la traccia resta nel diario di Adam ──
+    suspend fun chiudiScaduti(oggi: LocalDate = LocalDate.now()): List<Esperimento> = db.withTransaction {
+        val scaduti = Esperimenti.scaduti(db.esperimenti().elenco(), oggi)
+        if (scaduti.isEmpty()) return@withTransaction emptyList()
+        val misure = db.misure().dal(scaduti.minOf { it.inizio })
+        scaduti.map { e ->
+            val finale = Esperimenti.misura(misure, e.tipo, LocalDate.parse(e.inizio), LocalDate.parse(e.fine))
+            val chiuso = e.copy(stato = StatoEsperimento.CHIUSO, finale = finale, esito = Esperimenti.esito(e.base, finale, e.direzione, e.soglia), chiuso = ora)
+            db.esperimenti().aggiorna(chiuso)
+            db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = oggi.toString(), testo = Esperimenti.traccia(chiuso), fonte = "esperimento", creato = ora, aggiornato = ora))
+            chiuso
+        }
     }
 
     // ── Legge 14: ogni sovrascrittura lascia la versione precedente ──
@@ -236,6 +280,7 @@ class Archivio(val db: Db) {
         rituali = db.rituali().elenco(), spunte = db.rituali().elencoSpunte(),
         percorsi = db.percorsi().elenco(), nodi = db.percorsi().elencoNodi(), documenti = db.percorsi().elencoDocumenti(),
         quaderni = db.quaderni().elenco(), messaggi = db.messaggi().elenco(), spesa = db.spesa().elenco(), profilo = db.profilo().leggi(),
+        esperimenti = db.esperimenti().elenco(),
     ))
 
     fun eUnaCopia(testo: String) = testo.contains("\"_formato\":\"resonance-apk\"") || testo.contains("\"_formato\": \"resonance-apk\"")
@@ -244,7 +289,7 @@ class Archivio(val db: Db) {
     suspend fun ripristina(testo: String): Int {
         val c = json.decodeFromString(Copia.serializer(), testo)
         db.withTransaction {
-            listOf("misure", "voci", "versioni", "rituali", "spunte", "percorsi", "nodi", "documenti", "quaderni", "messaggi", "spesa", "profilo")
+            listOf("misure", "voci", "versioni", "rituali", "spunte", "percorsi", "nodi", "documenti", "quaderni", "messaggi", "spesa", "profilo", "esperimenti")
                 .forEach { db.openHelper.writableDatabase.execSQL("DELETE FROM $it") }
             c.misure.forEach { db.misure().sostituisci(it) }
             c.voci.forEach { db.voci().inserisci(it) }
@@ -258,6 +303,7 @@ class Archivio(val db: Db) {
             c.messaggi.forEach { db.messaggi().inserisci(it) }
             c.spesa.forEach { db.spesa().salva(it) }
             c.profilo?.let { db.profilo().salva(it) }
+            c.esperimenti.forEach { db.esperimenti().inserisci(it) }
         }
         return c.misure.size + c.voci.size + c.documenti.size
     }

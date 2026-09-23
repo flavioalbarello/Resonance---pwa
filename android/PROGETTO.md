@@ -27,7 +27,7 @@ Tenuto (le discipline, non le funzioni): il modello dice / il programma verifica
 `modifica_documento` con ancora esatta · quaderni (memoria procedurale) letti a ogni turno · vincoli dichiarati
 · palette vivida e ancora a un terzo dal basso.
 
-Non portato, per ora: Agorà Magi, Semi/Printify/Etsy, Spartiti, Plasmidi, Giochi,
+Non portato, per ora: Semi/Printify/Etsy, Spartiti, Plasmidi, Giochi,
 sincronizzazione Drive.
 
 Calendario e posta erano in questo elenco fino al 23/09/2026 (prima versione), perché serviva un client
@@ -78,6 +78,27 @@ Se il Ghost non è nell'app quando finisce, notifica «Lo Shell ha risposto» (c
 Rilanciato dal sistema dopo un'interruzione, non risponde due volte allo stesso messaggio.
 Setup → Battito: «Lascia lavorare in secondo piano» toglie Resonance dalle restrizioni della batteria, perché
 alcuni telefoni chiudono le app in secondo piano anche con WorkManager.
+
+## L'anello di Anochin sulla vita, e la perturbazione al posto dei Magi (24/09/2026)
+
+**Prima.** Nell'APK il ciclo di Anochin c'era sulla singola azione (contesto → proposta → `Azioni.valida` prima
+di agire → esecuzione → ricevuta riletta dal programma → disaccordo rimandato al modello), non sulla vita: i numeri
+del mondo arrivavano, ma nessun atto dichiarava prima quale numero doveva muoversi. Nella PWA «l'anello» c'era, ma
+contava voci e percorsi: misurava l'uso dell'app.
+
+**Ora: gli esperimenti** (`logica/Esperimenti.kt`, tabella `esperimenti`). Una prova («a letto entro le 23»), un
+numero del mondo (sonno, passi, peso, FC, allenamento, pratica, opere, entrate che non vendono tempo), un verso e
+una soglia, 7–42 giorni. Alla conferma il programma **congela la partenza** (la finestra di pari durata prima; senza
+almeno 3 giorni di dati per un livello, non si apre). Alla scadenza **confronta il programma**: si è mosso / non si
+è mosso / al contrario / dati insufficienti; la traccia va nel diario di Adam, anche quando non ha funzionato.
+Al massimo 3 aperti, uno per numero. È un dato sulla proposta, mai sul Ghost; «mentre», mai «grazie a».
+
+**La perturbazione** sostituisce l'Agorà Magi, che il Ghost ha riconosciuto come confusione: quattro voci che
+parlavano bene, nessun controllo su cosa succedeva dopo, e una quinta chiamata che riscriveva il quaderno da sola.
+Qui il ristagno lo vede il programma (`Ristagno`: pratica/allenamento/entrate a zero da 14 giorni dopo esserci state,
+passi in calo del 20%, rituale tenuto ≤ 3 su 14 da almeno 3 settimane), la domenica, al massimo ogni due settimane,
+o quando il Ghost tocca «Cerca un ristagno». Allora una chiamata sola chiede allo Shell UN esperimento; in chat
+compare come nota del programma, mai come messaggio del Ghost, e la proposta si conferma a mano.
 
 ## Mappa
 

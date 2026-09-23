@@ -74,6 +74,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
     val nodi = db.percorsi().nodi().stato()
     val documenti = db.percorsi().documenti().stato()
     val quaderni = db.quaderni().tutti().stato()
+    val esperimenti = db.esperimenti().tutti().stato()
     val messaggi = db.messaggi().tutti().stato()
     val profilo: StateFlow<Profilo?> = db.profilo().osserva().stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val spesaMese = db.spesa().osserva(YearMonth.now().toString()).stateIn(viewModelScope, SharingStarted.Eagerly, null)
@@ -117,6 +118,28 @@ class Adam(app: Application) : AndroidViewModel(app) {
     fun vai(s: Schermata) {
         schermata = s; percorsoAperto = null; documentoAperto = null
         if (s == Schermata.SPECCHIO) leggiAgenda()
+    }
+
+    // L'anello si chiude anche aprendo l'app: un esperimento scaduto si confronta subito.
+    fun chiudiScaduti() = viewModelScope.launch {
+        val chiusi = archivio.chiudiScaduti()
+        if (chiusi.isNotEmpty()) avviso = chiusi.joinToString(" · ") { "«${it.titolo}»: ${it.esito?.etichetta}" }
+    }
+
+    fun lasciaEsperimento(e: it.resonance.adam.dati.Esperimento) = viewModelScope.launch {
+        avviso = archivio.esegui(it.resonance.adam.logica.Proposta.LasciaEsperimento(e.titolo, "lasciato dallo Specchio")).ricevuta
+    }
+
+    // Il Ghost può chiedere la perturbazione quando vuole; il ristagno però lo decide il programma, non la richiesta.
+    fun perturbaAdesso() = viewModelScope.launch {
+        val motivi = it.resonance.adam.logica.Ristagno.trova(istantanea.value, esperimenti.value)
+        if (motivi.isEmpty()) { avviso = "Nei numeri non c'è un ristagno: niente da perturbare. Se vuoi provare comunque qualcosa, chiedilo allo Shell."; return@launch }
+        if (pensa) return@launch
+        pensa = true
+        vai(Schermata.SHELL)
+        impostazioni.ultimaPerturbazione = LocalDate.now().toString()
+        runCatching { shell.perturba(motivi) }.onFailure { avviso = "Perturbazione non riuscita: ${it.message}" }
+        pensa = false
     }
 
     fun leggiAgenda() = viewModelScope.launch { agenda = mondo.agenda(LocalDate.now(), 2) }

@@ -134,6 +134,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         vm.leggiAgenda()
+        vm.chiudiScaduti()
     }
 
     override fun onNewIntent(intent: Intent) {

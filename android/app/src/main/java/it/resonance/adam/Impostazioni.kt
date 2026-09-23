@@ -27,6 +27,10 @@ open class Impostazioni(context: Context) {
     var modelloLeggero: String
         get() = p.getString("modelloLeggero", MODELLO_LEGGERO)!!
         set(v) = p.edit().putString("modelloLeggero", v.trim()).apply()
+    // Ultima perturbazione proposta dal programma: non più di una ogni due settimane.
+    var ultimaPerturbazione: String
+        get() = p.getString("ultimaPerturbazione", "")!!
+        set(v) = p.edit().putString("ultimaPerturbazione", v).apply()
     var tettoMensile: Double
         get() = p.getFloat("tetto", 5f).toDouble()
         set(v) = p.edit().putFloat("tetto", v.toFloat()).apply()

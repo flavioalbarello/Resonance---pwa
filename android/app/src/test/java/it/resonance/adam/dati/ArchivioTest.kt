@@ -123,6 +123,45 @@ class ArchivioTest {
         assertEquals("Cover band di Rino Gaetano.\nProve il giovedì.", db.quaderni().elenco().single { it.pilastro == Pilastro.VIDYA }.testo)
     }
 
+    // ── L'anello ──
+
+    private suspend fun sonno(daGiorniFa: LongRange, minuti: Double) = daGiorniFa.forEach {
+        db.misure().sostituisci(Misura(tipo = TipoMisura.SONNO, valore = minuti, giorno = oggi.minusDays(it).toString(), istante = it, fonte = "hc", idEsterno = "s$it"))
+    }
+
+    @Test fun apertoConLaPartenzaCongelataEChiusoDalProgramma() = runBlocking {
+        sonno(1L..14L, 400.0)
+        val e = a.esegui(Proposta.ApriEsperimento("A letto entro le 23", TipoMisura.SONNO, Direzione.SU, 14, 15.0), oggi)
+        assertTrue(e.ricevuta, e.riuscita && e.ricevuta.contains("Partenza congelata: Sonno 6h40"))
+        val aperto = db.esperimenti().elenco().single()
+        assertEquals(400.0, aperto.base, 0.0)
+        assertEquals(oggi.plusDays(14).toString(), aperto.fine)
+
+        // Durante la prova il sonno sale; la partenza non si muove.
+        (0L..13L).forEach { db.misure().sostituisci(Misura(tipo = TipoMisura.SONNO, valore = 430.0, giorno = oggi.plusDays(it).toString(), istante = 100 + it, fonte = "hc", idEsterno = "n$it")) }
+        assertTrue(a.chiudiScaduti(oggi.plusDays(13)).isEmpty())
+        val chiusi = a.chiudiScaduti(oggi.plusDays(14))
+        assertEquals(EsitoEsperimento.MOSSO, chiusi.single().esito)
+        assertEquals(430.0, chiusi.single().finale!!, 0.0)
+        assertTrue(db.voci().elenco().single { it.fonte == "esperimento" }.testo.contains("6h40 → 7h10: si è mosso"))
+        assertTrue("chiudere di nuovo non fa niente", a.chiudiScaduti(oggi.plusDays(20)).isEmpty())
+    }
+
+    @Test fun senzaPuntoDiPartenzaNonSiApre() = runBlocking {
+        sonno(1L..2L, 400.0)
+        val e = a.esegui(Proposta.ApriEsperimento("x", TipoMisura.SONNO, Direzione.SU, 14, 15.0), oggi)
+        assertFalse(e.riuscita)
+        assertTrue(e.ricevuta, e.ricevuta.contains("meno di 3 giorni di dati"))
+        assertTrue(db.esperimenti().elenco().isEmpty())
+    }
+
+    @Test fun lasciatoPrimaResta() = runBlocking {
+        a.esegui(Proposta.ApriEsperimento("Suonare al mattino", TipoMisura.PRATICA, Direzione.SU, 14, 30.0), oggi)
+        assertTrue(a.esegui(Proposta.LasciaEsperimento("suonare", "troppo presto"), oggi).riuscita)
+        assertEquals(StatoEsperimento.ABBANDONATO, db.esperimenti().elenco().single().stato)
+        assertTrue(db.voci().elenco().any { it.testo.contains("lasciato prima della fine") && it.testo.contains("troppo presto") })
+    }
+
     @Test fun letturaDiUnDocumentoInesistenteDiceCosaEsiste() = runBlocking {
         a.importa(ImportPwa.leggi(backup))
         val r = a.leggiDocumento("Atto IV")

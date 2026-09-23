@@ -27,6 +27,9 @@ import it.resonance.adam.dati.Archivio
 import it.resonance.adam.dati.Db
 import it.resonance.adam.logica.AgendaLetta
 import it.resonance.adam.logica.Battito
+import it.resonance.adam.logica.Esperimenti
+import it.resonance.adam.logica.Perturbazione
+import it.resonance.adam.logica.Ristagno
 import it.resonance.adam.logica.Riassunti
 import it.resonance.adam.logica.Ritmo
 import it.resonance.adam.mondo.MondoAndroid
@@ -110,6 +113,10 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             runCatching { Sensi(applicationContext).sincronizza(archivio, 14) }
             val mondo = MondoAndroid(applicationContext)
             val oggi = LocalDate.now()
+            // L'anello si chiude anche ad app chiusa: un esperimento scaduto si confronta e si dice.
+            val chiusi = runCatching { archivio.chiudiScaduti(oggi) }.getOrDefault(emptyList())
+            if (chiusi.isNotEmpty()) Battiti.notifica(applicationContext, 110, if (chiusi.size == 1) "Esperimento finito" else "Esperimenti finiti",
+                chiusi.joinToString("\n") { "«${it.titolo}»: ${it.esito?.etichetta}" }, chiusi.joinToString("\n") { Esperimenti.traccia(it) }, "SPECCHIO")
             val i = archivio.istantanea(oggi, if (b == Battito.MATTINO) mondo.agenda(oggi, 1) else AgendaLetta.NonLetta)
             val riassunto = when (b) {
                 Battito.MATTINO -> Riassunti.mattino(i)
@@ -125,6 +132,16 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             val titolo = when (b) { Battito.MATTINO -> "Oggi"; Battito.SERA -> "Stasera"; Battito.SETTIMANA -> "La settimana" }
             Battiti.notifica(applicationContext, 100 + b.ordinal, titolo, voce ?: riassunto, if (voce != null) riassunto else "",
                 if (b == Battito.SERA) "SHELL" else "SPECCHIO")
+            // La domenica il programma guarda se qualcosa si è fermato; al massimo una perturbazione ogni due settimane.
+            if (b == Battito.SETTIMANA && Perturbazione.dovuta(imp.ultimaPerturbazione, oggi)) {
+                val motivi = Ristagno.trova(i, archivio.db.esperimenti().elenco())
+                if (motivi.isNotEmpty()) {
+                    imp.ultimaPerturbazione = oggi.toString()
+                    val esito = Shell(archivio, imp, mondo = mondo).perturba(motivi)
+                    if (esito.proposte.isNotEmpty()) Battiti.notifica(applicationContext, 111, "Una prova da fare?",
+                        esito.testo.ifBlank { "Lo Shell propone un esperimento." }, motivi.joinToString("\n"), "SHELL")
+                }
+            }
         } finally {
             Battiti.prossimo(applicationContext, b)
         }

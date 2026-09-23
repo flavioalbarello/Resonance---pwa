@@ -1,6 +1,8 @@
 package it.resonance.adam.logica
 
 import it.resonance.adam.dati.Documento
+import it.resonance.adam.dati.Esperimento
+import it.resonance.adam.dati.StatoEsperimento
 import it.resonance.adam.dati.Misura
 import it.resonance.adam.dati.Nodo
 import it.resonance.adam.dati.Percorso
@@ -26,6 +28,7 @@ data class Istantanea(
     val documenti: List<Documento>,
     val quaderni: List<Quaderno>,
     val agenda: AgendaLetta = AgendaLetta.NonLetta,
+    val esperimenti: List<Esperimento> = emptyList(),
 )
 
 data class StatoRituale(val rituale: Rituale, val tenuta: Tenuta, val giorni: Set<LocalDate>)
@@ -77,6 +80,8 @@ object Contesto {
         appendLine("- Un impegno esiste solo se è nel calendario: per sapere cosa c'è usa leggi_calendario, per aggiungerne uno proponi crea_evento. Una proposta annullata non è un impegno.")
         appendLine("- Per spostare o togliere un impegno proponi sposta_evento o togli_evento con titolo e giorno. Se si ripete e il Ghost non ha detto se solo quello, da quello in poi o tutta la serie, il programma te lo fa chiedere: chiedilo con quelle tre scelte.")
         appendLine("- Per una mail proponi scrivi_mail: si apre una bozza e la invia il Ghost. Non dire mai che una mail è partita. L'indirizzo lo usi solo se il Ghost l'ha scritto.")
+        appendLine("- Per provare a cambiare qualcosa proponi proponi_esperimento: UNA cosa da fare per 7–42 giorni e il numero che dovrebbe muoversi. Il confronto lo fa il programma, non tu.")
+        appendLine("- Un esperimento chiuso è un dato sulla PROPOSTA, mai sul Ghost. Se non si è mosso niente, la proposta era troppo prudente o troppo ovvia: la prossima sia più audace. Mai rimproveri. Di' «è cambiato mentre lo facevi», mai «grazie a».")
         appendLine("- I vincoli dichiarati valgono sempre.")
         appendLine()
         appendLine("STILE")
@@ -93,6 +98,14 @@ object Contesto {
             appendLine()
             appendLine("AGENDA (letta ora dal calendario del telefono)")
             appendLine(Agenda.testo(i.agenda, i.oggi))
+        }
+        if (i.esperimenti.isNotEmpty()) {
+            appendLine()
+            appendLine("ESPERIMENTI (bersaglio dichiarato prima, confronto fatto dal programma)")
+            val aperti = Esperimenti.aperti(i.esperimenti)
+            aperti.forEach { appendLine("- aperto: ${Esperimenti.riga(it, i.misure, i.oggi)}") }
+            i.esperimenti.filter { it.stato != StatoEsperimento.APERTO }.sortedByDescending { it.chiuso ?: 0 }.take(5)
+                .forEach { appendLine("- ${Esperimenti.riga(it, i.misure, i.oggi)}") }
         }
         val rituali = statoRituali(i)
         appendLine()

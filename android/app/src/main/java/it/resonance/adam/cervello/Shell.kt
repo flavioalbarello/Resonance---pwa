@@ -44,6 +44,7 @@ suspend fun Archivio.istantanea(oggi: LocalDate = LocalDate.now(), agenda: Agend
     documenti = db.percorsi().elencoDocumenti(),
     quaderni = db.quaderni().elenco(),
     agenda = agenda,
+    esperimenti = db.esperimenti().elenco(),
 )
 
 class Shell(
@@ -89,6 +90,7 @@ class Shell(
 
     suspend fun rispondi(idGhost: Long): Esito {
         val m = archivio.db.messaggi().per(idGhost) ?: return Esito("", emptyList())
+        archivio.chiudiScaduti()
         // Se il sistema interrompe il lavoro e lo rilancia, un messaggio già risposto non si risponde due volte.
         archivio.db.messaggi().dopo(idGhost).firstOrNull { it.ruolo == Ruolo.SHELL }?.let { return Esito(it.testo, emptyList()) }
         val testoGhost = m.testo
@@ -98,7 +100,7 @@ class Shell(
         val oggi = LocalDate.now()
         val istantanea = archivio.istantanea(oggi, mondo?.agenda(oggi, 2) ?: AgendaLetta.NonLetta)
         val sistema = Contesto.sistema(istantanea)
-        val regole = regole(istantanea.profilo?.nomiProtetti.orEmpty(), testoGhost)
+        val regole = regole(istantanea, testoGhost)
         val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", sistema) })
         lavoro += storia(archivio.db.messaggi().ultimi(24).filter { it.id != idGhost })
         // Il messaggio di adesso porta i suoi allegati; i precedenti solo la nota che c'erano.
@@ -112,6 +114,31 @@ class Shell(
         val base = if (motore == Motore.LEGGERO) impostazioni.modelloLeggero else impostazioni.modello
         // Un modello che non vede, per un turno con immagini, cede il posto a uno che vede.
         val modello = if (Allegati.conImmagini(allegati) && base !in Impostazioni.VEDONO) impostazioni.modelloVista else base
+        return ciclo(lavoro, oggi, regole, modello, motore?.etichetta, costoTurno)
+    }
+
+    // La perturbazione: il programma ha visto un ristagno nei numeri e chiede allo Shell UN esperimento. Non è un
+    // messaggio del Ghost e non si finge tale: in chat compare come nota del programma, la proposta si conferma a mano.
+    suspend fun perturba(motivi: List<String>): Esito {
+        if (motivi.isEmpty()) return Esito("", emptyList())
+        controllaSpesa()?.let { return Esito(it, emptyList()) }
+        nota("Il programma ha visto un ristagno: ${motivi.joinToString("; ")}.")
+        val oggi = LocalDate.now()
+        val istantanea = archivio.istantanea(oggi, mondo?.agenda(oggi, 2) ?: AgendaLetta.NonLetta)
+        val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", Contesto.sistema(istantanea)) })
+        lavoro += storia(archivio.db.messaggi().ultimi(16))
+        lavoro += buildJsonObject {
+            put("role", "user")
+            put("content", "[Nota del programma, non del Ghost] Ristagno visto nei dati: ${motivi.joinToString("; ")}. " +
+                "Proponi UN esperimento con proponi_esperimento: una cosa concreta e diversa da ciò che è già stato provato (guarda gli esperimenti chiusi), " +
+                "audace ma sostenibile, legata a uno di questi numeri. Poi spiega al Ghost in tre righe perché proprio questa. Niente rimproveri, niente elenchi di consigli.")
+        }
+        return ciclo(lavoro, oggi, regole(istantanea, ""), impostazioni.modello, null, 0.0, origine = "perturbazione")
+    }
+
+    private suspend fun ciclo(lavoro: MutableList<JsonObject>, oggi: LocalDate, regole: Regole, modello: String, motore: String?,
+                              costoIniziale: Double, origine: String = "shell"): Esito {
+        var costoTurno = costoIniziale
         val proposte = mutableListOf<Long>()
         var testo = ""
 
@@ -146,7 +173,7 @@ class Shell(
                     else when (val v = Azioni.valida(c.nome, args, oggi, regole)) {
                         is Validazione.Lettura -> lettura(v)
                         is Validazione.Rifiutata -> "Rifiutata dal programma: ${v.motivo}. Correggi e riprova, oppure chiedi al Ghost."
-                        is Validazione.Scrittura -> when (val r = risolvi(v.proposta)) {
+                        is Validazione.Scrittura -> when (val r = risolvi((v.proposta as? Proposta.ApriEsperimento)?.copy(origine = origine) ?: v.proposta)) {
                             is Risoluzione.Domanda -> "Non proposta: ${r.motivo}."
                             is Risoluzione.Pronta -> {
                                 val descr = r.proposta.descrizione()
@@ -171,7 +198,7 @@ class Shell(
             return Esito(t, proposte)
         }
         if (testo.isNotBlank()) archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.SHELL, testo = testo, istante = ora,
-            modello = modello, costo = costoTurno.takeIf { it > 0 }, motore = motore?.etichetta))
+            modello = modello, costo = costoTurno.takeIf { it > 0 }, motore = motore))
         if (proposte.isEmpty() && Testi.affermaAzione(testo))
             nota("Nessuna azione è stata eseguita in questo turno: le azioni vere compaiono come proposte da confermare e poi come ricevute.")
         return Esito(testo, proposte)
@@ -210,13 +237,14 @@ class Shell(
     }
 
     // Gli indirizzi validi sono quelli che il Ghost ha scritto: in chat, nel profilo, nei quaderni. Il modello non ne inventa.
-    private suspend fun regole(nomiProtetti: String, testoGhost: String): Regole {
+    private suspend fun regole(i: it.resonance.adam.logica.Istantanea, testoGhost: String): Regole {
+        val nomiProtetti = i.profilo?.nomiProtetti.orEmpty()
         val scritti = buildString {
             archivio.db.messaggi().elenco().filter { it.ruolo == Ruolo.GHOST }.forEach { appendLine(it.testo) }
             archivio.db.quaderni().elenco().forEach { appendLine(it.testo) }
             archivio.db.profilo().leggi()?.let { appendLine(it.vincoli); appendLine(it.motivazione) }
         }
-        return Regole(Uscita.nomi(nomiProtetti), Uscita.indirizzi(scritti), testoGhost)
+        return Regole(Uscita.nomi(nomiProtetti), Uscita.indirizzi(scritti), testoGhost, it.resonance.adam.logica.Esperimenti.aperti(i.esperimenti))
     }
 
     private suspend fun lettura(v: Validazione.Lettura): String = when (v.nome) {

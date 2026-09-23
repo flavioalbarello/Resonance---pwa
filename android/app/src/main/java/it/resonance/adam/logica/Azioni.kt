@@ -1,5 +1,7 @@
 package it.resonance.adam.logica
 
+import it.resonance.adam.dati.Direzione
+import it.resonance.adam.dati.Esperimento
 import it.resonance.adam.dati.Pilastro
 import it.resonance.adam.dati.StatoNodo
 import it.resonance.adam.dati.TipoMisura
@@ -136,6 +138,22 @@ sealed class Proposta {
         override fun descrizione() = Impegni.descriviTogli(this)
     }
 
+    // L'anello: il bersaglio si dichiara qui, prima. La partenza la congela il programma alla conferma.
+    @Serializable @SerialName("proponi_esperimento")
+    data class ApriEsperimento(
+        val titolo: String, val tipo: TipoMisura, val direzione: Direzione, val giorni: Int,
+        val soglia: Double, val perche: String = "", val origine: String = "shell",
+    ) : Proposta() {
+        override fun descrizione() = "Esperimento di $giorni giorni: «$titolo». Bersaglio: ${Esperimenti.nomeMisura(tipo)} " +
+            "${direzione.freccia} di almeno ${Esiti.formatta(tipo, soglia)} rispetto ai $giorni giorni prima (partenza congelata alla conferma)." +
+            (if (perche.isNotBlank()) " Perché: ${Testi.corto(perche, 200)}" else "")
+    }
+
+    @Serializable @SerialName("lascia_esperimento")
+    data class LasciaEsperimento(val titolo: String, val motivo: String = "") : Proposta() {
+        override fun descrizione() = "Lasciare prima della fine l'esperimento «$titolo»" + (if (motivo.isNotBlank()) " — $motivo" else "") + ". Resta traccia."
+    }
+
     @Serializable @SerialName("scrivi_mail")
     data class ScriviMail(val a: String, val oggetto: String, val corpo: String) : Proposta() {
         override fun descrizione() = "Preparare una mail" + (if (a.isNotBlank()) " a $a" else " (destinatario lo scrivi tu)") +
@@ -149,6 +167,7 @@ data class Regole(
     // null = non controllare (per le prove); altrimenti gli indirizzi che il Ghost ha scritto davvero.
     val indirizziNoti: Set<String>? = null,
     val detteDalGhost: String = "",
+    val esperimentiAperti: List<Esperimento> = emptyList(),
 )
 
 sealed class Validazione {
@@ -254,6 +273,18 @@ object Azioni {
                 "ora" to s("HH:mm, se quel giorno ce n'è più d'uno"),
                 "quali" to e(Portata.entries.map { it.chiave }, "Solo se l'impegno si ripete e il Ghost l'ha detto: solo quello, da quello in poi, o tutta la serie"),
             ))),
+        Strumento("proponi_esperimento", Effetto.SCRITTURA,
+            "Propone un esperimento: UNA cosa da fare per un periodo e il numero che dovrebbe muoversi. Il programma congela la partenza e alla fine confronta. Massimo 3 aperti, uno per numero.",
+            schema(listOf("titolo", "misura", "direzione"), mapOf(
+                "titolo" to s("La cosa da fare, breve e concreta (es. «A letto entro le 23»)"),
+                "misura" to e(TIPI, "Il numero che dovrebbe muoversi (ENTRATA = entrate che non vendono tempo)"),
+                "direzione" to e(Direzione.entries.map { it.chiave }, "Se deve salire o scendere"),
+                "giorni" to n("Durata, da 7 a 42; se assente 14"),
+                "soglia" to n("Di quanto deve muoversi per contare, nell'unità della misura; se assente un valore predefinito"),
+                "perche" to s("In una o due righe, perché proprio questa prova"),
+            ))),
+        Strumento("lascia_esperimento", Effetto.SCRITTURA, "Propone di chiudere prima della fine un esperimento aperto. Resta traccia.",
+            schema(listOf("titolo"), mapOf("titolo" to s("Titolo dell'esperimento"), "motivo" to s("Facoltativo")))),
         Strumento("scrivi_mail", Effetto.SCRITTURA,
             "Propone una mail. Dopo la conferma si apre come bozza nell'app di posta e la invia il Ghost: non dire mai che è partita.",
             schema(listOf("oggetto", "corpo"), mapOf(
@@ -389,6 +420,26 @@ object Azioni {
             val portata = quali?.let { Portata.da(it) ?: rifiuta("quali deve essere ${Portata.entries.joinToString("/") { p -> p.chiave }}") }
             Proposta.TogliEvento(titolo, giorno, ora, portata)
         }
+        "proponi_esperimento" -> {
+            val titolo = a.testo("titolo") ?: rifiuta("titolo mancante")
+            if (titolo.length > 100) rifiuta("il titolo è un testo: dillo in una riga, il resto va in perche")
+            val tipo = a.testo("misura")?.uppercase()?.let { t -> TipoMisura.entries.find { it.name == t } }
+                ?: rifiuta("misura sconosciuta (usa ${TIPI.joinToString("/")})")
+            val direzione = a.testo("direzione")?.lowercase()?.let { d -> Direzione.entries.find { it.chiave == d || it.name.lowercase() == d } }
+                ?: rifiuta("direzione deve essere su o giu")
+            val giorni = intero(a, "giorni", Esperimenti.GIORNI_PREDEFINITI)
+            if (giorni !in Esperimenti.GIORNI_MINIMI..Esperimenti.GIORNI_MASSIMI)
+                rifiuta("durata di $giorni giorni fuori da ${Esperimenti.GIORNI_MINIMI}–${Esperimenti.GIORNI_MASSIMI}: più corto non si distingue dal caso, più lungo si dimentica")
+            val soglia = a.numero("soglia") ?: Esperimenti.sogliaPredefinita(tipo)
+            if (soglia <= 0) rifiuta("la soglia deve essere maggiore di zero")
+            if (regole.esperimentiAperti.size >= Esperimenti.APERTI_MASSIMI)
+                rifiuta("ci sono già ${Esperimenti.APERTI_MASSIMI} esperimenti aperti: di più diventa rumore. Chiedi al Ghost quale lasciare, o aspetta che uno finisca")
+            regole.esperimentiAperti.find { it.tipo == tipo }?.let {
+                rifiuta("c'è già un esperimento aperto su ${Esperimenti.nomeMisura(tipo)} («${it.titolo}»): due insieme sullo stesso numero non si distinguono")
+            }
+            Proposta.ApriEsperimento(titolo, tipo, direzione, giorni, soglia, a.testo("perche") ?: "")
+        }
+        "lascia_esperimento" -> Proposta.LasciaEsperimento(a.testo("titolo") ?: rifiuta("titolo mancante"), a.testo("motivo") ?: "")
         "scrivi_mail" -> {
             val dest = a.testo("a") ?: ""
             if (dest.isNotEmpty() && !Uscita.indirizzoValido(dest)) rifiuta("«$dest» non è un indirizzo: lascia vuoto e lo scrive il Ghost")

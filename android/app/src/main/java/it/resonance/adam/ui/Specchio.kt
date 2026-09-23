@@ -33,7 +33,14 @@ import it.resonance.adam.dati.Pilastro
 import it.resonance.adam.dati.TipoMisura
 import it.resonance.adam.logica.Agenda
 import it.resonance.adam.logica.AgendaLetta
+import it.resonance.adam.dati.EsitoEsperimento
+import it.resonance.adam.dati.Esperimento
+import it.resonance.adam.dati.StatoEsperimento
 import it.resonance.adam.logica.Contesto
+import it.resonance.adam.logica.Esperimenti
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
+import androidx.compose.material3.LinearProgressIndicator
 import it.resonance.adam.logica.Esiti
 import it.resonance.adam.logica.StatoRituale
 import java.time.format.DateTimeFormatter
@@ -97,6 +104,8 @@ fun Specchio(vm: Adam) {
             if (stati.isEmpty()) Tenue("Nessun rituale. Uno piccolo che regge vale più di tre grandi che saltano.")
             stati.forEach { RigaRituale(vm, it) }
         }
+
+        EsperimentiUi(vm, i)
         Spazio(120)
     }
     if (numero) DialogoMisura(null, { t, v, l -> vm.aggiungiMisura(t, v, legata = l) }) { numero = false }
@@ -141,4 +150,48 @@ private fun DialogoRituale(vm: Adam, onChiudi: () -> Unit) {
         confirmButton = { TextButton({ if (nome.isNotBlank()) { vm.creaRituale(nome, pilastro, criterio); onChiudi() } }) { Text("Crea") } },
         dismissButton = { TextButton(onChiudi) { Text("Annulla") } },
     )
+}
+
+// L'anello di Anochin: bersaglio dichiarato prima, partenza congelata, confronto fatto dal programma.
+@Composable
+private fun EsperimentiUi(vm: Adam, i: it.resonance.adam.logica.Istantanea) {
+    val tutti by vm.esperimenti.collectAsState()
+    val aperti = Esperimenti.aperti(tutti)
+    val chiusi = tutti.filter { it.stato != StatoEsperimento.APERTO }.take(3)
+    var daLasciare by remember { mutableStateOf<Esperimento?>(null) }
+    Scheda(Colori.vidya) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Etichetta("Esperimenti", Colori.vidya)
+                Tenue("Una prova, un numero che dovrebbe muoversi. Confronta il programma: è un dato sulla proposta, non su di te.")
+            }
+            TextButton({ vm.perturbaAdesso() }) { Text("Cerca un ristagno") }
+        }
+        if (aperti.isEmpty() && chiusi.isEmpty()) Tenue("Nessun esperimento. Chiedi allo Shell: «proponimi un esperimento per …».")
+        aperti.forEach { e ->
+            val inizio = LocalDate.parse(e.inizio)
+            val giorno = (ChronoUnit.DAYS.between(inizio, i.oggi) + 1).coerceIn(1, e.giorni.toLong()).toInt()
+            Column(Modifier.padding(vertical = 6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(e.titolo, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    TextButton({ daLasciare = e }) { Text("Lascia", color = Colori.tenue) }
+                }
+                LinearProgressIndicator({ giorno / e.giorni.toFloat() }, Modifier.fillMaxWidth(), color = Colori.vidya, trackColor = Colori.linea)
+                Tenue(Esperimenti.riga(e, i.misure, i.oggi).substringAfter("»: "))
+            }
+        }
+        chiusi.forEach { e ->
+            val colore = when (e.esito) { EsitoEsperimento.MOSSO -> Colori.bio; EsitoEsperimento.CONTRARIO -> Colori.allarme; else -> Colori.tenue }
+            Text(Esperimenti.riga(e, i.misure, i.oggi), color = colore, fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 4.dp))
+        }
+    }
+    daLasciare?.let { e ->
+        AlertDialog(
+            onDismissRequest = { daLasciare = null },
+            title = { Text("Lasciare «${e.titolo}»?") },
+            text = { Text("Il confronto non si farà. Resta traccia che è stato lasciato.") },
+            confirmButton = { TextButton({ vm.lasciaEsperimento(e); daLasciare = null }) { Text("Lascia") } },
+            dismissButton = { TextButton({ daLasciare = null }) { Text("Continua") } },
+        )
+    }
 }

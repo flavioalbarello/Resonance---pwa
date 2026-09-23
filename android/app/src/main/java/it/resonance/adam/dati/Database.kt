@@ -25,6 +25,14 @@ interface MisureDao {
 }
 
 @Dao
+interface EsperimentiDao {
+    @Query("SELECT * FROM esperimenti ORDER BY creato DESC") fun tutti(): Flow<List<Esperimento>>
+    @Query("SELECT * FROM esperimenti") suspend fun elenco(): List<Esperimento>
+    @Insert suspend fun inserisci(e: Esperimento): Long
+    @Update suspend fun aggiorna(e: Esperimento)
+}
+
+@Dao
 interface VociDao {
     @Query("SELECT * FROM voci ORDER BY giorno DESC, creato DESC") fun tutte(): Flow<List<Voce>>
     @Query("SELECT * FROM voci") suspend fun elenco(): List<Voce>
@@ -104,13 +112,14 @@ interface ProfiloDao {
 
 @Database(
     entities = [Misura::class, Voce::class, Versione::class, Rituale::class, Spunta::class, Percorso::class,
-        Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class],
-    version = 4,
+        Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class, Esperimento::class],
+    version = 5,
     exportSchema = true,
     // 2: Profilo.nomiProtetti (calendario e posta, 23/09/2026).
     // 3: Messaggio.allegati (immagini e documenti nella chat, 23/09/2026).
     // 4: Messaggio.modello, costo, motore (scelta automatica del motore).
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)],
+    // 5: esperimenti (l'anello di Anochin sulla vita).
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun misure(): MisureDao
@@ -122,6 +131,7 @@ abstract class Db : RoomDatabase() {
     abstract fun messaggi(): MessaggiDao
     abstract fun spesa(): SpesaDao
     abstract fun profilo(): ProfiloDao
+    abstract fun esperimenti(): EsperimentiDao
 
     companion object {
         @Volatile private var istanza: Db? = null

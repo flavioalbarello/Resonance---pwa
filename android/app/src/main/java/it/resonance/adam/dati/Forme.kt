@@ -37,6 +37,35 @@ enum class StatoNodo(val etichetta: String) {
 
 enum class Ruolo { GHOST, SHELL, PROPOSTA, RICEVUTA, NOTA }
 
+// L'anello (Anochin): un esperimento dichiara PRIMA il numero che dovrebbe muoversi e in che verso; il punto di
+// partenza si congela all'apertura; alla scadenza il programma confronta. Nessun modello nel confronto.
+enum class Direzione(val chiave: String, val verbo: String, val freccia: String) { SU("su", "salire", "↑"), GIU("giu", "scendere", "↓") }
+enum class StatoEsperimento { APERTO, CHIUSO, ABBANDONATO }
+enum class EsitoEsperimento(val etichetta: String) {
+    MOSSO("si è mosso"), FERMO("non si è mosso"), CONTRARIO("è andato nel verso opposto"), SENZA_DATI("dati insufficienti per dirlo")
+}
+
+@Serializable
+@Entity(tableName = "esperimenti")
+data class Esperimento(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val titolo: String,
+    val tipo: TipoMisura,
+    val direzione: Direzione,
+    val soglia: Double,
+    val giorni: Int,
+    val inizio: String,          // yyyy-MM-dd, primo giorno della prova
+    val fine: String,            // yyyy-MM-dd, primo giorno DOPO la prova
+    val base: Double,            // congelata all'apertura: la finestra di pari durata subito prima
+    val origine: String,         // "ghost", "shell", "perturbazione"
+    val creato: Long,
+    val stato: StatoEsperimento = StatoEsperimento.APERTO,
+    val finale: Double? = null,
+    val esito: EsitoEsperimento? = null,
+    val chiuso: Long? = null,
+    val nota: String = "",
+)
+
 enum class StatoProposta { IN_ATTESA, ESEGUITA, RIFIUTATA, FALLITA }
 
 @Serializable

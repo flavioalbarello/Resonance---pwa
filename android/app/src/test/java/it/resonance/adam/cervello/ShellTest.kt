@@ -199,6 +199,22 @@ class ShellTest {
         assertEquals(1, db.messaggi().elenco().count { it.ruolo == Ruolo.SHELL })
     }
 
+    // La perturbazione non finge un messaggio del Ghost: una nota del programma, poi una proposta da confermare.
+    @Test fun laPerturbazioneProponeUnEsperimentoEDiceDaDoveViene() = runBlocking {
+        val modello = FintoModello(
+            chiama("proponi_esperimento", """{"titolo":"Suonare 10 minuti appena sveglio","misura":"PRATICA","direzione":"su","perche":"la sera salta"}"""),
+            testo("Proviamo al mattino: la sera salta sempre."),
+        )
+        val esito = Shell(archivio, imp, modello, FintoMondo()).perturba(listOf("Pratica: zero negli ultimi 14 giorni"))
+        val msgs = db.messaggi().elenco()
+        assertTrue(msgs.none { it.ruolo == Ruolo.GHOST })
+        assertTrue(msgs.first().ruolo == Ruolo.NOTA && msgs.first().testo.contains("ristagno"))
+        val p = archivio.proposta(db.messaggi().per(esito.proposte.single())!!) as Proposta.ApriEsperimento
+        assertEquals("perturbazione", p.origine)
+        val richiesta = modello.ricevuti[0].last().jsonObject["content"]!!.jsonPrimitive.content
+        assertTrue(richiesta, richiesta.startsWith("[Nota del programma, non del Ghost]"))
+    }
+
     // ── Scelta automatica del motore ──
 
     private fun conScelta(corpo: suspend () -> Unit) = runBlocking {
