@@ -1,0 +1,167 @@
+package it.resonance.adam.ui
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import it.resonance.adam.BuildConfig
+import it.resonance.adam.Impostazioni
+import it.resonance.adam.dati.Pilastro
+import it.resonance.adam.dati.Profilo
+
+interface Sistema {
+    fun chiediSensori()
+    fun chiediNotifiche()
+    fun apriFile()
+    fun salvaCopia()
+}
+
+@Composable
+fun Setup(vm: Adam, sistema: Sistema) {
+    val imp = vm.impostazioni
+    val profilo by vm.profilo.collectAsState()
+    val quaderni by vm.quaderni.collectAsState()
+    var chiave by remember { mutableStateOf("") }
+    var modello by remember { mutableStateOf(imp.modello) }
+    var tetto by remember { mutableStateOf(imp.tettoMensile.toString()) }
+    var battito by remember { mutableStateOf(imp.battitoAttivo) }
+    var mattino by remember { mutableStateOf(imp.orarioMattino) }
+    var sera by remember { mutableStateOf(imp.orarioSera) }
+    var settimana by remember { mutableStateOf(imp.orarioSettimana) }
+    var dalModello by remember { mutableStateOf(imp.mattinoDalModello) }
+    var leggiAuto by remember { mutableStateOf(imp.leggiRisposteInAuto) }
+
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).imePadding()) {
+        Spazio(12)
+        Text("Setup", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+
+        Scheda {
+            Etichetta("Motore")
+            Tenue(if (imp.chiave.isBlank()) "Nessuna chiave OpenRouter." else "Chiave presente, cifrata nel Keystore del telefono.")
+            OutlinedTextField(chiave, { chiave = it }, label = { Text("Chiave OpenRouter") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            Button({ imp.chiave = chiave; chiave = ""; vm.avviso = "Chiave salvata" }, enabled = chiave.isNotBlank()) { Text("Salva chiave") }
+            Spazio(4)
+            Impostazioni.MODELLI.forEach { (id, nome) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(modello == id, { modello = id; imp.modello = id })
+                    Text(nome)
+                }
+            }
+            OutlinedTextField(modello, { modello = it; if (it.contains('/')) imp.modello = it }, label = { Text("Oppure uno slug OpenRouter") }, modifier = Modifier.fillMaxWidth())
+            Tenue("Il modello si sceglie con un numero, non con il prezzario: prova lo stesso turno su due modelli e guarda quante proposte vengono rifiutate e quante volte chiede chiarimenti.")
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(tetto, { tetto = it; it.replace(',', '.').toDoubleOrNull()?.let { v -> imp.tettoMensile = v } }, label = { Text("Tetto mensile $") }, modifier = Modifier.weight(1f))
+                Text("Speso: ${"%.2f".format(vm.speso())} $", color = Colori.tenue)
+            }
+        }
+
+        Scheda(Colori.ambra) {
+            Etichetta("Battito", Colori.ambraInchiostro)
+            Riga("L'app ti scrive per prima: mattino, sera, e la domenica lo specchio della settimana.")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(battito, { battito = it; imp.battitoAttivo = it; vm.riprogrammaBattito() })
+                Text("  Attivo")
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(mattino, { mattino = it }, label = { Text("Mattino") }, modifier = Modifier.weight(1f))
+                OutlinedTextField(sera, { sera = it }, label = { Text("Sera") }, modifier = Modifier.weight(1f))
+                OutlinedTextField(settimana, { settimana = it }, label = { Text("Domenica") }, modifier = Modifier.weight(1f))
+            }
+            OutlinedButton({
+                imp.orarioMattino = mattino; imp.orarioSera = sera; imp.orarioSettimana = settimana
+                vm.riprogrammaBattito(); vm.avviso = "Orari salvati"
+            }) { Text("Salva orari") }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(dalModello, { dalModello = it; imp.mattinoDalModello = it })
+                Text("  Il messaggio lo scrive il modello (se no, solo i numeri)")
+            }
+            OutlinedButton({ sistema.chiediNotifiche() }) { Text("Permetti le notifiche") }
+        }
+
+        Scheda(Colori.bio) {
+            Etichetta("Sensori", Colori.bio)
+            Riga("Health Connect: peso, sonno, passi, frequenza a riposo, allenamenti — da qualunque app o dispositivo che ci scriva (bilancia, orologio, anello, telefono).")
+            Tenue(if (vm.sensi.disponibile()) "Health Connect è disponibile." else "Health Connect non è installato o non è aggiornato su questo telefono.")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button({ sistema.chiediSensori() }, colors = ButtonDefaults.buttonColors(containerColor = Colori.bio)) { Text("Collega") }
+                OutlinedButton({ vm.leggiSensi() }) { Text("Leggi ora") }
+            }
+            if (vm.statoSensi.isNotBlank()) Tenue(vm.statoSensi)
+        }
+
+        Scheda {
+            Etichetta("Voce")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(leggiAuto, { leggiAuto = it; imp.leggiRisposteInAuto = it })
+                Text("  In modalità auto leggi le risposte ad alta voce")
+            }
+        }
+
+        ProfiloUi(vm, profilo ?: Profilo())
+        QuadernoAdam(vm, quaderni.find { it.pilastro == Pilastro.ADAM }?.testo.orEmpty())
+
+        Scheda {
+            Etichetta("Dati")
+            Riga("Dalla PWA: in Setup della PWA scarica il backup completo, poi aprilo qui. Si può rifare: ciò che c'è già non si duplica.")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton({ sistema.apriFile() }) { Text("Apri un file") }
+                OutlinedButton({ sistema.salvaCopia() }) { Text("Salva una copia") }
+            }
+            Tenue("Aprire una copia salvata da questa app la ripristina e SOSTITUISCE i dati attuali. Aprire un backup della PWA invece aggiunge.")
+        }
+        Tenue("Resonance ${BuildConfig.VERSION_NAME}")
+        Spazio(120)
+    }
+}
+
+@Composable
+private fun ProfiloUi(vm: Adam, p: Profilo) {
+    var nome by remember(p) { mutableStateOf(p.nome) }
+    var stile by remember(p) { mutableStateOf(p.stile) }
+    var motivazione by remember(p) { mutableStateOf(p.motivazione) }
+    var vincoli by remember(p) { mutableStateOf(p.vincoli) }
+    Scheda(Colori.air) {
+        Etichetta("Il Ghost", Colori.air)
+        OutlinedTextField(nome, { nome = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(stile, { stile = it }, label = { Text("Come vuoi che ti parli") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(motivazione, { motivazione = it }, label = { Text("Chi stai diventando") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(vincoli, { vincoli = it }, label = { Text("Vincoli, uno per riga: [BIO] …") }, minLines = 3, modifier = Modifier.fillMaxWidth())
+        Button({ vm.salvaProfilo(p.copy(nome = nome, stile = stile, motivazione = motivazione, vincoli = vincoli)) },
+            colors = ButtonDefaults.buttonColors(containerColor = Colori.air)) { Text("Salva profilo") }
+    }
+}
+
+@Composable
+private fun QuadernoAdam(vm: Adam, attuale: String) {
+    var testo by remember(attuale) { mutableStateOf(attuale) }
+    Scheda(Colori.ambra) {
+        Etichetta("Quaderno di Adam", Colori.ambraInchiostro)
+        Tenue("Memoria trasversale: ciò che lo Shell deve sapere di te in ogni pilastro.")
+        OutlinedTextField(testo, { testo = it }, minLines = 3, modifier = Modifier.fillMaxWidth())
+        OutlinedButton({ vm.salvaQuaderno(Pilastro.ADAM, testo) }, enabled = testo != attuale) { Text("Salva") }
+    }
+}

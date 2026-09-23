@@ -12,6 +12,13 @@ cognitiva/creativa). Implementato come PWA in uso reale da due utenti (Flavio/Gh
   progetti Vercel separati, merge sempre manuale **base: stable ← compare: main** (mai il
   contrario — errore già commesso in passato).
 
+## V2: l'APK in `android/` (dal 23/09/2026)
+Nuova istanza nativa (Kotlin, Compose, Room, Health Connect, WorkManager). La PWA in radice resta
+intatta e in uso finché l'APK non la sostituisce. Tutto ciò che riguarda l'APK — perché, mappa, come
+costruire, carenze — sta in `android/PROGETTO.md`. Le regole sotto su Preact/htm/`app.js` valgono per
+la PWA; le discipline (Legge 14, accettore/effettore, il programma verifica) valgono per entrambe.
+La chiave di firma dell'APK non va MAI nel repository: è pubblico.
+
 ## Build step — una scelta, non un divieto (G.8, emendato il 12/08/2026)
 **Nessun bundler in uso oggi**: Preact + htm da file vendored, si modifica `app.js` e si ricarica.
 
