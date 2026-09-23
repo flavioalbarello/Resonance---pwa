@@ -75,6 +75,23 @@ fun Setup(vm: Adam, sistema: Sistema) {
             }
             OutlinedTextField(modello, { modello = it; if (it.contains('/')) imp.modello = it }, label = { Text("Oppure uno slug OpenRouter") }, modifier = Modifier.fillMaxWidth())
             Spazio(4)
+            var automatica by remember { mutableStateOf(imp.sceltaAutomatica) }
+            var leggero by remember { mutableStateOf(imp.modelloLeggero) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(automatica, { automatica = it; imp.sceltaAutomatica = it })
+                Text("  Scelta automatica del motore")
+            }
+            Tenue("Prima di ogni risposta, una microchiamata (meno di un centesimo di centesimo) decide: le cose semplici al modello leggero, il resto a quello scelto sopra. Nel dubbio, quello sopra. Sotto ogni risposta vedi chi ha risposto e quanto è costato.")
+            if (automatica) {
+                Etichetta("Modello leggero")
+                Impostazioni.MODELLI_LEGGERI.forEach { (id, nome) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(leggero == id, { leggero = id; imp.modelloLeggero = id })
+                        Text(nome)
+                    }
+                }
+            }
+            Spazio(4)
             var vista by remember { mutableStateOf(imp.modelloVista) }
             Etichetta("Per immagini e PDF")
             Tenue(if (imp.modello in Impostazioni.VEDONO) "Il modello scelto sopra vede già da solo: guarda lui gli allegati."

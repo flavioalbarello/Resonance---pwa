@@ -39,6 +39,17 @@ class MigrazioneTest {
         db.close()
     }
 
+    @Test fun dallaTreAllaQuattroIMessaggiRestanoSenzaModello() {
+        aiuto.createDatabase("quattro.db", 3).apply {
+            execSQL("INSERT INTO messaggi (ruolo, testo, istante, allegati) VALUES ('SHELL', 'risposta', 1, '')")
+            close()
+        }
+        aiuto.runMigrationsAndValidate("quattro.db", 4, true).close()
+        val db = Room.databaseBuilder(RuntimeEnvironment.getApplication(), Db::class.java, "quattro.db").allowMainThreadQueries().build()
+        runBlocking { assertEquals(null, db.messaggi().elenco().single().modello) }
+        db.close()
+    }
+
     @Test fun dallaDueAllaTreIMessaggiRestanoSenzaAllegati() {
         aiuto.createDatabase("tre.db", 2).apply {
             execSQL("INSERT INTO messaggi (ruolo, testo, istante) VALUES ('GHOST', 'ciao', 1)")

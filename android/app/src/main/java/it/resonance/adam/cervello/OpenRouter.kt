@@ -34,7 +34,10 @@ open class OpenRouter(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    open suspend fun completa(chiave: String, modello: String, messaggi: JsonArray, strumenti: JsonArray?, maxToken: Int = 1500): Risposta =
+    // `rapida`: per la microchiamata che sceglie il motore; 6 secondi e nessun secondo tentativo.
+    private val httpRapido by lazy { http.newBuilder().callTimeout(6, TimeUnit.SECONDS).build() }
+
+    open suspend fun completa(chiave: String, modello: String, messaggi: JsonArray, strumenti: JsonArray?, maxToken: Int = 1500, rapida: Boolean = false): Risposta =
         withContext(Dispatchers.IO) {
             val corpo = buildJsonObject {
                 put("model", modello)
@@ -53,7 +56,7 @@ open class OpenRouter(
                 .post(corpo.toString().toRequestBody("application/json".toMediaType()))
                 .build()
             // Una connessione caduta (rete che cambia, schermo che si spegne) si ritenta una volta: il messaggio è lo stesso.
-            val risposta = try { http.newCall(req).execute() } catch (e: java.io.IOException) {
+            val risposta = if (rapida) httpRapido.newCall(req).execute() else try { http.newCall(req).execute() } catch (e: java.io.IOException) {
                 kotlinx.coroutines.delay(1500)
                 try { http.newCall(req).execute() } catch (e2: java.io.IOException) {
                     throw ErroreModello("connessione caduta due volte (${e2.message ?: e2.javaClass.simpleName}). Il tuo messaggio è salvato: controlla la rete e scrivi «riprova»")

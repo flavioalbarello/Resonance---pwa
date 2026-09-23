@@ -97,8 +97,11 @@ class Shell(
             if (allegati.isEmpty()) put("content", testoGhost)
             else put("content", Contenuto.parti(testoGhost, allegati) { java.io.File(it).readBytes() })
         }
-        // Llama non vede: per un turno con immagini si passa a un modello che vede, e lo si dice.
-        val modello = if (Allegati.conImmagini(allegati) && impostazioni.modello !in Impostazioni.VEDONO) impostazioni.modelloVista else impostazioni.modello
+        var costoTurno = 0.0
+        val motore = if (impostazioni.sceltaAutomatica) scegliMotore(testoGhost, allegati) { costoTurno += it } else null
+        val base = if (motore == Motore.LEGGERO) impostazioni.modelloLeggero else impostazioni.modello
+        // Un modello che non vede, per un turno con immagini, cede il posto a uno che vede.
+        val modello = if (Allegati.conImmagini(allegati) && base !in Impostazioni.VEDONO) impostazioni.modelloVista else base
         val proposte = mutableListOf<Long>()
         var testo = ""
 
@@ -106,6 +109,7 @@ class Shell(
             for (giro in 0 until GIRI_MASSIMI) {
                 val r = client.completa(impostazioni.chiave, modello, JsonArray(lavoro), Azioni.definizioni(), MAX_TOKEN)
                 registraCosto(r)
+                costoTurno += r.costo ?: 0.0
                 testo = r.testo
                 if (r.chiamate.isEmpty()) {
                     if (r.troncata) nota(if (r.testo.isBlank()) "La risposta si è interrotta prima di arrivare (limite di lunghezza): riprova, o chiedi una cosa per volta."
@@ -156,7 +160,8 @@ class Shell(
             nota(t)
             return Esito(t, proposte)
         }
-        if (testo.isNotBlank()) archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.SHELL, testo = testo, istante = ora))
+        if (testo.isNotBlank()) archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.SHELL, testo = testo, istante = ora,
+            modello = modello, costo = costoTurno.takeIf { it > 0 }, motore = motore?.etichetta))
         if (proposte.isEmpty() && Testi.affermaAzione(testo))
             nota("Nessuna azione è stata eseguita in questo turno: le azioni vere compaiono come proposte da confermare e poi come ricevute.")
         return Esito(testo, proposte)
@@ -168,6 +173,21 @@ class Shell(
         // («tagliata dal limite», visto sul telefono il 23/09). Si paga ciò che si usa, non il tetto.
         const val MAX_TOKEN = 12000
         const val MAX_TOKEN_BATTITO = 3000
+    }
+
+    // Nel dubbio, o senza risposta in 6 secondi, PIENO. Il costo della microchiamata entra nel turno e nel tetto.
+    private suspend fun scegliMotore(testo: String, allegati: List<Allegato>, costo: (Double) -> Unit): Motore {
+        Instradatore.ovvio(testo, allegati)?.let { return it }
+        val precedente = archivio.db.messaggi().ultimi(6).lastOrNull { it.ruolo == Ruolo.SHELL }?.testo
+        return try {
+            val r = client.completa(impostazioni.chiave, Instradatore.MODELLO, Instradatore.messaggi(testo, precedente, allegati), null, 5, rapida = true)
+            registraCosto(r); r.costo?.let(costo)
+            Instradatore.leggi(r.testo)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Motore.PIENO
+        }
     }
 
     private fun versoIlMondo(p: Proposta) =

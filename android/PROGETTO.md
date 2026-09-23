@@ -63,6 +63,13 @@ Foto dalla fotocamera, immagini, PDF, docx, testo; anche da altre app con «Cond
 Stesso giorno, dal telefono: Kimi K2.6 ragiona prima di rispondere e il ragionamento consuma lo stesso tetto di
 token. Con 1500 la risposta arrivava vuota («tagliata dal limite»): tetto a 12000 per il turno, 3000 per il battito.
 
+## Scelta del motore (23/09/2026, su richiesta del Ghost; spenta di base, Setup → Motore)
+
+Una microchiamata a `mistralai/ministral-8b-2512` (8B, niente ragionamento, circa 0,00005 $) legge solo la domanda
+e risponde LEGGERO o PIENO. LEGGERO va al modello leggero (predefinito Gemini 3.1 Flash Lite), PIENO a quello scelto.
+Nel dubbio, senza risposta in 6 secondi, o con documenti e testi lunghi (li decide il programma senza chiedere):
+PIENO. Sotto ogni risposta: modello, motore, costo del turno. Serve a scegliere Kimi o Gemini con un numero.
+
 ## Mappa
 
 ```

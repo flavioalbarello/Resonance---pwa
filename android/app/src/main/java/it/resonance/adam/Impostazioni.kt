@@ -20,6 +20,13 @@ open class Impostazioni(context: Context) {
     var modelloVista: String
         get() = p.getString("modelloVista", MODELLO_VISTA)!!
         set(v) = p.edit().putString("modelloVista", v.trim()).apply()
+    // Scelta automatica del motore: una microchiamata decide fra il modello leggero e quello scelto sopra.
+    var sceltaAutomatica: Boolean
+        get() = p.getBoolean("sceltaAutomatica", false)
+        set(v) = p.edit().putBoolean("sceltaAutomatica", v).apply()
+    var modelloLeggero: String
+        get() = p.getString("modelloLeggero", MODELLO_LEGGERO)!!
+        set(v) = p.edit().putString("modelloLeggero", v.trim()).apply()
     var tettoMensile: Double
         get() = p.getFloat("tetto", 5f).toDouble()
         set(v) = p.edit().putFloat("tetto", v.toFloat()).apply()
@@ -49,6 +56,13 @@ open class Impostazioni(context: Context) {
     companion object {
         const val MODELLO_PREDEFINITO = "meta-llama/llama-3.3-70b-instruct"
         const val MODELLO_VISTA = "google/gemini-3.1-flash-lite"
+        const val MODELLO_LEGGERO = "google/gemini-3.1-flash-lite"
+        // Verificati sul listino di OpenRouter il 23/09/2026: strumenti; prezzi $ per milione di token, entrata/uscita.
+        val MODELLI_LEGGERI = listOf(
+            "google/gemini-3.1-flash-lite" to "Gemini 3.1 Flash Lite (0,25/1,5 $, vede)",
+            "deepseek/deepseek-v4-flash" to "DeepSeek V4 Flash (0,08/0,16 $, non vede)",
+            "qwen/qwen3.8-flash" to "Qwen 3.8 Flash (0,15/0,47 $, vede)",
+        )
         // Verificati sul listino di OpenRouter il 23/09/2026: immagini in ingresso e strumenti.
         val MODELLI_VISTA = listOf(
             "google/gemini-3.1-flash-lite" to "Gemini 3.1 Flash Lite (0,25/1,5 $ per milione)",
@@ -56,13 +70,16 @@ open class Impostazioni(context: Context) {
             "google/gemini-2.5-flash" to "Gemini 2.5 Flash (0,30/2,5 $)",
         )
         // Fra i modelli principali, quelli che vedono già da soli: con loro non si cambia modello.
-        val VEDONO = setOf("moonshotai/kimi-k2.6", "google/gemini-3.1-pro-preview", "anthropic/claude-sonnet-4.5") + MODELLI_VISTA.map { it.first }
+        val VEDONO = setOf("moonshotai/kimi-k2.6", "google/gemini-3.1-pro-preview", "anthropic/claude-sonnet-4.5", "anthropic/claude-sonnet-5",
+            "qwen/qwen3.8-flash", "google/gemini-3.5-flash") + MODELLI_VISTA.map { it.first }
         val MODELLI = listOf(
             "meta-llama/llama-3.3-70b-instruct" to "Llama 3.3 70B (economico)",
             "deepseek/deepseek-v4-pro" to "DeepSeek V4 Pro",
             "moonshotai/kimi-k2.6" to "Kimi K2.6",
             "google/gemini-3.1-pro-preview" to "Gemini 3.1 Pro",
-            "anthropic/claude-sonnet-4.5" to "Claude Sonnet",
+            "google/gemini-3.5-flash" to "Gemini 3.5 Flash",
+            "anthropic/claude-sonnet-4.5" to "Claude Sonnet 4.5",
+            "anthropic/claude-sonnet-5" to "Claude Sonnet 5",
         )
     }
 }

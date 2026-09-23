@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import it.resonance.adam.cervello.Instradatore
 import it.resonance.adam.logica.Allegati
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -123,12 +124,19 @@ private fun Messaggio(vm: Adam, m: Messaggio) {
                 Text(m.testo, color = Colori.ambraInchiostro, fontSize = 15.sp)
             }
         }
-        Ruolo.SHELL -> SelectionContainer {
-            Text(Formato.annota(m.testo), color = Colori.inchiostro, fontSize = 15.sp, lineHeight = 21.sp, modifier = Modifier
-                .widthIn(max = 330.dp)
-                .background(Colori.superficie, RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp))
-                .border(1.dp, Colori.linea, RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp))
-                .padding(12.dp))
+        Ruolo.SHELL -> Column {
+            SelectionContainer {
+                Text(Formato.annota(m.testo), color = Colori.inchiostro, fontSize = 15.sp, lineHeight = 21.sp, modifier = Modifier
+                    .widthIn(max = 330.dp)
+                    .background(Colori.superficie, RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp))
+                    .border(1.dp, Colori.linea, RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp))
+                    .padding(12.dp))
+            }
+            // Chi ha risposto e quanto è costato: per scegliere il modello con un numero.
+            m.modello?.let { mod ->
+                Text(listOfNotNull(Instradatore.etichetta(mod), m.motore, m.costo?.let { "%.2f ¢".format(it * 100) }).joinToString(" · "),
+                    color = Colori.tenue, fontSize = 11.sp, modifier = Modifier.padding(start = 8.dp, top = 2.dp))
+            }
         }
         Ruolo.PROPOSTA -> Column(Modifier
             .fillMaxWidth()

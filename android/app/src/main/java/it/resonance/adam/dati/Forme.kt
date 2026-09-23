@@ -156,6 +156,10 @@ data class Messaggio(
     val stato: StatoProposta? = null,
     // Allegati del Ghost (logica/Allegati.kt), in JSON; le immagini sono file sul telefono.
     @ColumnInfo(defaultValue = "") val allegati: String = "",
+    // Chi ha scritto la risposta e quanto è costato il turno: il modello si sceglie con un numero, non a sensazione.
+    val modello: String? = null,
+    val costo: Double? = null,
+    val motore: String? = null,
 )
 
 // Totalizzatore proprio: il tetto di spesa non può leggere da un registro che ruota.

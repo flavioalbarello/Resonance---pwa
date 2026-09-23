@@ -94,7 +94,8 @@ class SchermateTest {
         }
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.GHOST, testo = "stamattina 83,1 e ho suonato 40 minuti", istante = t - 10,
             allegati = it.resonance.adam.logica.Allegati.codifica(listOf(it.resonance.adam.logica.Allegato("scaletta.jpg", it.resonance.adam.logica.Allegato.Tipo.IMMAGINE, immagini = listOf(foto.path))))))
-        db.messaggi().inserisci(Messaggio(ruolo = Ruolo.SHELL, testo = "Due numeri.\nPeso in calo costante: −1,6 in 30 giorni.\nPratica: quinta sessione in nove giorni.", istante = t + 1))
+        db.messaggi().inserisci(Messaggio(ruolo = Ruolo.SHELL, testo = "Due numeri.\nPeso in calo costante: −1,6 in 30 giorni.\nPratica: quinta sessione in nove giorni.", istante = t + 1,
+            modello = "moonshotai/kimi-k2.6", costo = 0.0021, motore = "pieno"))
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.PROPOSTA, testo = "Registrare Peso: 83,1 kg, oggi", istante = t + 2, stato = StatoProposta.ESEGUITA))
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICEVUTA, testo = "Registrato — Peso 83,1 kg, oggi", istante = t + 3))
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.PROPOSTA, testo = "Registrare Pratica: 40 min, oggi", istante = t + 4, stato = StatoProposta.IN_ATTESA))

@@ -61,7 +61,9 @@ class ShellTest {
         private val coda = ArrayDeque(risposte.toList())
         val ricevuti = mutableListOf<JsonArray>()
         val modelli = mutableListOf<String>()
-        override suspend fun completa(chiave: String, modello: String, messaggi: JsonArray, strumenti: JsonArray?, maxToken: Int): Risposta {
+        var instradatore: (() -> Risposta)? = null
+        override suspend fun completa(chiave: String, modello: String, messaggi: JsonArray, strumenti: JsonArray?, maxToken: Int, rapida: Boolean): Risposta {
+            if (rapida) { modelli += "router:$modello"; return instradatore!!() }
             ricevuti += JsonArray(messaggi.toList())
             modelli += modello
             return coda.removeFirst()
@@ -184,6 +186,50 @@ class ShellTest {
         Shell(archivio, imp, modello, FintoMondo()).turno("guarda", listOf(it.resonance.adam.logica.Allegato("x.jpg", it.resonance.adam.logica.Allegato.Tipo.IMMAGINE, immagini = listOf(f.path))))
         assertEquals("moonshotai/kimi-k2.6", modello.modelli.single())
         imp.modello = it.resonance.adam.Impostazioni.MODELLO_PREDEFINITO
+    }
+
+    // ── Scelta automatica del motore ──
+
+    private fun conScelta(corpo: suspend () -> Unit) = runBlocking {
+        imp.sceltaAutomatica = true
+        try { corpo() } finally { imp.sceltaAutomatica = false }
+    }
+
+    @Test fun unaCosaSempliceVaAlModelloLeggeroESiVedeChiHaRisposto() = conScelta {
+        val modello = FintoModello(Risposta("Propongo 82,4.", emptyList(), 0.0004, JsonObject(emptyMap()), false))
+        modello.instradatore = { Risposta("LEGGERO", emptyList(), 0.00001, JsonObject(emptyMap()), false) }
+        Shell(archivio, imp, modello, FintoMondo()).turno("peso 82,4")
+        assertEquals(listOf("router:${Instradatore.MODELLO}", it.resonance.adam.Impostazioni.MODELLO_LEGGERO), modello.modelli)
+        val r = db.messaggi().elenco().single { it.ruolo == Ruolo.SHELL }
+        assertEquals(it.resonance.adam.Impostazioni.MODELLO_LEGGERO, r.modello)
+        assertEquals("leggero", r.motore)
+        assertEquals(0.00041, r.costo!!, 1e-9)
+    }
+
+    @Test fun nelDubbioOSenzaRispostaVaAlModelloScelto() = conScelta {
+        val a = FintoModello(testo("ok"))
+        a.instradatore = { Risposta("Direi forse leggero, ma è PIENO", emptyList(), null, JsonObject(emptyMap()), false) }
+        Shell(archivio, imp, a, FintoMondo()).turno("che ne pensi del progetto con la band?")
+        assertEquals(it.resonance.adam.Impostazioni.MODELLO_PREDEFINITO, a.modelli.last())
+
+        val b = FintoModello(testo("ok"))
+        b.instradatore = { throw java.io.IOException("timeout") }
+        Shell(archivio, imp, b, FintoMondo()).turno("ciao")
+        assertEquals(it.resonance.adam.Impostazioni.MODELLO_PREDEFINITO, b.modelli.last())
+    }
+
+    @Test fun unDocumentoNonChiedeNemmenoAlRouter() = conScelta {
+        val modello = FintoModello(testo("letto"))
+        modello.instradatore = { error("non dovrebbe essere chiamato") }
+        Shell(archivio, imp, modello, FintoMondo()).turno("leggi", listOf(it.resonance.adam.logica.Allegato("n.docx", it.resonance.adam.logica.Allegato.Tipo.TESTO, testo = "x")))
+        assertEquals(listOf(it.resonance.adam.Impostazioni.MODELLO_PREDEFINITO), modello.modelli)
+    }
+
+    @Test fun senzaSceltaAutomaticaNessunaMicrochiamata() = runBlocking {
+        val modello = FintoModello(testo("ok"))
+        Shell(archivio, imp, modello, FintoMondo()).turno("peso 82")
+        assertEquals(listOf(it.resonance.adam.Impostazioni.MODELLO_PREDEFINITO), modello.modelli)
+        assertEquals(null, db.messaggi().elenco().single { it.ruolo == Ruolo.SHELL }.motore)
     }
 
     @Test fun ilNomeProtettoDelProfiloBloccaLaMail() = runBlocking {
