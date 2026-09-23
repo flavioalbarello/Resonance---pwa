@@ -3,8 +3,6 @@ package it.resonance.adam.battito
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
-import android.content.pm.ServiceInfo
-import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -34,7 +32,8 @@ class TurnoWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         creaCanali(applicationContext)
         val n = NotificationCompat.Builder(applicationContext, CANALE_LAVORO)
             .setSmallIcon(R.drawable.ic_notifica).setContentTitle("Lo Shell sta pensando…").setOngoing(true).build()
-        return if (Build.VERSION.SDK_INT >= 29) ForegroundInfo(ID_LAVORO, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC) else ForegroundInfo(ID_LAVORO, n)
+        // Usata solo prima di Android 12 (poi il lavoro accelerato non passa da un servizio): lì il tipo non serve.
+        return ForegroundInfo(ID_LAVORO, n)
     }
 
     override suspend fun doWork(): Result {

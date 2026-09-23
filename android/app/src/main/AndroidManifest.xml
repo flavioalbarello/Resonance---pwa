@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Niente REQUEST_IGNORE_BATTERY_OPTIMIZATIONS né FOREGROUND_SERVICE_DATA_SYNC: con quei due la 2.0.154 non si
-         installava sul telefono del Ghost («Non puoi installare l'app sul tuo dispositivo», 24/09/2026). La pagina della
-         batteria si apre senza permessi; il servizio in primo piano serve solo prima di Android 12, dove il tipo non si controlla. -->
+    <!-- La 2.0.154 e la 2.0.155 non si installavano sul telefono del Ghost (24/09/2026). Tolti: REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+         FOREGROUND_SERVICE_DATA_SYNC e il tipo dataSync sul servizio di WorkManager. Il servizio in primo piano serve solo prima
+         di Android 12, e lì il tipo non è richiesto. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />
@@ -75,12 +74,6 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/percorsi" />
         </provider>
-
-        <!-- Sui telefoni prima di Android 12 il turno «accelerato» gira come servizio in primo piano: va dichiarato il tipo. -->
-        <service
-            android:name="androidx.work.impl.foreground.SystemForegroundService"
-            android:foregroundServiceType="dataSync"
-            tools:node="merge" />
 
         <activity-alias
             android:name="ViewPermissionUsageActivity"
