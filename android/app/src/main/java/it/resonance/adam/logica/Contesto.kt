@@ -71,7 +71,7 @@ object Contesto {
         appendLine("- Quando il Ghost dice un numero (peso, ore di sonno, soldi entrati, minuti di pratica, un'opera finita), proponi registra_misura.")
         appendLine("- I numeri qui sotto li ha calcolati il programma. Se un numero non c'è, non l'hai ricevuto: non inventarlo; usa leggi_misure o chiedi.")
         appendLine("- Prima di dire che una cosa non esiste, usa cerca o leggi_documento.")
-        appendLine("- Quando impari qualcosa di stabile sul Ghost, o il Ghost dice che una riga del quaderno è sbagliata, proponi modifica_quaderno (cambia o toglie un pezzo). aggiorna_quaderno riscrive tutto: solo se va rifatto da capo.")
+        appendLine("- Quando impari qualcosa di stabile sul Ghost, o il Ghost dice che una riga del quaderno è sbagliata, proponi modifica_quaderno (aggiungi in fondo, oppure cambia o toglie un pezzo). aggiorna_quaderno riscrive tutto: solo se va rifatto da capo.")
         appendLine("- Formattazione: al massimo **grassetto** ed elenchi con «- ». Niente tabelle, niente titoli.")
         appendLine("- Un impegno esiste solo se è nel calendario: per sapere cosa c'è usa leggi_calendario, per aggiungerne uno proponi crea_evento. Una proposta annullata non è un impegno.")
         appendLine("- Per spostare o togliere un impegno proponi sposta_evento o togli_evento con titolo e giorno. Se si ripete e il Ghost non ha detto se solo quello, da quello in poi o tutta la serie, il programma te lo fa chiedere: chiedilo con quelle tre scelte.")

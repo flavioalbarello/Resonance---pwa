@@ -49,7 +49,14 @@ open class OpenRouter(
                 .header("X-Title", "Resonance")
                 .post(corpo.toString().toRequestBody("application/json".toMediaType()))
                 .build()
-            http.newCall(req).execute().use { r ->
+            // Una connessione caduta (rete che cambia, schermo che si spegne) si ritenta una volta: il messaggio è lo stesso.
+            val risposta = try { http.newCall(req).execute() } catch (e: java.io.IOException) {
+                kotlinx.coroutines.delay(1500)
+                try { http.newCall(req).execute() } catch (e2: java.io.IOException) {
+                    throw ErroreModello("connessione caduta due volte (${e2.message ?: e2.javaClass.simpleName}). Il tuo messaggio è salvato: controlla la rete e scrivi «riprova»")
+                }
+            }
+            risposta.use { r ->
                 val testo = r.body.string()
                 if (!r.isSuccessful) throw ErroreModello("HTTP ${r.code}: ${testo.take(300)}")
                 val radice = runCatching { json.parseToJsonElement(testo).jsonObject }.getOrNull()

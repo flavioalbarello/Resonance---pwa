@@ -98,4 +98,11 @@ class AzioniTest {
         assertTrue(p.descrizione(), p.descrizione().startsWith("Dal quaderno Bio, togliere «Lavoro manuale sporco»"))
         assertTrue(rifiuto(Azioni.valida("modifica_quaderno", args("""{"pilastro":"bio","ancora":"x","testo":"","modo":"dopo"}"""), oggi)).contains("sostituisci"))
     }
+
+    @Test fun aggiungereAlQuadernoNonChiedeUnAncora() {
+        val p = (Azioni.valida("modifica_quaderno", args("""{"pilastro":"VIDYA","testo":"Cover band di Rino Gaetano con alcuni musicisti.","modo":"aggiungi"}"""), oggi) as Validazione.Scrittura).proposta
+        assertEquals(Proposta.ModificaQuaderno(Pilastro.VIDYA, "", "Cover band di Rino Gaetano con alcuni musicisti.", "aggiungi"), p)
+        assertTrue(p.descrizione(), p.descrizione().startsWith("Nel quaderno Vidya, aggiungere in fondo"))
+        assertTrue(rifiuto(Azioni.valida("modifica_quaderno", args("""{"pilastro":"VIDYA","testo":"x","modo":"dopo"}"""), oggi)).contains("modo aggiungi"))
+    }
 }

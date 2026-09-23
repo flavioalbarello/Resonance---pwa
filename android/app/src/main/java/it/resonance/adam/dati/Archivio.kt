@@ -93,7 +93,9 @@ class Archivio(val db: Db) {
         }
         is Proposta.ModificaQuaderno -> {
             val attuale = db.quaderni().elenco().find { it.pilastro == p.pilastro }?.testo.orEmpty()
-            when (val r = Testi.applicaModifica(attuale, p.ancora, p.testo, p.modo)) {
+            val esito = if (p.modo == "aggiungi") Testi.Modifica.Fatta(attuale.trimEnd() + "\n" + p.testo)
+            else Testi.applicaModifica(attuale, p.ancora, p.testo, p.modo)
+            when (val r = esito) {
                 is Testi.Modifica.Impossibile -> Esecuzione(false, "Quaderno ${p.pilastro.etichetta} non modificato: ${r.motivo}")
                 is Testi.Modifica.Fatta -> {
                     // Togliere una frase non deve lasciare righe vuote doppie dove stava.

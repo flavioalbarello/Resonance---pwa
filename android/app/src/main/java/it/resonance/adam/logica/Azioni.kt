@@ -79,6 +79,7 @@ sealed class Proposta {
     @Serializable @SerialName("modifica_quaderno")
     data class ModificaQuaderno(val pilastro: Pilastro, val ancora: String, val testo: String, val modo: String) : Proposta() {
         override fun descrizione() = when {
+            modo == "aggiungi" -> "Nel quaderno ${pilastro.etichetta}, aggiungere in fondo: «${Testi.corto(testo, 160)}»"
             modo == "sostituisci" && testo.isEmpty() -> "Dal quaderno ${pilastro.etichetta}, togliere «${Testi.corto(ancora, 120)}»"
             modo == "prima" -> "Nel quaderno ${pilastro.etichetta}, prima di «${Testi.corto(ancora, 60)}» aggiungere «${Testi.corto(testo, 120)}»"
             modo == "dopo" -> "Nel quaderno ${pilastro.etichetta}, dopo «${Testi.corto(ancora, 60)}» aggiungere «${Testi.corto(testo, 120)}»"
@@ -218,10 +219,10 @@ object Azioni {
             "Propone di riscrivere TUTTO il quaderno di un pilastro (memoria procedurale). Il testo sostituisce il precedente: includi ciò che resta valido. Per un cambio piccolo usa modifica_quaderno.",
             schema(listOf("pilastro", "testo"), mapOf("pilastro" to e(PILASTRI, "Pilastro"), "testo" to s("Testo completo del quaderno")))),
         Strumento("modifica_quaderno", Effetto.SCRITTURA,
-            "Propone di cambiare UNA PARTE del quaderno di un pilastro: un frammento ESATTO già presente (ancora) e il testo nuovo. Per togliere una frase: modo sostituisci e testo vuoto. Preferiscilo ad aggiorna_quaderno.",
-            schema(listOf("pilastro", "ancora", "testo", "modo"), mapOf(
-                "pilastro" to e(PILASTRI, "Pilastro"), "ancora" to s("Frammento esatto del quaderno, presente una sola volta"),
-                "testo" to s("Testo nuovo; vuoto per togliere l'ancora"), "modo" to e(listOf("prima", "dopo", "sostituisci"), "Dove va il testo nuovo rispetto all'ancora"),
+            "Propone di cambiare UNA PARTE del quaderno di un pilastro. Per aggiungere una cosa imparata: modo aggiungi (va in fondo, niente ancora). Per cambiare o togliere: un frammento ESATTO già presente (ancora) e il testo nuovo; per togliere, modo sostituisci e testo vuoto. Preferiscilo ad aggiorna_quaderno.",
+            schema(listOf("pilastro", "testo", "modo"), mapOf(
+                "pilastro" to e(PILASTRI, "Pilastro"), "ancora" to s("Frammento esatto del quaderno, presente una sola volta (non serve con aggiungi)"),
+                "testo" to s("Testo nuovo; vuoto per togliere l'ancora"), "modo" to e(listOf("aggiungi", "prima", "dopo", "sostituisci"), "aggiungi in fondo, o dove va rispetto all'ancora"),
             ))),
         Strumento("crea_rituale", Effetto.SCRITTURA,
             "Propone un rituale da mantenere. Se misurabile, dai un criterio tipo SONNO>=420 o PASSI>=7000: si spunterà da solo.",
@@ -336,12 +337,12 @@ object Azioni {
         "aggiorna_quaderno" -> Proposta.AggiornaQuaderno(pilastro(a), a.testo("testo") ?: rifiuta("testo vuoto"))
         "modifica_quaderno" -> {
             val modo = a.testo("modo")?.lowercase() ?: "sostituisci"
-            if (modo !in listOf("prima", "dopo", "sostituisci")) rifiuta("modo deve essere prima, dopo o sostituisci")
-            val testo = a["testo"]?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() } ?: ""
+            if (modo !in listOf("aggiungi", "prima", "dopo", "sostituisci")) rifiuta("modo deve essere aggiungi, prima, dopo o sostituisci")
+            val testo = a["testo"]?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }?.trim() ?: ""
             if (testo.isEmpty() && modo != "sostituisci") rifiuta("testo vuoto: per togliere una frase usa modo sostituisci")
-            Proposta.ModificaQuaderno(pilastro(a),
-                a["ancora"]?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }?.takeIf { it.isNotBlank() } ?: rifiuta("ancora mancante"),
-                testo, modo)
+            val ancora = a["ancora"]?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }?.takeIf { it.isNotBlank() }
+            if (modo == "aggiungi") Proposta.ModificaQuaderno(pilastro(a), "", testo, modo)
+            else Proposta.ModificaQuaderno(pilastro(a), ancora ?: rifiuta("ancora mancante: per aggiungere in fondo usa modo aggiungi"), testo, modo)
         }
         "crea_rituale" -> {
             val criterio = a.testo("criterio")

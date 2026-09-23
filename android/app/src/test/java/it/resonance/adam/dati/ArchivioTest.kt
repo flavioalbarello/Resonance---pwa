@@ -116,6 +116,13 @@ class ArchivioTest {
         assertFalse(due.riuscita)
     }
 
+    @Test fun aggiungereInFondoFunzionaAncheAQuadernoVuoto() = runBlocking {
+        assertTrue(a.esegui(Proposta.ModificaQuaderno(Pilastro.VIDYA, "", "Cover band di Rino Gaetano.", "aggiungi"), oggi).riuscita)
+        assertEquals("Cover band di Rino Gaetano.", db.quaderni().elenco().single { it.pilastro == Pilastro.VIDYA }.testo)
+        a.esegui(Proposta.ModificaQuaderno(Pilastro.VIDYA, "", "Prove il giovedì.", "aggiungi"), oggi)
+        assertEquals("Cover band di Rino Gaetano.\nProve il giovedì.", db.quaderni().elenco().single { it.pilastro == Pilastro.VIDYA }.testo)
+    }
+
     @Test fun letturaDiUnDocumentoInesistenteDiceCosaEsiste() = runBlocking {
         a.importa(ImportPwa.leggi(backup))
         val r = a.leggiDocumento("Atto IV")
