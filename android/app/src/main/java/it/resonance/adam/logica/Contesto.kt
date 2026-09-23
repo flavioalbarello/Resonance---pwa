@@ -73,6 +73,7 @@ object Contesto {
         appendLine("- Prima di dire che una cosa non esiste, usa cerca o leggi_documento.")
         appendLine("- Quando impari qualcosa di stabile sul Ghost, proponi aggiorna_quaderno.")
         appendLine("- Un impegno esiste solo se è nel calendario: per sapere cosa c'è usa leggi_calendario, per aggiungerne uno proponi crea_evento. Una proposta annullata non è un impegno.")
+        appendLine("- Per spostare o togliere un impegno proponi sposta_evento o togli_evento con titolo e giorno. Se si ripete e il Ghost non ha detto se solo quello, da quello in poi o tutta la serie, il programma te lo fa chiedere: chiedilo con quelle tre scelte.")
         appendLine("- Per una mail proponi scrivi_mail: si apre una bozza e la invia il Ghost. Non dire mai che una mail è partita. L'indirizzo lo usi solo se il Ghost l'ha scritto.")
         appendLine("- I vincoli dichiarati valgono sempre.")
         appendLine()

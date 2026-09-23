@@ -4,6 +4,8 @@ import it.resonance.adam.Impostazioni
 import it.resonance.adam.dati.Archivio
 import it.resonance.adam.dati.Esecuzione
 import it.resonance.adam.dati.Messaggio
+import it.resonance.adam.dati.Pilastro
+import it.resonance.adam.dati.Voce
 import it.resonance.adam.dati.Ruolo
 import it.resonance.adam.dati.StatoProposta
 import it.resonance.adam.dati.TipoMisura
@@ -12,6 +14,7 @@ import it.resonance.adam.logica.AgendaLetta
 import it.resonance.adam.logica.Giorni
 import it.resonance.adam.logica.Proposta
 import it.resonance.adam.logica.Regole
+import it.resonance.adam.logica.Risoluzione
 import it.resonance.adam.logica.Uscita
 import it.resonance.adam.logica.Azioni
 import it.resonance.adam.logica.Contesto
@@ -115,13 +118,16 @@ class Shell(
                     val risultato = when (val v = Azioni.valida(c.nome, args, oggi, regole)) {
                         is Validazione.Lettura -> lettura(v)
                         is Validazione.Rifiutata -> "Rifiutata dal programma: ${v.motivo}. Correggi e riprova, oppure chiedi al Ghost."
-                        is Validazione.Scrittura -> {
-                            val descr = v.proposta.descrizione()
-                            proposte += archivio.db.messaggi().inserisci(Messaggio(
-                                ruolo = Ruolo.PROPOSTA, testo = descr, istante = ora,
-                                proposta = Azioni.codifica(v.proposta), stato = StatoProposta.IN_ATTESA,
-                            ))
-                            "Proposta mostrata al Ghost, in attesa della sua conferma: ${descr.trimEnd('.')}. Non è ancora eseguita."
+                        is Validazione.Scrittura -> when (val r = risolvi(v.proposta)) {
+                            is Risoluzione.Domanda -> "Non proposta: ${r.motivo}."
+                            is Risoluzione.Pronta -> {
+                                val descr = r.proposta.descrizione()
+                                proposte += archivio.db.messaggi().inserisci(Messaggio(
+                                    ruolo = Ruolo.PROPOSTA, testo = descr, istante = ora,
+                                    proposta = Azioni.codifica(r.proposta), stato = StatoProposta.IN_ATTESA,
+                                ))
+                                "Proposta mostrata al Ghost, in attesa della sua conferma: ${descr.trimEnd('.')}. Non è ancora eseguita."
+                            }
                         }
                     }
                     lavoro += buildJsonObject {
@@ -143,6 +149,15 @@ class Shell(
     }
 
     companion object { const val GIRI_MASSIMI = 4 }
+
+    private fun versoIlMondo(p: Proposta) =
+        p is Proposta.CreaEvento || p is Proposta.SpostaEvento || p is Proposta.TogliEvento || p is Proposta.ScriviMail
+
+    // Spostare o togliere un impegno richiede di trovarlo nel calendario vero PRIMA di proporlo.
+    private suspend fun risolvi(p: Proposta): Risoluzione = when (p) {
+        is Proposta.SpostaEvento, is Proposta.TogliEvento -> mondo?.risolvi(p) ?: Risoluzione.Domanda("il calendario non è raggiungibile da qui")
+        else -> Risoluzione.Pronta(p)
+    }
 
     // Gli indirizzi validi sono quelli che il Ghost ha scritto: in chat, nel profilo, nei quaderni. Il modello non ne inventa.
     private suspend fun regole(nomiProtetti: String, testoGhost: String): Regole {
@@ -177,11 +192,10 @@ class Shell(
         val m = archivio.db.messaggi().per(idMessaggio) ?: return "Proposta non trovata."
         if (m.stato != StatoProposta.IN_ATTESA) return "Questa proposta è già stata decisa."
         val p = archivio.proposta(m) ?: return "Proposta illeggibile."
-        val e = when (p) {
-            is Proposta.CreaEvento, is Proposta.ScriviMail ->
-                mondo?.esegui(p) ?: Esecuzione(false, "Non eseguito: calendario e posta si usano dall'app aperta")
-            else -> archivio.esegui(p)
-        }
+        // Ciò che sta per uscire dal calendario si scrive PRIMA nel diario di Adam: si cerca, si legge, si può rimettere.
+        mondo?.copia(p)?.let { archivio.db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = LocalDate.now().toString(), testo = it, fonte = "calendario", creato = ora, aggiornato = ora)) }
+        val e = if (versoIlMondo(p)) mondo?.esegui(p) ?: Esecuzione(false, "Non eseguito: calendario e posta si usano dall'app aperta")
+        else archivio.esegui(p)
         archivio.db.messaggi().aggiorna(m.copy(stato = if (e.riuscita) StatoProposta.ESEGUITA else StatoProposta.FALLITA))
         archivio.db.messaggi().inserisci(Messaggio(ruolo = if (e.riuscita) Ruolo.RICEVUTA else Ruolo.NOTA, testo = e.ricevuta, istante = ora))
         return e.ricevuta

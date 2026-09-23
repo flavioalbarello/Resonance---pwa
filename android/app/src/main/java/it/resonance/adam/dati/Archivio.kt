@@ -107,7 +107,8 @@ class Archivio(val db: Db) {
             Esecuzione(true, "«${per.titolo}» › ${n.etichetta}: ${n.stato.etichetta} → ${p.stato.etichetta}")
         }
         // Calendario e posta stanno fuori dall'archivio: li esegue il Mondo (cervello/Mondo.kt).
-        is Proposta.CreaEvento, is Proposta.ScriviMail -> Esecuzione(false, "Non eseguito: calendario e posta non sono nell'archivio")
+        is Proposta.CreaEvento, is Proposta.SpostaEvento, is Proposta.TogliEvento, is Proposta.ScriviMail ->
+            Esecuzione(false, "Non eseguito: calendario e posta non sono nell'archivio")
     }
 
     // ── Legge 14: ogni sovrascrittura lascia la versione precedente ──

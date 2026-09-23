@@ -106,6 +106,24 @@ sealed class Proposta {
         }
     }
 
+    @Serializable @SerialName("sposta_evento")
+    data class SpostaEvento(
+        val titolo: String, val giorno: String, val ora: String? = null,
+        val nuovoInizio: String? = null, val nuovaDurataMinuti: Int? = null,
+        val nuovoTitolo: String? = null, val nuovoLuogo: String? = null,
+        val bersaglio: Bersaglio? = null,
+    ) : Proposta() {
+        override fun descrizione() = Impegni.descriviSposta(this)
+    }
+
+    @Serializable @SerialName("togli_evento")
+    data class TogliEvento(
+        val titolo: String, val giorno: String, val ora: String? = null,
+        val portata: Portata? = null, val bersaglio: Bersaglio? = null,
+    ) : Proposta() {
+        override fun descrizione() = Impegni.descriviTogli(this)
+    }
+
     @Serializable @SerialName("scrivi_mail")
     data class ScriviMail(val a: String, val oggetto: String, val corpo: String) : Proposta() {
         override fun descrizione() = "Preparare una mail" + (if (a.isNotBlank()) " a $a" else " (destinatario lo scrivi tu)") +
@@ -202,6 +220,21 @@ object Azioni {
                 "titolo" to s("Nome breve dell'impegno"),
                 "inizio" to s("yyyy-MM-ddTHH:mm; solo yyyy-MM-dd se dura tutto il giorno"),
                 "durata_minuti" to n("Se assente 60"), "luogo" to s("Facoltativo"), "note" to s("Facoltative"),
+            ))),
+        Strumento("sposta_evento", Effetto.SCRITTURA,
+            "Propone di spostare o modificare UN impegno del calendario. Indicalo con titolo e giorno in cui cade; se si ripete, cambia solo quella volta.",
+            schema(listOf("titolo", "giorno"), mapOf(
+                "titolo" to s("Titolo dell'impegno com'è in calendario"), "giorno" to s("yyyy-MM-dd in cui cade ora"),
+                "ora" to s("HH:mm in cui inizia ora, se quel giorno ce n'è più d'uno"),
+                "nuovo_inizio" to s("yyyy-MM-ddTHH:mm, oppure solo HH:mm per lo stesso giorno, oppure yyyy-MM-dd se dura tutto il giorno"),
+                "nuova_durata_minuti" to n("Se cambia la durata"), "nuovo_titolo" to s("Se cambia il titolo"), "nuovo_luogo" to s("Se cambia il luogo"),
+            ))),
+        Strumento("togli_evento", Effetto.SCRITTURA,
+            "Propone di togliere un impegno dal calendario. Se si ripete e il Ghost non ha detto quanto togliere, non indovinare: il programma te lo farà chiedere.",
+            schema(listOf("titolo", "giorno"), mapOf(
+                "titolo" to s("Titolo dell'impegno com'è in calendario"), "giorno" to s("yyyy-MM-dd di un'occorrenza"),
+                "ora" to s("HH:mm, se quel giorno ce n'è più d'uno"),
+                "quali" to e(Portata.entries.map { it.chiave }, "Solo se l'impegno si ripete e il Ghost l'ha detto: solo quello, da quello in poi, o tutta la serie"),
             ))),
         Strumento("scrivi_mail", Effetto.SCRITTURA,
             "Propone una mail. Dopo la conferma si apre come bozza nell'app di posta e la invia il Ghost: non dire mai che è partita.",
@@ -307,6 +340,28 @@ object Azioni {
             Proposta.CreaEvento(titolo, if (tutto) inizio.toLocalDate().toString() else inizio.toString(), if (tutto) 0 else durata,
                 a.testo("luogo") ?: "", a.testo("note") ?: "")
         }
+        "sposta_evento" -> {
+            val (titolo, giorno, ora) = occorrenza(a, oggi)
+            val nuovo = a.testo("nuovo_inizio")
+            if (nuovo != null) {
+                val soloOra = nuovo.length <= 5 && Impegni.ora(nuovo) != null
+                val data = if (soloOra) null else Agenda.interpretaInizio(nuovo)?.first
+                    ?: rifiuta("nuovo_inizio non leggibile: yyyy-MM-ddTHH:mm, HH:mm o yyyy-MM-dd")
+                if (data != null && data.toLocalDate().isBefore(oggi)) rifiuta("il ${data.toLocalDate()} è passato: il calendario è per ciò che viene")
+            }
+            val durata = a["nuova_durata_minuti"]?.let { intero(a, "nuova_durata_minuti", 0) }
+            if (durata != null && durata !in 5..1440) rifiuta("durata di $durata minuti fuori dall'intervallo 5–1440")
+            val nuovoTitolo = a.testo("nuovo_titolo")
+            val nuovoLuogo = a.testo("nuovo_luogo")
+            if (nuovo == null && durata == null && nuovoTitolo == null && nuovoLuogo == null) rifiuta("non c'è niente da cambiare: indica nuovo_inizio, durata, titolo o luogo")
+            Proposta.SpostaEvento(titolo, giorno, ora, nuovo, durata, nuovoTitolo, nuovoLuogo)
+        }
+        "togli_evento" -> {
+            val (titolo, giorno, ora) = occorrenza(a, oggi)
+            val quali = a.testo("quali")
+            val portata = quali?.let { Portata.da(it) ?: rifiuta("quali deve essere ${Portata.entries.joinToString("/") { p -> p.chiave }}") }
+            Proposta.TogliEvento(titolo, giorno, ora, portata)
+        }
         "scrivi_mail" -> {
             val dest = a.testo("a") ?: ""
             if (dest.isNotEmpty() && !Uscita.indirizzoValido(dest)) rifiuta("«$dest» non è un indirizzo: lascia vuoto e lo scrive il Ghost")
@@ -319,6 +374,14 @@ object Azioni {
             Proposta.ScriviMail(dest, oggetto, corpo)
         }
         else -> rifiuta("scrittura non prevista: $nome")
+    }
+
+    private fun occorrenza(a: JsonObject, oggi: LocalDate): Triple<String, String, String?> {
+        val titolo = a.testo("titolo") ?: rifiuta("titolo mancante")
+        val g = Giorni.interpreta(a.testo("giorno"), oggi) ?: rifiuta("giorno non leggibile: usa yyyy-MM-dd")
+        if (g.isBefore(oggi)) rifiuta("il $g è passato: si cambia ciò che viene")
+        val ora = a.testo("ora")?.let { Impegni.ora(it)?.toString() ?: rifiuta("ora non leggibile: usa HH:mm") }
+        return Triple(titolo, g.toString(), ora)
     }
 
     fun codifica(p: Proposta): String = json.encodeToString(Proposta.serializer(), p)
@@ -334,6 +397,8 @@ object Giorni {
     fun interpreta(t: String?, oggi: LocalDate): LocalDate? = when (t?.trim()?.lowercase()) {
         null, "", "oggi" -> oggi
         "ieri" -> oggi.minusDays(1)
+        "domani" -> oggi.plusDays(1)
+        "dopodomani" -> oggi.plusDays(2)
         "l'altro ieri", "altro ieri", "avantieri" -> oggi.minusDays(2)
         else -> runCatching { LocalDate.parse(t.trim().take(10)) }.getOrNull()
     }

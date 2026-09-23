@@ -36,6 +36,13 @@ un'altra strada, che non chiede accesso Google:
 - **Calendario** — `CalendarContract`, permesso di sistema. Un impegno esiste solo se il calendario lo
   contiene: lo Shell riceve l'agenda letta ora (oggi e domani) e ha `leggi_calendario`; `crea_evento`
   diventa una proposta, e la ricevuta dice ciò che il calendario contiene **rileggendolo**, non ciò che si è chiesto.
+- **Spostare e togliere** (stesso giorno, su richiesta del Ghost) — `sposta_evento`, `togli_evento`. Il modello
+  nomina l'impegno a parole (titolo e giorno); il programma lo cerca nel calendario (`Risolutore`) e la proposta
+  porta l'impegno TROVATO, su cui agisce la conferma. Se non è uno solo, o se è di una serie e il Ghost non ha
+  detto quanto, la proposta non nasce: torna al modello come domanda da fare al Ghost — solo questo, da questo in
+  poi, o tutta la serie (anche i passati). Spostare una serie tocca solo quella volta. Non si toccano: impegni con
+  invitati (cambiarli li avvisa: è un'uscita), organizzati da altri, in calendari di sola lettura. Prima di ogni
+  modifica il testo completo dell'impegno (anche la RRULE) va nel diario di Adam; dopo, si rilegge.
 - **Posta** — nessun effettore autonomo. `scrivi_mail` apre una bozza nell'app di posta: l'invio è il gesto
   del Ghost su quella mail precisa, cioè il criterio del 02/09. Due guardie dove il dato entra (`Azioni.valida`):
   l'indirizzo dev'essere uno che il Ghost ha scritto (chat, quaderni, profilo), e un nome in
@@ -90,6 +97,8 @@ Maven Central qui limita le richieste: il progetto usa il mirror di Google, anch
 | Conferma a voce | Solo per l'ultima proposta in attesa |
 | Mail inviata o no | L'app apre la bozza, non può sapere se è partita: la ricevuta dice «bozza aperta» |
 | Rubrica | Non letta: «scrivi a Marta» senza indirizzo apre la bozza con il destinatario vuoto |
+| Rimettere un impegno tolto | La copia è nel diario di Adam (con RRULE), ma rimetterlo è a mano o chiedendolo allo Shell come nuovo impegno: una serie non si ricrea ancora da qui |
+| Spostare/togliere su telefono vero | Provata la decisione (quale impegno, quanto, chi è coinvolto) con un calendario finto; le scritture su `CalendarContract` (eccezioni, UNTIL) non sono provate qui |
 | Calendario scelto | Il principale dell'account Google, se no il primo scrivibile. La ricevuta ne dice il nome; non si sceglie ancora in Setup |
 | Database | Versione 2 (`nomiProtetti`), migrazione automatica provata in `MigrazioneTest` sopra la 1 della 2.0.144 |
 | R8 spento | APK da 30 MB. La minificazione va accesa solo dopo una prova su telefono vero |

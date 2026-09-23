@@ -12,6 +12,7 @@ import it.resonance.adam.logica.AgendaLetta
 import it.resonance.adam.logica.Azioni
 import it.resonance.adam.logica.Evento
 import it.resonance.adam.logica.Proposta
+import it.resonance.adam.logica.Risolutore
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -41,12 +42,19 @@ class ShellTest {
             set(_) {}
     }
 
+    // Il finto calendario usa il Risolutore vero: si prova la decisione, non il finto.
     private class FintoMondo : Mondo {
         val eseguite = mutableListOf<Proposta>()
-        var letta: AgendaLetta = AgendaLetta.Letta(LocalDate.now(), 2,
-            listOf(Evento("Dentista", LocalDate.now().atTime(10, 30), LocalDate.now().atTime(11, 15), false)))
-        override suspend fun agenda(da: LocalDate, giorni: Int) = letta
-        override suspend fun esegui(p: Proposta) = Esecuzione(true, "In calendario «Personale», riletto").also { eseguite += p }
+        val domani: LocalDate = LocalDate.now().plusDays(1)
+        val eventi = listOf(
+            Evento("Dentista", LocalDate.now().atTime(10, 30), LocalDate.now().atTime(11, 15), false),
+            Evento("Fisioterapia", domani.atTime(18, 0), domani.atTime(19, 0), false, calendario = "Personale",
+                id = 7, idSerie = 7, regola = "FREQ=WEEKLY;BYDAY=TU", origineMs = 1),
+        )
+        override suspend fun agenda(da: LocalDate, giorni: Int) = AgendaLetta.Letta(da, giorni, eventi)
+        override suspend fun risolvi(p: Proposta) = Risolutore.risolvi(p, eventi, LocalDate.now())
+        override suspend fun copia(p: Proposta) = (p as? Proposta.TogliEvento)?.let { "Prima di togliere: «${it.bersaglio?.titolo}», ogni martedì" }
+        override suspend fun esegui(p: Proposta) = Esecuzione(true, "Fatto nel calendario, riletto").also { eseguite += p }
     }
 
     private class FintoModello(vararg risposte: Risposta) : OpenRouter() {
@@ -109,6 +117,36 @@ class ShellTest {
         assertTrue(contenuto(modello.ricevuti[0], 0).contains("10:30–11:15 Dentista"))
         val lettura = modello.ricevuti[1].last().jsonObject["content"]!!.jsonPrimitive.content
         assertTrue(lettura, lettura.startsWith("Impegni in calendario"))
+    }
+
+    @Test fun unaSerieSenzaSapereQuantoSiChiedePoiSiProponeESiCopiaPrima() = runBlocking {
+        val mondo = FintoMondo()
+        val g = mondo.domani.toString()
+        val modello = FintoModello(
+            chiama("togli_evento", """{"titolo":"fisioterapia","giorno":"$g"}"""),
+            testo("Solo quello di domani, da domani in poi, o tutta la serie?"),
+        )
+        val shell = Shell(archivio, imp, modello, mondo)
+        val prima = shell.turno("togli la fisioterapia di domani")
+        assertTrue(prima.proposte.isEmpty())
+        val rimando = modello.ricevuti[1].last().jsonObject["content"]!!.jsonPrimitive.content
+        assertTrue(rimando, rimando.startsWith("Non proposta:") && rimando.contains("tutta la serie"))
+
+        val modello2 = FintoModello(
+            chiama("togli_evento", """{"titolo":"fisioterapia","giorno":"$g","quali":"tutta_la_serie"}"""),
+            testo("Propongo di togliere tutta la serie."),
+        )
+        val dopo = Shell(archivio, imp, modello2, mondo).turno("tutta la serie")
+        val id = dopo.proposte.single()
+        assertTrue(db.messaggi().per(id)!!.testo.startsWith("Togliere TUTTA la serie «Fisioterapia»"))
+
+        Shell(archivio, imp, modello2, mondo).conferma(id)
+        val tolta = mondo.eseguite.single() as Proposta.TogliEvento
+        assertEquals(it.resonance.adam.logica.Portata.SERIE, tolta.portata)
+        assertEquals(7L, tolta.bersaglio!!.idSerie)
+        val copia = db.voci().elenco().single { it.fonte == "calendario" }
+        assertEquals(it.resonance.adam.dati.Pilastro.ADAM, copia.pilastro)
+        assertTrue(copia.testo.contains("Fisioterapia"))
     }
 
     @Test fun ilNomeProtettoDelProfiloBloccaLaMail() = runBlocking {

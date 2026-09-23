@@ -14,6 +14,18 @@ data class Evento(
     val tuttoIlGiorno: Boolean,
     val luogo: String = "",
     val calendario: String = "",
+    // Ciò che serve per cambiarlo: lo riempie chi legge il calendario, il resto del programma lo usa e basta.
+    val id: Long = 0,
+    val idSerie: Long? = null,        // l'evento madre, se questo è un'occorrenza di una serie
+    val eccezione: Boolean = false,   // un'occorrenza già spostata o modificata: è un evento a sé, figlio della serie
+    val regola: String = "",          // RRULE della serie
+    val inizioMs: Long = 0,
+    val fineMs: Long = 0,
+    val origineMs: Long = 0,          // dove cadeva l'occorrenza nella serie (per un'eccezione, prima di essere spostata)
+    val primaDellaSerie: Boolean = false,
+    val scrivibile: Boolean = true,
+    val organizzatoDaAltri: Boolean = false,
+    val invitati: Int = 0,
 )
 
 sealed class AgendaLetta {
@@ -51,7 +63,8 @@ object Agenda {
         }
         val ore = if (e.tuttoIlGiorno) "tutto il giorno" else "${e.inizio.format(ORA)}–${e.fine.format(ORA)}"
         val dove = if (e.luogo.isNotBlank()) " (${Testi.corto(e.luogo, 60)})" else ""
-        return "$g$ore ${Testi.corto(e.titolo, 80)}$dove"
+        val ripete = if (e.regola.isNotBlank()) " [${Ripetizione.leggibile(e.regola)}]" else ""
+        return "$g$ore ${Testi.corto(e.titolo, 80)}$dove$ripete"
     }
 
     fun delGiorno(eventi: List<Evento>, giorno: LocalDate) = eventi.filter {
