@@ -34,6 +34,14 @@ class MainActivity : ComponentActivity() {
     private val permessoNotifiche = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         vm.avviso = if (ok) "Notifiche permesse: il battito può parlarti." else "Senza notifiche il battito resta muto."
     }
+    private val permessiCalendario = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { esiti ->
+        vm.avviso = when {
+            esiti.values.all { it } -> "Calendario collegato."
+            esiti[Manifest.permission.READ_CALENDAR] == true -> "Calendario in sola lettura."
+            else -> "Senza il permesso lo Shell non vede gli impegni."
+        }
+        vm.leggiAgenda()
+    }
     private val permessiSensori = registerForActivityResult(PermissionController.createRequestPermissionResultContract()) { concessi ->
         vm.avviso = "Sensori: ${concessi.size} permessi concessi"
         vm.leggiSensi()
@@ -66,6 +74,7 @@ class MainActivity : ComponentActivity() {
             if (Build.VERSION.SDK_INT >= 33) permessoNotifiche.launch(Manifest.permission.POST_NOTIFICATIONS)
             else vm.avviso = "Su questa versione di Android le notifiche sono già permesse."
         }
+        override fun chiediCalendario() = permessiCalendario.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR))
         override fun apriFile() = apri.launch(arrayOf("application/json", "text/plain", "*/*"))
         override fun salvaCopia() = salva.launch("resonance-copia-${LocalDate.now()}.json")
     }
@@ -82,6 +91,11 @@ class MainActivity : ComponentActivity() {
         apriDa(intent)
         setContent { TemaResonance { App(vm, sistema, ::conMicrofono) } }
         if (vm.sensi.disponibile()) lifecycleScope.launch { runCatching { if (vm.sensi.concessi().isNotEmpty()) vm.leggiSensi() } }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        vm.leggiAgenda()
     }
 
     override fun onNewIntent(intent: Intent) {

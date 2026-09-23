@@ -42,6 +42,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures { compose = true; buildConfig = true }
+    // Gli schemi esportati servono alla prova di migrazione (ogni versione del database si apre sopra la precedente).
+    // Robolectric vede solo gli asset della variante, non quelli di test: stanno nel debug, il release non li porta.
+    sourceSets.getByName("debug").assets.srcDir("$projectDir/schemas")
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
@@ -76,6 +79,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.robolectric)
+    testImplementation(libs.room.testing)
     testImplementation(platform(libs.compose.bom))
     testImplementation(libs.compose.ui.test)
     debugImplementation(libs.compose.ui.test.manifest)

@@ -8,6 +8,11 @@ import java.time.YearMonth
 object Riassunti {
     fun mattino(i: Istantanea): String {
         val righe = mutableListOf<String>()
+        (i.agenda as? AgendaLetta.Letta)?.let { a ->
+            val oggi = Agenda.delGiorno(a.eventi, i.oggi)
+            righe += if (oggi.isEmpty()) "Nessun impegno in calendario oggi."
+            else "Oggi in calendario: " + oggi.joinToString("; ") { Agenda.riga(it, i.oggi, conGiorno = false) }
+        }
         Esiti.serieGiornaliera(i.misure, TipoMisura.SONNO).lastOrNull()?.takeIf { it.giorno == i.oggi }?.let {
             val media = Esiti.sintesi(i.misure, TipoMisura.SONNO, i.oggi).valore
             righe += "Sonno stanotte ${Esiti.ore(it.valore)}" + (media?.let { m -> " (media 7 giorni ${Esiti.ore(m)})" } ?: "")

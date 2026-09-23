@@ -27,6 +27,7 @@ compose-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
 work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 health-connect = { module = "androidx.health.connect:connect-client", version.ref = "healthConnect" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }

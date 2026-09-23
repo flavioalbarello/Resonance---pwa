@@ -146,7 +146,11 @@ object ImportPwa {
                 val pil = o.str("pilastro")?.uppercase()?.takeIf { it.isNotBlank() } ?: "TUTTI"
                 "[$pil] $t"
             }.joinToString("\n")
-            Profilo(nome = p.str("name").orEmpty(), stile = stile, motivazione = motivazione, vincoli = vincoli)
+            // Dal vincolo G.1 della PWA si portano solo i NOMI (maiuscola interna: un marchio), non la professione.
+            val identita = listOfNotNull(p.str("professionalIdentity")) + (p["hardConstraints"] as? JsonArray).orEmpty()
+                .mapNotNull { (it as? JsonObject)?.takeIf { o -> o.str("tipo") == "identita-professionale" }?.str("identita") }
+            val nomi = identita.flatMap { it.split(',', ';') }.map { it.trim() }.filter { Regex("[a-z][A-Z]").containsMatchIn(it) }.distinct()
+            Profilo(nome = p.str("name").orEmpty(), stile = stile, motivazione = motivazione, vincoli = vincoli, nomiProtetti = nomi.joinToString(", "))
         }
 
         return Importato(misure, voci, percorsi, quaderni, profilo, scartati)

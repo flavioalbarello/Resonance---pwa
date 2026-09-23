@@ -25,11 +25,14 @@ import it.resonance.adam.cervello.Shell
 import it.resonance.adam.cervello.istantanea
 import it.resonance.adam.dati.Archivio
 import it.resonance.adam.dati.Db
+import it.resonance.adam.logica.AgendaLetta
 import it.resonance.adam.logica.Battito
 import it.resonance.adam.logica.Riassunti
 import it.resonance.adam.logica.Ritmo
+import it.resonance.adam.mondo.MondoAndroid
 import it.resonance.adam.sensi.Sensi
 import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.util.concurrent.TimeUnit
@@ -105,7 +108,9 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         val imp = Impostazioni(applicationContext)
         try {
             runCatching { Sensi(applicationContext).sincronizza(archivio, 14) }
-            val i = archivio.istantanea()
+            val mondo = MondoAndroid(applicationContext)
+            val oggi = LocalDate.now()
+            val i = archivio.istantanea(oggi, if (b == Battito.MATTINO) mondo.agenda(oggi, 1) else AgendaLetta.NonLetta)
             val riassunto = when (b) {
                 Battito.MATTINO -> Riassunti.mattino(i)
                 Battito.SERA -> Riassunti.sera(i)
@@ -116,7 +121,7 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 Battito.SERA -> "sera, chiusura della giornata"
                 Battito.SETTIMANA -> "fine settimana, lo specchio dei sette giorni"
             }
-            val voce = if (imp.mattinoDalModello) Shell(archivio, imp).parlaPerPrimo(momento, riassunto) else null
+            val voce = if (imp.mattinoDalModello) Shell(archivio, imp, mondo = mondo).parlaPerPrimo(momento, riassunto) else null
             val titolo = when (b) { Battito.MATTINO -> "Oggi"; Battito.SERA -> "Stasera"; Battito.SETTIMANA -> "La settimana" }
             Battiti.notifica(applicationContext, 100 + b.ordinal, titolo, voce ?: riassunto, if (voce != null) riassunto else "",
                 if (b == Battito.SERA) "SHELL" else "SPECCHIO")

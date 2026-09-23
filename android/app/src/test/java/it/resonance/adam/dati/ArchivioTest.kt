@@ -96,6 +96,16 @@ class ArchivioTest {
         assertEquals("Il seme.", db.percorsi().elencoDocumenti().single().testo)
     }
 
+    @Test fun reimportDaIANomiProtettiAUnProfiloGiaScritto() = runBlocking {
+        db.profilo().salva(Profilo(nome = "Flavio", vincoli = "scritti a mano"))
+        val conIdentita = backup.replace(""""hardConstraints":[]""",
+            """"hardConstraints":[{"tipo":"identita-professionale","identita":"fisioterapista, PhysioAlba","testo":"x"}]""")
+        a.importa(ImportPwa.leggi(conIdentita))
+        val p = db.profilo().leggi()!!
+        assertEquals("scritti a mano", p.vincoli)
+        assertEquals("PhysioAlba", p.nomiProtetti)
+    }
+
     @Test fun letturaDiUnDocumentoInesistenteDiceCosaEsiste() = runBlocking {
         a.importa(ImportPwa.leggi(backup))
         val r = a.leggiDocumento("Atto IV")

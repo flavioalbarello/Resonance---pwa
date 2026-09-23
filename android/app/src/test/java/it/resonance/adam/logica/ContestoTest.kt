@@ -59,6 +59,16 @@ class ContestoTest {
         assertTrue(s, s.contains("Dormire 7 ore (Bio): serie 3 giorni, tenuto 4/14, oggi sì"))
     }
 
+    @Test fun lAgendaEntraSoloSeLetta() {
+        assertFalse(Contesto.sistema(istantanea()).contains("AGENDA"))
+        val e = Evento("Dentista", oggi.atTime(10, 30), oggi.atTime(11, 15), false)
+        val s = Contesto.sistema(istantanea().copy(agenda = AgendaLetta.Letta(oggi, 2, listOf(e))))
+        assertTrue(s, s.contains("AGENDA (letta ora dal calendario del telefono)"))
+        assertTrue(s.contains(Agenda.riga(e, oggi)))
+        val n = Contesto.sistema(istantanea().copy(agenda = AgendaLetta.Negata("manca il permesso")))
+        assertTrue(n.contains("Calendario non leggibile: manca il permesso."))
+    }
+
     @Test fun senzaProfiloVaLoStilePredefinito() {
         val s = Contesto.sistema(istantanea().copy(profilo = null))
         assertTrue(s.contains(Contesto.STILE_PREDEFINITO))

@@ -1,6 +1,7 @@
 package it.resonance.adam.dati
 
 import android.content.Context
+import androidx.room.AutoMigration
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Insert
@@ -103,8 +104,10 @@ interface ProfiloDao {
 @Database(
     entities = [Misura::class, Voce::class, Versione::class, Rituale::class, Spunta::class, Percorso::class,
         Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class],
-    version = 1,
+    version = 2,
     exportSchema = true,
+    // 2: Profilo.nomiProtetti (calendario e posta, 23/09/2026).
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun misure(): MisureDao

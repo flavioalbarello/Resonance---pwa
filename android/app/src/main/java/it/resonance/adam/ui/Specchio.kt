@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -30,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import it.resonance.adam.dati.Pilastro
 import it.resonance.adam.dati.TipoMisura
+import it.resonance.adam.logica.Agenda
+import it.resonance.adam.logica.AgendaLetta
 import it.resonance.adam.logica.Contesto
 import it.resonance.adam.logica.Esiti
 import it.resonance.adam.logica.StatoRituale
@@ -53,6 +56,22 @@ fun Specchio(vm: Adam) {
             OutlinedButton({ vm.leggiSensi() }) { Text("Leggi i sensori") }
         }
         if (vm.statoSensi.isNotBlank()) Tenue(vm.statoSensi)
+
+        (vm.agenda as? AgendaLetta.Letta)?.let { a ->
+            Scheda(Colori.air) {
+                Etichetta("Agenda", Colori.air)
+                listOf(i.oggi to "Oggi", i.oggi.plusDays(1) to "Domani").forEach { (g, nome) ->
+                    val eventi = Agenda.delGiorno(a.eventi, g)
+                    Row {
+                        Text(nome, color = Colori.tenue, fontSize = 13.sp, modifier = Modifier.width(64.dp).padding(top = 2.dp))
+                        Column {
+                            if (eventi.isEmpty()) Riga("niente in calendario", Colori.tenue)
+                            eventi.forEach { Riga(Agenda.riga(it, i.oggi, conGiorno = false)) }
+                        }
+                    }
+                }
+            }
+        }
 
         for (p in listOf(Pilastro.BIO, Pilastro.AIR, Pilastro.VIDYA)) {
             val colore = Colori.di(p)

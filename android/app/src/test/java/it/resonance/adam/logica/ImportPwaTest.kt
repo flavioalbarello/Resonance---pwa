@@ -29,7 +29,8 @@ class ImportPwaTest {
        "memory":{"bio":{"corrente":"Dorme poco il giovedì","sedimento":[]},"air":"legacy stringa","vidya":{"corrente":"","sedimento":[]}},
        "styleMemory":"Risposte brevi.",
        "kernel":{"content":"Stato del sistema","version":2},
-       "ghostProfile":{"name":"Flavio","hardConstraints":[{"id":"x","testo":"Niente PhysioAlba in uscita","pilastro":"air"}],
+       "ghostProfile":{"name":"Flavio","hardConstraints":[{"id":"x","testo":"Niente PhysioAlba in uscita","pilastro":"air"},
+                          {"id":"g1","tipo":"identita-professionale","identita":"fisioterapista, PhysioAlba","testo":"Identità separata","pilastro":"air"}],
                        "cognitiveStyle":{"notes":"configurazionale","channel":"uditivo"},"freeform":{"motivation":"accelerare"}}
      }}
     """.trimIndent()
@@ -51,7 +52,8 @@ class ImportPwaTest {
         assertEquals("t1", p.documenti.first().idNodoPwa)
 
         assertEquals(setOf(Pilastro.BIO, Pilastro.AIR, Pilastro.ADAM), r.quaderni.map { it.pilastro }.toSet())
-        assertEquals("[AIR] Niente PhysioAlba in uscita", r.profilo!!.vincoli)
+        assertEquals("[AIR] Niente PhysioAlba in uscita\n[AIR] Identità separata", r.profilo!!.vincoli)
+        assertEquals("il marchio sì, la professione no", "PhysioAlba", r.profilo!!.nomiProtetti)
         assertEquals("Flavio", r.profilo!!.nome)
     }
 

@@ -25,7 +25,7 @@ data class Risposta(val testo: String, val chiamate: List<ChiamataStrumento>, va
 
 class ErroreModello(messaggio: String) : Exception(messaggio)
 
-class OpenRouter(
+open class OpenRouter(
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(90, TimeUnit.SECONDS)
@@ -34,7 +34,7 @@ class OpenRouter(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun completa(chiave: String, modello: String, messaggi: JsonArray, strumenti: JsonArray?, maxToken: Int = 1500): Risposta =
+    open suspend fun completa(chiave: String, modello: String, messaggi: JsonArray, strumenti: JsonArray?, maxToken: Int = 1500): Risposta =
         withContext(Dispatchers.IO) {
             val corpo = buildJsonObject {
                 put("model", modello)

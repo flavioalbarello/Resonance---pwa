@@ -36,6 +36,7 @@ import it.resonance.adam.dati.Profilo
 interface Sistema {
     fun chiediSensori()
     fun chiediNotifiche()
+    fun chiediCalendario()
     fun apriFile()
     fun salvaCopia()
 }
@@ -113,6 +114,20 @@ fun Setup(vm: Adam, sistema: Sistema) {
             if (vm.statoSensi.isNotBlank()) Tenue(vm.statoSensi)
         }
 
+        Scheda(Colori.air) {
+            Etichetta("Calendario e posta", Colori.air)
+            Riga("Il calendario del telefono, lo stesso che si sincronizza con Google Calendar: lo Shell legge gli impegni veri e ne propone di nuovi, che entrano solo se confermi.")
+            Riga("La posta non parte da qui: lo Shell prepara la mail, si apre come bozza nella tua app di posta e la invii tu.")
+            val cal = vm.mondo.calendario
+            vm.agenda // si rilegge dopo ogni permesso: leggerla qui ridisegna la riga sotto
+            Tenue(when {
+                cal.puoScrivere() -> "Calendario collegato: lettura e scrittura."
+                cal.puoLeggere() -> "Calendario in sola lettura: gli impegni proposti non potranno entrare."
+                else -> "Calendario non collegato."
+            })
+            Button({ sistema.chiediCalendario() }, colors = ButtonDefaults.buttonColors(containerColor = Colori.air)) { Text("Collega il calendario") }
+        }
+
         Scheda {
             Etichetta("Voce")
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -144,13 +159,16 @@ private fun ProfiloUi(vm: Adam, p: Profilo) {
     var stile by remember(p) { mutableStateOf(p.stile) }
     var motivazione by remember(p) { mutableStateOf(p.motivazione) }
     var vincoli by remember(p) { mutableStateOf(p.vincoli) }
+    var protetti by remember(p) { mutableStateOf(p.nomiProtetti) }
     Scheda(Colori.air) {
         Etichetta("Il Ghost", Colori.air)
         OutlinedTextField(nome, { nome = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(stile, { stile = it }, label = { Text("Come vuoi che ti parli") }, minLines = 2, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(motivazione, { motivazione = it }, label = { Text("Chi stai diventando") }, minLines = 2, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(vincoli, { vincoli = it }, label = { Text("Vincoli, uno per riga: [BIO] …") }, minLines = 3, modifier = Modifier.fillMaxWidth())
-        Button({ vm.salvaProfilo(p.copy(nome = nome, stile = stile, motivazione = motivazione, vincoli = vincoli)) },
+        OutlinedTextField(protetti, { protetti = it }, label = { Text("Nomi che non escono, separati da virgola") }, modifier = Modifier.fillMaxWidth())
+        Tenue("Un nome che ti identifica (un marchio, uno studio) non entra in una mail preparata dallo Shell, se non l'hai scritto tu in quel messaggio. La professione sì.")
+        Button({ vm.salvaProfilo(p.copy(nome = nome, stile = stile, motivazione = motivazione, vincoli = vincoli, nomiProtetti = protetti)) },
             colors = ButtonDefaults.buttonColors(containerColor = Colori.air)) { Text("Salva profilo") }
     }
 }

@@ -25,6 +25,14 @@ class RiassuntiTest {
         assertEquals("Nessun dato nuovo stanotte.", Riassunti.mattino(i(listOf(m(TipoMisura.SONNO, 400.0, 1)))))
     }
 
+    @Test fun mattinoApreConLAgendaDiOggi() {
+        val domani = Evento("Treno", oggi.plusDays(1).atTime(7, 0), oggi.plusDays(1).atTime(9, 0), false)
+        val e = Evento("Dentista", oggi.atTime(10, 30), oggi.atTime(11, 15), false)
+        val m = Riassunti.mattino(i().copy(agenda = AgendaLetta.Letta(oggi, 2, listOf(domani, e))))
+        assertEquals("Oggi in calendario: 10:30–11:15 Dentista", m.lines().first())
+        assertTrue(Riassunti.mattino(i().copy(agenda = AgendaLetta.Letta(oggi, 1, emptyList()))).startsWith("Nessun impegno in calendario oggi."))
+    }
+
     @Test fun seraElencaIRitualiNonTenuti() {
         val r = listOf(Rituale(id = 1, nome = "Stretching", pilastro = Pilastro.BIO, creato = 0), Rituale(id = 2, nome = "Scala", pilastro = Pilastro.VIDYA, creato = 0))
         val s = Riassunti.sera(i(rituali = r, spunte = listOf(Spunta(1, oggi.toString(), "m", 0))))

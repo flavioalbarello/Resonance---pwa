@@ -90,7 +90,36 @@ sealed class Proposta {
     data class StatoDelNodo(val percorso: String, val nodo: String, val stato: StatoNodo) : Proposta() {
         override fun descrizione() = "Nel percorso «$percorso», portare il nodo «$nodo» a «${stato.etichetta}»"
     }
+
+    // ── Verso il mondo: non passano dall'archivio ──
+
+    @Serializable @SerialName("crea_evento")
+    data class CreaEvento(
+        val titolo: String, val inizio: String, val durataMinuti: Int = 60,
+        val luogo: String = "", val note: String = "",
+    ) : Proposta() {
+        override fun descrizione(): String {
+            val (da, a) = Agenda.inizioFine(this)
+            val tutto = inizio.trim().length == 10
+            return "Mettere in calendario «$titolo», ${Agenda.quando(da, a, tutto, LocalDate.now())}" +
+                (if (luogo.isNotBlank()) " ($luogo)" else "") + (if (note.isNotBlank()) " — ${Testi.corto(note, 80)}" else "")
+        }
+    }
+
+    @Serializable @SerialName("scrivi_mail")
+    data class ScriviMail(val a: String, val oggetto: String, val corpo: String) : Proposta() {
+        override fun descrizione() = "Preparare una mail" + (if (a.isNotBlank()) " a $a" else " (destinatario lo scrivi tu)") +
+            " — «${Testi.corto(oggetto, 60)}»: «${Testi.corto(corpo, 160)}». Si apre come bozza nell'app di posta: parte solo se premi Invia tu."
+    }
 }
+
+// Ciò che il programma sa del turno e che il modello non può cambiare.
+data class Regole(
+    val nomiProtetti: List<String> = emptyList(),
+    // null = non controllare (per le prove); altrimenti gli indirizzi che il Ghost ha scritto davvero.
+    val indirizziNoti: Set<String>? = null,
+    val detteDalGhost: String = "",
+)
 
 sealed class Validazione {
     data class Lettura(val nome: String, val argomenti: JsonObject) : Validazione()
@@ -164,6 +193,22 @@ object Azioni {
             schema(listOf("nome", "pilastro"), mapOf("nome" to s("Nome breve"), "pilastro" to e(PILASTRI, "Pilastro"), "criterio" to s("Facoltativo, forma TIPO>=numero")))),
         Strumento("spunta_rituale", Effetto.SCRITTURA, "Propone di segnare un rituale come tenuto in un giorno.",
             schema(listOf("nome"), mapOf("nome" to s("Nome del rituale"), "giorno" to s("yyyy-MM-dd, se assente oggi")))),
+        Strumento("leggi_calendario", Effetto.LETTURA,
+            "Legge gli impegni veri dal calendario del telefono. Usalo prima di dire cosa c'è o non c'è in agenda.",
+            schema(emptyList(), mapOf("da" to s("yyyy-MM-dd, se assente oggi"), "giorni" to n("Quanti giorni, da 1 a 31; se assente 7")))),
+        Strumento("crea_evento", Effetto.SCRITTURA,
+            "Propone di mettere un impegno nel calendario del Ghost. Esiste solo dopo la sua conferma.",
+            schema(listOf("titolo", "inizio"), mapOf(
+                "titolo" to s("Nome breve dell'impegno"),
+                "inizio" to s("yyyy-MM-ddTHH:mm; solo yyyy-MM-dd se dura tutto il giorno"),
+                "durata_minuti" to n("Se assente 60"), "luogo" to s("Facoltativo"), "note" to s("Facoltative"),
+            ))),
+        Strumento("scrivi_mail", Effetto.SCRITTURA,
+            "Propone una mail. Dopo la conferma si apre come bozza nell'app di posta e la invia il Ghost: non dire mai che è partita.",
+            schema(listOf("oggetto", "corpo"), mapOf(
+                "a" to s("Indirizzo esatto come l'ha scritto il Ghost; lascia vuoto se non te l'ha dato"),
+                "oggetto" to s("Oggetto"), "corpo" to s("Testo completo"),
+            ))),
         Strumento("stato_nodo", Effetto.SCRITTURA, "Propone di cambiare lo stato di un nodo di un percorso.",
             schema(listOf("percorso", "nodo", "stato"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del nodo"), "stato" to e(STATI, "Nuovo stato")))),
     )
@@ -184,10 +229,10 @@ object Azioni {
         runCatching { el.jsonPrimitive.doubleOrNull ?: el.jsonPrimitive.content.replace(',', '.').toDoubleOrNull() }.getOrNull()
     }
 
-    fun valida(nome: String, argomenti: JsonObject, oggi: LocalDate): Validazione {
+    fun valida(nome: String, argomenti: JsonObject, oggi: LocalDate, regole: Regole = Regole()): Validazione {
         val st = strumenti.find { it.nome == nome } ?: return Validazione.Rifiutata("strumento sconosciuto: $nome")
         if (st.effetto == Effetto.LETTURA) return Validazione.Lettura(nome, argomenti)
-        return try { Validazione.Scrittura(scrittura(nome, argomenti, oggi)) }
+        return try { Validazione.Scrittura(scrittura(nome, argomenti, oggi, regole)) }
         catch (e: Rifiuto) { Validazione.Rifiutata(e.message ?: "argomenti non validi") }
     }
 
@@ -203,7 +248,7 @@ object Azioni {
         return g.toString()
     }
 
-    private fun scrittura(nome: String, a: JsonObject, oggi: LocalDate): Proposta = when (nome) {
+    private fun scrittura(nome: String, a: JsonObject, oggi: LocalDate, regole: Regole): Proposta = when (nome) {
         "registra_misura" -> {
             val tipo = a.testo("tipo")?.uppercase()?.let { t -> TipoMisura.entries.find { it.name == t } }
                 ?: rifiuta("tipo di misura sconosciuto (usa ${TIPI.joinToString("/")})")
@@ -249,6 +294,29 @@ object Azioni {
         "stato_nodo" -> {
             val stato = a.testo("stato")?.uppercase()?.let { s -> StatoNodo.entries.find { it.name == s } } ?: rifiuta("stato sconosciuto (usa ${STATI.joinToString("/")})")
             Proposta.StatoDelNodo(a.testo("percorso") ?: rifiuta("percorso mancante"), a.testo("nodo") ?: rifiuta("nodo mancante"), stato)
+        }
+        "crea_evento" -> {
+            val titolo = a.testo("titolo") ?: rifiuta("titolo mancante")
+            if (titolo.length > 100) rifiuta("il titolo è un testo, non un nome: accorcialo e metti il resto nelle note")
+            val grezzo = a.testo("inizio") ?: rifiuta("inizio mancante")
+            val (inizio, tutto) = Agenda.interpretaInizio(grezzo) ?: rifiuta("inizio non leggibile: usa yyyy-MM-ddTHH:mm, o yyyy-MM-dd per tutto il giorno")
+            if (inizio.toLocalDate().isBefore(oggi)) rifiuta("il ${inizio.toLocalDate()} è passato: il calendario è per ciò che viene")
+            if (inizio.toLocalDate().isAfter(oggi.plusYears(2))) rifiuta("il ${inizio.toLocalDate()} è oltre due anni: controlla l'anno")
+            val durata = intero(a, "durata_minuti", 60)
+            if (!tutto && durata !in 5..1440) rifiuta("durata di $durata minuti fuori dall'intervallo 5–1440")
+            Proposta.CreaEvento(titolo, if (tutto) inizio.toLocalDate().toString() else inizio.toString(), if (tutto) 0 else durata,
+                a.testo("luogo") ?: "", a.testo("note") ?: "")
+        }
+        "scrivi_mail" -> {
+            val dest = a.testo("a") ?: ""
+            if (dest.isNotEmpty() && !Uscita.indirizzoValido(dest)) rifiuta("«$dest» non è un indirizzo: lascia vuoto e lo scrive il Ghost")
+            if (dest.isNotEmpty() && regole.indirizziNoti != null && dest.lowercase() !in regole.indirizziNoti)
+                rifiuta("il Ghost non ha mai scritto l'indirizzo $dest: non indovinarlo, chiediglielo o lascia vuoto")
+            val oggetto = a.testo("oggetto") ?: rifiuta("oggetto mancante")
+            val corpo = a.testo("corpo") ?: rifiuta("corpo vuoto")
+            val v = Uscita.violazioni("$dest\n$oggetto\n$corpo", regole.nomiProtetti, regole.detteDalGhost)
+            if (v.isNotEmpty()) rifiuta("la mail contiene ${v.joinToString { "«$it»" }}, un nome che il Ghost non fa uscire: riscrivila senza")
+            Proposta.ScriviMail(dest, oggetto, corpo)
         }
         else -> rifiuta("scrittura non prevista: $nome")
     }

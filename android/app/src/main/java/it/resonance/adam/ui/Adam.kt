@@ -23,9 +23,11 @@ import it.resonance.adam.dati.StatoNodo
 import it.resonance.adam.dati.StatoProposta
 import it.resonance.adam.dati.TipoMisura
 import it.resonance.adam.dati.Voce
+import it.resonance.adam.logica.AgendaLetta
 import it.resonance.adam.logica.ImportPwa
 import it.resonance.adam.logica.Istantanea
 import it.resonance.adam.logica.Stabilita
+import it.resonance.adam.mondo.MondoAndroid
 import it.resonance.adam.sensi.Sensi
 import it.resonance.adam.voce.Ascolto
 import it.resonance.adam.voce.ComandiVocali
@@ -48,7 +50,8 @@ class Adam(app: Application) : AndroidViewModel(app) {
     val archivio = Archivio(db)
     val impostazioni = Impostazioni(app)
     val sensi = Sensi(app)
-    private val shell = Shell(archivio, impostazioni)
+    val mondo = MondoAndroid(app)
+    private val shell = Shell(archivio, impostazioni, mondo = mondo)
 
     private fun <T> Flow<List<T>>.stato(): StateFlow<List<T>> = stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
@@ -81,8 +84,14 @@ class Adam(app: Application) : AndroidViewModel(app) {
     var pensa by mutableStateOf(false)
     var avviso by mutableStateOf<String?>(null)
     var statoSensi by mutableStateOf("")
+    var agenda by mutableStateOf<AgendaLetta>(AgendaLetta.NonLetta)
 
-    fun vai(s: Schermata) { schermata = s; percorsoAperto = null; documentoAperto = null }
+    fun vai(s: Schermata) {
+        schermata = s; percorsoAperto = null; documentoAperto = null
+        if (s == Schermata.SPECCHIO) leggiAgenda()
+    }
+
+    fun leggiAgenda() = viewModelScope.launch { agenda = mondo.agenda(LocalDate.now(), 2) }
 
     fun indietro(): Boolean = when {
         documentoAperto != null -> { documentoAperto = null; true }
@@ -104,7 +113,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun conferma(m: Messaggio) = viewModelScope.launch { avviso = shell.conferma(m.id) }
+    fun conferma(m: Messaggio) = viewModelScope.launch { avviso = shell.conferma(m.id); leggiAgenda() }
     fun rifiuta(m: Messaggio) = viewModelScope.launch { shell.rifiuta(m.id) }
 
     // ── Voce: dettatura (come Gemini: testo nella casella) e auto (mani libere) ──
@@ -183,7 +192,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
         val proposte = esito.proposte.mapNotNull { db.messaggi().per(it)?.testo }
         val testo = buildString {
             if (impostazioni.leggiRisposteInAuto) append(esito.testo)
-            if (proposte.isNotEmpty()) append("\nPropongo: ${proposte.joinToString(". ")}. Confermi?")
+            if (proposte.isNotEmpty()) append("\nPropongo: ${proposte.joinToString(". ") { it.trimEnd('.') }}. Confermi?")
         }
         parla(testo)
     }

@@ -106,6 +106,8 @@ class Archivio(val db: Db) {
             db.percorsi().aggiornaNodo(n.copy(stato = p.stato))
             Esecuzione(true, "«${per.titolo}» › ${n.etichetta}: ${n.stato.etichetta} → ${p.stato.etichetta}")
         }
+        // Calendario e posta stanno fuori dall'archivio: li esegue il Mondo (cervello/Mondo.kt).
+        is Proposta.CreaEvento, is Proposta.ScriviMail -> Esecuzione(false, "Non eseguito: calendario e posta non sono nell'archivio")
     }
 
     // ── Legge 14: ogni sovrascrittura lascia la versione precedente ──
@@ -202,6 +204,11 @@ class Archivio(val db: Db) {
         }
         val profiloImportato = i.profilo != null && (db.profilo().leggi()?.let { it.nome.isBlank() && it.vincoli.isBlank() } ?: true)
         if (profiloImportato) db.profilo().salva(i.profilo!!)
+        // Un profilo già scritto non si tocca, tranne i nomi protetti se mancano: chi ha importato prima della V2.1 li riceve.
+        else db.profilo().leggi()?.let { attuale ->
+            val nomi = i.profilo?.nomiProtetti.orEmpty()
+            if (attuale.nomiProtetti.isBlank() && nomi.isNotBlank()) db.profilo().salva(attuale.copy(nomiProtetti = nomi))
+        }
         EsitoImport(misure, voci, percorsi, documenti, quaderni, profiloImportato, i.scartati)
     }
 

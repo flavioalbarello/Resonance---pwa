@@ -22,6 +22,8 @@ import it.resonance.adam.dati.StatoNodo
 import it.resonance.adam.dati.StatoProposta
 import it.resonance.adam.dati.TipoMisura
 import it.resonance.adam.dati.Voce
+import it.resonance.adam.logica.AgendaLetta
+import it.resonance.adam.logica.Evento
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -45,6 +47,7 @@ class SchermateTest {
     private val sistema = object : Sistema {
         override fun chiediSensori() {}
         override fun chiediNotifiche() {}
+        override fun chiediCalendario() {}
         override fun apriFile() {}
         override fun salvaCopia() {}
     }
@@ -92,12 +95,19 @@ class SchermateTest {
     @Test fun leSchermateSiDisegnanoConIDatiVeri() {
         val vm = Adam(RuntimeEnvironment.getApplication())
         semina(vm)
+        val oggi = LocalDate.now()
+        vm.agenda = AgendaLetta.Letta(oggi, 2, listOf(
+            Evento("Dentista", oggi.atTime(10, 30), oggi.atTime(11, 15), false, "Via Roma 12"),
+            Evento("Prove con la band", oggi.atTime(21, 0), oggi.atTime(23, 0), false),
+            Evento("Ferie", oggi.plusDays(1).atStartOfDay(), oggi.plusDays(2).atStartOfDay(), true),
+        ))
         regola.setContent { TemaResonance { App(vm, sistema) { it() } } }
         regola.waitUntil(10_000) { vm.istantanea.value.misure.size >= 90 && vm.istantanea.value.rituali.size == 2 && vm.messaggi.value.size == 6 }
 
         scatta("1-specchio")
         regola.onNodeWithText("Stabilità mantenuta", substring = true, ignoreCase = true).assertExists()
         regola.onNodeWithText("Entrate che non vendono tempo", substring = true).assertExists()
+        regola.onNodeWithText("10:30–11:15 Dentista (Via Roma 12)").assertExists()
 
         regola.onNodeWithTag("ancora").performClick()
         regola.mainClock.advanceTimeBy(600)

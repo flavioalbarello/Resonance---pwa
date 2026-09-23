@@ -10,7 +10,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-class Impostazioni(context: Context) {
+open class Impostazioni(context: Context) {
     private val p = context.getSharedPreferences("impostazioni", Context.MODE_PRIVATE)
 
     var modello: String
@@ -38,7 +38,7 @@ class Impostazioni(context: Context) {
         get() = p.getBoolean("leggiAuto", true)
         set(v) = p.edit().putBoolean("leggiAuto", v).apply()
 
-    var chiave: String
+    open var chiave: String
         get() = p.getString("chiave", null)?.let { runCatching { Segreti.decifra(it) }.getOrNull() }.orEmpty()
         set(v) = p.edit().apply { if (v.isBlank()) remove("chiave") else putString("chiave", Segreti.cifra(v.trim())) }.apply()
 

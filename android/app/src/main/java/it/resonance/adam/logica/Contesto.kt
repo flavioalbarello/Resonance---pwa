@@ -25,6 +25,7 @@ data class Istantanea(
     val nodi: List<Nodo>,
     val documenti: List<Documento>,
     val quaderni: List<Quaderno>,
+    val agenda: AgendaLetta = AgendaLetta.NonLetta,
 )
 
 data class StatoRituale(val rituale: Rituale, val tenuta: Tenuta, val giorni: Set<LocalDate>)
@@ -71,6 +72,8 @@ object Contesto {
         appendLine("- I numeri qui sotto li ha calcolati il programma. Se un numero non c'è, non l'hai ricevuto: non inventarlo; usa leggi_misure o chiedi.")
         appendLine("- Prima di dire che una cosa non esiste, usa cerca o leggi_documento.")
         appendLine("- Quando impari qualcosa di stabile sul Ghost, proponi aggiorna_quaderno.")
+        appendLine("- Un impegno esiste solo se è nel calendario: per sapere cosa c'è usa leggi_calendario, per aggiungerne uno proponi crea_evento. Una proposta annullata non è un impegno.")
+        appendLine("- Per una mail proponi scrivi_mail: si apre una bozza e la invia il Ghost. Non dire mai che una mail è partita. L'indirizzo lo usi solo se il Ghost l'ha scritto.")
         appendLine("- I vincoli dichiarati valgono sempre.")
         appendLine()
         appendLine("STILE")
@@ -82,6 +85,11 @@ object Contesto {
         for (p in listOf(Pilastro.BIO, Pilastro.AIR, Pilastro.VIDYA)) {
             appendLine("${p.name}:")
             righeEsiti(i, p).forEach { appendLine("- $it") }
+        }
+        if (i.agenda != AgendaLetta.NonLetta) {
+            appendLine()
+            appendLine("AGENDA (letta ora dal calendario del telefono)")
+            appendLine(Agenda.testo(i.agenda, i.oggi))
         }
         val rituali = statoRituali(i)
         appendLine()

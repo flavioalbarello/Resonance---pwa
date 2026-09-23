@@ -2,10 +2,17 @@ package it.resonance.adam.cervello
 
 import it.resonance.adam.Impostazioni
 import it.resonance.adam.dati.Archivio
+import it.resonance.adam.dati.Esecuzione
 import it.resonance.adam.dati.Messaggio
 import it.resonance.adam.dati.Ruolo
 import it.resonance.adam.dati.StatoProposta
 import it.resonance.adam.dati.TipoMisura
+import it.resonance.adam.logica.Agenda
+import it.resonance.adam.logica.AgendaLetta
+import it.resonance.adam.logica.Giorni
+import it.resonance.adam.logica.Proposta
+import it.resonance.adam.logica.Regole
+import it.resonance.adam.logica.Uscita
 import it.resonance.adam.logica.Azioni
 import it.resonance.adam.logica.Contesto
 import it.resonance.adam.logica.Istantanea
@@ -21,7 +28,7 @@ import kotlinx.serialization.json.put
 import java.time.LocalDate
 import java.time.YearMonth
 
-suspend fun Archivio.istantanea(oggi: LocalDate = LocalDate.now()) = Istantanea(
+suspend fun Archivio.istantanea(oggi: LocalDate = LocalDate.now(), agenda: AgendaLetta = AgendaLetta.NonLetta) = Istantanea(
     oggi = oggi,
     profilo = db.profilo().leggi(),
     misure = db.misure().dal(oggi.minusDays(120).toString()),
@@ -31,12 +38,14 @@ suspend fun Archivio.istantanea(oggi: LocalDate = LocalDate.now()) = Istantanea(
     nodi = db.percorsi().elencoNodi(),
     documenti = db.percorsi().elencoDocumenti(),
     quaderni = db.quaderni().elenco(),
+    agenda = agenda,
 )
 
 class Shell(
     private val archivio: Archivio,
     private val impostazioni: Impostazioni,
     private val client: OpenRouter = OpenRouter(),
+    private val mondo: Mondo? = null,
 ) {
     data class Esito(val testo: String, val proposte: List<Long>)
 
@@ -72,7 +81,9 @@ class Shell(
         controllaSpesa()?.let { nota(it); return Esito(it, emptyList()) }
 
         val oggi = LocalDate.now()
-        val sistema = Contesto.sistema(archivio.istantanea(oggi))
+        val istantanea = archivio.istantanea(oggi, mondo?.agenda(oggi, 2) ?: AgendaLetta.NonLetta)
+        val sistema = Contesto.sistema(istantanea)
+        val regole = regole(istantanea.profilo?.nomiProtetti.orEmpty(), testoGhost)
         val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", sistema) })
         lavoro += storia(archivio.db.messaggi().ultimi(24))
         val proposte = mutableListOf<Long>()
@@ -101,7 +112,7 @@ class Shell(
                 }
                 for (c in r.chiamate) {
                     val args = runCatching { Json.parseToJsonElement(c.argomenti).jsonObject }.getOrElse { JsonObject(emptyMap()) }
-                    val risultato = when (val v = Azioni.valida(c.nome, args, oggi)) {
+                    val risultato = when (val v = Azioni.valida(c.nome, args, oggi, regole)) {
                         is Validazione.Lettura -> lettura(v)
                         is Validazione.Rifiutata -> "Rifiutata dal programma: ${v.motivo}. Correggi e riprova, oppure chiedi al Ghost."
                         is Validazione.Scrittura -> {
@@ -110,7 +121,7 @@ class Shell(
                                 ruolo = Ruolo.PROPOSTA, testo = descr, istante = ora,
                                 proposta = Azioni.codifica(v.proposta), stato = StatoProposta.IN_ATTESA,
                             ))
-                            "Proposta mostrata al Ghost, in attesa della sua conferma: $descr. Non è ancora eseguita."
+                            "Proposta mostrata al Ghost, in attesa della sua conferma: ${descr.trimEnd('.')}. Non è ancora eseguita."
                         }
                     }
                     lavoro += buildJsonObject {
@@ -133,12 +144,31 @@ class Shell(
 
     companion object { const val GIRI_MASSIMI = 4 }
 
+    // Gli indirizzi validi sono quelli che il Ghost ha scritto: in chat, nel profilo, nei quaderni. Il modello non ne inventa.
+    private suspend fun regole(nomiProtetti: String, testoGhost: String): Regole {
+        val scritti = buildString {
+            archivio.db.messaggi().elenco().filter { it.ruolo == Ruolo.GHOST }.forEach { appendLine(it.testo) }
+            archivio.db.quaderni().elenco().forEach { appendLine(it.testo) }
+            archivio.db.profilo().leggi()?.let { appendLine(it.vincoli); appendLine(it.motivazione) }
+        }
+        return Regole(Uscita.nomi(nomiProtetti), Uscita.indirizzi(scritti), testoGhost)
+    }
+
     private suspend fun lettura(v: Validazione.Lettura): String = when (v.nome) {
         "leggi_documento" -> archivio.leggiDocumento(Azioni.stringa(v.argomenti, "titolo").orEmpty())
         "cerca" -> archivio.cerca(Azioni.stringa(v.argomenti, "testo").orEmpty())
         "leggi_misure" -> {
             val tipo = Azioni.stringa(v.argomenti, "tipo")?.uppercase()?.let { t -> TipoMisura.entries.find { it.name == t } }
             if (tipo == null) "Tipo di misura sconosciuto." else archivio.leggiMisure(tipo, Azioni.intero(v.argomenti, "giorni", 30))
+        }
+        "leggi_calendario" -> {
+            val oggi = LocalDate.now()
+            val da = Giorni.interpreta(Azioni.stringa(v.argomenti, "da"), oggi)
+            when {
+                mondo == null -> "Il calendario non è raggiungibile da qui."
+                da == null -> "Data non leggibile: usa yyyy-MM-dd."
+                else -> Agenda.testo(mondo.agenda(da, Azioni.intero(v.argomenti, "giorni", 7).coerceIn(1, 31)), oggi)
+            }
         }
         else -> "Lettura non prevista."
     }
@@ -147,7 +177,11 @@ class Shell(
         val m = archivio.db.messaggi().per(idMessaggio) ?: return "Proposta non trovata."
         if (m.stato != StatoProposta.IN_ATTESA) return "Questa proposta è già stata decisa."
         val p = archivio.proposta(m) ?: return "Proposta illeggibile."
-        val e = archivio.esegui(p)
+        val e = when (p) {
+            is Proposta.CreaEvento, is Proposta.ScriviMail ->
+                mondo?.esegui(p) ?: Esecuzione(false, "Non eseguito: calendario e posta si usano dall'app aperta")
+            else -> archivio.esegui(p)
+        }
         archivio.db.messaggi().aggiorna(m.copy(stato = if (e.riuscita) StatoProposta.ESEGUITA else StatoProposta.FALLITA))
         archivio.db.messaggi().inserisci(Messaggio(ruolo = if (e.riuscita) Ruolo.RICEVUTA else Ruolo.NOTA, testo = e.ricevuta, istante = ora))
         return e.ricevuta
@@ -161,7 +195,8 @@ class Shell(
     // Adam parla per primo: una chiamata corta, senza strumenti. Se non si può, il battito usa il testo del programma.
     suspend fun parlaPerPrimo(momento: String, riassunto: String): String? {
         if (controllaSpesa() != null) return null
-        val sistema = Contesto.sistema(archivio.istantanea())
+        val oggi = LocalDate.now()
+        val sistema = Contesto.sistema(archivio.istantanea(oggi, mondo?.agenda(oggi, 1) ?: AgendaLetta.NonLetta))
         val richiesta = "È il momento: $momento. Dati del programma per questo momento:\n$riassunto\n\n" +
             "Scrivi al Ghost UN messaggio di notifica: al massimo due righe, nessun saluto di rito. " +
             "Nomina un solo fatto dai dati e una sola cosa concreta da fare o da notare. Non inventare numeri."

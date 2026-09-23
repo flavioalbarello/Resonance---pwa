@@ -1,5 +1,6 @@
 package it.resonance.adam.dati
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -173,4 +174,6 @@ data class Profilo(
     val motivazione: String = "",
     // Un vincolo per riga, "[BIO] testo".
     val vincoli: String = "",
+    // Nomi che identificano il Ghost e non escono dal telefono senza un suo gesto (es. il marchio professionale).
+    @ColumnInfo(defaultValue = "") val nomiProtetti: String = "",
 )
