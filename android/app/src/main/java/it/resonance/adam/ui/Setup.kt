@@ -38,6 +38,7 @@ interface Sistema {
     fun chiediNotifiche()
     fun chiediCalendario()
     fun allega()
+    fun lavoroInBackground()
     fun scatta()
     fun apriFile()
     fun salvaCopia()
@@ -130,6 +131,10 @@ fun Setup(vm: Adam, sistema: Sistema) {
                 Text("  Il messaggio lo scrive il modello (se no, solo i numeri)")
             }
             OutlinedButton({ sistema.chiediNotifiche() }) { Text("Permetti le notifiche") }
+            val libero = remember(vm.avviso) { vm.liberoDallaBatteria() }
+            Tenue(if (libero) "Resonance può lavorare in secondo piano: risposte e battito arrivano anche a schermo spento."
+                else "Il telefono può fermare Resonance in secondo piano: le risposte a schermo spento e il battito possono non arrivare.")
+            if (!libero) OutlinedButton({ sistema.lavoroInBackground() }) { Text("Lascia lavorare in secondo piano") }
         }
 
         Scheda(Colori.bio) {

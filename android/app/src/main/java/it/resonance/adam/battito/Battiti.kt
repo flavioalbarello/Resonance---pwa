@@ -80,7 +80,7 @@ object Battiti {
         })
     }
 
-    fun notifica(context: Context, id: Int, titolo: String, testo: String, dettaglio: String, schermata: String) {
+    fun notifica(context: Context, id: Int, titolo: String, testo: String, dettaglio: String, schermata: String, canale: String = CANALE) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
             android.os.Build.VERSION.SDK_INT >= 33) return
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -89,7 +89,7 @@ object Battiti {
         }
         val pi = PendingIntent.getActivity(context, id, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val completo = if (dettaglio.isNotBlank() && dettaglio != testo) "$testo\n\n$dettaglio" else testo
-        val n = NotificationCompat.Builder(context, CANALE)
+        val n = NotificationCompat.Builder(context, canale)
             .setSmallIcon(R.drawable.ic_notifica)
             .setContentTitle(titolo)
             .setContentText(testo.lineSequence().first())

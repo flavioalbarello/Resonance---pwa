@@ -188,6 +188,17 @@ class ShellTest {
         imp.modello = it.resonance.adam.Impostazioni.MODELLO_PREDEFINITO
     }
 
+    // Il turno gira come lavoro di sistema: se il sistema lo interrompe e lo rilancia, non si risponde due volte.
+    @Test fun unMessaggioGiaRispostoNonSiRispondeDiNuovo() = runBlocking {
+        val modello = FintoModello(testo("Prima risposta."))
+        val shell = Shell(archivio, imp, modello, FintoMondo())
+        val id = shell.registra("ciao")
+        assertEquals("Prima risposta.", shell.rispondi(id).testo)
+        assertEquals("Prima risposta.", shell.rispondi(id).testo)
+        assertEquals(1, modello.modelli.size)
+        assertEquals(1, db.messaggi().elenco().count { it.ruolo == Ruolo.SHELL })
+    }
+
     // ── Scelta automatica del motore ──
 
     private fun conScelta(corpo: suspend () -> Unit) = runBlocking {

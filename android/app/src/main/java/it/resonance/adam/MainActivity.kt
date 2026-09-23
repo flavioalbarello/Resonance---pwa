@@ -15,6 +15,8 @@ import androidx.core.content.IntentCompat
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.lifecycleScope
 import it.resonance.adam.battito.Battiti
+import it.resonance.adam.battito.Primopiano
+import it.resonance.adam.battito.TurnoWorker
 import it.resonance.adam.ui.Adam
 import it.resonance.adam.ui.App
 import it.resonance.adam.ui.Schermata
@@ -93,6 +95,11 @@ class MainActivity : ComponentActivity() {
             runCatching { fotocamera.launch(FileProvider.getUriForFile(this@MainActivity, "$packageName.allegati", f)) }
                 .onFailure { vm.avviso = "Fotocamera non disponibile: ${it.message}"; f.delete(); foto = null }
         }
+        override fun lavoroInBackground() {
+            // Alcuni telefoni chiudono le app in secondo piano: senza questa eccezione il battito e le risposte possono non arrivare.
+            runCatching { startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:$packageName"))) }
+                .onFailure { startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+        }
         override fun apriFile() = apri.launch(arrayOf("application/json", "text/plain", "*/*"))
         override fun salvaCopia() = salva.launch("resonance-copia-${LocalDate.now()}.json")
     }
@@ -105,10 +112,21 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Battiti.creaCanale(this)
+        TurnoWorker.creaCanali(this)
         Battiti.programma(this)
         if (savedInstanceState == null) apriDa(intent)  // dopo una rotazione l'intent condiviso non va riletto
         setContent { TemaResonance { App(vm, sistema, ::conMicrofono) } }
         if (vm.sensi.disponibile()) lifecycleScope.launch { runCatching { if (vm.sensi.concessi().isNotEmpty()) vm.leggiSensi() } }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        Primopiano.visibile = true
+    }
+
+    override fun onStop() {
+        Primopiano.visibile = false
+        super.onStop()
     }
 
     override fun onResume() {

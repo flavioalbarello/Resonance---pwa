@@ -7,7 +7,11 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import it.resonance.adam.Impostazioni
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import it.resonance.adam.battito.Battiti
+import it.resonance.adam.battito.TurnoWorker
+import kotlinx.coroutines.flow.first
 import it.resonance.adam.cervello.Shell
 import it.resonance.adam.dati.Archivio
 import it.resonance.adam.dati.Db
@@ -125,6 +129,18 @@ class Adam(app: Application) : AndroidViewModel(app) {
     }
 
     // ── Shell ──
+    // La risposta la prepara un lavoro di sistema (battito/Turno.kt): continua a schermo spento e ad app chiusa.
+    // `pensa` segue quel lavoro, anche se l'app è stata riaperta nel frattempo.
+    private val lavori = runCatching { WorkManager.getInstance(app) }.getOrNull()
+
+    init {
+        lavori?.let { wm ->
+            viewModelScope.launch {
+                wm.getWorkInfosForUniqueWorkFlow(TurnoWorker.NOME).collect { infos -> pensa = infos.any { !it.state.isFinished } }
+            }
+        }
+    }
+
     fun invia(testo: String = input) {
         val allegati = inAllegato.toList()
         val t = testo.trim().ifEmpty { if (allegati.isNotEmpty()) "Guarda l'allegato." else "" }
@@ -133,9 +149,18 @@ class Adam(app: Application) : AndroidViewModel(app) {
         inAllegato.clear()
         pensa = true
         viewModelScope.launch {
-            val esito = shell.turno(t, allegati)
-            pensa = false
-            if (ascolta == Ascolta.AUTO) rispondiAVoce(esito)
+            val id = shell.registra(t, allegati)
+            val wm = lavori
+            if (wm == null) {
+                val esito = shell.rispondi(id)
+                pensa = false
+                if (ascolta == Ascolta.AUTO) rispondiAVoce(esito)
+                return@launch
+            }
+            val r = TurnoWorker.accoda(getApplication(), id)
+            val fine = wm.getWorkInfoByIdFlow(r.id).first { it?.state?.isFinished == true }
+            if (ascolta == Ascolta.AUTO && fine?.state == WorkInfo.State.SUCCEEDED) rispondiAVoce(Shell.Esito(
+                fine.outputData.getString(TurnoWorker.TESTO).orEmpty(), fine.outputData.getLongArray(TurnoWorker.PROPOSTE)?.toList().orEmpty()))
         }
     }
 
@@ -299,6 +324,10 @@ class Adam(app: Application) : AndroidViewModel(app) {
     }
 
     fun riprogrammaBattito() = Battiti.programma(getApplication())
+
+    fun liberoDallaBatteria() = runCatching {
+        getApplication<Application>().getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(getApplication<Application>().packageName)
+    }.getOrDefault(false)
 
     fun speso() = spesaMese.value?.dollari ?: 0.0
 

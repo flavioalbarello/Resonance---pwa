@@ -84,6 +84,7 @@ interface MessaggiDao {
     @Insert suspend fun inserisci(m: Messaggio): Long
     @Update suspend fun aggiorna(m: Messaggio)
     @Query("SELECT * FROM messaggi") suspend fun elenco(): List<Messaggio>
+    @Query("SELECT * FROM messaggi WHERE id > :id ORDER BY id") suspend fun dopo(id: Long): List<Messaggio>
 }
 
 @Dao

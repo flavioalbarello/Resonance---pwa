@@ -70,6 +70,15 @@ e risponde LEGGERO o PIENO. LEGGERO va al modello leggero (predefinito Gemini 3.
 Nel dubbio, senza risposta in 6 secondi, o con documenti e testi lunghi (li decide il programma senza chiedere):
 PIENO. Sotto ogni risposta: modello, motore, costo del turno. Serve a scegliere Kimi o Gemini con un numero.
 
+## Il turno non dipende dallo schermo (23/09/2026)
+
+Il messaggio del Ghost si salva subito (`Shell.registra`); la risposta la prepara `battito/Turno.kt`, un lavoro
+WorkManager accelerato con la rete garantita: continua a schermo spento e ad app chiusa, parte appena c'è rete.
+Se il Ghost non è nell'app quando finisce, notifica «Lo Shell ha risposto» (canale «Risposte dello Shell»).
+Rilanciato dal sistema dopo un'interruzione, non risponde due volte allo stesso messaggio.
+Setup → Battito: «Lascia lavorare in secondo piano» toglie Resonance dalle restrizioni della batteria, perché
+alcuni telefoni chiudono le app in secondo piano anche con WorkManager.
+
 ## Mappa
 
 ```
@@ -122,6 +131,7 @@ Maven Central qui limita le richieste: il progetto usa il mirror di Google, anch
 | Spostare/togliere su telefono vero | Provata la decisione (quale impegno, quanto, chi è coinvolto) con un calendario finto; le scritture su `CalendarContract` (eccezioni, UNTIL) non sono provate qui |
 | Allegati: file | Le immagini ridotte restano in `files/allegati` e non entrano nella copia (Setup → Salva una copia): dopo un ripristino il messaggio dice che c'erano, la miniatura no. Non si cancellano mai da sole |
 | Allegati: sul telefono vero | Provati: riduzione immagine (strada BitmapFactory), testo, docx, messaggio al modello, cambio di modello. Non provati qui: ImageDecoder (foto ruotate), PdfRenderer, fotocamera, condivisione da altre app |
+| Turno in secondo piano | Provato: registra/rispondi e il non rispondere due volte. Non provati qui: il lavoro vero a schermo spento, la notifica, il servizio in primo piano sui telefoni prima di Android 12 |
 | Calendario scelto | Il principale dell'account Google, se no il primo scrivibile. La ricevuta ne dice il nome; non si sceglie ancora in Setup |
 | Database | Versione 2 (`nomiProtetti`), migrazione automatica provata in `MigrazioneTest` sopra la 1 della 2.0.144 |
 | R8 spento | APK da 30 MB. La minificazione va accesa solo dopo una prova su telefono vero |

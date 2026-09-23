@@ -50,6 +50,7 @@ class SchermateTest {
         override fun chiediNotifiche() {}
         override fun chiediCalendario() {}
         override fun allega() {}
+        override fun lavoroInBackground() {}
         override fun scatta() {}
         override fun apriFile() {}
         override fun salvaCopia() {}

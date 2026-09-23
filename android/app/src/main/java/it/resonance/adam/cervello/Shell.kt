@@ -81,8 +81,18 @@ class Shell(
         buildJsonObject { put("role", ruolo); put("content", testo) }
     }
 
-    suspend fun turno(testoGhost: String, allegati: List<Allegato> = emptyList()): Esito {
-        val idGhost = archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.GHOST, testo = testoGhost, istante = ora, allegati = Allegati.codifica(allegati)))
+    suspend fun turno(testoGhost: String, allegati: List<Allegato> = emptyList()): Esito = rispondi(registra(testoGhost, allegati))
+
+    // Il messaggio del Ghost si salva subito; la risposta può arrivare dopo, anche ad app chiusa (battito/Turno.kt).
+    suspend fun registra(testoGhost: String, allegati: List<Allegato> = emptyList()): Long =
+        archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.GHOST, testo = testoGhost, istante = ora, allegati = Allegati.codifica(allegati)))
+
+    suspend fun rispondi(idGhost: Long): Esito {
+        val m = archivio.db.messaggi().per(idGhost) ?: return Esito("", emptyList())
+        // Se il sistema interrompe il lavoro e lo rilancia, un messaggio già risposto non si risponde due volte.
+        archivio.db.messaggi().dopo(idGhost).firstOrNull { it.ruolo == Ruolo.SHELL }?.let { return Esito(it.testo, emptyList()) }
+        val testoGhost = m.testo
+        val allegati = Allegati.decodifica(m.allegati)
         controllaSpesa()?.let { nota(it); return Esito(it, emptyList()) }
 
         val oggi = LocalDate.now()
