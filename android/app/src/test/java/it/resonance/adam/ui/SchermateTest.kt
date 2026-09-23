@@ -49,6 +49,8 @@ class SchermateTest {
         override fun chiediSensori() {}
         override fun chiediNotifiche() {}
         override fun chiediCalendario() {}
+        override fun allega() {}
+        override fun scatta() {}
         override fun apriFile() {}
         override fun salvaCopia() {}
     }
@@ -85,7 +87,13 @@ class SchermateTest {
         db.quaderni().salva(Quaderno(Pilastro.BIO, "Il giovedì dorme meno: turno lungo.\nCamminata al mattino.", 0))
         db.voci().inserisci(Voce(pilastro = Pilastro.BIO, giorno = g(1), testo = "Schiena rigida al mattino, meglio dopo la camminata.", fonte = "manuale", creato = 0, aggiornato = 0))
         val t = System.currentTimeMillis()
-        db.messaggi().inserisci(Messaggio(ruolo = Ruolo.GHOST, testo = "stamattina 83,1 e ho suonato 40 minuti", istante = t))
+        val foto = File(RuntimeEnvironment.getApplication().cacheDir, "scaletta.jpg").also { f ->
+            val b = android.graphics.Bitmap.createBitmap(600, 400, android.graphics.Bitmap.Config.ARGB_8888)
+            android.graphics.Canvas(b).apply { drawColor(0xFF4F6BFF.toInt()); drawCircle(300f, 200f, 120f, android.graphics.Paint().apply { color = 0xFFFFB020.toInt() }) }
+            f.outputStream().use { b.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, it) }
+        }
+        db.messaggi().inserisci(Messaggio(ruolo = Ruolo.GHOST, testo = "stamattina 83,1 e ho suonato 40 minuti", istante = t - 10,
+            allegati = it.resonance.adam.logica.Allegati.codifica(listOf(it.resonance.adam.logica.Allegato("scaletta.jpg", it.resonance.adam.logica.Allegato.Tipo.IMMAGINE, immagini = listOf(foto.path))))))
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.SHELL, testo = "Due numeri.\nPeso in calo costante: −1,6 in 30 giorni.\nPratica: quinta sessione in nove giorni.", istante = t + 1))
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.PROPOSTA, testo = "Registrare Peso: 83,1 kg, oggi", istante = t + 2, stato = StatoProposta.ESEGUITA))
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICEVUTA, testo = "Registrato — Peso 83,1 kg, oggi", istante = t + 3))
@@ -116,7 +124,11 @@ class SchermateTest {
         regola.onNodeWithTag("ancora").performClick()
 
         vm.vai(Schermata.SHELL)
+        vm.inAllegato += it.resonance.adam.logica.Allegato("referto.pdf", it.resonance.adam.logica.Allegato.Tipo.PDF, immagini = listOf("a", "b"), pagineTotali = 2)
         scatta("3-shell")
+        regola.onNodeWithText("🖼 scaletta.jpg").assertExists()
+        regola.onNodeWithTag("allegato").assertExists()
+        vm.inAllegato.clear()
         regola.onNodeWithText("Conferma").assertExists()
 
         vm.vai(Schermata.VIDYA)

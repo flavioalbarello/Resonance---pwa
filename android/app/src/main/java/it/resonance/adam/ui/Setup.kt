@@ -37,6 +37,8 @@ interface Sistema {
     fun chiediSensori()
     fun chiediNotifiche()
     fun chiediCalendario()
+    fun allega()
+    fun scatta()
     fun apriFile()
     fun salvaCopia()
 }
@@ -72,6 +74,17 @@ fun Setup(vm: Adam, sistema: Sistema) {
                 }
             }
             OutlinedTextField(modello, { modello = it; if (it.contains('/')) imp.modello = it }, label = { Text("Oppure uno slug OpenRouter") }, modifier = Modifier.fillMaxWidth())
+            Spazio(4)
+            var vista by remember { mutableStateOf(imp.modelloVista) }
+            Etichetta("Per immagini e PDF")
+            Tenue(if (imp.modello in Impostazioni.VEDONO) "Il modello scelto sopra vede già da solo: guarda lui gli allegati."
+                else "Il modello scelto sopra non vede: per i turni con immagini o PDF si passa a questo.")
+            Impostazioni.MODELLI_VISTA.forEach { (id, nome) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(vista == id, { vista = id; imp.modelloVista = id })
+                    Text(nome)
+                }
+            }
             Tenue("Il modello si sceglie con un numero, non con il prezzario: prova lo stesso turno su due modelli e guarda quante proposte vengono rifiutate e quante volte chiede chiarimenti.")
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(tetto, { tetto = it; it.replace(',', '.').toDoubleOrNull()?.let { v -> imp.tettoMensile = v } }, label = { Text("Tetto mensile $") }, modifier = Modifier.weight(1f))

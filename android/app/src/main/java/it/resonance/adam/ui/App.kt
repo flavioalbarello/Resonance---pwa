@@ -63,7 +63,7 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
             Column(Modifier.padding(interno).fillMaxSize()) {
                 when (vm.schermata) {
                     Schermata.SPECCHIO -> Specchio(vm)
-                    Schermata.SHELL -> ShellUi(vm)
+                    Schermata.SHELL -> ShellUi(vm, sistema)
                     Schermata.BIO -> PilastroUi(vm, Pilastro.BIO)
                     Schermata.AIR -> PilastroUi(vm, Pilastro.AIR)
                     Schermata.VIDYA -> PilastroUi(vm, Pilastro.VIDYA)

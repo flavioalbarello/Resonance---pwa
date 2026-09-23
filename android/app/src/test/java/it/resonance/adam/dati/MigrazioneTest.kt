@@ -38,4 +38,19 @@ class MigrazioneTest {
         }
         db.close()
     }
+
+    @Test fun dallaDueAllaTreIMessaggiRestanoSenzaAllegati() {
+        aiuto.createDatabase("tre.db", 2).apply {
+            execSQL("INSERT INTO messaggi (ruolo, testo, istante) VALUES ('GHOST', 'ciao', 1)")
+            close()
+        }
+        aiuto.runMigrationsAndValidate("tre.db", 3, true).close()
+        val db = Room.databaseBuilder(RuntimeEnvironment.getApplication(), Db::class.java, "tre.db").allowMainThreadQueries().build()
+        runBlocking {
+            val m = db.messaggi().elenco().single()
+            assertEquals("ciao", m.testo)
+            assertEquals("", m.allegati)
+        }
+        db.close()
+    }
 }

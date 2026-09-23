@@ -11,6 +11,8 @@ import it.resonance.adam.dati.StatoProposta
 import it.resonance.adam.dati.TipoMisura
 import it.resonance.adam.logica.Agenda
 import it.resonance.adam.logica.AgendaLetta
+import it.resonance.adam.logica.Allegati
+import it.resonance.adam.logica.Allegato
 import it.resonance.adam.logica.Giorni
 import it.resonance.adam.logica.Proposta
 import it.resonance.adam.logica.Regole
@@ -70,7 +72,7 @@ class Shell(
 
     private fun storia(messaggi: List<Messaggio>): List<JsonObject> = messaggi.mapNotNull { m ->
         val (ruolo, testo) = when (m.ruolo) {
-            Ruolo.GHOST -> "user" to m.testo
+            Ruolo.GHOST -> "user" to m.testo + Allegati.notaPassata(Allegati.decodifica(m.allegati))
             Ruolo.SHELL -> "assistant" to m.testo
             Ruolo.PROPOSTA -> "user" to "[Nota del programma, non del Ghost] Proposta mostrata: ${m.testo} — stato: ${m.stato?.name?.lowercase() ?: "?"}"
             Ruolo.RICEVUTA -> "user" to "[Nota del programma, non del Ghost] Eseguito davvero: ${m.testo}"
@@ -79,8 +81,8 @@ class Shell(
         buildJsonObject { put("role", ruolo); put("content", testo) }
     }
 
-    suspend fun turno(testoGhost: String): Esito {
-        archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.GHOST, testo = testoGhost, istante = ora))
+    suspend fun turno(testoGhost: String, allegati: List<Allegato> = emptyList()): Esito {
+        val idGhost = archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.GHOST, testo = testoGhost, istante = ora, allegati = Allegati.codifica(allegati)))
         controllaSpesa()?.let { nota(it); return Esito(it, emptyList()) }
 
         val oggi = LocalDate.now()
@@ -88,13 +90,21 @@ class Shell(
         val sistema = Contesto.sistema(istantanea)
         val regole = regole(istantanea.profilo?.nomiProtetti.orEmpty(), testoGhost)
         val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", sistema) })
-        lavoro += storia(archivio.db.messaggi().ultimi(24))
+        lavoro += storia(archivio.db.messaggi().ultimi(24).filter { it.id != idGhost })
+        // Il messaggio di adesso porta i suoi allegati; i precedenti solo la nota che c'erano.
+        lavoro += buildJsonObject {
+            put("role", "user")
+            if (allegati.isEmpty()) put("content", testoGhost)
+            else put("content", Contenuto.parti(testoGhost, allegati) { java.io.File(it).readBytes() })
+        }
+        // Llama non vede: per un turno con immagini si passa a un modello che vede, e lo si dice.
+        val modello = if (Allegati.conImmagini(allegati) && impostazioni.modello !in Impostazioni.VEDONO) impostazioni.modelloVista else impostazioni.modello
         val proposte = mutableListOf<Long>()
         var testo = ""
 
         try {
             for (giro in 0 until GIRI_MASSIMI) {
-                val r = client.completa(impostazioni.chiave, impostazioni.modello, JsonArray(lavoro), Azioni.definizioni(), MAX_TOKEN)
+                val r = client.completa(impostazioni.chiave, modello, JsonArray(lavoro), Azioni.definizioni(), MAX_TOKEN)
                 registraCosto(r)
                 testo = r.testo
                 if (r.chiamate.isEmpty()) {
@@ -154,8 +164,10 @@ class Shell(
 
     companion object {
         const val GIRI_MASSIMI = 4
-        // 1500 tagliava a metà la riscrittura di un quaderno (visto sul telefono il 23/09).
-        const val MAX_TOKEN = 4000
+        // 1500 bastava a Llama, non a Kimi K2.6: il suo ragionamento lo esauriva e la risposta arrivava vuota
+        // («tagliata dal limite», visto sul telefono il 23/09). Si paga ciò che si usa, non il tetto.
+        const val MAX_TOKEN = 12000
+        const val MAX_TOKEN_BATTITO = 3000
     }
 
     private fun versoIlMondo(p: Proposta) =
@@ -227,7 +239,7 @@ class Shell(
             buildJsonObject { put("role", "user"); put("content", richiesta) },
         ))
         return runCatching {
-            val r = client.completa(impostazioni.chiave, impostazioni.modello, messaggi, null, 200)
+            val r = client.completa(impostazioni.chiave, impostazioni.modello, messaggi, null, MAX_TOKEN_BATTITO)
             registraCosto(r)
             r.testo.takeIf { it.isNotBlank() }
         }.getOrNull()

@@ -154,6 +154,8 @@ data class Messaggio(
     val istante: Long,
     val proposta: String? = null,
     val stato: StatoProposta? = null,
+    // Allegati del Ghost (logica/Allegati.kt), in JSON; le immagini sono file sul telefono.
+    @ColumnInfo(defaultValue = "") val allegati: String = "",
 )
 
 // Totalizzatore proprio: il tetto di spesa non può leggere da un registro che ruota.

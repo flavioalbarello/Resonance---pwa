@@ -23,7 +23,13 @@ import it.resonance.adam.dati.StatoNodo
 import it.resonance.adam.dati.StatoProposta
 import it.resonance.adam.dati.TipoMisura
 import it.resonance.adam.dati.Voce
+import android.net.Uri
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import it.resonance.adam.logica.AgendaLetta
+import it.resonance.adam.logica.Allegato
+import it.resonance.adam.mondo.Allegatore
+import java.io.File
 import it.resonance.adam.logica.ImportPwa
 import it.resonance.adam.logica.Istantanea
 import it.resonance.adam.logica.Stabilita
@@ -51,6 +57,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
     val impostazioni = Impostazioni(app)
     val sensi = Sensi(app)
     val mondo = MondoAndroid(app)
+    val allegatore = Allegatore(app)
     private val shell = Shell(archivio, impostazioni, mondo = mondo)
 
     private fun <T> Flow<List<T>>.stato(): StateFlow<List<T>> = stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -85,6 +92,23 @@ class Adam(app: Application) : AndroidViewModel(app) {
     var avviso by mutableStateOf<String?>(null)
     var statoSensi by mutableStateOf("")
     var agenda by mutableStateOf<AgendaLetta>(AgendaLetta.NonLetta)
+    val inAllegato = mutableStateListOf<Allegato>()
+    var preparo by mutableIntStateOf(0)
+
+    // `temporaneo`: la foto grande della fotocamera, da buttare dopo averne fatto la copia ridotta.
+    fun aggiungiAllegato(uri: Uri, temporaneo: File? = null) = viewModelScope.launch {
+        preparo++
+        allegatore.prepara(uri)
+            .onSuccess { inAllegato += it; if (schermata != Schermata.SHELL) vai(Schermata.SHELL) }
+            .onFailure { avviso = "Allegato non letto: ${it.message}" }
+        temporaneo?.delete()
+        preparo--
+    }
+
+    fun togliAllegato(a: Allegato) {
+        inAllegato.remove(a)
+        a.immagini.forEach { File(it).delete() }
+    }
 
     fun vai(s: Schermata) {
         schermata = s; percorsoAperto = null; documentoAperto = null
@@ -102,12 +126,14 @@ class Adam(app: Application) : AndroidViewModel(app) {
 
     // ── Shell ──
     fun invia(testo: String = input) {
-        val t = testo.trim()
-        if (t.isEmpty() || pensa) return
+        val allegati = inAllegato.toList()
+        val t = testo.trim().ifEmpty { if (allegati.isNotEmpty()) "Guarda l'allegato." else "" }
+        if (t.isEmpty() || pensa || preparo > 0) return
         input = ""
+        inAllegato.clear()
         pensa = true
         viewModelScope.launch {
-            val esito = shell.turno(t)
+            val esito = shell.turno(t, allegati)
             pensa = false
             if (ascolta == Ascolta.AUTO) rispondiAVoce(esito)
         }

@@ -60,8 +60,10 @@ class ShellTest {
     private class FintoModello(vararg risposte: Risposta) : OpenRouter() {
         private val coda = ArrayDeque(risposte.toList())
         val ricevuti = mutableListOf<JsonArray>()
+        val modelli = mutableListOf<String>()
         override suspend fun completa(chiave: String, modello: String, messaggi: JsonArray, strumenti: JsonArray?, maxToken: Int): Risposta {
             ricevuti += JsonArray(messaggi.toList())
+            modelli += modello
             return coda.removeFirst()
         }
     }
@@ -157,6 +159,31 @@ class ShellTest {
         val rimando = modello.ricevuti[1].last().jsonObject["content"]!!.jsonPrimitive.content
         assertTrue(rimando, rimando.contains("tagliata dal limite di lunghezza") && rimando.contains("modifica_quaderno"))
         assertEquals(1, esito.proposte.size)
+    }
+
+    @Test fun unaFotoConLlamaVaAlModelloCheVedeEIlTurnoDopoNonLaRimanda() = runBlocking {
+        val f = java.io.File(app.cacheDir, "bolletta.jpg").apply { writeBytes(byteArrayOf(9, 9, 9)) }
+        val foto = it.resonance.adam.logica.Allegato("bolletta.jpg", it.resonance.adam.logica.Allegato.Tipo.IMMAGINE, immagini = listOf(f.path))
+        val modello = FintoModello(testo("È una bolletta della luce: 84,20 €."), testo("Sì, 84,20."))
+        val shell = Shell(archivio, imp, modello, FintoMondo())
+        shell.turno("leggi questa", listOf(foto))
+        assertEquals(it.resonance.adam.Impostazioni.MODELLO_VISTA, modello.modelli[0])
+        val ultimo = modello.ricevuti[0].last().jsonObject["content"]!!.toString()
+        assertTrue(ultimo, ultimo.contains("data:image/jpeg;base64,CQkJ") && ultimo.contains("Immagine allegata «bolletta.jpg»"))
+
+        shell.turno("quanto era?")
+        assertEquals(it.resonance.adam.Impostazioni.MODELLO_PREDEFINITO, modello.modelli[1])
+        val storia = modello.ricevuti[1].toString()
+        assertTrue(storia, !storia.contains("base64") && storia.contains("visti allora e non più visibili: 🖼 bolletta.jpg"))
+    }
+
+    @Test fun conKimiLeImmaginiLeGuardaKimi() = runBlocking {
+        imp.modello = "moonshotai/kimi-k2.6"
+        val f = java.io.File(app.cacheDir, "x.jpg").apply { writeBytes(byteArrayOf(1)) }
+        val modello = FintoModello(testo("Vedo."))
+        Shell(archivio, imp, modello, FintoMondo()).turno("guarda", listOf(it.resonance.adam.logica.Allegato("x.jpg", it.resonance.adam.logica.Allegato.Tipo.IMMAGINE, immagini = listOf(f.path))))
+        assertEquals("moonshotai/kimi-k2.6", modello.modelli.single())
+        imp.modello = it.resonance.adam.Impostazioni.MODELLO_PREDEFINITO
     }
 
     @Test fun ilNomeProtettoDelProfiloBloccaLaMail() = runBlocking {

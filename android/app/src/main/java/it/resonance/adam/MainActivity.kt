@@ -10,6 +10,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import androidx.core.content.IntentCompat
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.lifecycleScope
 import it.resonance.adam.battito.Battiti
@@ -41,6 +43,15 @@ class MainActivity : ComponentActivity() {
             else -> "Senza il permesso lo Shell non vede gli impegni."
         }
         vm.leggiAgenda()
+    }
+    private val scegliAllegati = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uri ->
+        uri.forEach { vm.aggiungiAllegato(it) }
+    }
+    private var foto: java.io.File? = null
+    private val fotocamera = registerForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val f = foto ?: return@registerForActivityResult
+        if (ok && f.length() > 0) vm.aggiungiAllegato(FileProvider.getUriForFile(this, "$packageName.allegati", f), temporaneo = f) else f.delete()
+        foto = null
     }
     private val permessiSensori = registerForActivityResult(PermissionController.createRequestPermissionResultContract()) { concessi ->
         vm.avviso = "Sensori: ${concessi.size} permessi concessi"
@@ -75,6 +86,13 @@ class MainActivity : ComponentActivity() {
             else vm.avviso = "Su questa versione di Android le notifiche sono già permesse."
         }
         override fun chiediCalendario() = permessiCalendario.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR))
+        override fun allega() = scegliAllegati.launch(arrayOf("image/*", "application/pdf", "text/*", "application/json",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+        override fun scatta() {
+            val f = vm.allegatore.fileFoto().also { foto = it }
+            runCatching { fotocamera.launch(FileProvider.getUriForFile(this@MainActivity, "$packageName.allegati", f)) }
+                .onFailure { vm.avviso = "Fotocamera non disponibile: ${it.message}"; f.delete(); foto = null }
+        }
         override fun apriFile() = apri.launch(arrayOf("application/json", "text/plain", "*/*"))
         override fun salvaCopia() = salva.launch("resonance-copia-${LocalDate.now()}.json")
     }
@@ -88,7 +106,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Battiti.creaCanale(this)
         Battiti.programma(this)
-        apriDa(intent)
+        if (savedInstanceState == null) apriDa(intent)  // dopo una rotazione l'intent condiviso non va riletto
         setContent { TemaResonance { App(vm, sistema, ::conMicrofono) } }
         if (vm.sensi.disponibile()) lifecycleScope.launch { runCatching { if (vm.sensi.concessi().isNotEmpty()) vm.leggiSensi() } }
     }
@@ -105,5 +123,17 @@ class MainActivity : ComponentActivity() {
 
     private fun apriDa(intent: Intent?) {
         intent?.getStringExtra(Battiti.EXTRA_SCHERMATA)?.let { s -> runCatching { vm.vai(Schermata.valueOf(s)) } }
+        // Condiviso da un'altra app: file come allegati, testo nella casella. Si manda solo quando il Ghost preme Invia.
+        when (intent?.action) {
+            Intent.ACTION_SEND -> {
+                IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, android.net.Uri::class.java)?.let { vm.aggiungiAllegato(it) }
+                intent.getStringExtra(Intent.EXTRA_TEXT)?.let { t -> vm.input = listOf(vm.input.trim(), t).filter { it.isNotEmpty() }.joinToString("\n") }
+                vm.vai(Schermata.SHELL)
+            }
+            Intent.ACTION_SEND_MULTIPLE -> {
+                IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, android.net.Uri::class.java)?.forEach { vm.aggiungiAllegato(it) }
+                vm.vai(Schermata.SHELL)
+            }
+        }
     }
 }

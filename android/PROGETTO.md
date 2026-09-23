@@ -49,6 +49,20 @@ un'altra strada, che non chiede accesso Google:
   `Profilo.nomiProtetti` (es. il marchio professionale; dall'import della PWA si porta solo il marchio,
   non la professione) passa solo se il Ghost l'ha scritto lui in quel messaggio.
 
+## Allegati nella chat (23/09/2026, su richiesta del Ghost)
+
+Foto dalla fotocamera, immagini, PDF, docx, testo; anche da altre app con «Condividi → Resonance».
+- **Preparati sul telefono** (`mondo/Allegatore.kt`): immagini ridotte a 1600 px sul lato lungo (bastano per
+  leggere una bolletta, e si paga a pixel); PDF disegnati pagina per pagina come immagini, massimo 8 (vale anche
+  per le scansioni); docx e testo estratti come testo.
+- **Chi guarda**: se il modello principale vede (Kimi, Gemini Pro, Claude) guarda lui; se no (Llama) il turno con
+  immagini passa al modello per le immagini scelto in Setup (predefinito Gemini 3.1 Flash Lite).
+- **Una volta sola**: le immagini vanno al modello nel turno in cui sono allegate; nei turni dopo resta la nota
+  che c'erano. Il prompt gli dice di scrivere nella risposta ciò che va ricordato, e di proporre salva_documento.
+
+Stesso giorno, dal telefono: Kimi K2.6 ragiona prima di rispondere e il ragionamento consuma lo stesso tetto di
+token. Con 1500 la risposta arrivava vuota («tagliata dal limite»): tetto a 12000 per il turno, 3000 per il battito.
+
 ## Mappa
 
 ```
@@ -99,6 +113,8 @@ Maven Central qui limita le richieste: il progetto usa il mirror di Google, anch
 | Rubrica | Non letta: «scrivi a Marta» senza indirizzo apre la bozza con il destinatario vuoto |
 | Rimettere un impegno tolto | La copia è nel diario di Adam (con RRULE), ma rimetterlo è a mano o chiedendolo allo Shell come nuovo impegno: una serie non si ricrea ancora da qui |
 | Spostare/togliere su telefono vero | Provata la decisione (quale impegno, quanto, chi è coinvolto) con un calendario finto; le scritture su `CalendarContract` (eccezioni, UNTIL) non sono provate qui |
+| Allegati: file | Le immagini ridotte restano in `files/allegati` e non entrano nella copia (Setup → Salva una copia): dopo un ripristino il messaggio dice che c'erano, la miniatura no. Non si cancellano mai da sole |
+| Allegati: sul telefono vero | Provati: riduzione immagine (strada BitmapFactory), testo, docx, messaggio al modello, cambio di modello. Non provati qui: ImageDecoder (foto ruotate), PdfRenderer, fotocamera, condivisione da altre app |
 | Calendario scelto | Il principale dell'account Google, se no il primo scrivibile. La ricevuta ne dice il nome; non si sceglie ancora in Setup |
 | Database | Versione 2 (`nomiProtetti`), migrazione automatica provata in `MigrazioneTest` sopra la 1 della 2.0.144 |
 | R8 spento | APK da 30 MB. La minificazione va accesa solo dopo una prova su telefono vero |

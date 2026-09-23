@@ -41,6 +41,9 @@ open class OpenRouter(
                 put("messages", messaggi)
                 if (strumenti != null) { put("tools", strumenti); put("tool_choice", "auto") }
                 put("max_tokens", maxToken)
+                // Kimi, DeepSeek, Gemini ragionano prima di rispondere, e il ragionamento consuma lo stesso tetto:
+                // non lo si scarica (lo si paga comunque), ma il tetto deve lasciargli spazio (vedi Shell.MAX_TOKEN).
+                putJsonObject("reasoning") { put("exclude", true) }
                 putJsonObject("usage") { put("include", true) }
             }
             val req = Request.Builder()

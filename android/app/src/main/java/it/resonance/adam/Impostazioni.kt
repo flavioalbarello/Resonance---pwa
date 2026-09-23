@@ -16,6 +16,10 @@ open class Impostazioni(context: Context) {
     var modello: String
         get() = p.getString("modello", MODELLO_PREDEFINITO)!!
         set(v) = p.edit().putString("modello", v.trim()).apply()
+    // Il modello che guarda immagini e pagine, quando quello principale non vede.
+    var modelloVista: String
+        get() = p.getString("modelloVista", MODELLO_VISTA)!!
+        set(v) = p.edit().putString("modelloVista", v.trim()).apply()
     var tettoMensile: Double
         get() = p.getFloat("tetto", 5f).toDouble()
         set(v) = p.edit().putFloat("tetto", v.toFloat()).apply()
@@ -44,6 +48,15 @@ open class Impostazioni(context: Context) {
 
     companion object {
         const val MODELLO_PREDEFINITO = "meta-llama/llama-3.3-70b-instruct"
+        const val MODELLO_VISTA = "google/gemini-3.1-flash-lite"
+        // Verificati sul listino di OpenRouter il 23/09/2026: immagini in ingresso e strumenti.
+        val MODELLI_VISTA = listOf(
+            "google/gemini-3.1-flash-lite" to "Gemini 3.1 Flash Lite (0,25/1,5 $ per milione)",
+            "qwen/qwen3-vl-32b-instruct" to "Qwen3 VL 32B (0,10/0,42 $, più economico)",
+            "google/gemini-2.5-flash" to "Gemini 2.5 Flash (0,30/2,5 $)",
+        )
+        // Fra i modelli principali, quelli che vedono già da soli: con loro non si cambia modello.
+        val VEDONO = setOf("moonshotai/kimi-k2.6", "google/gemini-3.1-pro-preview", "anthropic/claude-sonnet-4.5") + MODELLI_VISTA.map { it.first }
         val MODELLI = listOf(
             "meta-llama/llama-3.3-70b-instruct" to "Llama 3.3 70B (economico)",
             "deepseek/deepseek-v4-pro" to "DeepSeek V4 Pro",
