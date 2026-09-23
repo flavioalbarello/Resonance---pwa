@@ -12742,8 +12742,18 @@ function MenuRotativo({ setView, voceDisponibile, voceAccesa, onToggleVoce }) {
         onClick=${() => { setView(d.key); setAperto(false); }}
         tabindex=${aperto ? 0 : -1} aria-hidden=${aperto ? "false" : "true"}>${d.label}</button>`;
     })}
-    <button class="r-menu-rotativo-anchor ${aperto ? "aperto" : ""}" onClick=${() => setAperto((a) => !a)}
-      title="Menù rapido" aria-expanded=${aperto ? "true" : "false"}>${aperto ? "✕" : "◎"}</button>
+    ${/* 23/09/2026 — «una volta attivato il tasto del microfono scompare dal menù rotativo, voglio
+          che resti per disattivarlo»: lo spicchio della voce sparisce insieme al resto ogni volta
+          che il ventaglio si richiude — che è quello che succede subito dopo averlo toccato per
+          accendere. Il Ghost ha chiesto di copiare il sistema di Gemini: un pulsante solo, si
+          tocca per accendere, si tocca DI NUOVO — nello stesso punto, senza dover riaprire niente
+          — per spegnere. Quel punto qui è l'ancora: mentre si ascolta, l'ancora stessa mostra
+          l'icona rossa e un tocco ferma la voce direttamente, ventaglio aperto o no. Accendere
+          resta nello spicchio dedicato (dentro il ventaglio); spegnere non richiede più aprirlo. */ ""}
+    <button class="r-menu-rotativo-anchor ${aperto ? "aperto" : ""} ${voceAccesa ? "ascolta" : ""}"
+      onClick=${() => { if (voceAccesa) { onToggleVoce(); setAperto(false); } else setAperto((a) => !a); }}
+      title=${voceAccesa ? "Ferma la voce" : "Menù rapido"}
+      aria-expanded=${aperto ? "true" : "false"}>${voceAccesa ? "🔴" : aperto ? "✕" : "◎"}</button>
   </div>`;
 }
 // Serve un VERBO di apertura, sempre. Senza, «parliamo di bio» porterebbe via il Ghost dalla
@@ -13899,14 +13909,19 @@ function App() {
           gesto in più è il peggior momento per chiederlo. "Devo poterlo disattivare" — accendere
           può restare nel ventaglio (è un gesto raro e deliberato), ma FERMARE non può dipendere
           da trovare lo spicchio giusto: il pulsante "Ferma" qui sotto, dentro la barra che è già
-          sempre in cima quando si ascolta, risolve senza disfare la scelta del ventaglio. */ ""}
+          sempre in cima quando si ascolta, risolve senza disfare la scelta del ventaglio.
+          23/09/2026 — PRIMO TENTATIVO SBAGLIATO, TROVATO DAL GHOST: avevo messo "Ferma" a destra
+          della riga. Il pulsante "Segnala" (FeedbackWidget) vive `position:fixed;top:10px;right:
+          12px;z-index:60` su OGNI schermata — sopra questa barra (z-index 11) — e la barra è
+          quasi a tutta larghezza: il lato destro ci finiva sotto, non toccabile. "Ferma" ora sta
+          a SINISTRA della riga, dove l'angolo di Segnala non arriva. */ ""}
     <div class="r-topbar"><div class="r-brand">RESONANCE<span>•</span></div></div>
     ${(voceAccesa || voceNota) && html`<div class="r-voce-barra ${voceAccesa ? "accesa" : ""}">
       <div class="r-voce-barra-riga">
-        <div><b>${voceAccesa ? "Ti ascolto" : "Voce spenta"}</b>${voceParziale ? html` · <span style="opacity:.75">${voceParziale}…</span>` : ""}</div>
         ${voceAccesa
           ? html`<button class="r-voce-barra-btn" onClick=${spegniVoce}>Ferma</button>`
           : html`<button class="r-voce-barra-chiudi" onClick=${() => setVoceNota("")} aria-label="Chiudi">✕</button>`}
+        <div><b>${voceAccesa ? "Ti ascolto" : "Voce spenta"}</b>${voceParziale ? html` · <span style="opacity:.75">${voceParziale}…</span>` : ""}</div>
       </div>
       ${voceNota && html`<div class="r-hub-detail" style="margin-top:2px">${voceNota}</div>`}
       ${voceAccesa && html`<div class="r-hub-detail" style="margin-top:4px;opacity:.7">Puoi dire: apri magi · apri la chat con lo Shell · vai su Adam · torna alla home. Tutto il resto va allo Shell.</div>`}
