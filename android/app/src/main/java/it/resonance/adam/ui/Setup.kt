@@ -134,7 +134,10 @@ fun Setup(vm: Adam, sistema: Sistema) {
             val libero = remember(vm.avviso) { vm.liberoDallaBatteria() }
             Tenue(if (libero) "Resonance può lavorare in secondo piano: risposte e battito arrivano anche a schermo spento."
                 else "Il telefono può fermare Resonance in secondo piano: le risposte a schermo spento e il battito possono non arrivare.")
-            if (!libero) OutlinedButton({ sistema.lavoroInBackground() }) { Text("Lascia lavorare in secondo piano") }
+            if (!libero) {
+                OutlinedButton({ sistema.lavoroInBackground() }) { Text("Lascia lavorare in secondo piano") }
+                Tenue("Si apre l'elenco della batteria: cerca Resonance e scegli «Non ottimizzare» o «Consenti attività in background».")
+            }
         }
 
         Scheda(Colori.bio) {

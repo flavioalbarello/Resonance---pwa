@@ -5,9 +5,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Niente REQUEST_IGNORE_BATTERY_OPTIMIZATIONS né FOREGROUND_SERVICE_DATA_SYNC: con quei due la 2.0.154 non si
+         installava sul telefono del Ghost («Non puoi installare l'app sul tuo dispositivo», 24/09/2026). La pagina della
+         batteria si apre senza permessi; il servizio in primo piano serve solo prima di Android 12, dove il tipo non si controlla. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />

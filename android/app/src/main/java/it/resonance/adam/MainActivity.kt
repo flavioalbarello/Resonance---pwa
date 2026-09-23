@@ -97,8 +97,10 @@ class MainActivity : ComponentActivity() {
         }
         override fun lavoroInBackground() {
             // Alcuni telefoni chiudono le app in secondo piano: senza questa eccezione il battito e le risposte possono non arrivare.
-            runCatching { startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:$packageName"))) }
-                .onFailure { startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+            // L'elenco delle app della batteria si apre senza permessi; se il telefono non lo ha, la scheda dell'app.
+            runCatching { startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+                .onFailure { startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:$packageName"))) }
+            vm.avviso = "Cerca Resonance e scegli «Non ottimizzare» (o «Consenti attività in background»)."
         }
         override fun apriFile() = apri.launch(arrayOf("application/json", "text/plain", "*/*"))
         override fun salvaCopia() = salva.launch("resonance-copia-${LocalDate.now()}.json")
