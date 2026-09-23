@@ -213,12 +213,8 @@ private fun DocumentoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics
 
 @Composable
 private fun QuadernoUi(vm: Adam, p: Pilastro) {
-    val quaderni by vm.quaderni.collectAsState()
-    val q = quaderni.find { it.pilastro == p }
-    var testo by remember(q?.testo) { mutableStateOf(q?.testo.orEmpty()) }
     Spazio(12)
-    Tenue("Ciò che lo Shell sa di te su questo pilastro. Lo legge a ogni turno; puoi correggerlo qui.")
-    OutlinedTextField(testo, { testo = it }, modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp))
-    Button({ vm.salvaQuaderno(p, testo) }, enabled = testo != q?.testo.orEmpty(), modifier = Modifier.padding(top = 8.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Colori.di(p))) { Text("Salva") }
+    Tenue("Ciò che lo Shell sa di te su questo pilastro. Lo legge a ogni turno; qui lo rivedi, correggi o svuoti.")
+    Spazio(4)
+    QuadernoEditor(vm, p)
 }

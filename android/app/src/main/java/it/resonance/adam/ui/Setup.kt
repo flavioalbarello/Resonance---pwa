@@ -45,7 +45,6 @@ interface Sistema {
 fun Setup(vm: Adam, sistema: Sistema) {
     val imp = vm.impostazioni
     val profilo by vm.profilo.collectAsState()
-    val quaderni by vm.quaderni.collectAsState()
     var chiave by remember { mutableStateOf("") }
     var modello by remember { mutableStateOf(imp.modello) }
     var tetto by remember { mutableStateOf(imp.tettoMensile.toString()) }
@@ -137,7 +136,7 @@ fun Setup(vm: Adam, sistema: Sistema) {
         }
 
         ProfiloUi(vm, profilo ?: Profilo())
-        QuadernoAdam(vm, quaderni.find { it.pilastro == Pilastro.ADAM }?.testo.orEmpty())
+        QuaderniUi(vm)
 
         Scheda {
             Etichetta("Dati")
@@ -173,13 +172,18 @@ private fun ProfiloUi(vm: Adam, p: Profilo) {
     }
 }
 
+// Tutti i quaderni in un posto: dopo l'import dalla PWA vanno riletti, possono portarsi dietro errori.
 @Composable
-private fun QuadernoAdam(vm: Adam, attuale: String) {
-    var testo by remember(attuale) { mutableStateOf(attuale) }
+private fun QuaderniUi(vm: Adam) {
+    var scelto by remember { mutableStateOf(Pilastro.ADAM) }
     Scheda(Colori.ambra) {
-        Etichetta("Quaderno di Adam", Colori.ambraInchiostro)
-        Tenue("Memoria trasversale: ciò che lo Shell deve sapere di te in ogni pilastro.")
-        OutlinedTextField(testo, { testo = it }, minLines = 3, modifier = Modifier.fillMaxWidth())
-        OutlinedButton({ vm.salvaQuaderno(Pilastro.ADAM, testo) }, enabled = testo != attuale) { Text("Salva") }
+        Etichetta("Quaderni", Colori.ambraInchiostro)
+        Tenue("La memoria dello Shell: la legge a ogni turno. Adam vale per tutti i pilastri. Rileggili: ciò che viene dalla PWA può contenere errori.")
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(Pilastro.ADAM, Pilastro.BIO, Pilastro.AIR, Pilastro.VIDYA).forEach { p ->
+                androidx.compose.material3.FilterChip(scelto == p, { scelto = p }, label = { Text(p.etichetta) })
+            }
+        }
+        QuadernoEditor(vm, scelto)
     }
 }

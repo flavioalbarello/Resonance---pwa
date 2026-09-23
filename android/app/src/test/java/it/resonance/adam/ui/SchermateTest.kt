@@ -25,6 +25,7 @@ import it.resonance.adam.dati.Voce
 import it.resonance.adam.logica.AgendaLetta
 import it.resonance.adam.logica.Evento
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -81,7 +82,7 @@ class SchermateTest {
         listOf("Atto I: Origine" to StatoNodo.CONSOLIDATO, "Atto II: Complessità" to StatoNodo.PRATICATO, "Atto III: Mitosi" to StatoNodo.INTRODOTTO, "Mixaggio" to StatoNodo.NON_INIZIATO)
             .forEachIndexed { i, (e, s) -> db.percorsi().inserisciNodo(Nodo(percorsoId = p, etichetta = e, stato = s, ordine = i)) }
         db.percorsi().inserisciDocumento(Documento(percorsoId = p, titolo = "ATTO I: Origine", testo = "Il seme. Un'unica cellula che ancora non sa di essere musica.", creato = 0, aggiornato = 0))
-        db.quaderni().salva(Quaderno(Pilastro.BIO, "Il giovedì dorme meno: turno lungo.", 0))
+        db.quaderni().salva(Quaderno(Pilastro.BIO, "Il giovedì dorme meno: turno lungo.\nCamminata al mattino.", 0))
         db.voci().inserisci(Voce(pilastro = Pilastro.BIO, giorno = g(1), testo = "Schiena rigida al mattino, meglio dopo la camminata.", fonte = "manuale", creato = 0, aggiornato = 0))
         val t = System.currentTimeMillis()
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.GHOST, testo = "stamattina 83,1 e ho suonato 40 minuti", istante = t))
@@ -126,6 +127,16 @@ class SchermateTest {
 
         vm.vai(Schermata.BIO)
         scatta("6-bio-numeri")
+
+        // Il quaderno si rivede per righe: ✕ toglie la riga, Salva la rende vera, lo storico tiene la precedente.
+        regola.onNodeWithText("Quaderno").performClick()
+        scatta("6b-bio-quaderno")
+        regola.onNodeWithTag("togli-0").performClick()
+        regola.onNodeWithText("Salva").performClick()
+        // Room scrive su un suo thread e torna sul principale: si dà tempo reale, non solo tempo di Compose.
+        repeat(40) { if (vm.quaderni.value.single { it.pilastro == Pilastro.BIO }.testo != "Camminata al mattino.") { Thread.sleep(100); regola.waitForIdle() } }
+        assertEquals("Camminata al mattino.", vm.quaderni.value.single { it.pilastro == Pilastro.BIO }.testo)
+        regola.onNodeWithText("1 versioni precedenti").assertExists()
 
         vm.vai(Schermata.SETUP)
         scatta("7-setup")

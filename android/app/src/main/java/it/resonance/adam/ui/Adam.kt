@@ -218,7 +218,10 @@ class Adam(app: Application) : AndroidViewModel(app) {
         db.rituali().inserisci(Rituale(nome = nome.trim(), pilastro = p, criterio = c?.let { Stabilita.leggiCriterio(it).toString() }, creato = System.currentTimeMillis()))
     }
     fun disattivaRituale(r: Rituale) = viewModelScope.launch { db.rituali().aggiorna(r.copy(attivo = false)) }
-    fun salvaQuaderno(p: Pilastro, testo: String) = viewModelScope.launch { archivio.aggiornaQuaderno(p, testo); avviso = "Quaderno salvato" }
+    fun salvaQuaderno(p: Pilastro, testo: String) = viewModelScope.launch {
+        archivio.aggiornaQuaderno(p, testo.trim())
+        avviso = if (testo.isBlank()) "Quaderno ${p.etichetta} svuotato: la versione precedente resta nello storico" else "Quaderno ${p.etichetta} salvato"
+    }
     fun salvaDocumento(d: Documento, testo: String) = viewModelScope.launch { archivio.salvaTestoDocumento(d, testo); avviso = "Documento salvato" }
     fun cambiaStatoNodo(n: Nodo) = viewModelScope.launch {
         val prossimo = StatoNodo.entries[(n.stato.ordinal + 1) % StatoNodo.entries.size]
