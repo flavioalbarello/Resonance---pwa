@@ -94,11 +94,12 @@ class Shell(
 
         try {
             for (giro in 0 until GIRI_MASSIMI) {
-                val r = client.completa(impostazioni.chiave, impostazioni.modello, JsonArray(lavoro), Azioni.definizioni())
+                val r = client.completa(impostazioni.chiave, impostazioni.modello, JsonArray(lavoro), Azioni.definizioni(), MAX_TOKEN)
                 registraCosto(r)
                 testo = r.testo
                 if (r.chiamate.isEmpty()) {
-                    if (r.troncata) nota("La risposta è stata tagliata dal limite di lunghezza.")
+                    if (r.troncata) nota(if (r.testo.isBlank()) "La risposta si è interrotta prima di arrivare (limite di lunghezza): riprova, o chiedi una cosa per volta."
+                        else "La risposta è stata tagliata dal limite di lunghezza.")
                     break
                 }
                 if (giro == GIRI_MASSIMI - 1) nota("Lo Shell ha usato tutti i giri di strumenti disponibili in questo turno.")
@@ -114,8 +115,11 @@ class Shell(
                     })
                 }
                 for (c in r.chiamate) {
-                    val args = runCatching { Json.parseToJsonElement(c.argomenti).jsonObject }.getOrElse { JsonObject(emptyMap()) }
-                    val risultato = when (val v = Azioni.valida(c.nome, args, oggi, regole)) {
+                    val args = runCatching { Json.parseToJsonElement(c.argomenti).jsonObject }.getOrNull()
+                    // Una chiamata tagliata a metà non si indovina: si dice al modello perché, e come farla più piccola.
+                    val risultato = if (args == null) "Chiamata non eseguita: " + (if (r.troncata) "è stata tagliata dal limite di lunghezza, il testo era troppo lungo. " else "argomenti illeggibili. ") +
+                        "Per cambiare una parte usa modifica_quaderno o modifica_documento con un'ancora corta."
+                    else when (val v = Azioni.valida(c.nome, args, oggi, regole)) {
                         is Validazione.Lettura -> lettura(v)
                         is Validazione.Rifiutata -> "Rifiutata dal programma: ${v.motivo}. Correggi e riprova, oppure chiedi al Ghost."
                         is Validazione.Scrittura -> when (val r = risolvi(v.proposta)) {
@@ -148,7 +152,11 @@ class Shell(
         return Esito(testo, proposte)
     }
 
-    companion object { const val GIRI_MASSIMI = 4 }
+    companion object {
+        const val GIRI_MASSIMI = 4
+        // 1500 tagliava a metà la riscrittura di un quaderno (visto sul telefono il 23/09).
+        const val MAX_TOKEN = 4000
+    }
 
     private fun versoIlMondo(p: Proposta) =
         p is Proposta.CreaEvento || p is Proposta.SpostaEvento || p is Proposta.TogliEvento || p is Proposta.ScriviMail

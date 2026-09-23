@@ -106,6 +106,16 @@ class ArchivioTest {
         assertEquals("PhysioAlba", p.nomiProtetti)
     }
 
+    @Test fun togliereUnaRigaDalQuadernoLasciaIlRestoELoStorico() = runBlocking {
+        a.aggiornaQuaderno(Pilastro.BIO, "Dorme poco il giovedì.\n\nLavoro manuale sporco sostituisce sedentarietà notturna.\n\nCamminata al mattino.")
+        val e = a.esegui(Proposta.ModificaQuaderno(Pilastro.BIO, "Lavoro manuale sporco sostituisce sedentarietà notturna.", "", "sostituisci"), oggi)
+        assertTrue(e.ricevuta, e.riuscita)
+        assertEquals("Dorme poco il giovedì.\n\nCamminata al mattino.", db.quaderni().elenco().single { it.pilastro == Pilastro.BIO }.testo)
+        assertTrue(db.versioni().elenco().single().testo.contains("Lavoro manuale sporco"))
+        val due = a.esegui(Proposta.ModificaQuaderno(Pilastro.BIO, "non c'è", "", "sostituisci"), oggi)
+        assertFalse(due.riuscita)
+    }
+
     @Test fun letturaDiUnDocumentoInesistenteDiceCosaEsiste() = runBlocking {
         a.importa(ImportPwa.leggi(backup))
         val r = a.leggiDocumento("Atto IV")

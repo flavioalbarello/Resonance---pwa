@@ -149,6 +149,16 @@ class ShellTest {
         assertTrue(copia.testo.contains("Fisioterapia"))
     }
 
+    // Visto sul telefono il 23/09: una riscrittura del quaderno tagliata a metà spariva nel vuoto.
+    @Test fun unaChiamataTagliataTornaAlModelloConIlMotivo() = runBlocking {
+        val tagliata = Risposta("", listOf(ChiamataStrumento("t1", "aggiorna_quaderno", """{"pilastro":"BIO","testo":"Dorme po""")), null, JsonObject(emptyMap()), true)
+        val modello = FintoModello(tagliata, chiama("modifica_quaderno", """{"pilastro":"BIO","ancora":"refuso","testo":"","modo":"sostituisci"}"""), testo("Propongo di togliere la riga."))
+        val esito = Shell(archivio, imp, modello, FintoMondo()).turno("togli quella riga")
+        val rimando = modello.ricevuti[1].last().jsonObject["content"]!!.jsonPrimitive.content
+        assertTrue(rimando, rimando.contains("tagliata dal limite di lunghezza") && rimando.contains("modifica_quaderno"))
+        assertEquals(1, esito.proposte.size)
+    }
+
     @Test fun ilNomeProtettoDelProfiloBloccaLaMail() = runBlocking {
         db.profilo().salva(it.resonance.adam.dati.Profilo(nome = "Flavio", nomiProtetti = "PhysioAlba"))
         val modello = FintoModello(chiama("scrivi_mail", """{"oggetto":"Corso","corpo":"Firmato PhysioAlba"}"""), testo("Riscrivo."))

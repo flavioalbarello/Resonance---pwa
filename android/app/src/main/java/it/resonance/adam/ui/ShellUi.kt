@@ -78,7 +78,7 @@ private fun Messaggio(vm: Adam, m: Messaggio) {
                 .padding(12.dp))
         }
         Ruolo.SHELL -> SelectionContainer {
-            Text(m.testo, color = Colori.inchiostro, fontSize = 15.sp, lineHeight = 21.sp, modifier = Modifier
+            Text(Formato.annota(m.testo), color = Colori.inchiostro, fontSize = 15.sp, lineHeight = 21.sp, modifier = Modifier
                 .widthIn(max = 330.dp)
                 .background(Colori.superficie, RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp))
                 .border(1.dp, Colori.linea, RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp))

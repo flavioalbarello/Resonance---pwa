@@ -91,6 +91,18 @@ class Archivio(val db: Db) {
             aggiornaQuaderno(p.pilastro, p.testo)
             Esecuzione(true, "Quaderno ${p.pilastro.etichetta} riscritto (${p.testo.length} caratteri), versione precedente nello storico")
         }
+        is Proposta.ModificaQuaderno -> {
+            val attuale = db.quaderni().elenco().find { it.pilastro == p.pilastro }?.testo.orEmpty()
+            when (val r = Testi.applicaModifica(attuale, p.ancora, p.testo, p.modo)) {
+                is Testi.Modifica.Impossibile -> Esecuzione(false, "Quaderno ${p.pilastro.etichetta} non modificato: ${r.motivo}")
+                is Testi.Modifica.Fatta -> {
+                    // Togliere una frase non deve lasciare righe vuote doppie dove stava.
+                    val pulito = r.testo.replace(Regex("\n{3,}"), "\n\n").trim()
+                    aggiornaQuaderno(p.pilastro, pulito)
+                    Esecuzione(true, "Quaderno ${p.pilastro.etichetta} modificato: ${attuale.length} → ${pulito.length} caratteri, versione precedente nello storico")
+                }
+            }
+        }
         is Proposta.CreaRituale -> {
             db.rituali().inserisci(Rituale(nome = p.nome, pilastro = p.pilastro, criterio = p.criterio, creato = ora))
             Esecuzione(true, "Creato il rituale «${p.nome}»" + (p.criterio?.let { ", si spunta da solo quando $it" } ?: ""))

@@ -75,6 +75,17 @@ sealed class Proposta {
         override fun descrizione() = "Riscrivere il quaderno ${pilastro.etichetta} (${testo.length} caratteri; il testo precedente resta nello storico)"
     }
 
+    // Cambiare una parte del quaderno senza riscriverlo: riscriverlo intero per togliere una riga supera il tetto di lunghezza.
+    @Serializable @SerialName("modifica_quaderno")
+    data class ModificaQuaderno(val pilastro: Pilastro, val ancora: String, val testo: String, val modo: String) : Proposta() {
+        override fun descrizione() = when {
+            modo == "sostituisci" && testo.isEmpty() -> "Dal quaderno ${pilastro.etichetta}, togliere «${Testi.corto(ancora, 120)}»"
+            modo == "prima" -> "Nel quaderno ${pilastro.etichetta}, prima di «${Testi.corto(ancora, 60)}» aggiungere «${Testi.corto(testo, 120)}»"
+            modo == "dopo" -> "Nel quaderno ${pilastro.etichetta}, dopo «${Testi.corto(ancora, 60)}» aggiungere «${Testi.corto(testo, 120)}»"
+            else -> "Nel quaderno ${pilastro.etichetta}, sostituire «${Testi.corto(ancora, 60)}» con «${Testi.corto(testo, 120)}»"
+        } + " (il testo precedente resta nello storico)"
+    }
+
     @Serializable @SerialName("crea_rituale")
     data class CreaRituale(val nome: String, val pilastro: Pilastro, val criterio: String? = null) : Proposta() {
         override fun descrizione() = "Creare il rituale «$nome» in ${pilastro.etichetta}" +
@@ -204,8 +215,14 @@ object Azioni {
                 "testo" to s("Testo nuovo"), "modo" to e(listOf("prima", "dopo", "sostituisci"), "Dove va il testo nuovo rispetto all'ancora"),
             ))),
         Strumento("aggiorna_quaderno", Effetto.SCRITTURA,
-            "Propone di riscrivere il quaderno di un pilastro (memoria procedurale). Il testo sostituisce il precedente: includi ciò che resta valido.",
+            "Propone di riscrivere TUTTO il quaderno di un pilastro (memoria procedurale). Il testo sostituisce il precedente: includi ciò che resta valido. Per un cambio piccolo usa modifica_quaderno.",
             schema(listOf("pilastro", "testo"), mapOf("pilastro" to e(PILASTRI, "Pilastro"), "testo" to s("Testo completo del quaderno")))),
+        Strumento("modifica_quaderno", Effetto.SCRITTURA,
+            "Propone di cambiare UNA PARTE del quaderno di un pilastro: un frammento ESATTO già presente (ancora) e il testo nuovo. Per togliere una frase: modo sostituisci e testo vuoto. Preferiscilo ad aggiorna_quaderno.",
+            schema(listOf("pilastro", "ancora", "testo", "modo"), mapOf(
+                "pilastro" to e(PILASTRI, "Pilastro"), "ancora" to s("Frammento esatto del quaderno, presente una sola volta"),
+                "testo" to s("Testo nuovo; vuoto per togliere l'ancora"), "modo" to e(listOf("prima", "dopo", "sostituisci"), "Dove va il testo nuovo rispetto all'ancora"),
+            ))),
         Strumento("crea_rituale", Effetto.SCRITTURA,
             "Propone un rituale da mantenere. Se misurabile, dai un criterio tipo SONNO>=420 o PASSI>=7000: si spunterà da solo.",
             schema(listOf("nome", "pilastro"), mapOf("nome" to s("Nome breve"), "pilastro" to e(PILASTRI, "Pilastro"), "criterio" to s("Facoltativo, forma TIPO>=numero")))),
@@ -317,6 +334,15 @@ object Azioni {
             )
         }
         "aggiorna_quaderno" -> Proposta.AggiornaQuaderno(pilastro(a), a.testo("testo") ?: rifiuta("testo vuoto"))
+        "modifica_quaderno" -> {
+            val modo = a.testo("modo")?.lowercase() ?: "sostituisci"
+            if (modo !in listOf("prima", "dopo", "sostituisci")) rifiuta("modo deve essere prima, dopo o sostituisci")
+            val testo = a["testo"]?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() } ?: ""
+            if (testo.isEmpty() && modo != "sostituisci") rifiuta("testo vuoto: per togliere una frase usa modo sostituisci")
+            Proposta.ModificaQuaderno(pilastro(a),
+                a["ancora"]?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }?.takeIf { it.isNotBlank() } ?: rifiuta("ancora mancante"),
+                testo, modo)
+        }
         "crea_rituale" -> {
             val criterio = a.testo("criterio")
             if (criterio != null && Stabilita.leggiCriterio(criterio) == null)

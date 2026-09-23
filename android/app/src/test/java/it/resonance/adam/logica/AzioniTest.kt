@@ -91,4 +91,11 @@ class AzioniTest {
         assertFalse(Testi.affermaAzione("Vuoi che registri il peso?"))
         assertFalse(Testi.affermaAzione("Ho visto che dormi poco."))
     }
+
+    @Test fun perTogliereUnaRigaDalQuadernoNonSiRiscriveTutto() {
+        val p = (Azioni.valida("modifica_quaderno", args("""{"pilastro":"bio","ancora":"Lavoro manuale sporco","testo":"","modo":"sostituisci"}"""), oggi) as Validazione.Scrittura).proposta
+        assertEquals(Proposta.ModificaQuaderno(Pilastro.BIO, "Lavoro manuale sporco", "", "sostituisci"), p)
+        assertTrue(p.descrizione(), p.descrizione().startsWith("Dal quaderno Bio, togliere «Lavoro manuale sporco»"))
+        assertTrue(rifiuto(Azioni.valida("modifica_quaderno", args("""{"pilastro":"bio","ancora":"x","testo":"","modo":"dopo"}"""), oggi)).contains("sostituisci"))
+    }
 }
