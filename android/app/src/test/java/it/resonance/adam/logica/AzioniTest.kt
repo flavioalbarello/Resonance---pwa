@@ -92,6 +92,16 @@ class AzioniTest {
         assertFalse(Testi.affermaAzione("Ho visto che dormi poco."))
     }
 
+    // Visto il 24/09: «Domani… riprendiamo» da un modello che domani non torna da solo.
+    @Test fun unaPromessaSulFuturoRiconosciuta() {
+        assertTrue(Testi.promette("Perfetto, domani riprendiamo da qui."))
+        assertTrue(Testi.promette("Ti ricorderò di pesarti."))
+        assertTrue(Testi.promette("Ne riparliamo stasera"))
+        assertFalse(Testi.promette("Domani ti conviene fare colazione presto."))
+        assertFalse(Testi.promette("Vuoi che lo metta in calendario per ricordartelo?"))
+        assertFalse(Testi.promette("Riprendiamo il piano: lunedì avena."))
+    }
+
     @Test fun perTogliereUnaRigaDalQuadernoNonSiRiscriveTutto() {
         val p = (Azioni.valida("modifica_quaderno", args("""{"pilastro":"bio","ancora":"Lavoro manuale sporco","testo":"","modo":"sostituisci"}"""), oggi) as Validazione.Scrittura).proposta
         assertEquals(Proposta.ModificaQuaderno(Pilastro.BIO, "Lavoro manuale sporco", "", "sostituisci"), p)

@@ -79,6 +79,18 @@ Rilanciato dal sistema dopo un'interruzione, non risponde due volte allo stesso 
 Setup → Battito: «Lascia lavorare in secondo piano» toglie Resonance dalle restrizioni della batteria, perché
 alcuni telefoni chiudono le app in secondo piano anche con WorkManager.
 
+**Risposte lunghe in streaming (24/09/2026).** Un piano alimentare di 7 giorni con Kimi finiva in «timeout»: l'app
+aspettava 2 minuti la risposta intera, in silenzio. Ora la chiamata va in streaming (`OpenRouter.interpreta`: SSE,
+strumenti ricomposti per indice, costo e troncatura letti dall'ultimo pezzo). 90 secondi è il silenzio massimo fra due
+pezzi (OpenRouter manda segnali di vita mentre il modello ragiona), 8 minuti il tetto della risposta intera, che non
+si ritenta. La microchiamata del motore resta senza streaming (6 secondi). Se il turno viene fermato, la
+connessione si chiude. Da verificare sul telefono: i lavori accelerati di Android hanno un loro tetto di durata; se il
+sistema ferma il turno, WorkManager lo rilancia (senza doppia risposta, ma col costo ripagato).
+
+**Promesse sul futuro.** Gemini ha scritto «Domani… riprendiamo»: lo Shell non torna da solo. Regola nel prompt
+(proporre `crea_evento` come promemoria) e controllo del programma (`Testi.promette`), che aggiunge una nota se la
+risposta promette senza aver proposto niente.
+
 ## L'anello di Anochin sulla vita, e la perturbazione al posto dei Magi (24/09/2026)
 
 **Prima.** Nell'APK il ciclo di Anochin c'era sulla singola azione (contesto → proposta → `Azioni.valida` prima

@@ -223,6 +223,8 @@ class Shell(
             modello = modello, costo = costoTurno.takeIf { it > 0 }, motore = motore))
         if (proposte.isEmpty() && Testi.affermaAzione(testo))
             nota("Nessuna azione è stata eseguita in questo turno: le azioni vere compaiono come proposte da confermare e poi come ricevute.")
+        if (proposte.isEmpty() && Testi.promette(testo))
+            nota("Lo Shell non torna da solo su questo: non ha un modo di farlo. Se vuoi un promemoria, chiedigli di metterlo in calendario.")
         return Esito(testo, proposte)
     }
 

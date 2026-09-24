@@ -16,14 +16,15 @@ import java.io.IOException
 class OpenRouterTest {
     private var corpo = ""
 
-    private fun cliente(cadute: Int): Pair<OpenRouter, () -> Int> {
+    private fun cliente(cadute: Int, caduta: () -> IOException = { IOException("Software caused connection abort") },
+                        risposta: String = """{"choices":[{"message":{"content":"eccomi"},"finish_reason":"stop"}]}"""): Pair<OpenRouter, () -> Int> {
         var chiamate = 0
         val http = OkHttpClient.Builder().addInterceptor { catena ->
             chiamate++
             corpo = okio.Buffer().also { catena.request().body!!.writeTo(it) }.readUtf8()
-            if (chiamate <= cadute) throw IOException("Software caused connection abort")
+            if (chiamate <= cadute) throw caduta()
             Response.Builder().request(catena.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
-                .body("""{"choices":[{"message":{"content":"eccomi"},"finish_reason":"stop"}]}""".toResponseBody("application/json".toMediaType()))
+                .body(risposta.toResponseBody("text/event-stream".toMediaType()))
                 .build()
         }.build()
         return OpenRouter(http) to { chiamate }
@@ -46,5 +47,58 @@ class OpenRouterTest {
         val e = runCatching { c.completa("k", "m", JsonArray(emptyList()), null) }.exceptionOrNull()
         assertTrue(e?.message, e is ErroreModello && e.message!!.contains("scrivi «riprova»"))
         assertEquals(2, n())
+    }
+
+    // Visto il 24/09: un piano alimentare di 7 giorni con Kimi → «timeout» dopo 2 minuti di silenzio.
+    // In streaming la risposta arriva a pezzi, con i segnali di vita («: OPENROUTER PROCESSING») mentre il modello ragiona.
+    @Test fun laRispostaInStreamingSiRicomponeConLoStrumentoSpezzato() = runBlocking {
+        val sse = """
+            : OPENROUTER PROCESSING
+
+            : OPENROUTER PROCESSING
+
+            data: {"choices":[{"delta":{"role":"assistant","content":"Lune"}}]}
+
+            data: {"choices":[{"delta":{"content":"dì: avena"}}]}
+
+            data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"t1","type":"function","function":{"name":"crea_evento","arguments":"{\"titolo\":"}}]}}]}
+
+            data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"Spesa\"}"}}]}}]}
+
+            data: {"choices":[{"delta":{},"finish_reason":"length"}]}
+
+            data: {"choices":[],"usage":{"cost":0.0123}}
+
+            data: [DONE]
+        """.trimIndent()
+        val (c, _) = cliente(cadute = 0, risposta = sse)
+        val r = c.completa("k", "m", JsonArray(emptyList()), null, Shell.MAX_TOKEN)
+        assertTrue(corpo, corpo.contains("\"stream\":true"))
+        assertEquals("Lunedì: avena", r.testo)
+        assertEquals(listOf(ChiamataStrumento("t1", "crea_evento", """{"titolo":"Spesa"}""")), r.chiamate)
+        assertEquals(0.0123, r.costo!!, 1e-9)
+        assertTrue(r.troncata)
+        assertEquals("crea_evento", r.assistente["tool_calls"].toString().let { Regex("\"name\":\"(\\w+)\"").find(it)!!.groupValues[1] })
+    }
+
+    @Test fun unErroreAMetaStreamSiDice() = runBlocking {
+        val sse = "data: {\"choices\":[{\"delta\":{\"content\":\"Ciao\"}}]}\n\ndata: {\"error\":{\"message\":\"Provider disconnected\"},\"choices\":[{\"delta\":{},\"finish_reason\":\"error\"}]}\n\n"
+        val (c, _) = cliente(cadute = 0, risposta = sse)
+        val e = runCatching { c.completa("k", "m", JsonArray(emptyList()), null) }.exceptionOrNull()
+        assertTrue(e?.message, e is ErroreModello && e.message!!.contains("Provider disconnected"))
+    }
+
+    // Il tetto totale scaduto non si ritenta: sarebbero altri 8 minuti. Si dice come chiedere meno.
+    @Test fun ilTettoTotaleNonSiRitenta() = runBlocking {
+        val (c, n) = cliente(cadute = 1, caduta = { java.io.InterruptedIOException("timeout") })
+        val e = runCatching { c.completa("k", "m", JsonArray(emptyList()), null) }.exceptionOrNull()
+        assertTrue(e?.message, e is ErroreModello && e.message!!.contains("8 minuti"))
+        assertEquals(1, n())
+    }
+
+    @Test fun laMicrochiamataNonVaInStreaming() = runBlocking {
+        val (c, _) = cliente(cadute = 0)
+        assertEquals("eccomi", c.completa("k", "m", JsonArray(emptyList()), null, 5, rapida = true).testo)
+        assertTrue(corpo, !corpo.contains("stream"))
     }
 }

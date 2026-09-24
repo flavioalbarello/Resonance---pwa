@@ -527,4 +527,14 @@ object Testi {
         RegexOption.IGNORE_CASE,
     )
     fun affermaAzione(t: String) = AFFERMA.containsMatchIn(t)
+
+    // Quando il modello promette di tornare da solo («ti ricorderò», «domani riprendiamo»): non ha un modo di farlo.
+    // Visto il 24/09 con Gemini. Tornare lo fa solo un evento in calendario, o il Ghost.
+    private val PROMETTE = Regex(
+        """\b(ti|te\s+l[oa]|ve\s+l[oa])\s+ricorder[òo](?!\w)|\bti\s+(avviser|riscriver|richiamer|ricontatter|aggiorner)[òo](?!\w)|""" +
+            """\b(domani|stasera|più\s+tardi|la\s+prossima\s+volta)[,]?\s+(riprendiamo|continuiamo|ne\s+riparliamo|ci\s+torniamo)\b|""" +
+            """\b(riprendiamo|continuiamo|ne\s+riparliamo|ci\s+torniamo)\s+(domani|stasera|più\s+tardi)\b|\btorner[òo]\s+(io\s+)?(a\s+chiedert|a\s+scrivert|su\s+quest)""",
+        RegexOption.IGNORE_CASE,
+    )
+    fun promette(t: String) = PROMETTE.containsMatchIn(t)
 }
