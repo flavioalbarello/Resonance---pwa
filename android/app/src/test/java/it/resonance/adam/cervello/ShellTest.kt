@@ -277,6 +277,28 @@ class ShellTest {
         assertTrue(modello.ricevuti[0].any { it.jsonObject["content"]?.jsonPrimitive?.content?.contains("non c'è") == true })
     }
 
+    // I brani di una scaletta sono nodi del percorso, non righe di un testo: si aggiungono a un percorso che c'è già,
+    // senza doppioni, e lo stato si cambia solo su un nodo che esiste.
+    @Test fun iNodiSiAggiungonoAUnPercorsoCheEsisteSenzaDoppioni() = runBlocking {
+        archivio.esegui(Proposta.CreaPercorso(Pilastro.VIDYA, "Tributo Gaetano", "", listOf("E io ci sto")))
+        val modello = FintoModello(
+            chiama("stato_nodo", """{"percorso":"Tributo Gaetano","nodo":"Sfiorivano le viole","stato":"CONSOLIDATO"}"""),
+            chiama("aggiungi_nodi", """{"percorso":"tributo gaetano","nodi":["E io ci sto","Sfiorivano le viole","Al compleanno della zia Rosina","Sfiorivano le viole"]}"""),
+            testo("Proposti i due brani nuovi."),
+        )
+        val esito = Shell(archivio, imp, modello, FintoMondo()).turno("metti i brani come nodi")
+        val rimando = modello.ricevuti[1].last().jsonObject["content"]!!.jsonPrimitive.content
+        assertTrue(rimando, rimando.startsWith("Non proposta") && rimando.contains("aggiungi_nodi"))
+        val p = archivio.proposta(db.messaggi().per(esito.proposte.single())!!) as Proposta.AggiungiNodi
+        assertEquals(listOf("Sfiorivano le viole", "Al compleanno della zia Rosina"), p.nodi)
+        Shell(archivio, imp, FintoModello(), FintoMondo()).conferma(esito.proposte.single())
+        assertEquals(listOf("E io ci sto", "Sfiorivano le viole", "Al compleanno della zia Rosina"),
+            db.percorsi().elencoNodi().sortedBy { it.ordine }.map { it.etichetta })
+
+        val dopo = FintoModello(chiama("stato_nodo", """{"percorso":"Tributo Gaetano","nodo":"Sfiorivano le viole","stato":"CONSOLIDATO"}"""), testo("Proposto."))
+        assertEquals(1, Shell(archivio, imp, dopo, FintoMondo()).turno("sfiorivano è assimilato").proposte.size)
+    }
+
     // ── Scelta automatica del motore ──
 
     private fun conScelta(corpo: suspend () -> Unit) = runBlocking {

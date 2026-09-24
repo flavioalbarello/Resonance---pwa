@@ -107,7 +107,10 @@ class SchermateTest {
             modello = "moonshotai/kimi-k2.6", costo = 0.0021, motore = "pieno"))
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.PROPOSTA, testo = "Registrare Peso: 83,1 kg, oggi", istante = t + 2, stato = StatoProposta.ESEGUITA))
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICEVUTA, testo = "Registrato — Peso 83,1 kg, oggi", istante = t + 3))
-        db.messaggi().inserisci(Messaggio(ruolo = Ruolo.PROPOSTA, testo = "Registrare Pratica: 40 min, oggi", istante = t + 4, stato = StatoProposta.IN_ATTESA))
+        val modifica = it.resonance.adam.logica.Proposta.ModificaDocumento("Scaletta completa",
+            "1. E io ci sto\n2. Al compleanno della zia Rosina", "1. E io ci sto\n2. Al compleanno della zia Rosina — da montare per intero", "sostituisci")
+        db.messaggi().inserisci(Messaggio(ruolo = Ruolo.PROPOSTA, testo = modifica.descrizione(), istante = t + 4, stato = StatoProposta.IN_ATTESA,
+            proposta = it.resonance.adam.logica.Azioni.codifica(modifica)))
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.NOTA, testo = "Nessuna azione è stata eseguita in questo turno: le azioni vere compaiono come proposte da confermare e poi come ricevute.", istante = t + 5))
     }
 
@@ -143,6 +146,11 @@ class SchermateTest {
         regola.onNodeWithTag("allegato").assertExists()
         vm.inAllegato.clear()
         regola.onNodeWithText("Conferma").assertExists()
+        // Prima di confermare si legge tutto, con gli a capo: la scheda accorcia.
+        regola.onNodeWithText("Vedi tutto").performScrollTo().performClick()
+        regola.onNodeWithText("Esce:", substring = true).assertExists()
+        regola.onNodeWithText("Entra:\n1. E io ci sto\n2. Al compleanno", substring = true).assertExists()
+        scatta("3b-proposta-vedi-tutto")
 
         vm.vai(Schermata.VIDYA)
         regola.onNodeWithText("Percorsi").performClick()

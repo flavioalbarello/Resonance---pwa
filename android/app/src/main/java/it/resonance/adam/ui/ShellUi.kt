@@ -1,5 +1,7 @@
 package it.resonance.adam.ui
 
+import it.resonance.adam.logica.Azioni
+
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
@@ -145,6 +147,14 @@ private fun Messaggio(vm: Adam, m: Messaggio) {
             .padding(12.dp)) {
             Etichetta("Proposta", Colori.ambraInchiostro)
             Riga(m.testo)
+            // La descrizione accorcia: prima di confermare si deve poter leggere tutto ciò che entra e che esce.
+            val dettaglio = remember(m.proposta) { m.proposta?.let { runCatching { Azioni.decodifica(it).dettaglio() }.getOrNull() } }
+            if (dettaglio != null) {
+                var aperto by remember(m.id) { mutableStateOf(false) }
+                TextButton({ aperto = !aperto }, modifier = Modifier.testTag("vedi-tutto-${m.id}")) { Text(if (aperto) "Chiudi" else "Vedi tutto") }
+                if (aperto) Text(dettaglio, fontSize = 14.sp, lineHeight = 19.sp, color = Colori.inchiostro,
+                    modifier = Modifier.fillMaxWidth().background(Colori.fondo, RoundedCornerShape(8.dp)).padding(10.dp))
+            }
             when (m.stato) {
                 StatoProposta.IN_ATTESA -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
                     Button({ vm.conferma(m) }, colors = ButtonDefaults.buttonColors(containerColor = Colori.ambra, contentColor = Colori.ambraInchiostro)) { Text("Conferma") }

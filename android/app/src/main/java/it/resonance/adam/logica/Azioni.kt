@@ -34,6 +34,9 @@ enum class Effetto { LETTURA, SCRITTURA }
 sealed class Proposta {
     abstract fun descrizione(): String
 
+    // Il testo intero, per «Vedi tutto» sulla scheda: la descrizione accorcia, e non si conferma ciò che non si legge.
+    open fun dettaglio(): String? = null
+
     @Serializable @SerialName("registra_misura")
     data class RegistraMisura(
         val tipo: TipoMisura, val valore: Double, val giorno: String,
@@ -49,6 +52,7 @@ sealed class Proposta {
     @Serializable @SerialName("scrivi_voce")
     data class ScriviVoce(val pilastro: Pilastro, val testo: String, val giorno: String) : Proposta() {
         override fun descrizione() = "Scrivere nel diario ${pilastro.etichetta}, ${Giorni.leggibile(giorno)}: «${Testi.corto(testo, 140)}»"
+        override fun dettaglio() = testo
     }
 
     @Serializable @SerialName("crea_percorso")
@@ -61,6 +65,7 @@ sealed class Proposta {
     data class SalvaDocumento(val percorso: String, val titolo: String, val testo: String, val nodo: String? = null) : Proposta() {
         override fun descrizione() = "Salvare «$titolo» (${testo.length} caratteri) nel percorso «$percorso»" +
             (nodo?.let { " sotto il nodo «$it»" } ?: "") + ". Inizia: «${Testi.corto(testo, 100)}»"
+        override fun dettaglio() = testo
     }
 
     @Serializable @SerialName("modifica_documento")
@@ -70,11 +75,13 @@ sealed class Proposta {
             "dopo" -> "In «$documento», inserire dopo «${Testi.corto(ancora, 60)}»: «${Testi.corto(testo, 120)}»"
             else -> "In «$documento», sostituire «${Testi.corto(ancora, 60)}» con «${Testi.corto(testo, 120)}»"
         }
+        override fun dettaglio() = Testi.primaDopo(ancora, testo, modo)
     }
 
     @Serializable @SerialName("aggiorna_quaderno")
     data class AggiornaQuaderno(val pilastro: Pilastro, val testo: String) : Proposta() {
         override fun descrizione() = "Riscrivere il quaderno ${pilastro.etichetta} (${testo.length} caratteri; il testo precedente resta nello storico)"
+        override fun dettaglio() = testo
     }
 
     // Cambiare una parte del quaderno senza riscriverlo: riscriverlo intero per togliere una riga supera il tetto di lunghezza.
@@ -87,6 +94,7 @@ sealed class Proposta {
             modo == "dopo" -> "Nel quaderno ${pilastro.etichetta}, dopo «${Testi.corto(ancora, 60)}» aggiungere «${Testi.corto(testo, 120)}»"
             else -> "Nel quaderno ${pilastro.etichetta}, sostituire «${Testi.corto(ancora, 60)}» con «${Testi.corto(testo, 120)}»"
         } + " (il testo precedente resta nello storico)"
+        override fun dettaglio() = if (modo == "aggiungi") "Da aggiungere in fondo:\n$testo" else Testi.primaDopo(ancora, testo, modo)
     }
 
     @Serializable @SerialName("crea_rituale")
@@ -98,6 +106,15 @@ sealed class Proposta {
     @Serializable @SerialName("spunta_rituale")
     data class SpuntaRituale(val nome: String, val giorno: String) : Proposta() {
         override fun descrizione() = "Segnare «$nome» come tenuto, ${Giorni.leggibile(giorno)}"
+    }
+
+    // Le tappe di un percorso che c'è già: prima si potevano dare solo creandolo, e lo Shell ripiegava sul testo libero
+    // (visto il 24/09: 21 brani del tributo scritti in un documento con «[introdotto]» ricopiato a mano).
+    @Serializable @SerialName("aggiungi_nodi")
+    data class AggiungiNodi(val percorso: String, val nodi: List<String>) : Proposta() {
+        override fun descrizione() = "Nel percorso «$percorso», aggiungere ${nodi.size} " + (if (nodi.size == 1) "nodo" else "nodi") +
+            " (non iniziati): ${Testi.corto(nodi.joinToString(", "), 160)}"
+        override fun dettaglio() = nodi.joinToString("\n") { "• $it" }
     }
 
     @Serializable @SerialName("stato_nodo")
@@ -158,6 +175,7 @@ sealed class Proposta {
     data class ScriviMail(val a: String, val oggetto: String, val corpo: String) : Proposta() {
         override fun descrizione() = "Preparare una mail" + (if (a.isNotBlank()) " a $a" else " (destinatario lo scrivi tu)") +
             " — «${Testi.corto(oggetto, 60)}»: «${Testi.corto(corpo, 160)}». Si apre come bozza nell'app di posta: parte solo se premi Invia tu."
+        override fun dettaglio() = "Oggetto: $oggetto\n\n$corpo"
     }
 }
 
@@ -291,7 +309,10 @@ object Azioni {
                 "a" to s("Indirizzo esatto come l'ha scritto il Ghost; lascia vuoto se non te l'ha dato"),
                 "oggetto" to s("Oggetto"), "corpo" to s("Testo completo"),
             ))),
-        Strumento("stato_nodo", Effetto.SCRITTURA, "Propone di cambiare lo stato di un nodo di un percorso.",
+        Strumento("aggiungi_nodi", Effetto.SCRITTURA,
+            "Propone di aggiungere nodi (tappe, brani, capitoli…) in fondo a un percorso che esiste già; partono non iniziati. Poi lo stato di ciascuno si cambia con stato_nodo.",
+            schema(listOf("percorso", "nodi"), mapOf("percorso" to s("Titolo del percorso"), "nodi" to lista("Etichette brevi, una per nodo, da 1 a 30")))),
+        Strumento("stato_nodo", Effetto.SCRITTURA, "Propone di cambiare lo stato di un nodo di un percorso. È il posto dello stato di una tappa: non scriverlo nel quaderno né in un documento.",
             schema(listOf("percorso", "nodo", "stato"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del nodo"), "stato" to e(STATI, "Nuovo stato")))),
     )
 
@@ -382,6 +403,13 @@ object Azioni {
             Proposta.CreaRituale(a.testo("nome") ?: rifiuta("nome mancante"), pilastro(a), criterio?.let { Stabilita.leggiCriterio(it).toString() })
         }
         "spunta_rituale" -> Proposta.SpuntaRituale(a.testo("nome") ?: rifiuta("nome mancante"), giorno(a, oggi))
+        "aggiungi_nodi" -> {
+            val nodi = runCatching { a["nodi"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf(String::isNotEmpty) } }.getOrNull().orEmpty()
+                .distinctBy { Testi.normalizza(it) }
+            if (nodi.size !in 1..30) rifiuta("servono da 1 a 30 nodi, come elenco di etichette")
+            nodi.find { it.length > 80 }?.let { rifiuta("«${Testi.corto(it, 40)}» è una frase, non un'etichetta: accorciala") }
+            Proposta.AggiungiNodi(a.testo("percorso") ?: rifiuta("percorso mancante"), nodi)
+        }
         "stato_nodo" -> {
             val stato = a.testo("stato")?.uppercase()?.let { s -> StatoNodo.entries.find { it.name == s } } ?: rifiuta("stato sconosciuto (usa ${STATI.joinToString("/")})")
             Proposta.StatoDelNodo(a.testo("percorso") ?: rifiuta("percorso mancante"), a.testo("nodo") ?: rifiuta("nodo mancante"), stato)
@@ -500,6 +528,13 @@ object Testi {
     sealed class Modifica {
         data class Fatta(val testo: String) : Modifica()
         data class Impossibile(val motivo: String) : Modifica()
+    }
+
+    // Cosa esce e cosa entra, per intero e con gli a capo: ciò che il Ghost legge prima di confermare.
+    fun primaDopo(ancora: String, testo: String, modo: String) = when (modo) {
+        "prima" -> "Da inserire PRIMA di:\n$ancora\n\nTesto:\n$testo"
+        "dopo" -> "Da inserire DOPO:\n$ancora\n\nTesto:\n$testo"
+        else -> "Esce:\n$ancora\n\nEntra:\n" + testo.ifEmpty { "(niente: il pezzo si toglie)" }
     }
 
     // Il taglia-e-cuci lo fa il programma, mai il modello: un'ancora assente o doppia non indovina.

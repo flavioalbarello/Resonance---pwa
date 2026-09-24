@@ -116,6 +116,15 @@ class Archivio(val db: Db) {
             db.rituali().spunta(Spunta(r.id, p.giorno, "shell", ora))
             Esecuzione(true, "«${r.nome}» segnato come tenuto, ${Giorni.leggibile(p.giorno, oggi)}")
         }
+        is Proposta.AggiungiNodi -> {
+            val per = percorso(p.percorso)
+            val esistenti = db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+            val nuovi = p.nodi.filter { n -> esistenti.none { Testi.normalizza(it.etichetta) == Testi.normalizza(n) } }
+            val base = (esistenti.maxOfOrNull { it.ordine } ?: -1) + 1
+            nuovi.forEachIndexed { i, n -> db.percorsi().inserisciNodo(Nodo(percorsoId = per.id, etichetta = n, ordine = base + i)) }
+            Esecuzione(nuovi.isNotEmpty(), if (nuovi.isEmpty()) "Nessun nodo aggiunto: c'erano già tutti in «${per.titolo}»"
+                else "Aggiunti ${nuovi.size} nodi a «${per.titolo}» (ora ${esistenti.size + nuovi.size})")
+        }
         is Proposta.StatoDelNodo -> {
             val per = percorso(p.percorso)
             val n = trova(db.percorsi().elencoNodi().filter { it.percorsoId == per.id }, p.nodo, { it.etichetta }, "nodo")

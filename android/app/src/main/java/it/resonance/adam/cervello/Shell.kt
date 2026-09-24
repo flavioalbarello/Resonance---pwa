@@ -270,6 +270,29 @@ class Shell(
             val d = archivio.documento(p.documento)
             provaAncora(p, "il documento «${d.titolo}»", d.testo, p.ancora)
         } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "documento non trovato") }
+        is Proposta.AggiungiNodi -> try {
+            val per = archivio.percorso(p.percorso)
+            val esistenti = archivio.db.percorsi().elencoNodi().filter { it.percorsoId == per.id }.map { Testi.normalizza(it.etichetta) }.toSet()
+            val nuovi = p.nodi.filter { Testi.normalizza(it) !in esistenti }
+            if (nuovi.isEmpty()) Risoluzione.Domanda("in «${per.titolo}» ci sono già tutti: per lo stato usa stato_nodo")
+            else Risoluzione.Pronta(Proposta.AggiungiNodi(per.titolo, nuovi))
+        } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
+        // Anche il nodo si cerca prima: una proposta che alla conferma non trova il nodo non si mostra.
+        is Proposta.StatoDelNodo -> try {
+            val per = archivio.percorso(p.percorso)
+            val nodi = archivio.db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+            val c = Testi.normalizza(p.nodo)
+            val trovati = nodi.filter { Testi.normalizza(it.etichetta) == c }.ifEmpty {
+                nodi.filter { Testi.normalizza(it.etichetta).contains(c) || c.contains(Testi.normalizza(it.etichetta)) }
+            }
+            when {
+                trovati.isEmpty() -> Risoluzione.Domanda("in «${per.titolo}» non c'è un nodo «${p.nodo}». " +
+                    (if (nodi.isEmpty()) "Il percorso non ha nodi: aggiungili con aggiungi_nodi" else "Nodi: ${nodi.sortedBy { it.ordine }.joinToString("; ") { it.etichetta }}. Se manca, aggiungilo con aggiungi_nodi"))
+                trovati.size > 1 -> Risoluzione.Domanda("«${p.nodo}» corrisponde a più nodi: ${trovati.joinToString("; ") { it.etichetta }}")
+                trovati.single().stato == p.stato -> Risoluzione.Domanda("«${trovati.single().etichetta}» è già ${p.stato.etichetta}")
+                else -> Risoluzione.Pronta(p)
+            }
+        } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
         else -> Risoluzione.Pronta(p)
     }
 

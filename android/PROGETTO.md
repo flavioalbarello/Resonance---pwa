@@ -94,6 +94,13 @@ L'ancora si trova anche ignorando spazi e a capo (`Testi.ancora`), purché unica
 capo. Una proposta uguale a una in attesa non si ripete; le note del programma (il motivo di un fallimento) arrivano
 al modello, che prima se lo inventava. Giri di strumenti: da 4 a 6.
 
+**Le tappe sono nodi, non testo (24/09/2026).** Lo stato dei brani del tributo finiva nel quaderno Vidya e poi nella
+«Scaletta completa», con «[introdotto]» ricopiato a mano: la forma con cui il prompt mostra i NODI di un percorso.
+Mancava il modo di aggiungere nodi a un percorso esistente: ora `aggiungi_nodi` (senza doppioni, in fondo, non
+iniziati) e la regola nel prompt «tappe → nodi, stato → `stato_nodo`». Anche `stato_nodo` si verifica prima di
+mostrarlo (nodo esistente, stato diverso). Sulla scheda di una proposta, «Vedi tutto» (`Proposta.dettaglio`) mostra
+per intero e con gli a capo ciò che esce e ciò che entra: la descrizione accorcia, e non si conferma ciò che non si legge.
+
 **Promesse sul futuro.** Gemini ha scritto «Domani… riprendiamo»: lo Shell non torna da solo. Regola nel prompt
 (proporre `crea_evento` come promemoria) e controllo del programma (`Testi.promette`), che aggiunge una nota se la
 risposta promette senza aver proposto niente.

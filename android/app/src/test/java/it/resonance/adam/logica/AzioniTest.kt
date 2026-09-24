@@ -118,4 +118,16 @@ class AzioniTest {
         assertTrue(p.descrizione(), p.descrizione().startsWith("Nel quaderno Vidya, aggiungere in fondo"))
         assertTrue(rifiuto(Azioni.valida("modifica_quaderno", args("""{"pilastro":"VIDYA","testo":"x","modo":"dopo"}"""), oggi)).contains("modo aggiungi"))
     }
+
+    @Test fun iNodiDaAggiungereSonoEtichetteSenzaDoppioni() {
+        val v = Azioni.valida("aggiungi_nodi", args("""{"percorso":"Tributo","nodi":["Ma il cielo è sempre più blu"," ma il cielo e sempre piu blu ","Gianna"]}"""), oggi)
+        assertEquals(listOf("Ma il cielo è sempre più blu", "Gianna"), ((v as Validazione.Scrittura).proposta as Proposta.AggiungiNodi).nodi)
+        val vuota = Azioni.valida("aggiungi_nodi", args("""{"percorso":"Tributo","nodi":[]}"""), oggi)
+        assertTrue(vuota is Validazione.Rifiutata)
+    }
+
+    @Test fun ilDettaglioMostraTuttoConGliACapo() {
+        val d = Proposta.ModificaDocumento("Scaletta", "1. Gianna\n2. Berta", "1. Gianna — consolidato\n2. Berta", "sostituisci").dettaglio()!!
+        assertTrue(d, d.startsWith("Esce:\n1. Gianna\n2. Berta") && d.contains("Entra:\n1. Gianna — consolidato\n2. Berta"))
+    }
 }
