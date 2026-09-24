@@ -101,6 +101,16 @@ iniziati) e la regola nel prompt «tappe → nodi, stato → `stato_nodo`». Anc
 mostrarlo (nodo esistente, stato diverso). Sulla scheda di una proposta, «Vedi tutto» (`Proposta.dettaglio`) mostra
 per intero e con gli a capo ciò che esce e ciò che entra: la descrizione accorcia, e non si conferma ciò che non si legge.
 
+**Il battito su sveglie di sistema (25/09/2026).** «Il battito non batte», e l'app non poteva dire perché: era un'attesa
+di WorkManager (a schermo spento Android la rinvia anche di ore) e `notifica` usciva muta senza permesso. Ora una
+sveglia esatta per battito (`AlarmManager.setExactAndAllowWhileIdle`, `USE_EXACT_ALARM`), rimessa a ogni suono, al
+riavvio e dopo un aggiornamento (`SvegliaBattito`); il lavoro vero va in un lavoro accelerato. Ogni battito scrive
+una riga nel registro (arrivato / solo numeri / NON arrivato e perché / errore), visibile in Setup con lo stato delle
+notifiche, della sveglia esatta, i prossimi orari e «Prova ora».
+
+**Togliere un nodo.** Tenendo premuto il nodo nel percorso, o con `togli_nodo` dallo Shell. Prima una voce nel diario
+del pilastro con nome e stato (Legge 14), poi i documenti legati restano nel percorso senza nodo.
+
 **Promesse sul futuro.** Gemini ha scritto «Domani… riprendiamo»: lo Shell non torna da solo. Regola nel prompt
 (proporre `crea_evento` come promemoria) e controllo del programma (`Testi.promette`), che aggiunge una nota se la
 risposta promette senza aver proposto niente.

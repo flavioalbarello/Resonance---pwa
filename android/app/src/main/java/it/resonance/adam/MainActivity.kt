@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
         if (ok) dopoMicrofono?.invoke() else vm.avviso = "Senza il permesso del microfono la voce non può funzionare."
         dopoMicrofono = null
     }
+    private var notificheChieste = false
     private val permessoNotifiche = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         vm.avviso = if (ok) "Notifiche permesse: il battito può parlarti." else "Senza notifiche il battito resta muto."
     }
@@ -84,8 +85,10 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch { permessiSensori.launch(vm.sensi.permessiDaChiedere()) }
         }
         override fun chiediNotifiche() {
-            if (Build.VERSION.SDK_INT >= 33) permessoNotifiche.launch(Manifest.permission.POST_NOTIFICATIONS)
-            else vm.avviso = "Su questa versione di Android le notifiche sono già permesse."
+            // Se il permesso c'è ma le notifiche sono spente (o il sistema non chiede più), la scheda delle notifiche dell'app.
+            if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+                !notificheChieste) { notificheChieste = true; permessoNotifiche.launch(Manifest.permission.POST_NOTIFICATIONS) }
+            else runCatching { startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName)) }
         }
         override fun chiediCalendario() = permessiCalendario.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR))
         override fun allega() = scegliAllegati.launch(arrayOf("image/*", "application/pdf", "text/*", "application/json",

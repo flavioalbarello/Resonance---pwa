@@ -1,5 +1,9 @@
 package it.resonance.adam.ui
 
+import it.resonance.adam.logica.Ritmo
+
+import it.resonance.adam.logica.Battito
+
 import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -297,6 +301,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
         avviso = if (testo.isBlank()) "Quaderno ${p.etichetta} svuotato: la versione precedente resta nello storico" else "Quaderno ${p.etichetta} salvato"
     }
     fun salvaDocumento(d: Documento, testo: String) = viewModelScope.launch { archivio.salvaTestoDocumento(d, testo); avviso = "Documento salvato" }
+    fun togliNodo(n: Nodo) = viewModelScope.launch { avviso = archivio.togliNodo(n) }
     fun cambiaStatoNodo(n: Nodo) = viewModelScope.launch {
         val prossimo = StatoNodo.entries[(n.stato.ordinal + 1) % StatoNodo.entries.size]
         db.percorsi().aggiornaNodo(n.copy(stato = prossimo))
@@ -347,6 +352,20 @@ class Adam(app: Application) : AndroidViewModel(app) {
     }
 
     fun riprogrammaBattito() = Battiti.programma(getApplication())
+
+    // Cosa sa l'app del proprio battito: se le notifiche si vedono, se la sveglia è esatta, quando suona, com'è andata.
+    fun muto() = Battiti.muto(getApplication())
+    fun sveglieEsatte() = Battiti.esatte(getApplication())
+    fun prossimiBattiti(): String {
+        val imp = Impostazioni(getApplication())
+        if (!imp.battitoAttivo) return "Battito spento."
+        return Battito.entries.joinToString(" · ") { b -> "${b.etichetta} ${Ritmo.quando(Battiti.quando(imp, b))}" }
+    }
+    fun registroBattito() = Impostazioni(getApplication()).registroBattito
+    fun provaBattito() {
+        Battiti.avvia(getApplication(), Battito.MATTINO, prova = true)
+        avviso = "Battito di prova in arrivo: tra qualche secondo una notifica, e una riga nel registro qui sotto."
+    }
 
     fun liberoDallaBatteria() = runCatching {
         getApplication<Application>().getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(getApplication<Application>().packageName)

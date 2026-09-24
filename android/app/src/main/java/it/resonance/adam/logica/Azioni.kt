@@ -117,6 +117,11 @@ sealed class Proposta {
         override fun dettaglio() = nodi.joinToString("\n") { "• $it" }
     }
 
+    @Serializable @SerialName("togli_nodo")
+    data class TogliNodo(val percorso: String, val nodo: String) : Proposta() {
+        override fun descrizione() = "Dal percorso «$percorso», togliere il nodo «$nodo» (resta una traccia nel diario)"
+    }
+
     @Serializable @SerialName("stato_nodo")
     data class StatoDelNodo(val percorso: String, val nodo: String, val stato: StatoNodo) : Proposta() {
         override fun descrizione() = "Nel percorso «$percorso», portare il nodo «$nodo» a «${stato.etichetta}»"
@@ -312,6 +317,8 @@ object Azioni {
         Strumento("aggiungi_nodi", Effetto.SCRITTURA,
             "Propone di aggiungere nodi (tappe, brani, capitoli…) in fondo a un percorso che esiste già; partono non iniziati. Poi lo stato di ciascuno si cambia con stato_nodo.",
             schema(listOf("percorso", "nodi"), mapOf("percorso" to s("Titolo del percorso"), "nodi" to lista("Etichette brevi, una per nodo, da 1 a 30")))),
+        Strumento("togli_nodo", Effetto.SCRITTURA, "Propone di togliere un nodo da un percorso (doppione, tappa che non serve più). Resta una traccia nel diario.",
+            schema(listOf("percorso", "nodo"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del nodo")))),
         Strumento("stato_nodo", Effetto.SCRITTURA, "Propone di cambiare lo stato di un nodo di un percorso. È il posto dello stato di una tappa: non scriverlo nel quaderno né in un documento.",
             schema(listOf("percorso", "nodo", "stato"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del nodo"), "stato" to e(STATI, "Nuovo stato")))),
     )
@@ -410,6 +417,7 @@ object Azioni {
             nodi.find { it.length > 80 }?.let { rifiuta("«${Testi.corto(it, 40)}» è una frase, non un'etichetta: accorciala") }
             Proposta.AggiungiNodi(a.testo("percorso") ?: rifiuta("percorso mancante"), nodi)
         }
+        "togli_nodo" -> Proposta.TogliNodo(a.testo("percorso") ?: rifiuta("percorso mancante"), a.testo("nodo") ?: rifiuta("nodo mancante"))
         "stato_nodo" -> {
             val stato = a.testo("stato")?.uppercase()?.let { s -> StatoNodo.entries.find { it.name == s } } ?: rifiuta("stato sconosciuto (usa ${STATI.joinToString("/")})")
             Proposta.StatoDelNodo(a.testo("percorso") ?: rifiuta("percorso mancante"), a.testo("nodo") ?: rifiuta("nodo mancante"), stato)

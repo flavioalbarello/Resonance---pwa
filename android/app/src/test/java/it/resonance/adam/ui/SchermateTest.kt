@@ -173,5 +173,10 @@ class SchermateTest {
 
         vm.vai(Schermata.SETUP)
         scatta("7-setup")
+        // Il battito dice come sta: notifiche, sveglia, prossimi, registro.
+        regola.onNodeWithText("Prova ora").performScrollTo()
+        regola.onNodeWithText("Prossimi:", substring = true).assertExists()
+        regola.onNodeWithText("Ultimi battiti", substring = true).assertExists()
+        scatta("7b-setup-battito")
     }
 }

@@ -2,6 +2,10 @@ package it.resonance.adam.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import it.resonance.adam.dati.Nodo
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -150,19 +154,31 @@ private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.
     val documenti by vm.documenti.collectAsState()
     val per = percorsi.find { it.id == id } ?: return
     var nuovoDoc by remember { mutableStateOf(false) }
+    var daTogliere by remember { mutableStateOf<Nodo?>(null) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
         TextButton({ vm.percorsoAperto = null }) { Text("‹ Percorsi") }
         Text(per.titolo, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = colore)
         if (per.scopo.isNotBlank()) Tenue(per.scopo)
         Scheda(colore) {
-            Etichetta("Nodi · tocca per avanzare lo stato", colore)
+            Etichetta("Nodi · tocca per avanzare lo stato, tieni premuto per toglierlo", colore)
             nodi.filter { it.percorsoId == per.id }.sortedBy { it.ordine }.forEach { n ->
-                Row(Modifier.fillMaxWidth().clickable { vm.cambiaStatoNodo(n) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().testTag("nodo-${n.etichetta}")
+                    .pointerInput(n.id, n.stato) { detectTapGestures(onTap = { vm.cambiaStatoNodo(n) }, onLongPress = { daTogliere = n }) }
+                    .padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(n.etichetta, modifier = Modifier.weight(1f), fontSize = 15.sp)
                     Text(n.stato.etichetta, fontSize = 12.sp, color = if (n.stato == StatoNodo.NON_INIZIATO) Colori.tenue else Colori.ambraInchiostro,
                         modifier = Modifier.background(if (n.stato == StatoNodo.NON_INIZIATO) Colori.fondo2 else colore.copy(alpha = 0.18f + 0.18f * n.stato.ordinal), RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
                 }
             }
+        }
+        daTogliere?.let { n ->
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { daTogliere = null },
+                title = { Text("Togliere «${n.etichetta}»?") },
+                text = { Text("Era ${n.stato.etichetta}. Nel diario ${per.pilastro.etichetta} resta una riga con nome e stato; i documenti legati restano nel percorso.") },
+                confirmButton = { TextButton({ vm.togliNodo(n); daTogliere = null }) { Text("Togli", color = Colori.allarme) } },
+                dismissButton = { TextButton({ daTogliere = null }) { Text("Lascia") } },
+            )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Etichetta("Documenti")

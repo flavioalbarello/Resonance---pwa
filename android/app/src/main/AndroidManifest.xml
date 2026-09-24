@@ -7,6 +7,11 @@
     <!-- La 2.0.154 e la 2.0.155 non si installavano sul telefono del Ghost (24/09/2026). Tolti: REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
          FOREGROUND_SERVICE_DATA_SYNC e il tipo dataSync sul servizio di WorkManager. Il servizio in primo piano serve solo prima
          di Android 12, e lì il tipo non è richiesto. -->
+    <!-- Il battito all'ora giusta anche a schermo spento: una sveglia esatta (25/09/2026). USE_EXACT_ALARM è concesso
+         all'installazione da Android 13; prima basta SCHEDULE_EXACT_ALARM. Al riavvio il sistema cancella le sveglie. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />
@@ -35,6 +40,15 @@
         android:icon="@mipmap/ic_launcher"
         android:label="Resonance"
         android:theme="@style/Tema">
+
+        <receiver android:name=".battito.SvegliaBattito" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
 
         <activity
             android:name=".MainActivity"

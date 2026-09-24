@@ -46,6 +46,9 @@ open class Impostazioni(context: Context) {
     var orarioSettimana: String
         get() = p.getString("settimana", "18:00")!!
         set(v) = p.edit().putString("settimana", v).apply()
+    var registroBattito: String
+        get() = p.getString("registroBattito", "")!!
+        set(v) = p.edit().putString("registroBattito", v).apply()
     var mattinoDalModello: Boolean
         get() = p.getBoolean("mattinoModello", true)
         set(v) = p.edit().putBoolean("mattinoModello", v).apply()

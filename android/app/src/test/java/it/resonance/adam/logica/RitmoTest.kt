@@ -25,4 +25,13 @@ class RitmoTest {
         assertEquals(LocalTime.of(7, 30), Ritmo.leggiOrario("sette", LocalTime.of(7, 30)))
         assertEquals(LocalTime.of(6, 5), Ritmo.leggiOrario("6:05", LocalTime.of(7, 30)))
     }
+
+    @Test fun ilRegistroTieneLeUltimeRigheInCima() {
+        var r = ""
+        (1..10).forEach { r = Ritmo.annota(r, "riga $it") }
+        val righe = r.lines()
+        assertEquals(Ritmo.RIGHE_REGISTRO, righe.size)
+        assertEquals("riga 10", righe.first())
+        assertEquals("gio 24/9 21:31 · Sera: arrivato", Ritmo.riga(Battito.SERA, LocalDateTime.of(2026, 9, 24, 21, 31), "arrivato"))
+    }
 }

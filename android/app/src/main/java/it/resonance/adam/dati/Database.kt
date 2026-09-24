@@ -3,6 +3,7 @@ package it.resonance.adam.dati
 import android.content.Context
 import androidx.room.AutoMigration
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Database
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -70,6 +71,8 @@ interface PercorsiDao {
     @Query("SELECT * FROM nodi") suspend fun elencoNodi(): List<Nodo>
     @Insert suspend fun inserisciNodo(n: Nodo): Long
     @Update suspend fun aggiornaNodo(n: Nodo)
+    @Delete suspend fun togliNodo(n: Nodo)
+    @Query("UPDATE documenti SET nodoId = NULL WHERE nodoId = :id") suspend fun sganciaDocumenti(id: Long)
     @Query("SELECT * FROM documenti ORDER BY creato") fun documenti(): Flow<List<Documento>>
     @Query("SELECT * FROM documenti") suspend fun elencoDocumenti(): List<Documento>
     @Insert suspend fun inserisciDocumento(d: Documento): Long

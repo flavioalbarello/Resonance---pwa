@@ -4,6 +4,7 @@ import it.resonance.adam.Impostazioni
 import it.resonance.adam.dati.Archivio
 import it.resonance.adam.dati.Esecuzione
 import it.resonance.adam.dati.Messaggio
+import it.resonance.adam.dati.Nodo
 import it.resonance.adam.dati.Pilastro
 import it.resonance.adam.dati.Voce
 import it.resonance.adam.dati.Ruolo
@@ -278,23 +279,34 @@ class Shell(
             else Risoluzione.Pronta(Proposta.AggiungiNodi(per.titolo, nuovi))
         } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
         // Anche il nodo si cerca prima: una proposta che alla conferma non trova il nodo non si mostra.
-        is Proposta.StatoDelNodo -> try {
-            val per = archivio.percorso(p.percorso)
-            val nodi = archivio.db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
-            val c = Testi.normalizza(p.nodo)
-            val trovati = nodi.filter { Testi.normalizza(it.etichetta) == c }.ifEmpty {
-                nodi.filter { Testi.normalizza(it.etichetta).contains(c) || c.contains(Testi.normalizza(it.etichetta)) }
-            }
-            when {
-                trovati.isEmpty() -> Risoluzione.Domanda("in «${per.titolo}» non c'è un nodo «${p.nodo}». " +
-                    (if (nodi.isEmpty()) "Il percorso non ha nodi: aggiungili con aggiungi_nodi" else "Nodi: ${nodi.sortedBy { it.ordine }.joinToString("; ") { it.etichetta }}. Se manca, aggiungilo con aggiungi_nodi"))
-                trovati.size > 1 -> Risoluzione.Domanda("«${p.nodo}» corrisponde a più nodi: ${trovati.joinToString("; ") { it.etichetta }}")
-                trovati.single().stato == p.stato -> Risoluzione.Domanda("«${trovati.single().etichetta}» è già ${p.stato.etichetta}")
-                else -> Risoluzione.Pronta(p)
-            }
-        } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
+        is Proposta.StatoDelNodo -> when (val n = nodo(p.percorso, p.nodo)) {
+            is Risoluzione.Domanda -> n
+            is Nodo -> if (n.stato == p.stato) Risoluzione.Domanda("«${n.etichetta}» è già ${p.stato.etichetta}") else Risoluzione.Pronta(p)
+            else -> Risoluzione.Pronta(p)
+        }
+        is Proposta.TogliNodo -> when (val n = nodo(p.percorso, p.nodo)) {
+            is Risoluzione.Domanda -> n
+            is Nodo -> Risoluzione.Pronta(p.copy(nodo = n.etichetta))
+            else -> Risoluzione.Pronta(p)
+        }
         else -> Risoluzione.Pronta(p)
     }
+
+    // Il nodo esatto, o la domanda da rimandare al modello con i nodi veri.
+    private suspend fun nodo(percorso: String, nodo: String): Any = try {
+        val per = archivio.percorso(percorso)
+        val nodi = archivio.db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+        val c = Testi.normalizza(nodo)
+        val trovati = nodi.filter { Testi.normalizza(it.etichetta) == c }.ifEmpty {
+            nodi.filter { Testi.normalizza(it.etichetta).contains(c) || c.contains(Testi.normalizza(it.etichetta)) }
+        }
+        when {
+            trovati.size == 1 -> trovati.single()
+            trovati.isEmpty() -> Risoluzione.Domanda("in «${per.titolo}» non c'è un nodo «$nodo». " +
+                (if (nodi.isEmpty()) "Il percorso non ha nodi: aggiungili con aggiungi_nodi" else "Nodi: ${nodi.sortedBy { it.ordine }.joinToString("; ") { it.etichetta }}. Se manca, aggiungilo con aggiungi_nodi"))
+            else -> Risoluzione.Domanda("«$nodo» corrisponde a più nodi: ${trovati.joinToString("; ") { it.etichetta }}. Usa l'etichetta intera")
+        }
+    } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
 
     // Il Ghost scrive «sì» e il modello rifà la stessa proposta: una sola in attesa basta.
     private suspend fun inAttesa(codifica: String) = archivio.db.messaggi().ultimi(40)

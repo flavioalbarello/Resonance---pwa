@@ -299,6 +299,22 @@ class ShellTest {
         assertEquals(1, Shell(archivio, imp, dopo, FintoMondo()).turno("sfiorivano è assimilato").proposte.size)
     }
 
+    // Un nodo doppione si toglie, e lascia una traccia nel diario: la storia di una tappa non si cancella.
+    @Test fun unNodoSiToglieELasciaTraccia() = runBlocking {
+        archivio.esegui(Proposta.CreaPercorso(Pilastro.VIDYA, "Tribute Rino Gaetano", "", listOf("E io ci sto: primo pezzo e blocchi tecnici", "E io ci sto")))
+        val modello = FintoModello(
+            chiama("togli_nodo", """{"percorso":"Tribute Rino Gaetano","nodo":"io ci"}"""),
+            chiama("togli_nodo", """{"percorso":"Tribute Rino Gaetano","nodo":"e io ci sto: primo pezzo e blocchi tecnici"}"""),
+            testo("Proposto di togliere il doppione."),
+        )
+        val esito = Shell(archivio, imp, modello, FintoMondo()).turno("togli il primo E io ci sto")
+        val rimando = modello.ricevuti[1].last().jsonObject["content"]!!.jsonPrimitive.content
+        assertTrue(rimando, rimando.contains("più nodi"))
+        Shell(archivio, imp, FintoModello(), FintoMondo()).conferma(esito.proposte.single())
+        assertEquals(listOf("E io ci sto"), db.percorsi().elencoNodi().map { it.etichetta })
+        assertTrue(db.voci().elenco().any { it.pilastro == Pilastro.VIDYA && it.testo.contains("«E io ci sto: primo pezzo e blocchi tecnici», era non iniziato") })
+    }
+
     // ── Scelta automatica del motore ──
 
     private fun conScelta(corpo: suspend () -> Unit) = runBlocking {

@@ -130,7 +130,19 @@ fun Setup(vm: Adam, sistema: Sistema) {
                 Switch(dalModello, { dalModello = it; imp.mattinoDalModello = it })
                 Text("  Il messaggio lo scrive il modello (se no, solo i numeri)")
             }
-            OutlinedButton({ sistema.chiediNotifiche() }) { Text("Permetti le notifiche") }
+            // Il battito deve poter dire perché non batte: prima non lo diceva (25/09/2026).
+            val muto = remember(vm.avviso) { vm.muto() }
+            val esatte = remember(vm.avviso) { vm.sveglieEsatte() }
+            val prossimi = remember(vm.avviso, battito) { vm.prossimiBattiti() }
+            val registro = remember(vm.avviso) { vm.registroBattito() }
+            if (muto != null) {
+                Riga("Notifiche: NO — $muto. Il battito parte ma non lo vedi.", Colori.allarme)
+                OutlinedButton({ sistema.chiediNotifiche() }) { Text("Permetti le notifiche") }
+            } else Tenue("Notifiche: sì.")
+            Tenue(if (esatte) "Sveglia esatta: sì, il battito suona all'ora." else "Sveglia esatta: no, il battito può arrivare con qualche minuto di ritardo.")
+            Tenue("Prossimi: $prossimi")
+            Tenue(if (registro.isBlank()) "Ultimi battiti: nessuno ancora registrato." else "Ultimi battiti:\n$registro")
+            OutlinedButton({ vm.provaBattito() }) { Text("Prova ora") }
             val libero = remember(vm.avviso) { vm.liberoDallaBatteria() }
             Tenue(if (libero) "Resonance può lavorare in secondo piano: risposte e battito arrivano anche a schermo spento."
                 else "Il telefono può fermare Resonance in secondo piano: le risposte a schermo spento e il battito possono non arrivare.")

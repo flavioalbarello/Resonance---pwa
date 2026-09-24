@@ -45,6 +45,21 @@ class Archivio(val db: Db) {
         }
     }
 
+    // Togliere un nodo non cancella la sua storia (Legge 14): prima una voce nel diario del pilastro con nome e stato,
+    // poi i documenti legati restano nel percorso senza nodo, poi il nodo esce.
+    suspend fun togliNodo(n: Nodo): String = db.withTransaction {
+        togliNodoDentro(n, db.percorsi().elenco().first { it.id == n.percorsoId })
+    }
+
+    private suspend fun togliNodoDentro(n: Nodo, per: Percorso): String {
+        val oggi = java.time.LocalDate.now().toString()
+        db.voci().inserisci(Voce(pilastro = per.pilastro, giorno = oggi, fonte = "percorso", creato = ora, aggiornato = ora,
+            testo = "Nodo tolto dal percorso «${per.titolo}»: «${n.etichetta}», era ${n.stato.etichetta}."))
+        db.percorsi().sganciaDocumenti(n.id)
+        db.percorsi().togliNodo(n)
+        return "Tolto il nodo «${n.etichetta}» da «${per.titolo}» (era ${n.stato.etichetta}); traccia nel diario ${per.pilastro.etichetta}"
+    }
+
     suspend fun percorso(titolo: String) = trova(db.percorsi().elenco().filter { !it.archiviato }, titolo, { it.titolo }, "percorso")
     suspend fun documento(titolo: String) = trova(db.percorsi().elencoDocumenti(), titolo, { it.titolo }, "documento")
     suspend fun rituale(nome: String) = trova(db.rituali().elenco().filter { it.attivo }, nome, { it.nome }, "rituale")
@@ -115,6 +130,10 @@ class Archivio(val db: Db) {
             val r = rituale(p.nome)
             db.rituali().spunta(Spunta(r.id, p.giorno, "shell", ora))
             Esecuzione(true, "«${r.nome}» segnato come tenuto, ${Giorni.leggibile(p.giorno, oggi)}")
+        }
+        is Proposta.TogliNodo -> {
+            val per = percorso(p.percorso)
+            Esecuzione(true, togliNodoDentro(trova(db.percorsi().elencoNodi().filter { it.percorsoId == per.id }, p.nodo, { it.etichetta }, "nodo"), per))
         }
         is Proposta.AggiungiNodi -> {
             val per = percorso(p.percorso)
