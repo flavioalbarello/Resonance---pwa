@@ -87,6 +87,13 @@ si ritenta. La microchiamata del motore resta senza streaming (6 secondi). Se il
 connessione si chiude. Da verificare sul telefono: i lavori accelerati di Android hanno un loro tetto di durata; se il
 sistema ferma il turno, WorkManager lo rilancia (senza doppia risposta, ma col costo ripagato).
 
+**Accettore prima dell'effettore sulle modifiche (24/09/2026).** Tre proposte di «sostituire» una riga nel quaderno
+Vidya, che era vuoto: il Ghost confermava e riceveva «non modificato». Ora `Shell.risolvi` prova l'ancora PRIMA di
+mostrare la proposta (quaderni e documenti): se manca, torna al modello con le righe vere o con «usa aggiungi».
+L'ancora si trova anche ignorando spazi e a capo (`Testi.ancora`), purché unica; nel prompt i quaderni tengono gli a
+capo. Una proposta uguale a una in attesa non si ripete; le note del programma (il motivo di un fallimento) arrivano
+al modello, che prima se lo inventava. Giri di strumenti: da 4 a 6.
+
 **Promesse sul futuro.** Gemini ha scritto «Domani… riprendiamo»: lo Shell non torna da solo. Regola nel prompt
 (proporre `crea_evento` come promemoria) e controllo del programma (`Testi.promette`), che aggiunge una nota se la
 risposta promette senza aver proposto niente.

@@ -83,6 +83,9 @@ class AzioniTest {
     @Test fun ancoraAssenteODoppiaNonIndovina() {
         assertTrue(Testi.applicaModifica("a b a", "a", "x", "sostituisci") is Testi.Modifica.Impossibile)
         assertTrue(Testi.applicaModifica("a b", "c", "x", "sostituisci") is Testi.Modifica.Impossibile)
+        assertTrue(Testi.applicaModifica("a\nb x a  b", "a b", "x", "sostituisci") is Testi.Modifica.Impossibile)
+        assertEquals(Testi.Modifica.Fatta("- A\n- X"), Testi.applicaModifica("- A\n- B", "- A - B", "- A\n- X", "sostituisci"))
+        assertTrue((Testi.applicaModifica("", "a", "x", "sostituisci") as Testi.Modifica.Impossibile).motivo.contains("aggiungi"))
     }
 
     @Test fun affermazioneDiAzioneRiconosciuta() {

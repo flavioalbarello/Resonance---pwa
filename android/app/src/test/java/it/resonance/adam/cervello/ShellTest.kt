@@ -6,6 +6,7 @@ import it.resonance.adam.dati.Archivio
 import it.resonance.adam.dati.Db
 import it.resonance.adam.dati.Esecuzione
 import it.resonance.adam.dati.Messaggio
+import it.resonance.adam.dati.Pilastro
 import it.resonance.adam.dati.Ruolo
 import it.resonance.adam.dati.StatoProposta
 import it.resonance.adam.logica.AgendaLetta
@@ -155,6 +156,7 @@ class ShellTest {
 
     // Visto sul telefono il 23/09: una riscrittura del quaderno tagliata a metà spariva nel vuoto.
     @Test fun unaChiamataTagliataTornaAlModelloConIlMotivo() = runBlocking {
+        archivio.aggiornaQuaderno(Pilastro.BIO, "Dorme poco il giovedì. refuso")
         val tagliata = Risposta("", listOf(ChiamataStrumento("t1", "aggiorna_quaderno", """{"pilastro":"BIO","testo":"Dorme po""")), null, JsonObject(emptyMap()), true)
         val modello = FintoModello(tagliata, chiama("modifica_quaderno", """{"pilastro":"BIO","ancora":"refuso","testo":"","modo":"sostituisci"}"""), testo("Propongo di togliere la riga."))
         val esito = Shell(archivio, imp, modello, FintoMondo()).turno("togli quella riga")
@@ -226,6 +228,53 @@ class ShellTest {
         assertTrue(ultima, ultima.contains("Hai finito i giri di strumenti"))
         assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.NOTA && it.testo.contains("cerca letto") })
         assertEquals(1, db.messaggi().elenco().count { it.ruolo == Ruolo.SHELL })
+    }
+
+    // Visto il 24/09: quaderno Vidya vuoto, tre proposte di «sostituire» una riga che non c'era; il Ghost confermava
+    // e riceveva «non modificato». Ora la proposta non arriva al Ghost: torna al modello, che aggiunge in fondo.
+    @Test fun unaModificaCheFallirebbeNonSiMostraAlGhost() = runBlocking {
+        val modello = FintoModello(
+            chiama("modifica_quaderno", """{"pilastro":"VIDYA","modo":"sostituisci","ancora":"- E io ci sto: primo pezzo [introdotto]","testo":"- Sfiorivano le viole: assimilato"}"""),
+            chiama("modifica_quaderno", """{"pilastro":"VIDYA","modo":"aggiungi","testo":"- Sfiorivano le viole: assimilato"}"""),
+            testo("Ho proposto di annotarlo nel quaderno Vidya."),
+        )
+        val esito = Shell(archivio, imp, modello, FintoMondo()).turno("Sfiorivano le viole è assimilato")
+        val rimando = modello.ricevuti[1].last().jsonObject["content"]!!.jsonPrimitive.content
+        assertTrue(rimando, rimando.startsWith("Non proposta") && rimando.contains("è vuoto") && rimando.contains("aggiungi"))
+        val p = archivio.proposta(db.messaggi().per(esito.proposte.single())!!) as Proposta.ModificaQuaderno
+        assertEquals("aggiungi", p.modo)
+    }
+
+    @Test fun lAncoraAssenteTornaConLeRigheVere() = runBlocking {
+        archivio.aggiornaQuaderno(Pilastro.VIDYA, "- E io ci sto: primo pezzo\n- Chitarra: barré in quinta")
+        val modello = FintoModello(
+            chiama("modifica_quaderno", """{"pilastro":"VIDYA","modo":"sostituisci","ancora":"Mio fratello è figlio unico","testo":"x"}"""),
+            // Copiata da un testo visto su una riga sola: gli a capo non contano.
+            chiama("modifica_quaderno", """{"pilastro":"VIDYA","modo":"dopo","ancora":"primo pezzo - Chitarra","testo":"(ripasso)"}"""),
+            testo("Proposto."),
+        )
+        val esito = Shell(archivio, imp, modello, FintoMondo()).turno("aggiorna")
+        val rimando = modello.ricevuti[1].last().jsonObject["content"]!!.jsonPrimitive.content
+        assertTrue(rimando, rimando.contains("«- Chitarra: barré in quinta»"))
+        Shell(archivio, imp, FintoModello(), FintoMondo()).conferma(esito.proposte.single())
+        assertEquals(StatoProposta.ESEGUITA, db.messaggi().per(esito.proposte.single())!!.stato)
+    }
+
+    @Test fun laStessaPropostaNonSiRipete() = runBlocking {
+        val args = """{"pilastro":"VIDYA","modo":"aggiungi","testo":"- Sfiorivano le viole: assimilato"}"""
+        Shell(archivio, imp, FintoModello(chiama("modifica_quaderno", args), testo("Proposto.")), FintoMondo()).turno("annotalo")
+        val modello = FintoModello(chiama("modifica_quaderno", args), testo("Premi Conferma sulla proposta."))
+        val esito = Shell(archivio, imp, modello, FintoMondo()).turno("sì")
+        assertTrue(esito.proposte.isEmpty())
+        assertTrue(contenuto(modello.ricevuti[1], modello.ricevuti[1].size - 1).contains("già in attesa"))
+    }
+
+    // Il motivo di un fallimento sta in una nota: il modello deve vederla, o se ne inventa uno.
+    @Test fun leNoteDelProgrammaArrivanoAlModello() = runBlocking {
+        db.messaggi().inserisci(Messaggio(ruolo = Ruolo.NOTA, testo = "Quaderno Vidya non modificato: il frammento «x» non c'è", istante = 1))
+        val modello = FintoModello(testo("Il frammento non c'era."))
+        Shell(archivio, imp, modello, FintoMondo()).turno("perché non è stato salvato?")
+        assertTrue(modello.ricevuti[0].any { it.jsonObject["content"]?.jsonPrimitive?.content?.contains("non c'è") == true })
     }
 
     // ── Scelta automatica del motore ──

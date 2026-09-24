@@ -504,16 +504,41 @@ object Testi {
 
     // Il taglia-e-cuci lo fa il programma, mai il modello: un'ancora assente o doppia non indovina.
     fun applicaModifica(testo: String, ancora: String, nuovo: String, modo: String): Modifica {
-        val prima = testo.indexOf(ancora)
-        if (prima < 0) return Modifica.Impossibile("il frammento «${corto(ancora, 60)}» non c'è nel documento")
-        if (testo.indexOf(ancora, prima + 1) >= 0) return Modifica.Impossibile("il frammento «${corto(ancora, 60)}» compare più di una volta")
-        val fine = prima + ancora.length
+        if (testo.isBlank()) return Modifica.Impossibile("il testo è vuoto: non c'è niente da cambiare, per scrivere usa modo aggiungi")
+        val trovata = when (val a = ancora(testo, ancora)) {
+            is Ancora.Assente -> return Modifica.Impossibile("il frammento «${corto(ancora, 60)}» non c'è nel documento")
+            is Ancora.Doppia -> return Modifica.Impossibile("il frammento «${corto(ancora, 60)}» compare più di una volta")
+            is Ancora.Trovata -> a.dove
+        }
+        val prima = trovata.first
+        val fine = trovata.last + 1
         val risultato = when (modo) {
             "prima" -> testo.substring(0, prima) + unisci(nuovo, testo.substring(prima))
             "dopo" -> unisci(testo.substring(0, fine), nuovo) + testo.substring(fine)
             else -> testo.substring(0, prima) + nuovo + testo.substring(fine)
         }
         return Modifica.Fatta(risultato)
+    }
+
+    sealed class Ancora {
+        data class Trovata(val dove: IntRange) : Ancora()
+        data object Assente : Ancora()
+        data object Doppia : Ancora()
+    }
+
+    // Prima esatta; poi senza badare agli spazi e agli a capo, perché il modello copia da un testo che ha visto
+    // su una riga sola. Unica o niente: due posti possibili non si scelgono a caso.
+    fun ancora(testo: String, ancora: String): Ancora {
+        if (ancora.isBlank()) return Ancora.Assente
+        val esatta = testo.indexOf(ancora)
+        if (esatta >= 0) return if (testo.indexOf(ancora, esatta + 1) >= 0) Ancora.Doppia else Ancora.Trovata(esatta until esatta + ancora.length)
+        val parole = ancora.trim().split(Regex("\\s+"))
+        val simili = Regex(parole.joinToString("\\s+") { Regex.escape(it) }).findAll(testo).take(2).toList()
+        return when (simili.size) {
+            0 -> Ancora.Assente
+            1 -> Ancora.Trovata(simili[0].range)
+            else -> Ancora.Doppia
+        }
     }
 
     private fun unisci(a: String, b: String): String {

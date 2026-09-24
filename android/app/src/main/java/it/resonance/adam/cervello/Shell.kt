@@ -18,6 +18,7 @@ import it.resonance.adam.logica.Proposta
 import it.resonance.adam.logica.Regole
 import it.resonance.adam.logica.Risoluzione
 import it.resonance.adam.logica.Uscita
+import it.resonance.adam.logica.Quaderni
 import it.resonance.adam.logica.Azioni
 import it.resonance.adam.logica.Contesto
 import it.resonance.adam.logica.Istantanea
@@ -77,7 +78,8 @@ class Shell(
             Ruolo.SHELL -> "assistant" to m.testo
             Ruolo.PROPOSTA -> "user" to "[Nota del programma, non del Ghost] Proposta mostrata: ${m.testo} — stato: ${m.stato?.name?.lowercase() ?: "?"}"
             Ruolo.RICEVUTA -> "user" to "[Nota del programma, non del Ghost] Eseguito davvero: ${m.testo}"
-            Ruolo.NOTA -> return@mapNotNull null
+            // Le note dicono perché una proposta è fallita: senza, il modello si inventava il motivo (visto il 24/09).
+            Ruolo.NOTA -> "user" to "[Nota del programma, non del Ghost] ${m.testo}"
         }
         buildJsonObject { put("role", ruolo); put("content", testo) }
     }
@@ -178,7 +180,7 @@ class Shell(
                         is Validazione.Rifiutata -> "Rifiutata dal programma: ${v.motivo}. Correggi e riprova, oppure chiedi al Ghost."
                         is Validazione.Scrittura -> when (val r = risolvi((v.proposta as? Proposta.ApriEsperimento)?.copy(origine = origine) ?: v.proposta)) {
                             is Risoluzione.Domanda -> "Non proposta: ${r.motivo}."
-                            is Risoluzione.Pronta -> {
+                            is Risoluzione.Pronta -> if (inAttesa(Azioni.codifica(r.proposta))) "Non proposta: una proposta uguale è già in attesa. Di' al Ghost di premere Conferma su quella." else {
                                 val descr = r.proposta.descrizione()
                                 proposte += archivio.db.messaggi().inserisci(Messaggio(
                                     ruolo = Ruolo.PROPOSTA, testo = descr, istante = ora,
@@ -229,7 +231,8 @@ class Shell(
     }
 
     companion object {
-        const val GIRI_MASSIMI = 4
+        // Erano 4: tre letture e una ricerca bastavano a finirli (visto il 24/09, «dove hai registrato…»).
+        const val GIRI_MASSIMI = 6
         // 1500 bastava a Llama, non a Kimi K2.6: il suo ragionamento lo esauriva e la risposta arrivava vuota
         // («tagliata dal limite», visto sul telefono il 23/09). Si paga ciò che si usa, non il tetto.
         const val MAX_TOKEN = 12000
@@ -255,9 +258,33 @@ class Shell(
         p is Proposta.CreaEvento || p is Proposta.SpostaEvento || p is Proposta.TogliEvento || p is Proposta.ScriviMail
 
     // Spostare o togliere un impegno richiede di trovarlo nel calendario vero PRIMA di proporlo.
+    // L'accettore prima dell'effettore: una modifica che alla conferma fallirebbe non si mostra al Ghost. Visto il 24/09:
+    // tre proposte sul quaderno Vidya, vuoto, con un'ancora che non c'era; il Ghost confermava e riceveva «non modificato».
     private suspend fun risolvi(p: Proposta): Risoluzione = when (p) {
         is Proposta.SpostaEvento, is Proposta.TogliEvento -> mondo?.risolvi(p) ?: Risoluzione.Domanda("il calendario non è raggiungibile da qui")
+        is Proposta.ModificaQuaderno -> if (p.modo == "aggiungi") Risoluzione.Pronta(p) else {
+            val attuale = archivio.db.quaderni().elenco().find { it.pilastro == p.pilastro }?.testo.orEmpty()
+            provaAncora(p, "il quaderno ${p.pilastro.etichetta}", attuale, p.ancora)
+        }
+        is Proposta.ModificaDocumento -> try {
+            val d = archivio.documento(p.documento)
+            provaAncora(p, "il documento «${d.titolo}»", d.testo, p.ancora)
+        } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "documento non trovato") }
         else -> Risoluzione.Pronta(p)
+    }
+
+    // Il Ghost scrive «sì» e il modello rifà la stessa proposta: una sola in attesa basta.
+    private suspend fun inAttesa(codifica: String) = archivio.db.messaggi().ultimi(40)
+        .any { it.ruolo == Ruolo.PROPOSTA && it.stato == StatoProposta.IN_ATTESA && it.proposta == codifica }
+
+    private fun provaAncora(p: Proposta, dove: String, testo: String, ancora: String): Risoluzione = when {
+        testo.isBlank() -> Risoluzione.Domanda("$dove è vuoto: non c'è niente da sostituire. Per scriverci usa modo aggiungi")
+        else -> when (Testi.ancora(testo, ancora)) {
+            is Testi.Ancora.Trovata -> Risoluzione.Pronta(p)
+            is Testi.Ancora.Doppia -> Risoluzione.Domanda("l'ancora «${Testi.corto(ancora, 60)}» compare più volte in $dove: allungala finché è unica")
+            is Testi.Ancora.Assente -> Risoluzione.Domanda("l'ancora «${Testi.corto(ancora, 60)}» non c'è in $dove. Copiala esatta da una di queste righe, " +
+                "o usa modo aggiungi: " + Quaderni.righe(testo).take(15).joinToString(" | ") { "«${Testi.corto(it, 90)}»" })
+        }
     }
 
     // Gli indirizzi validi sono quelli che il Ghost ha scritto: in chat, nel profilo, nei quaderni. Il modello non ne inventa.

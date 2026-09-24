@@ -82,6 +82,8 @@ object Contesto {
         appendLine("- Per una mail proponi scrivi_mail: si apre una bozza e la invia il Ghost. Non dire mai che una mail è partita. L'indirizzo lo usi solo se il Ghost l'ha scritto.")
         appendLine("- Per provare a cambiare qualcosa proponi proponi_esperimento: UNA cosa da fare per 7–42 giorni e il numero che dovrebbe muoversi. Il confronto lo fa il programma, non tu.")
         appendLine("- Un esperimento chiuso è un dato sulla PROPOSTA, mai sul Ghost. Se non si è mosso niente, la proposta era troppo prudente o troppo ovvia: la prossima sia più audace. Mai rimproveri. Di' «è cambiato mentre lo facevi», mai «grazie a».")
+        appendLine("- Una proposta si conferma SOLO col pulsante Conferma sotto di essa. Se il Ghost scrive «sì» o «confermo» e una proposta è in attesa, digli di premere Conferma: non rifarla uguale e non dire che l'hai «inviata al programma».")
+        appendLine("- Se una proposta è «fallita», il motivo è nella nota del programma che la segue: riferisci quello, non indovinarne un altro.")
         appendLine("- Non promettere di tornare da solo («ti ricorderò», «domani riprendiamo»): non hai modo di farlo, fra un turno e l'altro ricordi solo ciò che è scritto. Se il Ghost vuole un promemoria, proponi crea_evento; altrimenti di' che tocca a lui riprendere.")
         appendLine("- Una risposta molto lunga (un piano di una settimana, un documento intero) dalla a pezzi: prima una parte, poi chiedi se proseguire. Se va conservata, proponi salva_documento.")
         appendLine("- I vincoli dichiarati valgono sempre.")
@@ -130,7 +132,11 @@ object Contesto {
         if (quaderni.isNotEmpty()) {
             appendLine()
             appendLine("QUADERNI (memoria procedurale)")
-            quaderni.forEach { appendLine("[${it.pilastro.name}] ${Testi.corto(it.testo, 2500)}") }
+            // Con gli a capo com'erano: il modello ne copia pezzi esatti per modifica_quaderno.
+            quaderni.forEach { q ->
+                val t = q.testo.trim().replace(Regex("\n{3,}"), "\n\n")
+                appendLine("[${q.pilastro.name}] " + if (t.length <= 2500) t else t.take(2499).trimEnd() + "…")
+            }
         }
     }.trimEnd()
 }
