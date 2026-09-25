@@ -413,6 +413,41 @@ class Adam(app: Application) : AndroidViewModel(app) {
         avviso = "Cassetta salvata"
     }
     fun cassetta() = impostazioni.cassetta
+
+    // ── Riunione a tre ──
+    var riunione by mutableStateOf(impostazioni.riunioneTema.takeIf { impostazioni.riunione.isNotBlank() })
+    private var ascoltaRiunione: kotlinx.coroutines.Job? = null
+    private val tavolo get() = it.resonance.adam.cervello.Tavolo(archivio, impostazioni)
+
+    // A riunione aperta e app viva, ogni 20 secondi: gli interventi dell'architetto entrano in chat.
+    private fun seguiRiunione() {
+        ascoltaRiunione?.cancel()
+        if (riunione == null) return
+        ascoltaRiunione = viewModelScope.launch {
+            while (riunione != null) {
+                runCatching { tavolo.ritira() }
+                kotlinx.coroutines.delay(20_000)
+            }
+        }
+    }
+
+    // Dopo le dichiarazioni di sopra: un init più in alto le troverebbe ancora vuote.
+    init { seguiRiunione() }
+
+    fun apriRiunione(tema: String) = viewModelScope.launch {
+        if (tema.isBlank()) { avviso = "Serve un tema"; return@launch }
+        runCatching { tavolo.apri(tema) }
+            .onSuccess { riunione = tema.trim(); avviso = "Riunione aperta. Nella sessione di Claude Code scrivi una volta: «riunione aperta»"; seguiRiunione(); vai(Schermata.SHELL) }
+            .onFailure { avviso = "Riunione non aperta: ${it.message}" }
+    }
+
+    fun chiudiRiunione() = viewModelScope.launch {
+        pensa = true
+        val esito = runCatching { shell.chiudiRiunione() }
+        pensa = false
+        esito.onFailure { avviso = "Chiusura non riuscita: ${it.message}" }
+        if (!tavolo.aperta()) { riunione = null; ascoltaRiunione?.cancel() }
+    }
     // Il modello si riprova con la temperatura: se la rifiuta ancora, torna in elenco da solo.
     fun dimenticaRinunce() { impostazioni.senzaTemperatura = emptySet(); avviso = "Al prossimo turno la temperatura si riprova con tutti i modelli." }
     fun spostaNodo(n: Nodo, genitoreId: Long?) = viewModelScope.launch { avviso = archivio.spostaNodo(n, genitoreId) }

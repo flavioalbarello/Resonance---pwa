@@ -53,6 +53,14 @@ class ShellTest {
         val commenti = mutableMapOf<Int, List<Commento>>()
         override suspend fun apri(repo: String, token: String, titolo: String, corpo: String): Int { aperte += titolo to corpo; return aperte.size }
         override suspend fun commenti(repo: String, token: String, numero: Int) = commenti[numero].orEmpty()
+        val file = sortedMapOf<String, String>()
+        override suspend fun scrivi(repo: String, token: String, percorso: String, testo: String, messaggio: String) {
+            require(percorso !in file) { "un file del verbale non si riscrive: $percorso" }
+            file[percorso] = testo
+        }
+        override suspend fun elenca(repo: String, token: String, cartella: String) =
+            file.keys.filter { it.startsWith("$cartella/") }.map { it.removePrefix("$cartella/") }
+        override suspend fun leggi(repo: String, token: String, percorso: String) = file.getValue(percorso)
     }
 
     // Il finto calendario usa il Risolutore vero: si prova la decisione, non il finto.
@@ -496,6 +504,38 @@ class ShellTest {
         assertEquals(listOf("B, per questo motivo."), nuove.map { it.second.testo })
         assertTrue(posta.ritira().isEmpty())
         assertEquals(it.resonance.adam.dati.StatoLettera.RISPOSTA, db.lettere().elenco().single().stato)
+    }
+
+    // La riunione a tre: lo scambio va nel verbale da solo (il nome protetto no), gli interventi dell'architetto tornano
+    // in chat una volta sola, la chiusura lascia il verbale dello Shell.
+    @Test fun laRiunioneScriveIlVerbaleERitiraLArchitetto() = runBlocking {
+        db.profilo().salva(it.resonance.adam.dati.Profilo(nomiProtetti = "PhysioAlba"))
+        imp.cassetta = "flavio/adam-lettere"
+        imp.tokenCassetta = "t"
+        val cassetta = FintaCassetta()
+        val tavolo = Tavolo(archivio, imp, cassetta)
+        tavolo.apri("Cifratura: fasi")
+        val cartella = "riunioni/${imp.riunione}"
+        assertTrue(imp.riunione.endsWith("-cifratura-fasi"))
+
+        val modello = FintoModello(testo("Prima fase: solo numeri, niente immagini. Architetto, regge?"), testo("Verbale: decisa la fase uno."))
+        val shell = Shell(archivio, imp, modello, FintoMondo(), cassetta)
+        shell.turno("ragioniamo sulla cifratura, lo studio PhysioAlba può aspettare")
+        assertTrue(contenuto(modello.ricevuti[0], 0).contains("RIUNIONE A TRE IN CORSO: «Cifratura: fasi»"))
+        val scritti = cassetta.file.filterKeys { it.startsWith(cartella) }
+        val ghost = scritti.entries.single { it.key.endsWith("-ghost.md") }.value
+        assertTrue(ghost, ghost.contains("lo studio [nome protetto] può aspettare") && !ghost.contains("PhysioAlba"))
+        assertTrue(scritti.keys.any { it.endsWith("-shell.md") })
+
+        cassetta.file["$cartella/20990101-000000-000-architetto.md"] = "Regge, se i numeri restano sul telefono."
+        assertEquals(1, tavolo.ritira())
+        assertEquals(0, tavolo.ritira())
+        assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.NOTA && it.testo.startsWith("Architetto (riunione «Cifratura: fasi»):\nRegge") })
+
+        shell.chiudiRiunione()
+        assertTrue(cassetta.file.keys.any { it.startsWith(cartella) && it.endsWith("-verbale.md") })
+        assertTrue(cassetta.file.keys.any { it.startsWith(cartella) && it.endsWith("-chiusura.md") })
+        assertEquals("", imp.riunione)
     }
 
     @Test fun laCassettaNonPuoEssereIlRepositoryPubblico() {

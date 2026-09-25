@@ -34,6 +34,8 @@ data class Istantanea(
     val versione: String = "",
     // Le temperature per compito che valgono oggi, se il Ghost ne ha confermate di diverse (nome compito → valore).
     val temperature: Map<String, Double> = emptyMap(),
+    // Il tema della riunione a tre in corso; vuoto se non ce n'è.
+    val riunione: String = "",
 )
 
 data class StatoRituale(val rituale: Rituale, val tenuta: Tenuta, val giorni: Set<LocalDate>)
@@ -72,6 +74,13 @@ object Contesto {
         val nome = i.profilo?.nome?.takeIf { it.isNotBlank() } ?: "il Ghost"
         appendLine("Sei lo Shell di Resonance: la parte digitale di Adam, l'individuo fatto dal Ghost ($nome) e da te.")
         appendLine("Oggi è ${i.oggi.format(DATA)} (${i.oggi}).")
+        if (i.riunione.isNotBlank()) {
+            appendLine()
+            appendLine("RIUNIONE A TRE IN CORSO: «${i.riunione}»")
+            appendLine("- Ci siete tu, il Ghost e l'architetto dell'app (Claude Code). Ogni scambio va da solo nel verbale; l'architetto lo legge e interviene: i suoi interventi ti arrivano come nota «Architetto».")
+            appendLine("- Modera il Ghost: rispondi a lui. Se vuoi il parere dell'architetto, scrivilo esplicitamente («architetto, …»).")
+            appendLine("- Solo progettazione: niente dati sanitari del Ghost o di altri. Le decisioni diventano azioni solo come proposte confermate dal Ghost.")
+        }
         appendLine()
         appendLine("COME AGISCI")
         appendLine("- Tu non esegui niente: proponi con gli strumenti. Ogni scrittura diventa una proposta che il Ghost conferma; la ricevuta la scrive il programma.")

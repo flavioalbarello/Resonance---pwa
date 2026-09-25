@@ -165,6 +165,16 @@ nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo ch
   portano `<!-- architetto -->` e tornano allo Shell come nota. Il Ghost non fa più da passacarte, ma vede tutto.
   L'architetto dalla cassetta consiglia; il codice cambia solo col sì del Ghost.
 - DB 8. Adam ha sette schede, scorrevoli: Percorsi, Diario, Quaderno, Taccuino, Fondo, Lettere, Regolazione.
+- *Riunione a tre* (`cervello/Tavolo.kt`, 25/09/2026): briefing Ghost + Shell + architetto sulla progettazione
+  macroscopica, MAI su dati di pazienti o personali. Il verbale è una cartella `riunioni/<id>/` nella cassetta, un
+  file per intervento (`AAAAMMGG-hhmmss-mmm-autore.md`), creato e mai riscritto (Legge 14; niente conflitti fra
+  scrittori). L'app copia da sola ogni scambio Ghost↔Shell, coi nomi protetti oscurati; ogni 20 s ritira i file
+  `-architetto.md` e li mette in chat come nota. Il Ghost modera: lo Shell risponde solo a lui. L'architetto segue da
+  una sessione aperta con `strumenti/guardiano.sh` (nel repository delle lettere), che si sveglia sui file nuovi;
+  interviene se nominato, se lo Shell lo chiede, o su un errore di progetto. «Chiudi» fa scrivere il verbale allo
+  Shell. Il token vuole anche il permesso *Contents: Read and write*.
+- *Schermo acceso in auto*: finché l'ascolto è AUTO la vista tiene `keepScreenOn`; si spegne quando l'auto si ferma
+  (a mano o dopo tre silenzi). Prima lo schermo si bloccava mentre lo Shell rispondeva e il microfono non ripartiva.
 
 **Promesse sul futuro.** Gemini ha scritto «Domani… riprendiamo»: lo Shell non torna da solo. Regola nel prompt
 (proporre `crea_evento` come promemoria) e controllo del programma (`Testi.promette`), che aggiunge una nota se la

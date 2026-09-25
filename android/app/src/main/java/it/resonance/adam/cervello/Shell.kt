@@ -150,7 +150,38 @@ class Shell(
         // Un modello che non vede, per un turno con immagini, cede il posto a uno che vede.
         val modello = if (Allegati.conImmagini(allegati) && base !in Impostazioni.VEDONO) impostazioni.modelloVista else base
         val compito = if (allegati.isEmpty()) Compito.TURNO else Compito.ALLEGATI
-        return ciclo(lavoro, oggi, regole, modello, motore?.etichetta, costoTurno, compito = compito, forza = forza)
+        val esito = ciclo(lavoro, oggi, regole, modello, motore?.etichetta, costoTurno, compito = compito, forza = forza)
+        // In riunione lo scambio va nel verbale da solo: il Ghost non spiega due volte. Gli allegati non escono.
+        val tavolo = Tavolo(archivio, impostazioni, cassetta)
+        if (tavolo.aperta()) try {
+            tavolo.registra("ghost", testoGhost + if (allegati.isNotEmpty()) "\n[${allegati.size} allegati: non copiati nel verbale]" else "")
+            val proposte = esito.proposte.mapNotNull { archivio.db.messaggi().per(it)?.testo }
+            tavolo.registra("shell", esito.testo + if (proposte.isNotEmpty()) "\n\nProposte (da confermare dal Ghost):\n" + proposte.joinToString("\n") { "- $it" } else "")
+        } catch (e: Exception) {
+            nota("Scambio non copiato nel verbale della riunione: ${e.message ?: e.javaClass.simpleName}")
+        }
+        return esito
+    }
+
+    // La riunione si chiude con il verbale dello Shell: decisioni, questioni aperte, chi fa cosa. Può proporre: le
+    // decisioni diventano azioni solo così, con la conferma del Ghost.
+    suspend fun chiudiRiunione(): Esito {
+        val tavolo = Tavolo(archivio, impostazioni, cassetta)
+        if (!tavolo.aperta()) return Esito("", emptyList())
+        val tema = impostazioni.riunioneTema
+        val oggi = LocalDate.now()
+        val istantanea = fotografia(oggi, 2)
+        val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", Contesto.sistema(istantanea)) })
+        lavoro += storia(archivio.db.messaggi().ultimi(40))
+        lavoro += buildJsonObject {
+            put("role", "user")
+            put("content", "[Nota del programma, non del Ghost] Il Ghost chiude la riunione «$tema». Scrivi il verbale, denso: " +
+                "decisioni prese; questioni aperte; chi fa cosa (Ghost, Shell, architetto). Se una decisione va eseguita, proponila con gli strumenti.")
+        }
+        val esito = if (controllaSpesa() == null) ciclo(lavoro, oggi, regole(istantanea, ""), impostazioni.modello, null, 0.0, origine = "riunione")
+            else Esito("Verbale non scritto: tetto di spesa raggiunto.", emptyList())
+        tavolo.chiudi(esito.testo.ifBlank { "(verbale vuoto)" })
+        return esito
     }
 
     // La perturbazione: il programma ha visto un ristagno nei numeri e chiede allo Shell UN esperimento. Non è un
@@ -414,7 +445,8 @@ class Shell(
     // ── Pacchetto Adam (25/09/2026) ──
 
     private suspend fun fotografia(oggi: LocalDate, giorniAgenda: Int) =
-        archivio.istantanea(oggi, mondo?.agenda(oggi, giorniAgenda) ?: AgendaLetta.NonLetta).copy(temperature = impostazioni.temperature)
+        archivio.istantanea(oggi, mondo?.agenda(oggi, giorniAgenda) ?: AgendaLetta.NonLetta)
+            .copy(temperature = impostazioni.temperature, riunione = impostazioni.riunioneTema.takeIf { impostazioni.riunione.isNotBlank() }.orEmpty())
 
     // La temperatura di un compito: quella confermata dal Ghost su proposta dello Shell, altrimenti la tabella.
     private fun temperaturaDi(c: Compito) = impostazioni.temperature[c.name] ?: c.temperatura

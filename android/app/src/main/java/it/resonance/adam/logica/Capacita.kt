@@ -25,12 +25,13 @@ object Capacita {
 
     // Ciò che il Ghost fa dall'app senza di te: saperlo evita di proporgli cose che ha già a portata di dito.
     val SOLO_GHOST = listOf(
-        "voce: dettatura e modalità auto a più frasi (il messaggio parte dopo una pausa o con «invia»); «🔊 Ascolta» sotto ogni tua risposta",
+        "voce: dettatura e modalità auto a più frasi (il messaggio parte dopo una pausa o con «invia»; in auto lo schermo resta acceso); «🔊 Ascolta» sotto ogni tua risposta",
         "allegati: foto, immagini, PDF, docx, testo",
         "temperatura forzata per UN messaggio (＋ → più preciso / più libero); di norma la decide il compito",
         "Adam → Regolazione: temperature per compito, modelli che la rifiutano, esiti dei turni, spesa del mese",
         "battito mattino, sera e domenica, con registro e «Prova ora» in Setup",
         "nodi: tocco per avanzare lo stato, pressione lunga per spostare, dare il pilastro, togliere",
+        "riunione a tre (Adam → Lettere → Apri riunione): ogni scambio col Ghost va nel verbale, l'architetto legge e interviene; alla chiusura scrivi tu il verbale",
     )
 
     fun strumenti(): Set<String> = AREE.flatMap { it.strumenti }.toSet()

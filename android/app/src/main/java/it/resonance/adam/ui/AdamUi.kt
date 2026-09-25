@@ -106,6 +106,29 @@ fun LettereUi(vm: Adam) {
     val risposte by vm.risposte.collectAsState()
     val pronta = remember(vm.avviso) { vm.cassettaPronta() }
     var aperta by remember { mutableStateOf<Long?>(null) }
+    // La riunione a tre: si apre e si chiude da qui.
+    var nuovaRiunione by remember { mutableStateOf(false) }
+    var chiudere by remember { mutableStateOf(false) }
+    Scheda(Colori.ambra) {
+        Etichetta("Riunione a tre", Colori.ambraInchiostro)
+        val r = vm.riunione
+        if (r == null) {
+            Tenue("Tu, lo Shell e l'architetto, per progettare le fasi future. Ogni scambio con lo Shell va da solo nel verbale; nella sessione di Claude Code scrivi una volta «riunione aperta» e l'architetto segue e interviene. Solo progettazione, niente dati sensibili.")
+            OutlinedButton({ nuovaRiunione = true }, enabled = pronta) { Text("Apri riunione") }
+        } else {
+            Riga("In corso: «$r»")
+            Tenue("Parla con lo Shell nella chat. Gli interventi dell'architetto arrivano come «Architetto».")
+            OutlinedButton({ chiudere = true }) { Text("Chiudi riunione") }
+        }
+    }
+    if (nuovaRiunione) DialogoTesto("Tema della riunione", onOk = { vm.apriRiunione(it) }, onChiudi = { nuovaRiunione = false })
+    if (chiudere) AlertDialog(
+        onDismissRequest = { chiudere = false },
+        title = { Text("Chiudere la riunione?") },
+        text = { Text("Lo Shell scrive il verbale (decisioni, questioni aperte, chi fa cosa) e lo lascia nella cassetta.") },
+        confirmButton = { TextButton({ vm.chiudiRiunione(); chiudere = false }) { Text("Chiudi") } },
+        dismissButton = { TextButton({ chiudere = false }) { Text("Continua") } },
+    )
     Tenue("Le lettere fra lo Shell e l'architetto dell'app (Claude Code). Ognuna parte da un tuo tocco, con lo stato dell'app allegato; la risposta arriva entro un giorno e lo Shell la legge al turno dopo.")
     if (!pronta) Riga("Cassetta non configurata: Setup → Cassetta delle lettere. Le lettere restano qui e partono appena c'è.", Colori.allarme)
     OutlinedButton({ vm.controllaLettere() }) { Text("Controlla ora") }

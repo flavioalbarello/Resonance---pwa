@@ -263,6 +263,7 @@ class LettereWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         if (!posta.pronta()) return Result.success()
         runCatching { posta.spedisciInSospeso() }
         val nuove = runCatching { posta.ritira() }.getOrDefault(emptyList())
+        runCatching { it.resonance.adam.cervello.Tavolo(archivio, Impostazioni(applicationContext)).ritira() }
         nuove.forEach { (l, r) ->
             archivio.db.messaggi().inserisci(it.resonance.adam.dati.Messaggio(ruolo = it.resonance.adam.dati.Ruolo.NOTA,
                 testo = "Risposta dell'architetto alla lettera «${l.oggetto}»:\n${r.testo}", istante = System.currentTimeMillis()))

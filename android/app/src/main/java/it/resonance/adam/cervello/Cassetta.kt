@@ -64,6 +64,40 @@ open class Cassetta(
         }
     }
 
+    // ── File (per la riunione): il verbale è una cartella, un file per intervento. File nuovi, mai riscritti: due
+    // autori che scrivono insieme non si pestano (25/09/2026). Serve il permesso Contents sul token.
+
+    open suspend fun scrivi(repo: String, token: String, percorso: String, testo: String, messaggio: String): Unit = withContext(Dispatchers.IO) {
+        val c = buildJsonObject {
+            put("message", messaggio)
+            put("content", java.util.Base64.getEncoder().encodeToString(testo.toByteArray()))
+        }
+        val req = richiesta("https://api.github.com/repos/$repo/contents/$percorso", token)
+            .put(c.toString().toRequestBody("application/json".toMediaType())).build()
+        http.newCall(req).execute().use { r -> if (!r.isSuccessful) throw IllegalStateException("GitHub ${r.code}: ${r.body.string().take(200)}") }
+    }
+
+    /** I nomi dei file di una cartella; vuoto se la cartella non c'è ancora. */
+    open suspend fun elenca(repo: String, token: String, cartella: String): List<String> = withContext(Dispatchers.IO) {
+        val req = richiesta("https://api.github.com/repos/$repo/contents/$cartella", token).get().build()
+        http.newCall(req).execute().use { r ->
+            val t = r.body.string()
+            if (r.code == 404) return@use emptyList()
+            if (!r.isSuccessful) throw IllegalStateException("GitHub ${r.code}: ${t.take(200)}")
+            json.parseToJsonElement(t).jsonArray.mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.contentOrNull }
+        }
+    }
+
+    open suspend fun leggi(repo: String, token: String, percorso: String): String = withContext(Dispatchers.IO) {
+        val req = richiesta("https://api.github.com/repos/$repo/contents/$percorso", token).get().build()
+        http.newCall(req).execute().use { r ->
+            val t = r.body.string()
+            if (!r.isSuccessful) throw IllegalStateException("GitHub ${r.code}: ${t.take(200)}")
+            val b64 = json.parseToJsonElement(t).jsonObject["content"]!!.jsonPrimitive.content.replace("\n", "")
+            String(java.util.Base64.getDecoder().decode(b64))
+        }
+    }
+
     companion object {
         const val MARCA = "<!-- architetto -->"
         const val MARCA_SHELL = "<!-- shell -->"

@@ -83,6 +83,10 @@ fun ShellUi(vm: Adam, sistema: Sistema) {
         }
         if (vm.pensa) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Colori.ambra)
         if (vm.parziale.isNotBlank()) Text("${vm.parziale}…", color = Colori.tenue, fontStyle = FontStyle.Italic, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        vm.riunione?.let { r ->
+            Text("Riunione in corso: «$r» · va nel verbale, l'architetto legge. Solo progettazione.", color = Colori.ambraInchiostro, fontSize = 12.sp,
+                modifier = Modifier.fillMaxWidth().background(Colori.ambra.copy(alpha = 0.15f)).padding(horizontal = 16.dp, vertical = 4.dp))
+        }
         if (vm.ascolta == Ascolta.AUTO) {
             if (vm.raccolto.isNotBlank()) Text("«${vm.raccolto}»", color = Colori.inchiostro, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
             Text("Modalità auto: parla anche con pause. Parte dopo ${vm.pausaInvio()} secondi di silenzio, o subito se dici «invia»; «annulla messaggio» lo cancella. Tocca l'ancora rossa per fermare.",

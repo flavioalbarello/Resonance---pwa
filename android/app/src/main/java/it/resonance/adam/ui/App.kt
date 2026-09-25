@@ -32,6 +32,13 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
     LaunchedEffect(vm.avviso) {
         vm.avviso?.let { avvisi.showSnackbar(it); vm.avviso = null }
     }
+    // In modalità auto lo schermo resta acceso: a schermo bloccato il riconoscimento vocale si ferma, e il Ghost
+    // doveva sbloccare il telefono a ogni frase (25/09/2026). Si spegne da solo quando l'auto si ferma o va in pausa.
+    val vista = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(vm.ascolta) {
+        vista.keepScreenOn = vm.ascolta == Ascolta.AUTO
+        onDispose { vista.keepScreenOn = false }
+    }
     BackHandler(enabled = vm.schermata != Schermata.SPECCHIO || vm.percorsoAperto != null || vm.documentoAperto != null) { vm.indietro() }
 
     Box(Modifier.fillMaxSize()) {

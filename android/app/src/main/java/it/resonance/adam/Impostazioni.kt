@@ -70,6 +70,17 @@ open class Impostazioni(context: Context) {
     open var tokenCassetta: String
         get() = p.getString("tokenCassetta", null)?.let { runCatching { Segreti.decifra(it) }.getOrNull() }.orEmpty()
         set(v) = p.edit().putString("tokenCassetta", if (v.isBlank()) null else Segreti.cifra(v.trim())).apply()
+    // La riunione a tre in corso: la cartella del verbale nella cassetta (vuota = nessuna), il tema, gli interventi
+    // dell'architetto già portati in chat.
+    var riunione: String
+        get() = p.getString("riunione", "")!!
+        set(v) = p.edit().putString("riunione", v).apply()
+    var riunioneTema: String
+        get() = p.getString("riunioneTema", "")!!
+        set(v) = p.edit().putString("riunioneTema", v).apply()
+    var riunioneViste: Set<String>
+        get() = p.getStringSet("riunioneViste", emptySet())!!.toSet()
+        set(v) = p.edit().putStringSet("riunioneViste", v).apply()
     // Quanti secondi di silenzio chiudono un messaggio a voce in modalità auto.
     var pausaInvio: Int
         get() = p.getInt("pausaInvio", 4)
