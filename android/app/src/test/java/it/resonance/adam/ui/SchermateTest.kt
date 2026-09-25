@@ -85,6 +85,9 @@ class SchermateTest {
         val p = db.percorsi().inserisci(Percorso(pilastro = Pilastro.VIDYA, titolo = "Divenire", scopo = "Il concept album finito, non solo iniziato", creato = 0))
         listOf("Atto I: Origine" to StatoNodo.CONSOLIDATO, "Atto II: Complessità" to StatoNodo.PRATICATO, "Atto III: Mitosi" to StatoNodo.INTRODOTTO, "Mixaggio" to StatoNodo.NON_INIZIATO)
             .forEachIndexed { i, (e, s) -> db.percorsi().inserisciNodo(Nodo(percorsoId = p, etichetta = e, stato = s, ordine = i)) }
+        val brani = db.percorsi().inserisciNodo(Nodo(percorsoId = p, etichetta = "Brani", ordine = 4))
+        listOf("Seme" to StatoNodo.CONSOLIDATO, "Mitosi" to StatoNodo.PRATICATO, "Coda" to StatoNodo.NON_INIZIATO)
+            .forEachIndexed { i, (e, s) -> db.percorsi().inserisciNodo(Nodo(percorsoId = p, etichetta = e, stato = s, ordine = i, genitoreId = brani)) }
         db.percorsi().inserisciDocumento(Documento(percorsoId = p, titolo = "ATTO I: Origine", testo = "Il seme. Un'unica cellula che ancora non sa di essere musica.", creato = 0, aggiornato = 0))
         db.esperimenti().inserisci(it.resonance.adam.dati.Esperimento(titolo = "A letto entro le 23", tipo = TipoMisura.SONNO,
             direzione = it.resonance.adam.dati.Direzione.SU, soglia = 15.0, giorni = 14, inizio = g(4), fine = oggi.plusDays(10).toString(),
@@ -157,6 +160,12 @@ class SchermateTest {
         scatta("4-vidya-percorsi")
         regola.onNodeWithText("Divenire").performClick()
         scatta("5-percorso")
+        // Il padre non ha stato: mostra i figli contati, si apre al tocco.
+        regola.onNodeWithText("3 sotto-nodi: 1 consolidato, 1 praticato, 1 non iniziato").assertExists()
+        regola.onNodeWithText("Seme").assertDoesNotExist()
+        regola.onNodeWithText("▸ Brani").performScrollTo().performClick()
+        regola.onNodeWithText("Seme").assertExists()
+        scatta("5b-percorso-sottonodi")
 
         vm.vai(Schermata.BIO)
         scatta("6-bio-numeri")

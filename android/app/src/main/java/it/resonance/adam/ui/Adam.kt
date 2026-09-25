@@ -302,6 +302,10 @@ class Adam(app: Application) : AndroidViewModel(app) {
     }
     fun salvaDocumento(d: Documento, testo: String) = viewModelScope.launch { archivio.salvaTestoDocumento(d, testo); avviso = "Documento salvato" }
     fun togliNodo(n: Nodo) = viewModelScope.launch { avviso = archivio.togliNodo(n) }
+    fun spostaNodo(n: Nodo, genitoreId: Long?) = viewModelScope.launch { avviso = archivio.spostaNodo(n, genitoreId) }
+    fun aggiungiNodo(p: Percorso, etichetta: String) = viewModelScope.launch {
+        if (etichetta.isNotBlank()) avviso = archivio.esegui(it.resonance.adam.logica.Proposta.AggiungiNodi(p.titolo, listOf(etichetta.trim()))).ricevuta
+    }
     fun cambiaStatoNodo(n: Nodo) = viewModelScope.launch {
         val prossimo = StatoNodo.entries[(n.stato.ordinal + 1) % StatoNodo.entries.size]
         db.percorsi().aggiornaNodo(n.copy(stato = prossimo))

@@ -151,6 +151,9 @@ data class Nodo(
     val etichetta: String,
     val stato: StatoNodo = StatoNodo.NON_INIZIATO,
     val ordine: Int,
+    // Due livelli al massimo (25/09/2026): i brani sotto «Scaletta». Un nodo con sotto-nodi non ha uno stato suo:
+    // lo calcola il programma dai figli (logica/Nodi.kt). Null = primo livello.
+    @ColumnInfo(defaultValue = "NULL") val genitoreId: Long? = null,
 )
 
 @Serializable

@@ -40,6 +40,22 @@ class MigrazioneTest {
         db.close()
     }
 
+    @Test fun dallaCinqueAllaSeiINodiRestanoAlPrimoLivello() {
+        aiuto.createDatabase("sei.db", 5).apply {
+            execSQL("INSERT INTO percorsi (id, pilastro, titolo, scopo, creato, archiviato) VALUES (1, 'VIDYA', 'Tributo', '', 0, 0)")
+            execSQL("INSERT INTO nodi (percorsoId, etichetta, stato, ordine) VALUES (1, 'E io ci sto', 'INTRODOTTO', 0)")
+            close()
+        }
+        aiuto.runMigrationsAndValidate("sei.db", 6, true).close()
+        val db = Room.databaseBuilder(RuntimeEnvironment.getApplication(), Db::class.java, "sei.db").allowMainThreadQueries().build()
+        runBlocking {
+            val n = db.percorsi().elencoNodi().single()
+            assertEquals("E io ci sto", n.etichetta)
+            assertEquals(null, n.genitoreId)
+        }
+        db.close()
+    }
+
     @Test fun dallaQuattroAllaCinqueNasconoGliEsperimenti() {
         aiuto.createDatabase("cinque.db", 4).close()
         aiuto.runMigrationsAndValidate("cinque.db", 5, true).close()

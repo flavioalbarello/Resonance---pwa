@@ -315,6 +315,41 @@ class ShellTest {
         assertTrue(db.voci().elenco().any { it.pilastro == Pilastro.VIDYA && it.testo.contains("«E io ci sto: primo pezzo e blocchi tecnici», era non iniziato") })
     }
 
+    // I brani vanno sotto «Scaletta», che non c'è ancora: si crea, e non cade su «Assimilazione scaletta…» per somiglianza.
+    // Lo stato del padre non si dichiara; togliere il padre riporta su i figli.
+    @Test fun iBraniSiRaccolgonoSottoUnPadreCheNonHaStatoSuo() = runBlocking {
+        archivio.esegui(Proposta.CreaPercorso(Pilastro.VIDYA, "Tribute Rino Gaetano", "",
+            listOf("Assimilazione scaletta e architettura del repertorio", "E io ci sto", "Sfiorivano le viole", "Concerto")))
+        val modello = FintoModello(
+            chiama("sposta_nodi", """{"percorso":"Tribute Rino Gaetano","nodi":["E io ci sto","Sfiorivano le viole"],"sotto":"Scaletta"}"""),
+            chiama("aggiungi_nodi", """{"percorso":"Tribute Rino Gaetano","nodi":["Gianna","E io ci sto"],"sotto":"Scaletta"}"""),
+            testo("Proposti."),
+        )
+        val esito = Shell(archivio, imp, modello, FintoMondo()).turno("metti i brani sotto la scaletta")
+        val sposta = archivio.proposta(db.messaggi().per(esito.proposte[0])!!) as Proposta.SpostaNodi
+        assertEquals(Proposta.SpostaNodi("Tribute Rino Gaetano", listOf("E io ci sto", "Sfiorivano le viole"), "Scaletta", sottoNuovo = true), sposta)
+        assertTrue(sposta.descrizione(), sposta.descrizione().contains("sotto «Scaletta» (nodo nuovo)"))
+        val aggiungi = archivio.proposta(db.messaggi().per(esito.proposte[1])!!) as Proposta.AggiungiNodi
+        assertEquals(listOf("Gianna"), aggiungi.nodi)
+        assertEquals(listOf("E io ci sto"), aggiungi.saltati)
+
+        val conferme = Shell(archivio, imp, FintoModello(), FintoMondo())
+        esito.proposte.forEach { conferme.conferma(it) }
+        val tutti = db.percorsi().elencoNodi()
+        val scaletta = tutti.single { it.etichetta == "Scaletta" }
+        assertEquals(null, scaletta.genitoreId)
+        assertEquals(listOf("E io ci sto", "Sfiorivano le viole", "Gianna"), it.resonance.adam.logica.Nodi.figli(tutti, scaletta.id).map { it.etichetta })
+
+        val stato = FintoModello(chiama("stato_nodo", """{"percorso":"Tribute Rino Gaetano","nodo":"Scaletta","stato":"CONSOLIDATO"}"""), testo("Ok."))
+        Shell(archivio, imp, stato, FintoMondo()).turno("la scaletta è consolidata")
+        assertTrue(stato.ricevuti[1].last().jsonObject["content"]!!.jsonPrimitive.content.contains("lo calcola il programma"))
+
+        archivio.togliNodo(scaletta)
+        assertEquals(setOf("Assimilazione scaletta e architettura del repertorio", "E io ci sto", "Sfiorivano le viole", "Concerto", "Gianna"),
+            it.resonance.adam.logica.Nodi.radici(db.percorsi().elencoNodi()).map { it.etichetta }.toSet())
+        assertTrue(db.voci().elenco().any { it.testo.contains("«Scaletta», raccoglieva 3 sotto-nodi") })
+    }
+
     // ── Scelta automatica del motore ──
 
     private fun conScelta(corpo: suspend () -> Unit) = runBlocking {

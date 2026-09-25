@@ -110,10 +110,23 @@ sealed class Proposta {
 
     // Le tappe di un percorso che c'è già: prima si potevano dare solo creandolo, e lo Shell ripiegava sul testo libero
     // (visto il 24/09: 21 brani del tributo scritti in un documento con «[introdotto]» ricopiato a mano).
+    // `sotto`: il nodo di primo livello che li raccoglie (i brani sotto «Scaletta»); `sottoNuovo` se va creato.
+    // `saltati`: quelli che c'erano già, detti al Ghost e al modello invece di sparire in silenzio.
     @Serializable @SerialName("aggiungi_nodi")
-    data class AggiungiNodi(val percorso: String, val nodi: List<String>) : Proposta() {
+    data class AggiungiNodi(
+        val percorso: String, val nodi: List<String>, val sotto: String? = null,
+        val sottoNuovo: Boolean = false, val saltati: List<String> = emptyList(),
+    ) : Proposta() {
         override fun descrizione() = "Nel percorso «$percorso», aggiungere ${nodi.size} " + (if (nodi.size == 1) "nodo" else "nodi") +
-            " (non iniziati): ${Testi.corto(nodi.joinToString(", "), 160)}"
+            Nodi.dove(sotto, sottoNuovo, "sotto") + " (non iniziati): ${Testi.corto(nodi.joinToString(", "), 160)}" +
+            (if (saltati.isNotEmpty()) " — già presenti, non aggiunti: ${Testi.corto(saltati.joinToString(", "), 80)}" else "")
+        override fun dettaglio() = nodi.joinToString("\n") { "• $it" }
+    }
+
+    @Serializable @SerialName("sposta_nodi")
+    data class SpostaNodi(val percorso: String, val nodi: List<String>, val sotto: String? = null, val sottoNuovo: Boolean = false) : Proposta() {
+        override fun descrizione() = "Nel percorso «$percorso», spostare ${nodi.size} " + (if (nodi.size == 1) "nodo" else "nodi") +
+            (if (sotto == null) " al primo livello" else Nodi.dove(sotto, sottoNuovo, "sotto")) + ": ${Testi.corto(nodi.joinToString(", "), 160)}"
         override fun dettaglio() = nodi.joinToString("\n") { "• $it" }
     }
 
@@ -244,7 +257,7 @@ object Azioni {
         Strumento("crea_percorso", Effetto.SCRITTURA, "Propone un nuovo percorso con i suoi nodi.",
             schema(listOf("pilastro", "titolo", "nodi"), mapOf(
                 "pilastro" to e(PILASTRI.filter { it != "ADAM" }, "Pilastro"), "titolo" to s("Nome breve del percorso, non una frase"),
-                "scopo" to s("Chi diventa il Ghost percorrendolo"), "nodi" to lista("Tappe, da 3 a 12"),
+                "scopo" to s("Chi diventa il Ghost percorrendolo"), "nodi" to lista("Tappe concrete, da 1 a 20: quelle che il Ghost ha nominato o riconoscerebbe come sue. Non inventare fasi generiche: se non le sai, chiedile"),
             ))),
         Strumento("salva_documento", Effetto.SCRITTURA, "Propone di salvare un testo come documento in un percorso esistente.",
             schema(listOf("percorso", "titolo", "testo"), mapOf(
@@ -316,10 +329,15 @@ object Azioni {
             ))),
         Strumento("aggiungi_nodi", Effetto.SCRITTURA,
             "Propone di aggiungere nodi (tappe, brani, capitoli…) in fondo a un percorso che esiste già; partono non iniziati. Poi lo stato di ciascuno si cambia con stato_nodo.",
-            schema(listOf("percorso", "nodi"), mapOf("percorso" to s("Titolo del percorso"), "nodi" to lista("Etichette brevi, una per nodo, da 1 a 30")))),
+            schema(listOf("percorso", "nodi"), mapOf("percorso" to s("Titolo del percorso"), "nodi" to lista("Etichette brevi, una per nodo, da 1 a 30"),
+                "sotto" to s("Facoltativo: il nodo di primo livello che li raccoglie (es. «Scaletta»); se non c'è si crea. Due livelli al massimo")))),
+        Strumento("sposta_nodi", Effetto.SCRITTURA,
+            "Propone di spostare nodi che esistono già sotto un nodo di primo livello (che si crea se non c'è), o al primo livello se «sotto» manca. Per raccogliere elementi dello stesso tipo, come i brani di una scaletta.",
+            schema(listOf("percorso", "nodi"), mapOf("percorso" to s("Titolo del percorso"), "nodi" to lista("Etichette dei nodi da spostare, da 1 a 40"),
+                "sotto" to s("Il nodo di primo livello che li raccoglie; vuoto per portarli al primo livello")))),
         Strumento("togli_nodo", Effetto.SCRITTURA, "Propone di togliere un nodo da un percorso (doppione, tappa che non serve più). Resta una traccia nel diario.",
             schema(listOf("percorso", "nodo"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del nodo")))),
-        Strumento("stato_nodo", Effetto.SCRITTURA, "Propone di cambiare lo stato di un nodo di un percorso. È il posto dello stato di una tappa: non scriverlo nel quaderno né in un documento.",
+        Strumento("stato_nodo", Effetto.SCRITTURA, "Propone di cambiare lo stato di un nodo di un percorso. È il posto dello stato di una tappa: non scriverlo nel quaderno né in un documento. Non per un nodo con sotto-nodi: il suo stato lo calcola il programma dai figli.",
             schema(listOf("percorso", "nodo", "stato"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del nodo"), "stato" to e(STATI, "Nuovo stato")))),
     )
 
@@ -415,7 +433,13 @@ object Azioni {
                 .distinctBy { Testi.normalizza(it) }
             if (nodi.size !in 1..30) rifiuta("servono da 1 a 30 nodi, come elenco di etichette")
             nodi.find { it.length > 80 }?.let { rifiuta("«${Testi.corto(it, 40)}» è una frase, non un'etichetta: accorciala") }
-            Proposta.AggiungiNodi(a.testo("percorso") ?: rifiuta("percorso mancante"), nodi)
+            Proposta.AggiungiNodi(a.testo("percorso") ?: rifiuta("percorso mancante"), nodi, a.testo("sotto")?.trim()?.takeIf { it.isNotEmpty() })
+        }
+        "sposta_nodi" -> {
+            val nodi = runCatching { a["nodi"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf(String::isNotEmpty) } }.getOrNull().orEmpty()
+                .distinctBy { Testi.normalizza(it) }
+            if (nodi.size !in 1..40) rifiuta("servono da 1 a 40 nodi, come elenco di etichette")
+            Proposta.SpostaNodi(a.testo("percorso") ?: rifiuta("percorso mancante"), nodi, a.testo("sotto")?.trim()?.takeIf { it.isNotEmpty() })
         }
         "togli_nodo" -> Proposta.TogliNodo(a.testo("percorso") ?: rifiuta("percorso mancante"), a.testo("nodo") ?: rifiuta("nodo mancante"))
         "stato_nodo" -> {

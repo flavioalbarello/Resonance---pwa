@@ -111,6 +111,14 @@ notifiche, della sveglia esatta, i prossimi orari e «Prova ora».
 **Togliere un nodo.** Tenendo premuto il nodo nel percorso, o con `togli_nodo` dallo Shell. Prima una voce nel diario
 del pilastro con nome e stato (Legge 14), poi i documenti legati restano nel percorso senza nodo.
 
+**Nodi su due livelli (25/09/2026).** I brani del tributo sotto «Scaletta». `Nodo.genitoreId` (DB 6, migrazione
+automatica). Due livelli al massimo; un nodo con sotto-nodi non ha uno stato suo: lo calcola il programma dai figli
+(`logica/Nodi.kt`: sintesi, avanzamento), e `stato_nodo` su un padre si rifiuta. `aggiungi_nodi` accetta «sotto»,
+`sposta_nodi` raccoglie nodi esistenti; il padre si cerca per nome ESATTO fra quelli di primo livello (per somiglianza
+«Scaletta» cadeva su «Assimilazione scaletta…») e si crea se manca. Togliere un padre riporta su i figli.
+Nell'app il padre si apre al tocco; la pressione lunga sposta sotto un altro nodo, al primo livello, o toglie.
+`crea_percorso` ora chiede tappe concrete: le fasi generiche del tributo le aveva inventate lo Shell.
+
 **Promesse sul futuro.** Gemini ha scritto «Domani… riprendiamo»: lo Shell non torna da solo. Regola nel prompt
 (proporre `crea_evento` come promemoria) e controllo del programma (`Testi.promette`), che aggiunge una nota se la
 risposta promette senza aver proposto niente.

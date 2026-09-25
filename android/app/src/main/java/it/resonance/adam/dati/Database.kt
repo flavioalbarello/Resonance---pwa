@@ -116,13 +116,13 @@ interface ProfiloDao {
 @Database(
     entities = [Misura::class, Voce::class, Versione::class, Rituale::class, Spunta::class, Percorso::class,
         Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class, Esperimento::class],
-    version = 5,
+    version = 6,
     exportSchema = true,
     // 2: Profilo.nomiProtetti (calendario e posta, 23/09/2026).
     // 3: Messaggio.allegati (immagini e documenti nella chat, 23/09/2026).
     // 4: Messaggio.modello, costo, motore (scelta automatica del motore).
     // 5: esperimenti (l'anello di Anochin sulla vita).
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun misure(): MisureDao

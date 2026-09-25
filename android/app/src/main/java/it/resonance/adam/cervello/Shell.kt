@@ -23,6 +23,7 @@ import it.resonance.adam.logica.Quaderni
 import it.resonance.adam.logica.Azioni
 import it.resonance.adam.logica.Contesto
 import it.resonance.adam.logica.Istantanea
+import it.resonance.adam.logica.Nodi
 import it.resonance.adam.logica.Testi
 import it.resonance.adam.logica.Validazione
 import kotlinx.serialization.json.Json
@@ -273,15 +274,42 @@ class Shell(
         } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "documento non trovato") }
         is Proposta.AggiungiNodi -> try {
             val per = archivio.percorso(p.percorso)
-            val esistenti = archivio.db.percorsi().elencoNodi().filter { it.percorsoId == per.id }.map { Testi.normalizza(it.etichetta) }.toSet()
+            val tutti = archivio.db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+            val (sotto, nuovo) = p.sotto?.let { raccoglitore(tutti, it) ?: return Risoluzione.Domanda("«$it» è un sotto-nodo: due livelli al massimo, scegli un nodo di primo livello") } ?: (null to false)
+            val esistenti = tutti.map { Testi.normalizza(it.etichetta) }.toSet() + listOfNotNull(sotto?.let(Testi::normalizza))
             val nuovi = p.nodi.filter { Testi.normalizza(it) !in esistenti }
-            if (nuovi.isEmpty()) Risoluzione.Domanda("in «${per.titolo}» ci sono già tutti: per lo stato usa stato_nodo")
-            else Risoluzione.Pronta(Proposta.AggiungiNodi(per.titolo, nuovi))
+            val saltati = p.nodi.filter { Testi.normalizza(it) in esistenti }
+            if (nuovi.isEmpty()) Risoluzione.Domanda("in «${per.titolo}» ci sono già tutti: " +
+                (if (sotto != null) "per metterli sotto «$sotto» usa sposta_nodi" else "per lo stato usa stato_nodo"))
+            else Risoluzione.Pronta(Proposta.AggiungiNodi(per.titolo, nuovi, sotto, nuovo, saltati))
+        } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
+        is Proposta.SpostaNodi -> try {
+            val per = archivio.percorso(p.percorso)
+            val tutti = archivio.db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+            val nodi = p.nodi.map { e ->
+                when (val n = nodo(p.percorso, e)) { is Nodo -> n; is Risoluzione.Domanda -> return n; else -> return Risoluzione.Domanda("nodo «$e» non trovato") }
+            }.distinctBy { it.id }
+            val (sotto, nuovo) = p.sotto?.let { raccoglitore(tutti, it) ?: return Risoluzione.Domanda("«$it» è un sotto-nodo: due livelli al massimo, scegli un nodo di primo livello") } ?: (null to false)
+            val g = sotto?.let { s -> tutti.find { it.genitoreId == null && it.etichetta == s } }
+            when {
+                g != null && nodi.any { it.id == g.id } -> Risoluzione.Domanda("«${g.etichetta}» non può andare sotto sé stesso")
+                sotto != null && nodi.any { Nodi.haFigli(tutti, it.id) } ->
+                    Risoluzione.Domanda("«${nodi.first { Nodi.haFigli(tutti, it.id) }.etichetta}» ha dei sotto-nodi: non può andare sotto un altro (due livelli al massimo)")
+                !nuovo && nodi.all { it.genitoreId == g?.id } -> Risoluzione.Domanda("sono già " + (sotto?.let { "sotto «$it»" } ?: "al primo livello"))
+                else -> Risoluzione.Pronta(Proposta.SpostaNodi(per.titolo, nodi.map { it.etichetta }, sotto, nuovo))
+            }
         } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
         // Anche il nodo si cerca prima: una proposta che alla conferma non trova il nodo non si mostra.
         is Proposta.StatoDelNodo -> when (val n = nodo(p.percorso, p.nodo)) {
             is Risoluzione.Domanda -> n
-            is Nodo -> if (n.stato == p.stato) Risoluzione.Domanda("«${n.etichetta}» è già ${p.stato.etichetta}") else Risoluzione.Pronta(p)
+            is Nodo -> {
+                val figli = archivio.db.percorsi().elencoNodi().count { it.genitoreId == n.id }
+                when {
+                    figli > 0 -> Risoluzione.Domanda("lo stato di «${n.etichetta}» lo calcola il programma dai suoi $figli sotto-nodi: cambia quello di un sotto-nodo")
+                    n.stato == p.stato -> Risoluzione.Domanda("«${n.etichetta}» è già ${p.stato.etichetta}")
+                    else -> Risoluzione.Pronta(p)
+                }
+            }
             else -> Risoluzione.Pronta(p)
         }
         is Proposta.TogliNodo -> when (val n = nodo(p.percorso, p.nodo)) {
@@ -290,6 +318,14 @@ class Shell(
             else -> Risoluzione.Pronta(p)
         }
         else -> Risoluzione.Pronta(p)
+    }
+
+    // Il nodo che raccoglie: esatto fra quelli di primo livello (nuovo = false), o da creare (nuovo = true).
+    // Null se quel nome è già un sotto-nodo. Esatto, non «contiene»: «Scaletta» non deve cadere su «Assimilazione scaletta…».
+    private fun raccoglitore(tutti: List<Nodo>, sotto: String): Pair<String, Boolean>? {
+        val c = Testi.normalizza(sotto)
+        Nodi.radici(tutti).find { Testi.normalizza(it.etichetta) == c }?.let { return it.etichetta to false }
+        return if (tutti.any { Testi.normalizza(it.etichetta) == c }) null else sotto.trim() to true
     }
 
     // Il nodo esatto, o la domanda da rimandare al modello con i nodi veri.

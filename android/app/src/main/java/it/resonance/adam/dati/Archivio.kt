@@ -7,6 +7,7 @@ import it.resonance.adam.logica.Esperimenti
 import it.resonance.adam.logica.Giorni
 import it.resonance.adam.logica.Importato
 import it.resonance.adam.logica.Proposta
+import it.resonance.adam.logica.Nodi
 import it.resonance.adam.logica.Testi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -53,11 +54,48 @@ class Archivio(val db: Db) {
 
     private suspend fun togliNodoDentro(n: Nodo, per: Percorso): String {
         val oggi = java.time.LocalDate.now().toString()
+        val tutti = db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+        val figli = Nodi.figli(tutti, n.id)
+        // Un padre tolto non si porta via i figli: tornano al primo livello.
+        if (figli.isNotEmpty()) spostaDentro(per, figli, null)
+        val stato = if (figli.isEmpty()) "era ${n.stato.etichetta}" else "raccoglieva ${Nodi.sintesi(figli)}, tornati al primo livello"
         db.voci().inserisci(Voce(pilastro = per.pilastro, giorno = oggi, fonte = "percorso", creato = ora, aggiornato = ora,
-            testo = "Nodo tolto dal percorso «${per.titolo}»: «${n.etichetta}», era ${n.stato.etichetta}."))
+            testo = "Nodo tolto dal percorso «${per.titolo}»: «${n.etichetta}», $stato."))
         db.percorsi().sganciaDocumenti(n.id)
         db.percorsi().togliNodo(n)
-        return "Tolto il nodo «${n.etichetta}» da «${per.titolo}» (era ${n.stato.etichetta}); traccia nel diario ${per.pilastro.etichetta}"
+        return "Tolto il nodo «${n.etichetta}» da «${per.titolo}» ($stato); traccia nel diario ${per.pilastro.etichetta}"
+    }
+
+    // Il nodo che raccoglie: per nome esatto fra quelli di primo livello; se non c'è, lo si crea. Mai un sotto-nodo.
+    private suspend fun genitore(per: Percorso, sotto: String): Nodo {
+        val tutti = db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+        val c = Testi.normalizza(sotto)
+        Nodi.radici(tutti).find { Testi.normalizza(it.etichetta) == c }?.let { return it }
+        if (tutti.any { Testi.normalizza(it.etichetta) == c }) throw Ambiguo("«$sotto» è già un sotto-nodo: due livelli al massimo")
+        val ordine = (Nodi.radici(tutti).maxOfOrNull { it.ordine } ?: -1) + 1
+        val id = db.percorsi().inserisciNodo(Nodo(percorsoId = per.id, etichetta = sotto.trim(), ordine = ordine))
+        return db.percorsi().elencoNodi().first { it.id == id }
+    }
+
+    suspend fun spostaNodo(n: Nodo, genitoreId: Long?): String = try {
+        db.withTransaction {
+            val per = db.percorsi().elenco().first { it.id == n.percorsoId }
+            spostaDentro(per, listOf(n), genitoreId?.let { g -> db.percorsi().elencoNodi().first { it.id == g } })
+        }
+    } catch (e: Ambiguo) { "Non spostato: ${e.message}" }
+
+    // Due livelli: sotto un nodo di primo livello va solo un nodo senza figli. L'ordine fra fratelli è quello dato.
+    private suspend fun spostaDentro(per: Percorso, nodi: List<Nodo>, g: Nodo?): String {
+        val tutti = db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+        if (g != null) {
+            if (g.genitoreId != null) throw Ambiguo("«${g.etichetta}» è un sotto-nodo: due livelli al massimo")
+            if (nodi.any { it.id == g.id }) throw Ambiguo("«${g.etichetta}» non può andare sotto sé stesso")
+            nodi.find { Nodi.haFigli(tutti, it.id) }?.let { throw Ambiguo("«${it.etichetta}» ha dei sotto-nodi: non può andare sotto un altro") }
+        }
+        val fratelli = (if (g == null) Nodi.radici(tutti) else Nodi.figli(tutti, g.id)).filter { f -> nodi.none { it.id == f.id } }
+        var ordine = (fratelli.maxOfOrNull { it.ordine } ?: -1) + 1
+        nodi.forEach { n -> db.percorsi().aggiornaNodo(tutti.first { it.id == n.id }.copy(genitoreId = g?.id, ordine = ordine++)) }
+        return "Spostati ${nodi.size} nodi " + (g?.let { "sotto «${it.etichetta}»" } ?: "al primo livello") + " in «${per.titolo}»"
     }
 
     suspend fun percorso(titolo: String) = trova(db.percorsi().elenco().filter { !it.archiviato }, titolo, { it.titolo }, "percorso")
@@ -138,17 +176,30 @@ class Archivio(val db: Db) {
         is Proposta.AggiungiNodi -> {
             val per = percorso(p.percorso)
             val esistenti = db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
-            val nuovi = p.nodi.filter { n -> esistenti.none { Testi.normalizza(it.etichetta) == Testi.normalizza(n) } }
-            val base = (esistenti.maxOfOrNull { it.ordine } ?: -1) + 1
-            nuovi.forEachIndexed { i, n -> db.percorsi().inserisciNodo(Nodo(percorsoId = per.id, etichetta = n, ordine = base + i)) }
+            val g = p.sotto?.let { genitore(per, it) }
+            val nuovi = p.nodi.filter { n -> esistenti.none { Testi.normalizza(it.etichetta) == Testi.normalizza(n) } && n != g?.etichetta }
+            val fratelli = if (g == null) Nodi.radici(esistenti) else Nodi.figli(esistenti, g.id)
+            val base = (fratelli.maxOfOrNull { it.ordine } ?: -1) + 1
+            nuovi.forEachIndexed { i, n -> db.percorsi().inserisciNodo(Nodo(percorsoId = per.id, etichetta = n, ordine = base + i, genitoreId = g?.id)) }
             Esecuzione(nuovi.isNotEmpty(), if (nuovi.isEmpty()) "Nessun nodo aggiunto: c'erano già tutti in «${per.titolo}»"
-                else "Aggiunti ${nuovi.size} nodi a «${per.titolo}» (ora ${esistenti.size + nuovi.size})")
+                else "Aggiunti ${nuovi.size} nodi a «${per.titolo}»" + (g?.let { " sotto «${it.etichetta}»" } ?: ""))
+        }
+        is Proposta.SpostaNodi -> {
+            val per = percorso(p.percorso)
+            val tutti = db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+            val nodi = p.nodi.map { trova(tutti, it, { n -> n.etichetta }, "nodo") }.distinctBy { it.id }
+            Esecuzione(true, spostaDentro(per, nodi, p.sotto?.let { genitore(per, it) }))
         }
         is Proposta.StatoDelNodo -> {
             val per = percorso(p.percorso)
-            val n = trova(db.percorsi().elencoNodi().filter { it.percorsoId == per.id }, p.nodo, { it.etichetta }, "nodo")
-            db.percorsi().aggiornaNodo(n.copy(stato = p.stato))
-            Esecuzione(true, "«${per.titolo}» › ${n.etichetta}: ${n.stato.etichetta} → ${p.stato.etichetta}")
+            val tutti = db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+            val n = trova(tutti, p.nodo, { it.etichetta }, "nodo")
+            val figli = Nodi.figli(tutti, n.id)
+            if (figli.isNotEmpty()) Esecuzione(false, "Non cambiato: lo stato di «${n.etichetta}» lo calcola il programma dai suoi ${figli.size} sotto-nodi")
+            else {
+                db.percorsi().aggiornaNodo(n.copy(stato = p.stato))
+                Esecuzione(true, "«${per.titolo}» › ${n.etichetta}: ${n.stato.etichetta} → ${p.stato.etichetta}")
+            }
         }
         is Proposta.ApriEsperimento -> {
             val tutti = db.esperimenti().elenco()

@@ -2,6 +2,7 @@ package it.resonance.adam.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import it.resonance.adam.logica.Nodi
 import it.resonance.adam.dati.Nodo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.input.pointer.pointerInput
@@ -117,7 +118,8 @@ private fun Percorsi(vm: Adam, p: Pilastro) {
     var nuovo by remember { mutableStateOf(false) }
     OutlinedButton({ nuovo = true }, modifier = Modifier.padding(top = 12.dp)) { Text("+ Percorso") }
     percorsi.filter { it.pilastro == p }.forEach { per ->
-        val n = nodi.filter { it.percorsoId == per.id }
+        // Contano i nodi con uno stato loro: un padre è la somma dei figli, non un nodo in più.
+        val n = it.resonance.adam.logica.Nodi.foglie(nodi.filter { it.percorsoId == per.id })
         val fatti = n.count { it.stato == StatoNodo.CONSOLIDATO }
         Scheda(Colori.di(p), Modifier.clickable { vm.percorsoAperto = per.id }) {
             Riga(per.titolo)
@@ -155,27 +157,64 @@ private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.
     val per = percorsi.find { it.id == id } ?: return
     var nuovoDoc by remember { mutableStateOf(false) }
     var daTogliere by remember { mutableStateOf<Nodo?>(null) }
+    var menuNodo by remember { mutableStateOf<Nodo?>(null) }
+    var nuovoNodo by remember { mutableStateOf(false) }
+    var aperti by remember(id) { mutableStateOf(setOf<Long>()) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
         TextButton({ vm.percorsoAperto = null }) { Text("‹ Percorsi") }
         Text(per.titolo, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = colore)
         if (per.scopo.isNotBlank()) Tenue(per.scopo)
+        val tutti = nodi.filter { it.percorsoId == per.id }
         Scheda(colore) {
-            Etichetta("Nodi · tocca per avanzare lo stato, tieni premuto per toglierlo", colore)
-            nodi.filter { it.percorsoId == per.id }.sortedBy { it.ordine }.forEach { n ->
-                Row(Modifier.fillMaxWidth().testTag("nodo-${n.etichetta}")
-                    .pointerInput(n.id, n.stato) { detectTapGestures(onTap = { vm.cambiaStatoNodo(n) }, onLongPress = { daTogliere = n }) }
-                    .padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(n.etichetta, modifier = Modifier.weight(1f), fontSize = 15.sp)
-                    Text(n.stato.etichetta, fontSize = 12.sp, color = if (n.stato == StatoNodo.NON_INIZIATO) Colori.tenue else Colori.ambraInchiostro,
-                        modifier = Modifier.background(if (n.stato == StatoNodo.NON_INIZIATO) Colori.fondo2 else colore.copy(alpha = 0.18f + 0.18f * n.stato.ordinal), RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
+            Etichetta("Nodi · tocca per avanzare, tieni premuto per spostare o togliere", colore)
+            Nodi.radici(tutti).forEach { r ->
+                val figli = Nodi.figli(tutti, r.id)
+                if (figli.isEmpty()) RigaNodo(r, colore, 0, { vm.cambiaStatoNodo(r) }, { menuNodo = r })
+                else {
+                    // Il padre non ha uno stato suo: si apre e si chiude, e mostra ciò che dicono i figli.
+                    val aperto = r.id in aperti
+                    Column(Modifier.fillMaxWidth().testTag("nodo-${r.etichetta}")
+                        .pointerInput(r.id, aperto) { detectTapGestures(onTap = { aperti = if (aperto) aperti - r.id else aperti + r.id }, onLongPress = { menuNodo = r }) }
+                        .padding(vertical = 6.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text((if (aperto) "▾ " else "▸ ") + r.etichetta, modifier = Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text("${figli.count { it.stato == StatoNodo.CONSOLIDATO }}/${figli.size}", fontSize = 13.sp, color = Colori.tenue)
+                        }
+                        androidx.compose.material3.LinearProgressIndicator(progress = { Nodi.avanzamento(figli) },
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), color = colore, trackColor = Colori.fondo2)
+                        Tenue(Nodi.sintesi(figli))
+                    }
+                    if (aperto) figli.forEach { f -> RigaNodo(f, colore, 1, { vm.cambiaStatoNodo(f) }, { menuNodo = f }) }
                 }
             }
+            TextButton({ nuovoNodo = true }) { Text("+ Nodo") }
         }
+        menuNodo?.let { n ->
+            val haFigli = Nodi.haFigli(tutti, n.id)
+            // Sotto un nodo di primo livello va solo un nodo senza figli: due livelli al massimo.
+            val mete = if (haFigli) emptyList() else Nodi.radici(tutti).filter { it.id != n.id && it.id != n.genitoreId }
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { menuNodo = null },
+                title = { Text(n.etichetta) },
+                text = {
+                    Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+                        if (haFigli) Tenue("Raccoglie ${Nodi.sintesi(Nodi.figli(tutti, n.id))}. Se lo togli, tornano al primo livello.")
+                        if (n.genitoreId != null) TextButton({ vm.spostaNodo(n, null); menuNodo = null }) { Text("Al primo livello") }
+                        if (mete.isNotEmpty()) Tenue("Mettilo sotto:")
+                        mete.forEach { m -> TextButton({ vm.spostaNodo(n, m.id); menuNodo = null }) { Text("«${m.etichetta}»") } }
+                    }
+                },
+                confirmButton = { TextButton({ daTogliere = n; menuNodo = null }) { Text("Togli", color = Colori.allarme) } },
+                dismissButton = { TextButton({ menuNodo = null }) { Text("Chiudi") } },
+            )
+        }
+        if (nuovoNodo) DialogoTesto("Nuovo nodo (primo livello)", onOk = { vm.aggiungiNodo(per, it) }, onChiudi = { nuovoNodo = false })
         daTogliere?.let { n ->
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { daTogliere = null },
                 title = { Text("Togliere «${n.etichetta}»?") },
-                text = { Text("Era ${n.stato.etichetta}. Nel diario ${per.pilastro.etichetta} resta una riga con nome e stato; i documenti legati restano nel percorso.") },
+                text = { Text((if (Nodi.haFigli(nodi, n.id)) "I suoi sotto-nodi tornano al primo livello." else "Era ${n.stato.etichetta}.") +
+                    " Nel diario ${per.pilastro.etichetta} resta una riga con nome e stato; i documenti legati restano nel percorso.") },
                 confirmButton = { TextButton({ vm.togliNodo(n); daTogliere = null }) { Text("Togli", color = Colori.allarme) } },
                 dismissButton = { TextButton({ daTogliere = null }) { Text("Lascia") } },
             )
@@ -233,4 +272,16 @@ private fun QuadernoUi(vm: Adam, p: Pilastro) {
     Tenue("Ciò che lo Shell sa di te su questo pilastro. Lo legge a ogni turno; qui lo rivedi, correggi o svuoti.")
     Spazio(4)
     QuadernoEditor(vm, p)
+}
+
+// Un nodo con uno stato suo: il tocco lo fa avanzare, la pressione lunga apre spostare/togliere.
+@Composable
+private fun RigaNodo(n: Nodo, colore: androidx.compose.ui.graphics.Color, livello: Int, onTap: () -> Unit, onLungo: () -> Unit) {
+    Row(Modifier.fillMaxWidth().testTag("nodo-${n.etichetta}")
+        .pointerInput(n.id, n.stato) { detectTapGestures(onTap = { onTap() }, onLongPress = { onLungo() }) }
+        .padding(start = (18 * livello).dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(n.etichetta, modifier = Modifier.weight(1f), fontSize = if (livello > 0) 14.sp else 15.sp)
+        Text(n.stato.etichetta, fontSize = 12.sp, color = if (n.stato == StatoNodo.NON_INIZIATO) Colori.tenue else Colori.ambraInchiostro,
+            modifier = Modifier.background(if (n.stato == StatoNodo.NON_INIZIATO) Colori.fondo2 else colore.copy(alpha = 0.18f + 0.18f * n.stato.ordinal), RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
+    }
 }
