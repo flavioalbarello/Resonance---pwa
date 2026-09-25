@@ -46,13 +46,16 @@ open class OpenRouter(
     // `rapida`: per la microchiamata che sceglie il motore; 6 secondi, nessuno streaming e nessun secondo tentativo.
     private val httpRapido by lazy { http.newBuilder().callTimeout(6, TimeUnit.SECONDS).build() }
 
-    open suspend fun completa(chiave: String, modello: String, messaggi: JsonArray, strumenti: JsonArray?, maxToken: Int = 1500, rapida: Boolean = false): Risposta =
+    open suspend fun completa(chiave: String, modello: String, messaggi: JsonArray, strumenti: JsonArray?, maxToken: Int = 1500, rapida: Boolean = false,
+                              temperatura: Double? = null): Risposta =
         withContext(Dispatchers.IO) {
             val corpo = buildJsonObject {
                 put("model", modello)
                 put("messages", messaggi)
                 if (strumenti != null) { put("tools", strumenti); put("tool_choice", "auto") }
                 put("max_tokens", maxToken)
+                // Null = quella del modello: per chi la rifiuta, o dove il compito non la chiede (vedi Temperatura.kt).
+                if (temperatura != null) put("temperature", temperatura)
                 // Kimi, DeepSeek, Gemini ragionano prima di rispondere, e il ragionamento consuma lo stesso tetto:
                 // non lo si scarica (lo si paga comunque), ma il tetto deve lasciargli spazio (vedi Shell.MAX_TOKEN).
                 putJsonObject("reasoning") { put("exclude", true) }

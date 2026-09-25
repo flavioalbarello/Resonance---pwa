@@ -88,6 +88,10 @@ fun ShellUi(vm: Adam, sistema: Sistema) {
             Text("Modalità auto: parla anche con pause. Parte dopo ${vm.pausaInvio()} secondi di silenzio, o subito se dici «invia»; «annulla messaggio» lo cancella. Tocca l'ancora rossa per fermare.",
                 color = Colori.allarme, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
         }
+        vm.forza?.let { f ->
+            InputChip(true, { vm.forza = null }, label = { Text("🌡 ${f.etichetta} · solo il prossimo messaggio") }, trailingIcon = { Text("✕") },
+                modifier = Modifier.padding(horizontal = 12.dp).testTag("forza"))
+        }
         if (vm.inAllegato.isNotEmpty() || vm.preparo > 0) Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -105,6 +109,10 @@ fun ShellUi(vm: Adam, sistema: Sistema) {
                 DropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem({ Text("📷 Scatta una foto") }, { menu = false; sistema.scatta() })
                     DropdownMenuItem({ Text("🖼 Immagine o documento") }, { menu = false; sistema.allega() })
+                    // La temperatura la decide il compito; qui la si forza per il prossimo messaggio soltanto.
+                    it.resonance.adam.cervello.Forzatura.entries.forEach { f ->
+                        DropdownMenuItem({ Text("🌡 ${f.etichetta.replaceFirstChar { it.uppercase() }} (solo il prossimo)") }, { menu = false; vm.forza = f })
+                    }
                 }
             }
             OutlinedTextField(vm.input, { vm.input = it }, placeholder = { Text("Scrivi allo Shell…") }, modifier = Modifier.weight(1f), maxLines = 6)
@@ -141,7 +149,8 @@ private fun Messaggio(vm: Adam, m: Messaggio) {
             // Chi ha risposto e quanto è costato (per scegliere il modello con un numero), e la lettura ad alta voce.
             Row(verticalAlignment = Alignment.CenterVertically) {
                 m.modello?.let { mod ->
-                    Text(listOfNotNull(Instradatore.etichetta(mod), m.motore, m.costo?.let { "%.2f ¢".format(it * 100) }).joinToString(" · "),
+                    Text(listOfNotNull(Instradatore.etichetta(mod), m.motore, it.resonance.adam.cervello.Temperatura.etichetta(m.temperatura, m.forzata),
+                        m.costo?.let { "%.2f ¢".format(it * 100) }).joinToString(" · "),
                         color = Colori.tenue, fontSize = 11.sp, modifier = Modifier.padding(start = 8.dp))
                 }
                 TextButton({ vm.leggi(m) }, modifier = Modifier.testTag("leggi-${m.id}")) {

@@ -57,7 +57,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 
-enum class Schermata(val etichetta: String) { SPECCHIO("Specchio"), SHELL("Shell"), BIO("Bio"), AIR("Air"), VIDYA("Vidya"), SETUP("Setup") }
+enum class Schermata(val etichetta: String) { SPECCHIO("Specchio"), SHELL("Shell"), ADAM("Adam"), BIO("Bio"), AIR("Air"), VIDYA("Vidya"), SETUP("Setup") }
 
 enum class Ascolta { SPENTO, DETTATURA, AUTO }
 
@@ -82,6 +82,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
     val quaderni = db.quaderni().tutti().stato()
     val esperimenti = db.esperimenti().tutti().stato()
     val messaggi = db.messaggi().tutti().stato()
+    val turni = db.turni().osserva(300).stato()
     val profilo: StateFlow<Profilo?> = db.profilo().osserva().stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val spesaMese = db.spesa().osserva(YearMonth.now().toString()).stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -177,16 +178,19 @@ class Adam(app: Application) : AndroidViewModel(app) {
         input = ""
         inAllegato.clear()
         pensa = true
+        // La forzatura vale per questo messaggio e basta: poi la temperatura torna quella del compito.
+        val f = forza
+        forza = null
         viewModelScope.launch {
             val id = shell.registra(t, allegati)
             val wm = lavori
             if (wm == null) {
-                val esito = shell.rispondi(id)
+                val esito = shell.rispondi(id, f)
                 pensa = false
                 if (ascolta == Ascolta.AUTO) rispondiAVoce(esito)
                 return@launch
             }
-            val r = TurnoWorker.accoda(getApplication(), id)
+            val r = TurnoWorker.accoda(getApplication(), id, f)
             val fine = wm.getWorkInfoByIdFlow(r.id).first { it?.state?.isFinished == true }
             if (ascolta == Ascolta.AUTO && fine?.state == WorkInfo.State.SUCCEEDED) rispondiAVoce(Shell.Esito(
                 fine.outputData.getString(TurnoWorker.TESTO).orEmpty(), fine.outputData.getLongArray(TurnoWorker.PROPOSTE)?.toList().orEmpty()))
@@ -210,6 +214,9 @@ class Adam(app: Application) : AndroidViewModel(app) {
     // Modalità auto: ciò che il Ghost ha detto finora in questo messaggio. Parte dopo `pausaInvio` secondi di silenzio,
     // o subito con «invia». Prima partiva alla prima pausa del riconoscimento, a metà frase (visto il 25/09).
     var raccolto by mutableStateOf("")
+    // Temperatura forzata per il prossimo messaggio soltanto (null = decide il compito).
+    var forza by mutableStateOf<it.resonance.adam.cervello.Forzatura?>(null)
+
     private var invioJob: kotlinx.coroutines.Job? = null
     // Il segmento appena arrivato ha già fatto partire qualcosa (invio, sì/no): chi chiude l'ascolto non lo riaccende.
     private var azione = false
@@ -372,6 +379,10 @@ class Adam(app: Application) : AndroidViewModel(app) {
     }
     fun salvaDocumento(d: Documento, testo: String) = viewModelScope.launch { archivio.salvaTestoDocumento(d, testo); avviso = "Documento salvato" }
     fun togliNodo(n: Nodo) = viewModelScope.launch { avviso = archivio.togliNodo(n) }
+    fun pilastroNodo(n: Nodo, p: Pilastro?) = viewModelScope.launch { avviso = archivio.pilastroNodo(n, p) }
+    fun senzaTemperatura() = impostazioni.senzaTemperatura
+    // Il modello si riprova con la temperatura: se la rifiuta ancora, torna in elenco da solo.
+    fun dimenticaRinunce() { impostazioni.senzaTemperatura = emptySet(); avviso = "Al prossimo turno la temperatura si riprova con tutti i modelli." }
     fun spostaNodo(n: Nodo, genitoreId: Long?) = viewModelScope.launch { avviso = archivio.spostaNodo(n, genitoreId) }
     fun aggiungiNodo(p: Percorso, etichetta: String) = viewModelScope.launch {
         if (etichetta.isNotBlank()) avviso = archivio.esegui(it.resonance.adam.logica.Proposta.AggiungiNodi(p.titolo, listOf(etichetta.trim()))).ricevuta

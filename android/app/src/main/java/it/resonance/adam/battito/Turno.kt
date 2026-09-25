@@ -39,7 +39,8 @@ class TurnoWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
     override suspend fun doWork(): Result {
         val id = inputData.getLong(ID, -1)
         if (id < 0) return Result.failure()
-        val esito = Shell(Archivio(Db.di(applicationContext)), Impostazioni(applicationContext), mondo = MondoAndroid(applicationContext)).rispondi(id)
+        val forza = inputData.getString(FORZA)?.let { f -> it.resonance.adam.cervello.Forzatura.entries.find { it.name == f } }
+        val esito = Shell(Archivio(Db.di(applicationContext)), Impostazioni(applicationContext), mondo = MondoAndroid(applicationContext)).rispondi(id, forza)
         if (!Primopiano.visibile && (esito.testo.isNotBlank() || esito.proposte.isNotEmpty())) {
             creaCanali(applicationContext)
             val proposte = if (esito.proposte.isEmpty()) "" else "\n${esito.proposte.size} proposta da confermare"
@@ -51,6 +52,7 @@ class TurnoWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
     companion object {
         const val NOME = "turno"
         const val ID = "id"
+        const val FORZA = "forza"
         const val TESTO = "testo"
         const val PROPOSTE = "proposte"
         private const val ID_LAVORO = 301
@@ -58,11 +60,11 @@ class TurnoWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         const val CANALE_LAVORO = "lavoro"
         const val CANALE_RISPOSTE = "risposte"
 
-        fun accoda(context: Context, idGhost: Long): OneTimeWorkRequest {
+        fun accoda(context: Context, idGhost: Long, forza: it.resonance.adam.cervello.Forzatura? = null): OneTimeWorkRequest {
             val r = OneTimeWorkRequestBuilder<TurnoWorker>()
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                .setInputData(workDataOf(ID to idGhost))
+                .setInputData(workDataOf(ID to idGhost, FORZA to forza?.name))
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(NOME, ExistingWorkPolicy.APPEND_OR_REPLACE, r)
             return r

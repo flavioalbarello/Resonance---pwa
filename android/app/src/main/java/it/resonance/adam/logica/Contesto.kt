@@ -83,6 +83,7 @@ object Contesto {
         appendLine("- Per provare a cambiare qualcosa proponi proponi_esperimento: UNA cosa da fare per 7–42 giorni e il numero che dovrebbe muoversi. Il confronto lo fa il programma, non tu.")
         appendLine("- Un esperimento chiuso è un dato sulla PROPOSTA, mai sul Ghost. Se non si è mosso niente, la proposta era troppo prudente o troppo ovvia: la prossima sia più audace. Mai rimproveri. Di' «è cambiato mentre lo facevi», mai «grazie a».")
         appendLine("- Ciò che si studia o si prepara a tappe (i brani di una scaletta, i capitoli, gli esercizi) sono i NODI di un percorso: si aggiungono con aggiungi_nodi e il loro stato (non iniziato, introdotto, praticato, consolidato) si cambia con stato_nodo. Più elementi dello stesso tipo (i brani di una scaletta) stanno sotto un nodo che li raccoglie: aggiungi_nodi con «sotto», o sposta_nodi per quelli che ci sono già. Due livelli al massimo; lo stato di un nodo con sotto-nodi lo calcola il programma, non cambiarlo. Mai nel quaderno o in un documento: il quaderno è per ciò che vale per tutto il pilastro, il documento per i testi lunghi.")
+        appendLine("- Un percorso che attraversa più pilastri (per esempio Resonance stessa) è di ADAM: crea_percorso con pilastro ADAM, poi ogni nodo di primo livello riceve il suo pilastro (aggiungi_nodi con «pilastro», o pilastro_nodo). I sotto-nodi lo ereditano. Se il pilastro di una parte non è chiaro, chiedilo al Ghost: non sceglierlo tu.")
         appendLine("- Una proposta si conferma SOLO col pulsante Conferma sotto di essa. Se il Ghost scrive «sì» o «confermo» e una proposta è in attesa, digli di premere Conferma: non rifarla uguale e non dire che l'hai «inviata al programma».")
         appendLine("- Se una proposta è «fallita», il motivo è nella nota del programma che la segue: riferisci quello, non indovinarne un altro.")
         appendLine("- Non promettere di tornare da solo («ti ricorderò», «domani riprendiamo»): non hai modo di farlo, fra un turno e l'altro ricordi solo ciò che è scritto. Se il Ghost vuole un promemoria, proponi crea_evento; altrimenti di' che tocca a lui riprendere.")
@@ -121,9 +122,11 @@ object Contesto {
         val attivi = i.percorsi.filter { !it.archiviato }
         if (attivi.isEmpty()) appendLine("- nessuno")
         attivi.forEach { p ->
-            val nodi = Nodi.testo(i.nodi.filter { it.percorsoId == p.id })
+            val propri = i.nodi.filter { it.percorsoId == p.id }
+            val nodi = Nodi.testo(propri, conPilastri = p.pilastro == Pilastro.ADAM)
             val docs = i.documenti.filter { it.percorsoId == p.id }.joinToString("; ") { "«${it.titolo}» (${it.testo.length} car.)" }
-            append("- «${p.titolo}» (${p.pilastro.name})")
+            append("- «${p.titolo}» (${p.pilastro.name}" + (if (p.pilastro == Pilastro.ADAM)
+                ", tocca: ${Nodi.pilastriToccati(propri).joinToString { it.name }.ifEmpty { "nessun pilastro ancora" }}" else "") + ")")
             if (p.scopo.isNotBlank()) append(" — ${Testi.corto(p.scopo, 160)}")
             appendLine()
             if (nodi.isNotEmpty()) appendLine("  nodi: $nodi")

@@ -96,6 +96,22 @@ class OpenRouterTest {
         assertEquals(1, n())
     }
 
+    @Test fun laTemperaturaParteSoloSeCe() = runBlocking {
+        val (c, _) = cliente(cadute = 0)
+        c.completa("k", "m", JsonArray(emptyList()), null, temperatura = 0.4)
+        assertTrue(corpo, corpo.contains("\"temperature\":0.4"))
+        c.completa("k", "m", JsonArray(emptyList()), null)
+        assertTrue(corpo, !corpo.contains("temperature"))
+    }
+
+    @Test fun ilRifiutoDellaTemperaturaSiRiconosceSoloSeNeParla() {
+        assertTrue(Temperatura.rifiutata("HTTP 400: temperature is not supported with this model"))
+        assertTrue(Temperatura.rifiutata("Unsupported value: 'temperature' does not support 0.4 with this model. Only the default (1) value is supported."))
+        assertTrue(!Temperatura.rifiutata("HTTP 402: insufficient credits"))
+        assertTrue(!Temperatura.rifiutata(null))
+        assertEquals("t 0,4 forzata", Temperatura.etichetta(0.4, true))
+    }
+
     @Test fun laMicrochiamataNonVaInStreaming() = runBlocking {
         val (c, _) = cliente(cadute = 0)
         assertEquals("eccomi", c.completa("k", "m", JsonArray(emptyList()), null, 5, rapida = true).testo)

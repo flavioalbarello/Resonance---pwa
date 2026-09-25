@@ -154,6 +154,9 @@ data class Nodo(
     // Due livelli al massimo (25/09/2026): i brani sotto «Scaletta». Un nodo con sotto-nodi non ha uno stato suo:
     // lo calcola il programma dai figli (logica/Nodi.kt). Null = primo livello.
     @ColumnInfo(defaultValue = "NULL") val genitoreId: Long? = null,
+    // Solo nei percorsi di Adam (trasversali) e solo al primo livello: il pilastro di questa parte. I sotto-nodi lo
+    // ereditano; i pilastri del percorso non si dichiarano, si leggono da qui (logica/Nodi.kt).
+    @ColumnInfo(defaultValue = "NULL") val pilastro: Pilastro? = null,
 )
 
 @Serializable
@@ -192,6 +195,28 @@ data class Messaggio(
     val modello: String? = null,
     val costo: Double? = null,
     val motore: String? = null,
+    // La temperatura davvero mandata (null = quella del modello) e se l'ha forzata il Ghost per questo messaggio.
+    val temperatura: Double? = null,
+    @ColumnInfo(defaultValue = "0") val forzata: Boolean = false,
+)
+
+// Un turno dello Shell e il suo esito, contato dal programma: è il materiale con cui un giorno la temperatura si
+// regolerà da sola (per modello × compito). Le proposte annullate dal Ghost si leggono dai messaggi, per id.
+@Serializable
+@Entity(tableName = "turni")
+data class Turno(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val istante: Long,
+    val compito: String,
+    val modello: String,
+    val temperatura: Double? = null,
+    val forzata: Boolean = false,
+    val proposte: String = "",
+    val rifiutate: Int = 0,
+    val troncata: Boolean = false,
+    val esauriti: Boolean = false,
+    val errore: Boolean = false,
+    val costo: Double? = null,
 )
 
 // Totalizzatore proprio: il tetto di spesa non può leggere da un registro che ruota.

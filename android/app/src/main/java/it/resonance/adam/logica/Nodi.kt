@@ -1,6 +1,7 @@
 package it.resonance.adam.logica
 
 import it.resonance.adam.dati.Nodo
+import it.resonance.adam.dati.Pilastro
 import it.resonance.adam.dati.StatoNodo
 
 // I nodi di un percorso su due livelli al massimo: un nodo può avere sotto-nodi (i brani sotto «Scaletta»), un
@@ -35,13 +36,29 @@ object Nodi {
         StatoNodo.CONSOLIDATO -> "consolidati"
     }
 
+    // ── Percorsi di Adam (trasversali, 25/09/2026): il pilastro sta sui nodi di primo livello, i figli lo ereditano.
+    // I pilastri di un percorso non si dichiarano: si leggono dalle sue parti. Un pilastro senza nodi non c'è.
+
+    fun pilastroDi(n: Nodo, nodi: List<Nodo>): Pilastro? = n.pilastro ?: nodi.find { it.id == n.genitoreId }?.pilastro
+
+    /** BIO, AIR, VIDYA toccati davvero, nell'ordine dei pilastri. ADAM su un nodo vuol dire «di tutto Adam»: non conta. */
+    fun pilastriToccati(nodi: List<Nodo>): List<Pilastro> =
+        radici(nodi).mapNotNull { it.pilastro }.filter { it != Pilastro.ADAM }.distinct().sortedBy { it.ordinal }
+
+    fun trasversale(nodi: List<Nodo>) = pilastriToccati(nodi).size >= 2
+
+    /** Le foglie per pilastro (null = parti senza pilastro ancora): l'avanzamento di ciascuna faccia. */
+    fun perPilastro(nodi: List<Nodo>): Map<Pilastro?, List<Nodo>> =
+        foglie(nodi).groupBy { pilastroDi(it, nodi) }.toSortedMap(compareBy { it?.ordinal ?: Int.MAX_VALUE })
+
     fun dove(sotto: String?, nuovo: Boolean, prep: String) =
         if (sotto == null) "" else " $prep «$sotto»" + (if (nuovo) " (nodo nuovo)" else "")
 
     /** Come lo Shell vede i nodi di un percorso: il padre con la sintesi, i figli dopo la freccia. */
-    fun testo(nodi: List<Nodo>): String = radici(nodi).joinToString("; ") { r ->
+    fun testo(nodi: List<Nodo>, conPilastri: Boolean = false): String = radici(nodi).joinToString("; ") { r ->
         val f = figli(nodi, r.id)
-        if (f.isEmpty()) "${r.etichetta} [${r.stato.etichetta}]"
-        else "${r.etichetta} (${sintesi(f)}) → " + f.joinToString(", ") { "${it.etichetta} [${it.stato.etichetta}]" }
+        val nome = r.etichetta + if (conPilastri) " {${r.pilastro?.name ?: "senza pilastro"}}" else ""
+        if (f.isEmpty()) "$nome [${r.stato.etichetta}]"
+        else "$nome (${sintesi(f)}) → " + f.joinToString(", ") { "${it.etichetta} [${it.stato.etichetta}]" }
     }
 }

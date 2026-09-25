@@ -127,6 +127,22 @@ confermare col dito era l'alternativa, scartata: un gesto in più mentre si guid
 frase fino al silenzio lungo o al tocco. Sotto ogni risposta «🔊 Ascolta»; i testi lunghi si leggono a pezzi
 (`Parlato.pezzi`), perché oltre il massimo della sintesi non si sentiva niente.
 
+**Temperatura per compito e pilastro Adam (25/09/2026).** Nell'APK la temperatura non c'era: ogni modello usava la
+sua. Ora la decide il compito (`cervello/Temperatura.kt`: motore 0, allegati 0,2, conversazione 0,4, battito 0,7,
+esperimenti 0,9); il Ghost la forza per UN messaggio (＋ → «Più preciso / Più libero»), e la forzatura resta scritta.
+Un modello che rifiuta il parametro risponde comunque: si rinuncia alla temperatura, mai alla risposta, lo si ricorda
+per quel modello (`Impostazioni.senzaTemperatura`) e lo si dice una volta — la regola dei ripieghi della PWA.
+Ogni turno lascia una riga in `turni` (compito, modello, temperatura, proposte, fermate dal programma, tagliate,
+giri finiti, errori, costo): è il materiale con cui un giorno la temperatura si sposterà da sola per modello × compito.
+Non prima di avere dati: un ciclo che si regola sul nulla è un orpello.
+
+Adam diventa un pilastro con la sua schermata: Percorsi, Diario, Quaderno, Regolazione. I percorsi di Adam
+attraversano i pilastri (Resonance stessa): il pilastro sta sui nodi di primo livello (`Nodo.pilastro`, DB 7), i
+sotto-nodi lo ereditano, e i pilastri del percorso si LEGGONO dalle parti (`Nodi.pilastriToccati`) — dichiararne uno
+senza una parte è impossibile. Il percorso compare anche in ogni pilastro che tocca, con le sole sue parti contate;
+dentro, una barra per pilastro. Strumenti: `crea_percorso` accetta ADAM, `aggiungi_nodi` accetta «pilastro»,
+nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo chiede.
+
 **Promesse sul futuro.** Gemini ha scritto «Domani… riprendiamo»: lo Shell non torna da solo. Regola nel prompt
 (proporre `crea_evento` come promemoria) e controllo del programma (`Testi.promette`), che aggiunge una nota se la
 risposta promette senza aver proposto niente.

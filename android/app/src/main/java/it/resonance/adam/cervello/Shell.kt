@@ -70,6 +70,31 @@ class Shell(
         return null
     }
 
+    // Ogni chiamata passa di qui: la temperatura del compito, tranne ai modelli che l'hanno rifiutata. Se un modello la
+    // rifiuta ora, si rinuncia al parametro e non alla risposta, lo si ricorda per quel modello e lo si dice una volta.
+    // Restituisce anche la temperatura davvero mandata (null = quella del modello).
+    private suspend fun chiama(modello: String, messaggi: JsonArray, strumenti: JsonArray?, maxToken: Int, temperatura: Double?,
+                               rapida: Boolean = false): Pair<Risposta, Double?> {
+        val manda = temperatura?.takeIf { modello !in impostazioni.senzaTemperatura }
+        return try {
+            client.completa(impostazioni.chiave, modello, messaggi, strumenti, maxToken, rapida, manda) to manda
+        } catch (e: ErroreModello) {
+            if (manda == null || !Temperatura.rifiutata(e.message)) throw e
+            impostazioni.senzaTemperatura = impostazioni.senzaTemperatura + modello
+            nota("${Instradatore.etichetta(modello)} non accetta una temperatura scelta: da ora usa la sua. Le risposte possono essere meno precise o meno varie di quanto il compito chiede.")
+            client.completa(impostazioni.chiave, modello, messaggi, strumenti, maxToken, rapida, null) to null
+        }
+    }
+
+    private suspend fun registraTurno(compito: Compito, modello: String, t: Double?, forzata: Boolean, proposte: List<Long>, rifiutate: Int,
+                                      troncata: Boolean, esauriti: Boolean, errore: Boolean, costo: Double) {
+        runCatching {
+            archivio.db.turni().inserisci(it.resonance.adam.dati.Turno(istante = ora, compito = compito.name, modello = modello, temperatura = t,
+                forzata = forzata, proposte = proposte.joinToString(","), rifiutate = rifiutate, troncata = troncata, esauriti = esauriti,
+                errore = errore, costo = costo.takeIf { it > 0 }))
+        }
+    }
+
     private suspend fun registraCosto(r: Risposta) {
         r.costo?.let { archivio.registraCosto(YearMonth.now().toString(), it) }
     }
@@ -92,7 +117,7 @@ class Shell(
     suspend fun registra(testoGhost: String, allegati: List<Allegato> = emptyList()): Long =
         archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.GHOST, testo = testoGhost, istante = ora, allegati = Allegati.codifica(allegati)))
 
-    suspend fun rispondi(idGhost: Long): Esito {
+    suspend fun rispondi(idGhost: Long, forza: Forzatura? = null): Esito {
         val m = archivio.db.messaggi().per(idGhost) ?: return Esito("", emptyList())
         archivio.chiudiScaduti()
         // Se il sistema interrompe il lavoro e lo rilancia, un messaggio già risposto non si risponde due volte.
@@ -118,7 +143,8 @@ class Shell(
         val base = if (motore == Motore.LEGGERO) impostazioni.modelloLeggero else impostazioni.modello
         // Un modello che non vede, per un turno con immagini, cede il posto a uno che vede.
         val modello = if (Allegati.conImmagini(allegati) && base !in Impostazioni.VEDONO) impostazioni.modelloVista else base
-        return ciclo(lavoro, oggi, regole, modello, motore?.etichetta, costoTurno)
+        val compito = if (allegati.isEmpty()) Compito.TURNO else Compito.ALLEGATI
+        return ciclo(lavoro, oggi, regole, modello, motore?.etichetta, costoTurno, compito = compito, forza = forza)
     }
 
     // La perturbazione: il programma ha visto un ristagno nei numeri e chiede allo Shell UN esperimento. Non è un
@@ -137,12 +163,16 @@ class Shell(
                 "Proponi UN esperimento con proponi_esperimento: una cosa concreta e diversa da ciò che è già stato provato (guarda gli esperimenti chiusi), " +
                 "audace ma sostenibile, legata a uno di questi numeri. Poi spiega al Ghost in tre righe perché proprio questa. Niente rimproveri, niente elenchi di consigli.")
         }
-        return ciclo(lavoro, oggi, regole(istantanea, ""), impostazioni.modello, null, 0.0, origine = "perturbazione")
+        return ciclo(lavoro, oggi, regole(istantanea, ""), impostazioni.modello, null, 0.0, origine = "perturbazione", compito = Compito.ESPERIMENTO)
     }
 
     private suspend fun ciclo(lavoro: MutableList<JsonObject>, oggi: LocalDate, regole: Regole, modello: String, motore: String?,
-                              costoIniziale: Double, origine: String = "shell"): Esito {
+                              costoIniziale: Double, origine: String = "shell", compito: Compito = Compito.TURNO, forza: Forzatura? = null): Esito {
         var costoTurno = costoIniziale
+        val temperatura = forza?.temperatura ?: compito.temperatura
+        var usata: Double? = null
+        var rifiutate = 0
+        var troncata = false
         val proposte = mutableListOf<Long>()
         var testo = ""
         // Cosa ha fatto lo Shell con gli strumenti, in breve: se finisce i giri, il Ghost vede dove si è impigliato.
@@ -151,10 +181,12 @@ class Shell(
 
         try {
             for (giro in 0 until GIRI_MASSIMI) {
-                val r = client.completa(impostazioni.chiave, modello, JsonArray(lavoro), Azioni.definizioni(), MAX_TOKEN)
+                val (r, t) = chiama(modello, JsonArray(lavoro), Azioni.definizioni(), MAX_TOKEN, temperatura)
+                usata = t
                 registraCosto(r)
                 costoTurno += r.costo ?: 0.0
                 testo = r.testo
+                if (r.troncata) troncata = true
                 if (r.chiamate.isEmpty()) {
                     if (r.troncata) nota(if (r.testo.isBlank()) "La risposta si è interrotta prima di arrivare (limite di lunghezza): riprova, o chiedi una cosa per volta."
                         else "La risposta è stata tagliata dal limite di lunghezza.")
@@ -192,6 +224,7 @@ class Shell(
                             }
                         }
                     }
+                    if (risultato.startsWith("Rifiutata") || risultato.startsWith("Chiamata non eseguita") || risultato.startsWith("Non proposta")) rifiutate++
                     traccia += c.nome + when {
                         risultato.startsWith("Rifiutata") || risultato.startsWith("Chiamata non eseguita") -> " rifiutato (${Testi.corto(risultato.substringAfter(": "), 70)})"
                         risultato.startsWith("Non proposta") -> " fermato (${Testi.corto(risultato.substringAfter(": "), 70)})"
@@ -210,7 +243,8 @@ class Shell(
                     put("role", "user")
                     put("content", "[Nota del programma, non del Ghost] Hai finito i giri di strumenti. Rispondi ora al Ghost, in testo, con ciò che hai. Se qualcosa è stato rifiutato, di' cosa e perché, e cosa ti serve da lui.")
                 }
-                val r = client.completa(impostazioni.chiave, modello, JsonArray(lavoro), null, MAX_TOKEN)
+                val (r, t) = chiama(modello, JsonArray(lavoro), null, MAX_TOKEN, temperatura)
+                usata = t
                 registraCosto(r)
                 costoTurno += r.costo ?: 0.0
                 testo = r.testo
@@ -221,10 +255,12 @@ class Shell(
         } catch (e: Exception) {
             val t = "Il modello non ha risposto: ${e.message ?: e.javaClass.simpleName}"
             nota(t)
+            registraTurno(compito, modello, usata ?: temperatura, forza != null, proposte, rifiutate, troncata, esauriti, errore = true, costoTurno)
             return Esito(t, proposte)
         }
         if (testo.isNotBlank()) archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.SHELL, testo = testo, istante = ora,
-            modello = modello, costo = costoTurno.takeIf { it > 0 }, motore = motore))
+            modello = modello, costo = costoTurno.takeIf { it > 0 }, motore = motore, temperatura = usata, forzata = forza != null))
+        registraTurno(compito, modello, usata, forza != null, proposte, rifiutate, troncata, esauriti, errore = false, costoTurno)
         if (proposte.isEmpty() && Testi.affermaAzione(testo))
             nota("Nessuna azione è stata eseguita in questo turno: le azioni vere compaiono come proposte da confermare e poi come ricevute.")
         if (proposte.isEmpty() && Testi.promette(testo))
@@ -246,7 +282,7 @@ class Shell(
         Instradatore.ovvio(testo, allegati)?.let { return it }
         val precedente = archivio.db.messaggi().ultimi(6).lastOrNull { it.ruolo == Ruolo.SHELL }?.testo
         return try {
-            val r = client.completa(impostazioni.chiave, Instradatore.MODELLO, Instradatore.messaggi(testo, precedente, allegati), null, 5, rapida = true)
+            val (r, _) = chiama(Instradatore.MODELLO, Instradatore.messaggi(testo, precedente, allegati), null, 5, Compito.MOTORE.temperatura, rapida = true)
             registraCosto(r); r.costo?.let(costo)
             Instradatore.leggi(r.testo)
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -272,17 +308,7 @@ class Shell(
             val d = archivio.documento(p.documento)
             provaAncora(p, "il documento «${d.titolo}»", d.testo, p.ancora)
         } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "documento non trovato") }
-        is Proposta.AggiungiNodi -> try {
-            val per = archivio.percorso(p.percorso)
-            val tutti = archivio.db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
-            val (sotto, nuovo) = p.sotto?.let { raccoglitore(tutti, it) ?: return Risoluzione.Domanda("«$it» è un sotto-nodo: due livelli al massimo, scegli un nodo di primo livello") } ?: (null to false)
-            val esistenti = tutti.map { Testi.normalizza(it.etichetta) }.toSet() + listOfNotNull(sotto?.let(Testi::normalizza))
-            val nuovi = p.nodi.filter { Testi.normalizza(it) !in esistenti }
-            val saltati = p.nodi.filter { Testi.normalizza(it) in esistenti }
-            if (nuovi.isEmpty()) Risoluzione.Domanda("in «${per.titolo}» ci sono già tutti: " +
-                (if (sotto != null) "per metterli sotto «$sotto» usa sposta_nodi" else "per lo stato usa stato_nodo"))
-            else Risoluzione.Pronta(Proposta.AggiungiNodi(per.titolo, nuovi, sotto, nuovo, saltati))
-        } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
+        is Proposta.AggiungiNodi -> risolviAggiungi(p)
         is Proposta.SpostaNodi -> try {
             val per = archivio.percorso(p.percorso)
             val tutti = archivio.db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
@@ -308,6 +334,19 @@ class Shell(
                     figli > 0 -> Risoluzione.Domanda("lo stato di «${n.etichetta}» lo calcola il programma dai suoi $figli sotto-nodi: cambia quello di un sotto-nodo")
                     n.stato == p.stato -> Risoluzione.Domanda("«${n.etichetta}» è già ${p.stato.etichetta}")
                     else -> Risoluzione.Pronta(p)
+                }
+            }
+            else -> Risoluzione.Pronta(p)
+        }
+        is Proposta.PilastroNodo -> when (val n = nodo(p.percorso, p.nodo)) {
+            is Risoluzione.Domanda -> n
+            is Nodo -> {
+                val per = archivio.percorso(p.percorso)
+                when {
+                    per.pilastro != Pilastro.ADAM -> Risoluzione.Domanda("«${per.titolo}» è di ${per.pilastro.etichetta}: il pilastro sui nodi c'è solo nei percorsi di Adam")
+                    n.genitoreId != null -> Risoluzione.Domanda("«${n.etichetta}» è un sotto-nodo: prende il pilastro del padre, dallo a quello")
+                    n.pilastro == p.pilastro -> Risoluzione.Domanda("«${n.etichetta}» è già in ${p.pilastro.etichetta}")
+                    else -> Risoluzione.Pronta(p.copy(percorso = per.titolo, nodo = n.etichetta))
                 }
             }
             else -> Risoluzione.Pronta(p)
@@ -343,6 +382,26 @@ class Shell(
             else -> Risoluzione.Domanda("«$nodo» corrisponde a più nodi: ${trovati.joinToString("; ") { it.etichetta }}. Usa l'etichetta intera")
         }
     } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
+
+    private suspend fun risolviAggiungi(p: Proposta.AggiungiNodi): Risoluzione = try {
+        risolviAggiungiDentro(p)
+    } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
+
+    private suspend fun risolviAggiungiDentro(p: Proposta.AggiungiNodi): Risoluzione {
+        val per = archivio.percorso(p.percorso)
+        val tutti = archivio.db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+        if (p.pilastro != null && per.pilastro != Pilastro.ADAM)
+            return Risoluzione.Domanda("il pilastro si dà ai nodi solo nei percorsi di Adam: «${per.titolo}» è di ${per.pilastro.etichetta}, togli «pilastro»")
+        if (p.pilastro != null && p.sotto != null)
+            return Risoluzione.Domanda("i sotto-nodi prendono il pilastro del padre: togli «pilastro», o dallo al padre con pilastro_nodo")
+        val (sotto, nuovo) = p.sotto?.let { raccoglitore(tutti, it) ?: return Risoluzione.Domanda("«$it» è un sotto-nodo: due livelli al massimo, scegli un nodo di primo livello") } ?: (null to false)
+        val esistenti = tutti.map { Testi.normalizza(it.etichetta) }.toSet() + listOfNotNull(sotto?.let(Testi::normalizza))
+        val nuovi = p.nodi.filter { Testi.normalizza(it) !in esistenti }
+        val saltati = p.nodi.filter { Testi.normalizza(it) in esistenti }
+        return if (nuovi.isEmpty()) Risoluzione.Domanda("in «${per.titolo}» ci sono già tutti: " +
+            (if (sotto != null) "per metterli sotto «$sotto» usa sposta_nodi" else "per lo stato usa stato_nodo"))
+        else Risoluzione.Pronta(Proposta.AggiungiNodi(per.titolo, nuovi, sotto, nuovo, saltati, p.pilastro))
+    }
 
     // Il Ghost scrive «sì» e il modello rifà la stessa proposta: una sola in attesa basta.
     private suspend fun inAttesa(codifica: String) = archivio.db.messaggi().ultimi(40)
@@ -419,7 +478,7 @@ class Shell(
             buildJsonObject { put("role", "user"); put("content", richiesta) },
         ))
         return runCatching {
-            val r = client.completa(impostazioni.chiave, impostazioni.modello, messaggi, null, MAX_TOKEN_BATTITO)
+            val (r, _) = chiama(impostazioni.modello, messaggi, null, MAX_TOKEN_BATTITO, Compito.BATTITO.temperatura)
             registraCosto(r)
             r.testo.takeIf { it.isNotBlank() }
         }.getOrNull()

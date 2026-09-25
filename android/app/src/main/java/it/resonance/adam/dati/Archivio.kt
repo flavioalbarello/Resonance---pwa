@@ -77,6 +77,11 @@ class Archivio(val db: Db) {
         return db.percorsi().elencoNodi().first { it.id == id }
     }
 
+    suspend fun pilastroNodo(n: Nodo, p: Pilastro?): String {
+        db.percorsi().aggiornaNodo(n.copy(pilastro = p))
+        return "«${n.etichetta}»: ${p?.etichetta ?: "senza pilastro"}"
+    }
+
     suspend fun spostaNodo(n: Nodo, genitoreId: Long?): String = try {
         db.withTransaction {
             val per = db.percorsi().elenco().first { it.id == n.percorsoId }
@@ -180,9 +185,23 @@ class Archivio(val db: Db) {
             val nuovi = p.nodi.filter { n -> esistenti.none { Testi.normalizza(it.etichetta) == Testi.normalizza(n) } && n != g?.etichetta }
             val fratelli = if (g == null) Nodi.radici(esistenti) else Nodi.figli(esistenti, g.id)
             val base = (fratelli.maxOfOrNull { it.ordine } ?: -1) + 1
-            nuovi.forEachIndexed { i, n -> db.percorsi().inserisciNodo(Nodo(percorsoId = per.id, etichetta = n, ordine = base + i, genitoreId = g?.id)) }
+            // Il pilastro va solo sulle parti di primo livello di un percorso di Adam.
+            val pil = p.pilastro?.takeIf { per.pilastro == Pilastro.ADAM && g == null }
+            nuovi.forEachIndexed { i, n -> db.percorsi().inserisciNodo(Nodo(percorsoId = per.id, etichetta = n, ordine = base + i, genitoreId = g?.id, pilastro = pil)) }
             Esecuzione(nuovi.isNotEmpty(), if (nuovi.isEmpty()) "Nessun nodo aggiunto: c'erano già tutti in «${per.titolo}»"
                 else "Aggiunti ${nuovi.size} nodi a «${per.titolo}»" + (g?.let { " sotto «${it.etichetta}»" } ?: ""))
+        }
+        is Proposta.PilastroNodo -> {
+            val per = percorso(p.percorso)
+            val n = trova(db.percorsi().elencoNodi().filter { it.percorsoId == per.id }, p.nodo, { it.etichetta }, "nodo")
+            when {
+                per.pilastro != Pilastro.ADAM -> Esecuzione(false, "Non cambiato: «${per.titolo}» è di ${per.pilastro.etichetta}, i suoi nodi sono tutti lì")
+                n.genitoreId != null -> Esecuzione(false, "Non cambiato: «${n.etichetta}» è un sotto-nodo, prende il pilastro del padre")
+                else -> {
+                    db.percorsi().aggiornaNodo(n.copy(pilastro = p.pilastro))
+                    Esecuzione(true, "«${per.titolo}» › ${n.etichetta}: ${n.pilastro?.etichetta ?: "senza pilastro"} → ${p.pilastro.etichetta}")
+                }
+            }
         }
         is Proposta.SpostaNodi -> {
             val per = percorso(p.percorso)

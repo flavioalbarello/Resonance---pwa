@@ -115,12 +115,19 @@ sealed class Proposta {
     @Serializable @SerialName("aggiungi_nodi")
     data class AggiungiNodi(
         val percorso: String, val nodi: List<String>, val sotto: String? = null,
-        val sottoNuovo: Boolean = false, val saltati: List<String> = emptyList(),
+        val sottoNuovo: Boolean = false, val saltati: List<String> = emptyList(), val pilastro: Pilastro? = null,
     ) : Proposta() {
         override fun descrizione() = "Nel percorso «$percorso», aggiungere ${nodi.size} " + (if (nodi.size == 1) "nodo" else "nodi") +
-            Nodi.dove(sotto, sottoNuovo, "sotto") + " (non iniziati): ${Testi.corto(nodi.joinToString(", "), 160)}" +
+            Nodi.dove(sotto, sottoNuovo, "sotto") + (pilastro?.let { " in ${it.etichetta}" } ?: "") +
+            " (non iniziati): ${Testi.corto(nodi.joinToString(", "), 160)}" +
             (if (saltati.isNotEmpty()) " — già presenti, non aggiunti: ${Testi.corto(saltati.joinToString(", "), 80)}" else "")
         override fun dettaglio() = nodi.joinToString("\n") { "• $it" }
+    }
+
+    @Serializable @SerialName("pilastro_nodo")
+    data class PilastroNodo(val percorso: String, val nodo: String, val pilastro: Pilastro) : Proposta() {
+        override fun descrizione() = "Nel percorso «$percorso», il nodo «$nodo» va in ${pilastro.etichetta}" +
+            (if (pilastro == Pilastro.ADAM) " (riguarda tutto Adam)" else "")
     }
 
     @Serializable @SerialName("sposta_nodi")
@@ -254,9 +261,9 @@ object Azioni {
             ))),
         Strumento("scrivi_voce", Effetto.SCRITTURA, "Propone una voce di diario qualitativa in un pilastro.",
             schema(listOf("pilastro", "testo"), mapOf("pilastro" to e(PILASTRI, "Pilastro"), "testo" to s("Testo"), "giorno" to s("yyyy-MM-dd, se assente oggi")))),
-        Strumento("crea_percorso", Effetto.SCRITTURA, "Propone un nuovo percorso con i suoi nodi.",
+        Strumento("crea_percorso", Effetto.SCRITTURA, "Propone un nuovo percorso con i suoi nodi. ADAM per un percorso che attraversa più pilastri: poi ogni nodo di primo livello riceve il suo pilastro.",
             schema(listOf("pilastro", "titolo", "nodi"), mapOf(
-                "pilastro" to e(PILASTRI.filter { it != "ADAM" }, "Pilastro"), "titolo" to s("Nome breve del percorso, non una frase"),
+                "pilastro" to e(PILASTRI, "Pilastro; ADAM se attraversa più pilastri"), "titolo" to s("Nome breve del percorso, non una frase"),
                 "scopo" to s("Chi diventa il Ghost percorrendolo"), "nodi" to lista("Tappe concrete, da 1 a 20: quelle che il Ghost ha nominato o riconoscerebbe come sue. Non inventare fasi generiche: se non le sai, chiedile"),
             ))),
         Strumento("salva_documento", Effetto.SCRITTURA, "Propone di salvare un testo come documento in un percorso esistente.",
@@ -330,7 +337,10 @@ object Azioni {
         Strumento("aggiungi_nodi", Effetto.SCRITTURA,
             "Propone di aggiungere nodi (tappe, brani, capitoli…) in fondo a un percorso che esiste già; partono non iniziati. Poi lo stato di ciascuno si cambia con stato_nodo.",
             schema(listOf("percorso", "nodi"), mapOf("percorso" to s("Titolo del percorso"), "nodi" to lista("Etichette brevi, una per nodo, da 1 a 30"),
-                "sotto" to s("Facoltativo: il nodo di primo livello che li raccoglie (es. «Scaletta»); se non c'è si crea. Due livelli al massimo")))),
+                "sotto" to s("Facoltativo: il nodo di primo livello che li raccoglie (es. «Scaletta»); se non c'è si crea. Due livelli al massimo"),
+                "pilastro" to e(PILASTRI, "Solo nei percorsi di ADAM e solo per nodi di primo livello: il pilastro di queste parti. Se non è chiaro, chiedilo")))),
+        Strumento("pilastro_nodo", Effetto.SCRITTURA, "Propone il pilastro di un nodo di primo livello in un percorso di ADAM (trasversale). I sotto-nodi lo ereditano.",
+            schema(listOf("percorso", "nodo", "pilastro"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del nodo"), "pilastro" to e(PILASTRI, "Pilastro")))),
         Strumento("sposta_nodi", Effetto.SCRITTURA,
             "Propone di spostare nodi che esistono già sotto un nodo di primo livello (che si crea se non c'è), o al primo livello se «sotto» manca. Per raccogliere elementi dello stesso tipo, come i brani di una scaletta.",
             schema(listOf("percorso", "nodi"), mapOf("percorso" to s("Titolo del percorso"), "nodi" to lista("Etichette dei nodi da spostare, da 1 a 40"),
@@ -391,7 +401,6 @@ object Azioni {
         "scrivi_voce" -> Proposta.ScriviVoce(pilastro(a), a.testo("testo") ?: rifiuta("testo vuoto"), giorno(a, oggi))
         "crea_percorso" -> {
             val p = pilastro(a)
-            if (p == Pilastro.ADAM) rifiuta("un percorso appartiene a BIO, AIR o VIDYA")
             val titolo = a.testo("titolo") ?: rifiuta("titolo mancante")
             if (titolo.length > 50 || titolo.split(Regex("\\s+")).size > 6) rifiuta("il titolo è una frase, non un nome: accorcialo")
             val nodi = runCatching { a["nodi"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf(String::isNotEmpty) } }.getOrNull().orEmpty()
@@ -433,7 +442,8 @@ object Azioni {
                 .distinctBy { Testi.normalizza(it) }
             if (nodi.size !in 1..30) rifiuta("servono da 1 a 30 nodi, come elenco di etichette")
             nodi.find { it.length > 80 }?.let { rifiuta("«${Testi.corto(it, 40)}» è una frase, non un'etichetta: accorciala") }
-            Proposta.AggiungiNodi(a.testo("percorso") ?: rifiuta("percorso mancante"), nodi, a.testo("sotto")?.trim()?.takeIf { it.isNotEmpty() })
+            val pil = a.testo("pilastro")?.uppercase()?.let { t -> Pilastro.entries.find { it.name == t } ?: rifiuta("pilastro sconosciuto (usa ${PILASTRI.joinToString("/")})") }
+            Proposta.AggiungiNodi(a.testo("percorso") ?: rifiuta("percorso mancante"), nodi, a.testo("sotto")?.trim()?.takeIf { it.isNotEmpty() }, pilastro = pil)
         }
         "sposta_nodi" -> {
             val nodi = runCatching { a["nodi"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf(String::isNotEmpty) } }.getOrNull().orEmpty()
@@ -441,6 +451,7 @@ object Azioni {
             if (nodi.size !in 1..40) rifiuta("servono da 1 a 40 nodi, come elenco di etichette")
             Proposta.SpostaNodi(a.testo("percorso") ?: rifiuta("percorso mancante"), nodi, a.testo("sotto")?.trim()?.takeIf { it.isNotEmpty() })
         }
+        "pilastro_nodo" -> Proposta.PilastroNodo(a.testo("percorso") ?: rifiuta("percorso mancante"), a.testo("nodo") ?: rifiuta("nodo mancante"), pilastro(a))
         "togli_nodo" -> Proposta.TogliNodo(a.testo("percorso") ?: rifiuta("percorso mancante"), a.testo("nodo") ?: rifiuta("nodo mancante"))
         "stato_nodo" -> {
             val stato = a.testo("stato")?.uppercase()?.let { s -> StatoNodo.entries.find { it.name == s } } ?: rifiuta("stato sconosciuto (usa ${STATI.joinToString("/")})")

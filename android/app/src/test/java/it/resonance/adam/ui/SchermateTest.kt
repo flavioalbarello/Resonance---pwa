@@ -85,6 +85,14 @@ class SchermateTest {
         val p = db.percorsi().inserisci(Percorso(pilastro = Pilastro.VIDYA, titolo = "Divenire", scopo = "Il concept album finito, non solo iniziato", creato = 0))
         listOf("Atto I: Origine" to StatoNodo.CONSOLIDATO, "Atto II: Complessità" to StatoNodo.PRATICATO, "Atto III: Mitosi" to StatoNodo.INTRODOTTO, "Mixaggio" to StatoNodo.NON_INIZIATO)
             .forEachIndexed { i, (e, s) -> db.percorsi().inserisciNodo(Nodo(percorsoId = p, etichetta = e, stato = s, ordine = i)) }
+        // Un percorso di Adam: le parti portano il pilastro, il percorso li legge da lì.
+        val res = db.percorsi().inserisci(Percorso(pilastro = Pilastro.ADAM, titolo = "Resonance", scopo = "Adam: Ghost e Shell come un individuo solo", creato = 1))
+        val apk = db.percorsi().inserisciNodo(Nodo(percorsoId = res, etichetta = "APK V2", ordine = 0, pilastro = Pilastro.VIDYA))
+        db.percorsi().inserisciNodo(Nodo(percorsoId = res, etichetta = "Battito", stato = StatoNodo.CONSOLIDATO, ordine = 0, genitoreId = apk))
+        db.percorsi().inserisciNodo(Nodo(percorsoId = res, etichetta = "Voce", stato = StatoNodo.PRATICATO, ordine = 1, genitoreId = apk))
+        db.percorsi().inserisciNodo(Nodo(percorsoId = res, etichetta = "Plasmidi", ordine = 1, pilastro = Pilastro.AIR))
+        db.percorsi().inserisciNodo(Nodo(percorsoId = res, etichetta = "Sensori salute", stato = StatoNodo.INTRODOTTO, ordine = 2, pilastro = Pilastro.BIO))
+        db.turni().inserisci(it.resonance.adam.dati.Turno(istante = 1, compito = "TURNO", modello = "moonshotai/kimi-k2.6", temperatura = 0.4, proposte = "", rifiutate = 1, costo = 0.0021))
         val brani = db.percorsi().inserisciNodo(Nodo(percorsoId = p, etichetta = "Brani", ordine = 4))
         listOf("Seme" to StatoNodo.CONSOLIDATO, "Mitosi" to StatoNodo.PRATICATO, "Coda" to StatoNodo.NON_INIZIATO)
             .forEachIndexed { i, (e, s) -> db.percorsi().inserisciNodo(Nodo(percorsoId = p, etichetta = e, stato = s, ordine = i, genitoreId = brani)) }
@@ -179,6 +187,22 @@ class SchermateTest {
         repeat(40) { if (vm.quaderni.value.single { it.pilastro == Pilastro.BIO }.testo != "Camminata al mattino.") { Thread.sleep(100); regola.waitForIdle() } }
         assertEquals("Camminata al mattino.", vm.quaderni.value.single { it.pilastro == Pilastro.BIO }.testo)
         regola.onNodeWithText("1 versioni precedenti").assertExists()
+
+        vm.vai(Schermata.ADAM)
+        regola.onNodeWithText("Percorsi").performClick()
+        regola.onNodeWithText("↔ Adam · Bio, Air, Vidya").assertExists()
+        scatta("8-adam-percorsi")
+        regola.onNodeWithText("Resonance").performClick()
+        regola.onNodeWithText("Per pilastro", ignoreCase = true).assertExists()
+        scatta("8b-adam-percorso")
+        vm.percorsoAperto = null
+        regola.onNodeWithText("Regolazione").performClick()
+        regola.onNodeWithText("Conversazione e proposte: 0,4").assertExists()
+        scatta("8c-adam-regolazione")
+        // Il percorso di Adam compare anche nei pilastri che tocca.
+        vm.vai(Schermata.AIR)
+        regola.onNodeWithText("Percorsi").performClick()
+        regola.onNodeWithText("Resonance").assertExists()
 
         vm.vai(Schermata.SETUP)
         scatta("7-setup")

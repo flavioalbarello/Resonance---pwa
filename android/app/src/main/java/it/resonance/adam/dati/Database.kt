@@ -62,6 +62,13 @@ interface RitualiDao {
 }
 
 @Dao
+interface TurniDao {
+    @Insert suspend fun inserisci(t: Turno): Long
+    @Query("SELECT * FROM (SELECT * FROM turni ORDER BY istante DESC LIMIT :n) ORDER BY istante") suspend fun ultimi(n: Int): List<Turno>
+    @Query("SELECT * FROM turni ORDER BY istante DESC LIMIT :n") fun osserva(n: Int): Flow<List<Turno>>
+}
+
+@Dao
 interface PercorsiDao {
     @Query("SELECT * FROM percorsi WHERE archiviato = 0 ORDER BY creato DESC") fun attivi(): Flow<List<Percorso>>
     @Query("SELECT * FROM percorsi") suspend fun elenco(): List<Percorso>
@@ -115,14 +122,14 @@ interface ProfiloDao {
 
 @Database(
     entities = [Misura::class, Voce::class, Versione::class, Rituale::class, Spunta::class, Percorso::class,
-        Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class, Esperimento::class],
-    version = 6,
+        Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class, Esperimento::class, Turno::class],
+    version = 7,
     exportSchema = true,
     // 2: Profilo.nomiProtetti (calendario e posta, 23/09/2026).
     // 3: Messaggio.allegati (immagini e documenti nella chat, 23/09/2026).
     // 4: Messaggio.modello, costo, motore (scelta automatica del motore).
     // 5: esperimenti (l'anello di Anochin sulla vita).
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun misure(): MisureDao
@@ -132,6 +139,7 @@ abstract class Db : RoomDatabase() {
     abstract fun percorsi(): PercorsiDao
     abstract fun quaderni(): QuaderniDao
     abstract fun messaggi(): MessaggiDao
+    abstract fun turni(): TurniDao
     abstract fun spesa(): SpesaDao
     abstract fun profilo(): ProfiloDao
     abstract fun esperimenti(): EsperimentiDao

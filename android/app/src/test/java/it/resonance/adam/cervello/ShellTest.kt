@@ -63,8 +63,13 @@ class ShellTest {
         val ricevuti = mutableListOf<JsonArray>()
         val modelli = mutableListOf<String>()
         var instradatore: (() -> Risposta)? = null
-        override suspend fun completa(chiave: String, modello: String, messaggi: JsonArray, strumenti: JsonArray?, maxToken: Int, rapida: Boolean): Risposta {
+        val temperature = mutableListOf<Double?>()
+        var rifiutaTemperatura = false
+        override suspend fun completa(chiave: String, modello: String, messaggi: JsonArray, strumenti: JsonArray?, maxToken: Int, rapida: Boolean,
+                                      temperatura: Double?): Risposta {
             if (rapida) { modelli += "router:$modello"; return instradatore!!() }
+            if (rifiutaTemperatura && temperatura != null) throw ErroreModello("HTTP 400: {\"error\":{\"message\":\"temperature is not supported for this model\"}}")
+            temperature += temperatura
             ricevuti += JsonArray(messaggi.toList())
             modelli += modello
             return coda.removeFirst()
@@ -348,6 +353,76 @@ class ShellTest {
         assertEquals(setOf("Assimilazione scaletta e architettura del repertorio", "E io ci sto", "Sfiorivano le viole", "Concerto", "Gianna"),
             it.resonance.adam.logica.Nodi.radici(db.percorsi().elencoNodi()).map { it.etichetta }.toSet())
         assertTrue(db.voci().elenco().any { it.testo.contains("«Scaletta», raccoglieva 3 sotto-nodi") })
+    }
+
+    // ── Temperatura (25/09/2026): la decide il compito; il Ghost la forza per un messaggio; un rifiuto non blocca ──
+
+    @Test fun laTemperaturaLaDecideIlCompitoELaForzaturaValeUnaVolta() = runBlocking {
+        val modello = FintoModello(chiama("cerca", """{"testo":"x"}"""), testo("Ecco."), testo("Di nuovo."))
+        val shell = Shell(archivio, imp, modello, FintoMondo())
+        shell.turno("cerca x")
+        assertEquals(listOf<Double?>(Compito.TURNO.temperatura, Compito.TURNO.temperatura), modello.temperature)
+        val id = shell.registra("scrivi più libero")
+        shell.rispondi(id, Forzatura.LIBERO)
+        assertEquals(Forzatura.LIBERO.temperatura, modello.temperature.last())
+        val risposte = db.messaggi().elenco().filter { it.ruolo == Ruolo.SHELL }
+        assertEquals(listOf(false, true), risposte.map { it.forzata })
+        assertEquals(listOf<Double?>(0.4, 0.8), risposte.map { it.temperatura })
+        val turni = db.turni().ultimi(10)
+        assertEquals(listOf("TURNO", "TURNO"), turni.map { it.compito })
+        assertEquals(listOf(false, true), turni.map { it.forzata })
+    }
+
+    // Nella PWA un parametro rifiutato poteva impedire la risposta: qui si rinuncia al parametro, mai alla risposta.
+    @Test fun unModelloCheRifiutaLaTemperaturaRispondeComunqueESeLoRicorda() = runBlocking {
+        val modello = FintoModello(testo("Rispondo lo stesso."), testo("E anche ora."))
+        modello.rifiutaTemperatura = true
+        val shell = Shell(archivio, imp, modello, FintoMondo())
+        assertEquals("Rispondo lo stesso.", shell.turno("ciao").testo)
+        assertTrue(imp.modello in imp.senzaTemperatura)
+        assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.NOTA && it.testo.contains("non accetta una temperatura") })
+        shell.turno("ancora")
+        assertEquals(listOf<Double?>(null, null), modello.temperature)
+        assertEquals(1, db.messaggi().elenco().count { it.ruolo == Ruolo.NOTA && it.testo.contains("non accetta") })
+        assertEquals(null, db.messaggi().elenco().last { it.ruolo == Ruolo.SHELL }.temperatura)
+    }
+
+    @Test fun ilTurnoContaLeProposteFermateDalProgramma() = runBlocking {
+        val modello = FintoModello(
+            chiama("modifica_quaderno", """{"pilastro":"VIDYA","modo":"sostituisci","ancora":"non c'è","testo":"x"}"""),
+            chiama("modifica_quaderno", """{"pilastro":"VIDYA","modo":"aggiungi","testo":"- nota"}"""),
+            testo("Proposto."),
+        )
+        val esito = Shell(archivio, imp, modello, FintoMondo()).turno("annota")
+        val t = db.turni().ultimi(1).single()
+        assertEquals(1, t.rifiutate)
+        assertEquals(esito.proposte.joinToString(","), t.proposte)
+    }
+
+    // ── Pilastro Adam: un percorso che attraversa più pilastri, con il pilastro sulle parti ──
+
+    @Test fun unPercorsoDiAdamPrendeIPilastriDalleSueParti() = runBlocking {
+        val crea = FintoModello(chiama("crea_percorso", """{"pilastro":"ADAM","titolo":"Resonance","nodi":["APK V2"]}"""), testo("Proposto."))
+        Shell(archivio, imp, crea, FintoMondo()).turno("crea il percorso Resonance").proposte.forEach { Shell(archivio, imp, FintoModello(), FintoMondo()).conferma(it) }
+        val modello = FintoModello(
+            chiama("pilastro_nodo", """{"percorso":"Resonance","nodo":"APK V2","pilastro":"VIDYA"}"""),
+            chiama("aggiungi_nodi", """{"percorso":"Resonance","nodi":["Plasmidi"],"pilastro":"AIR"}"""),
+            chiama("aggiungi_nodi", """{"percorso":"Resonance","nodi":["Battito"],"sotto":"APK V2","pilastro":"BIO"}"""),
+            testo("Proposti."),
+        )
+        val esito = Shell(archivio, imp, modello, FintoMondo()).turno("dai i pilastri")
+        val rimando = modello.ricevuti[3].last().jsonObject["content"]!!.jsonPrimitive.content
+        assertTrue(rimando, rimando.contains("prendono il pilastro del padre"))
+        esito.proposte.forEach { Shell(archivio, imp, FintoModello(), FintoMondo()).conferma(it) }
+        val nodi = db.percorsi().elencoNodi()
+        assertEquals(listOf(Pilastro.AIR, Pilastro.VIDYA), it.resonance.adam.logica.Nodi.pilastriToccati(nodi))
+        assertTrue(it.resonance.adam.logica.Nodi.trasversale(nodi))
+
+        // Su un percorso di un solo pilastro il pilastro dei nodi non si dà.
+        archivio.esegui(Proposta.CreaPercorso(Pilastro.VIDYA, "Tributo", "", listOf("Gianna")))
+        val altro = FintoModello(chiama("pilastro_nodo", """{"percorso":"Tributo","nodo":"Gianna","pilastro":"AIR"}"""), testo("Ok."))
+        Shell(archivio, imp, altro, FintoMondo()).turno("gianna in air")
+        assertTrue(altro.ricevuti[1].last().jsonObject["content"]!!.jsonPrimitive.content.contains("solo nei percorsi di Adam"))
     }
 
     // ── Scelta automatica del motore ──

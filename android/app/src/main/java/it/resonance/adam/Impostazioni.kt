@@ -52,6 +52,10 @@ open class Impostazioni(context: Context) {
     var mattinoDalModello: Boolean
         get() = p.getBoolean("mattinoModello", true)
         set(v) = p.edit().putBoolean("mattinoModello", v).apply()
+    // I modelli che hanno rifiutato la temperatura: dal turno dopo non la ricevono più (si paga una volta sola).
+    var senzaTemperatura: Set<String>
+        get() = p.getStringSet("senzaTemperatura", emptySet())!!.toSet()
+        set(v) = p.edit().putStringSet("senzaTemperatura", v).apply()
     // Quanti secondi di silenzio chiudono un messaggio a voce in modalità auto.
     var pausaInvio: Int
         get() = p.getInt("pausaInvio", 4)

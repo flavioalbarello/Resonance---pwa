@@ -2,6 +2,7 @@ package it.resonance.adam.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.width
 import it.resonance.adam.logica.Nodi
 import it.resonance.adam.dati.Nodo
 import androidx.compose.ui.platform.testTag
@@ -58,14 +59,17 @@ fun PilastroUi(vm: Adam, p: Pilastro) {
     Column(Modifier.fillMaxSize()) {
         Text(p.etichetta.uppercase(), color = colore, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
             modifier = Modifier.padding(start = 16.dp, top = 12.dp))
+        // Adam non ha numeri suoi: ha i percorsi che attraversano i pilastri e il modo in cui lo Shell si regola.
+        val schede = if (p == Pilastro.ADAM) listOf("Percorsi", "Diario", "Quaderno", "Regolazione") else listOf("Numeri", "Diario", "Percorsi", "Quaderno")
         PrimaryTabRow(scheda, containerColor = Colori.fondo, contentColor = colore) {
-            listOf("Numeri", "Diario", "Percorsi", "Quaderno").forEachIndexed { i, t -> Tab(scheda == i, { scheda = i }, text = { Text(t) }) }
+            schede.forEachIndexed { i, t -> Tab(scheda == i, { scheda = i }, text = { Text(t, maxLines = 1, softWrap = false, fontSize = 13.sp) }) }
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).imePadding()) {
-            when (scheda) {
-                0 -> Numeri(vm, p)
-                1 -> Diario(vm, p)
-                2 -> Percorsi(vm, p)
+            when (schede.getOrNull(scheda)) {
+                "Numeri" -> Numeri(vm, p)
+                "Diario" -> Diario(vm, p)
+                "Percorsi" -> Percorsi(vm, p)
+                "Regolazione" -> RegolazioneUi(vm)
                 else -> QuadernoUi(vm, p)
             }
             Spazio(120)
@@ -117,13 +121,25 @@ private fun Percorsi(vm: Adam, p: Pilastro) {
     val documenti by vm.documenti.collectAsState()
     var nuovo by remember { mutableStateOf(false) }
     OutlinedButton({ nuovo = true }, modifier = Modifier.padding(top = 12.dp)) { Text("+ Percorso") }
-    percorsi.filter { it.pilastro == p }.forEach { per ->
+    // Un percorso di Adam compare anche in ogni pilastro che tocca davvero, con le sole parti di quel pilastro contate.
+    val propri = percorsi.filter { it.pilastro == p }
+    val trasversali = if (p == Pilastro.ADAM) emptyList() else percorsi.filter { per ->
+        per.pilastro == Pilastro.ADAM && p in Nodi.pilastriToccati(nodi.filter { it.percorsoId == per.id })
+    }
+    if (p == Pilastro.ADAM) Tenue("Qui i percorsi che attraversano più pilastri (Resonance stessa, per esempio). Ogni parte di primo livello porta il suo pilastro; i pilastri del percorso si leggono dalle parti, non si dichiarano.")
+    (propri + trasversali).forEach { per ->
+        val tutti = nodi.filter { it.percorsoId == per.id }
         // Contano i nodi con uno stato loro: un padre è la somma dei figli, non un nodo in più.
-        val n = it.resonance.adam.logica.Nodi.foglie(nodi.filter { it.percorsoId == per.id })
+        val n = if (per.pilastro == Pilastro.ADAM && p != Pilastro.ADAM) Nodi.perPilastro(tutti)[p].orEmpty() else Nodi.foglie(tutti)
         val fatti = n.count { it.stato == StatoNodo.CONSOLIDATO }
         Scheda(Colori.di(p), Modifier.clickable { vm.percorsoAperto = per.id }) {
             Riga(per.titolo)
-            Tenue("${n.size} nodi, $fatti consolidati · ${documenti.count { it.percorsoId == per.id }} documenti")
+            if (per.pilastro == Pilastro.ADAM) {
+                val tocca = Nodi.pilastriToccati(tutti)
+                Tenue((if (tocca.size >= 2) "↔ " else "") + if (tocca.isEmpty()) "Adam · nessun pilastro ancora sulle parti" else "Adam · " + tocca.joinToString(", ") { it.etichetta })
+            }
+            Tenue((if (per.pilastro == Pilastro.ADAM && p != Pilastro.ADAM) "in ${p.etichetta}: " else "") +
+                "${n.size} nodi, $fatti consolidati · ${documenti.count { it.percorsoId == per.id }} documenti")
         }
     }
     if (nuovo) {
@@ -165,11 +181,26 @@ private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.
         Text(per.titolo, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = colore)
         if (per.scopo.isNotBlank()) Tenue(per.scopo)
         val tutti = nodi.filter { it.percorsoId == per.id }
+        // Un percorso di Adam: una barra per pilastro, perché si veda dove avanza e dove è fermo.
+        if (per.pilastro == Pilastro.ADAM) Scheda {
+            Etichetta("Per pilastro")
+            val gruppi = Nodi.perPilastro(tutti)
+            if (gruppi.isEmpty()) Tenue("Nessuna parte ancora.")
+            gruppi.forEach { (pil, foglie) ->
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                    Text(pil?.etichetta ?: "senza pilastro", fontSize = 13.sp, color = pil?.let { Colori.di(it) } ?: Colori.tenue, modifier = Modifier.width(96.dp))
+                    androidx.compose.material3.LinearProgressIndicator(progress = { Nodi.avanzamento(foglie) },
+                        modifier = Modifier.weight(1f), color = pil?.let { Colori.di(it) } ?: Colori.tenue, trackColor = Colori.fondo2)
+                    Text("  ${foglie.count { it.stato == StatoNodo.CONSOLIDATO }}/${foglie.size}", fontSize = 12.sp, color = Colori.tenue)
+                }
+            }
+        }
         Scheda(colore) {
             Etichetta("Nodi · tocca per avanzare, tieni premuto per spostare o togliere", colore)
             Nodi.radici(tutti).forEach { r ->
                 val figli = Nodi.figli(tutti, r.id)
-                if (figli.isEmpty()) RigaNodo(r, colore, 0, { vm.cambiaStatoNodo(r) }, { menuNodo = r })
+                val etichettaPil = r.pilastro?.takeIf { per.pilastro == Pilastro.ADAM }
+                if (figli.isEmpty()) RigaNodo(r, colore, 0, { vm.cambiaStatoNodo(r) }, { menuNodo = r }, etichettaPil)
                 else {
                     // Il padre non ha uno stato suo: si apre e si chiude, e mostra ciò che dicono i figli.
                     val aperto = r.id in aperti
@@ -178,6 +209,7 @@ private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.
                         .padding(vertical = 6.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text((if (aperto) "▾ " else "▸ ") + r.etichetta, modifier = Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            etichettaPil?.let { Text(it.etichetta + "  ", fontSize = 11.sp, color = Colori.di(it)) }
                             Text("${figli.count { it.stato == StatoNodo.CONSOLIDATO }}/${figli.size}", fontSize = 13.sp, color = Colori.tenue)
                         }
                         androidx.compose.material3.LinearProgressIndicator(progress = { Nodi.avanzamento(figli) },
@@ -199,6 +231,16 @@ private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.
                 text = {
                     Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
                         if (haFigli) Tenue("Raccoglie ${Nodi.sintesi(Nodi.figli(tutti, n.id))}. Se lo togli, tornano al primo livello.")
+                        // Solo nei percorsi di Adam, solo al primo livello: i sotto-nodi prendono il pilastro del padre.
+                        if (per.pilastro == Pilastro.ADAM && n.genitoreId == null) {
+                            Tenue("Pilastro di questa parte:")
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Pilastro.entries.forEach { pil ->
+                                    androidx.compose.material3.FilterChip(n.pilastro == pil, { vm.pilastroNodo(n, pil); menuNodo = null },
+                                        label = { Text(pil.etichetta, fontSize = 12.sp) })
+                                }
+                            }
+                        }
                         if (n.genitoreId != null) TextButton({ vm.spostaNodo(n, null); menuNodo = null }) { Text("Al primo livello") }
                         if (mete.isNotEmpty()) Tenue("Mettilo sotto:")
                         mete.forEach { m -> TextButton({ vm.spostaNodo(n, m.id); menuNodo = null }) { Text("«${m.etichetta}»") } }
@@ -276,11 +318,12 @@ private fun QuadernoUi(vm: Adam, p: Pilastro) {
 
 // Un nodo con uno stato suo: il tocco lo fa avanzare, la pressione lunga apre spostare/togliere.
 @Composable
-private fun RigaNodo(n: Nodo, colore: androidx.compose.ui.graphics.Color, livello: Int, onTap: () -> Unit, onLungo: () -> Unit) {
+private fun RigaNodo(n: Nodo, colore: androidx.compose.ui.graphics.Color, livello: Int, onTap: () -> Unit, onLungo: () -> Unit, pilastro: Pilastro? = null) {
     Row(Modifier.fillMaxWidth().testTag("nodo-${n.etichetta}")
         .pointerInput(n.id, n.stato) { detectTapGestures(onTap = { onTap() }, onLongPress = { onLungo() }) }
         .padding(start = (18 * livello).dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(n.etichetta, modifier = Modifier.weight(1f), fontSize = if (livello > 0) 14.sp else 15.sp)
+        pilastro?.let { Text(it.etichetta + "  ", fontSize = 11.sp, color = Colori.di(it)) }
         Text(n.stato.etichetta, fontSize = 12.sp, color = if (n.stato == StatoNodo.NON_INIZIATO) Colori.tenue else Colori.ambraInchiostro,
             modifier = Modifier.background(if (n.stato == StatoNodo.NON_INIZIATO) Colori.fondo2 else colore.copy(alpha = 0.18f + 0.18f * n.stato.ordinal), RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
     }

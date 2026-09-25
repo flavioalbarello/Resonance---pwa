@@ -55,8 +55,11 @@ class AzioniTest {
         assertTrue(rifiuto(v).contains("frase"))
     }
 
-    @Test fun percorsoInAdamRifiutato() {
-        assertTrue(Azioni.valida("crea_percorso", args("""{"pilastro":"ADAM","titolo":"X","nodi":["a"]}"""), oggi) is Validazione.Rifiutata)
+    // Fino al 25/09/2026 un percorso in ADAM si rifiutava («un percorso appartiene a BIO, AIR o VIDYA»). Ora ADAM è il
+    // posto dei percorsi che attraversano più pilastri: il pilastro sta sulle parti.
+    @Test fun percorsoInAdamPerChiAttraversaIPilastri() {
+        val p = (Azioni.valida("crea_percorso", args("""{"pilastro":"ADAM","titolo":"Resonance","nodi":["APK V2"]}"""), oggi) as Validazione.Scrittura).proposta
+        assertEquals(Pilastro.ADAM, (p as Proposta.CreaPercorso).pilastro)
     }
 
     @Test fun criterioRitualeNormalizzato() {

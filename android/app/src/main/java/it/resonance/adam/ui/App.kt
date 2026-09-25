@@ -47,13 +47,13 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
             },
             bottomBar = {
                 NavigationBar(containerColor = Colori.superficie) {
-                    listOf(Schermata.SPECCHIO, Schermata.SHELL, Schermata.BIO, Schermata.AIR, Schermata.VIDYA).forEach { s ->
+                    listOf(Schermata.SPECCHIO, Schermata.SHELL, Schermata.ADAM, Schermata.BIO, Schermata.AIR, Schermata.VIDYA).forEach { s ->
                         val colore = when (s) { Schermata.BIO -> Colori.bio; Schermata.AIR -> Colori.air; Schermata.VIDYA -> Colori.vidya; else -> Colori.ambraInchiostro }
                         NavigationBarItem(
                             selected = vm.schermata == s,
                             onClick = { vm.vai(s) },
                             icon = { Text(if (vm.schermata == s) "●" else "○", color = colore) },
-                            label = { Text(s.etichetta) },
+                            label = { Text(s.etichetta, fontSize = 11.sp, maxLines = 1, softWrap = false) },
                             colors = NavigationBarItemDefaults.colors(indicatorColor = colore.copy(alpha = 0.12f), selectedTextColor = colore),
                         )
                     }
@@ -64,6 +64,7 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
                 when (vm.schermata) {
                     Schermata.SPECCHIO -> Specchio(vm)
                     Schermata.SHELL -> ShellUi(vm, sistema)
+                    Schermata.ADAM -> PilastroUi(vm, Pilastro.ADAM)
                     Schermata.BIO -> PilastroUi(vm, Pilastro.BIO)
                     Schermata.AIR -> PilastroUi(vm, Pilastro.AIR)
                     Schermata.VIDYA -> PilastroUi(vm, Pilastro.VIDYA)
