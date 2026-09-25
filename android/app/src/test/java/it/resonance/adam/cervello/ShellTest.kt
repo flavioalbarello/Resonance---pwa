@@ -41,6 +41,18 @@ class ShellTest {
         override var chiave: String
             get() = "finta"
             set(_) {}
+        var tokenFinto = ""
+        override var tokenCassetta: String
+            get() = tokenFinto
+            set(v) { tokenFinto = v }
+    }
+
+    // La cassetta finta: tiene le lettere aperte e restituisce i commenti che le si danno.
+    private class FintaCassetta : Cassetta() {
+        val aperte = mutableListOf<Pair<String, String>>()
+        val commenti = mutableMapOf<Int, List<Commento>>()
+        override suspend fun apri(repo: String, token: String, titolo: String, corpo: String): Int { aperte += titolo to corpo; return aperte.size }
+        override suspend fun commenti(repo: String, token: String, numero: Int) = commenti[numero].orEmpty()
     }
 
     // Il finto calendario usa il Risolutore vero: si prova la decisione, non il finto.
@@ -423,6 +435,73 @@ class ShellTest {
         val altro = FintoModello(chiama("pilastro_nodo", """{"percorso":"Tributo","nodo":"Gianna","pilastro":"AIR"}"""), testo("Ok."))
         Shell(archivio, imp, altro, FintoMondo()).turno("gianna in air")
         assertTrue(altro.ricevuti[1].last().jsonObject["content"]!!.jsonPrimitive.content.contains("solo nei percorsi di Adam"))
+    }
+
+    // ── Pacchetto Adam (25/09/2026) ──
+
+    @Test fun ilTaccuinoSiScriveSenzaPropostaEDalTurnoDopoESottoGliOcchi() = runBlocking {
+        val modello = FintoModello(chiama("scrivi_taccuino", """{"testo":"Un planner per musicisti di tributi: nicchia scoperta?"}"""), testo("Annotato."), testo("Ricordo."))
+        val shell = Shell(archivio, imp, modello, FintoMondo())
+        val esito = shell.turno("pensaci")
+        assertTrue(esito.proposte.isEmpty())
+        val nota = db.taccuino().elenco().single()
+        assertTrue(modello.ricevuti[1].last().jsonObject["content"]!!.jsonPrimitive.content.startsWith("Nel taccuino: nota #${nota.id}"))
+        shell.turno("e allora?")
+        assertTrue(contenuto(modello.ricevuti[2], 0).contains("#${nota.id} (evapora tra 21 gg): Un planner"))
+    }
+
+    // La voce dello Shell sulla propria regolazione: proposta, conferma del Ghost, traccia nel diario, effetto dal turno dopo.
+    @Test fun unaTemperaturaPropostaEConfermataValeDalTurnoDopo() = runBlocking {
+        val modello = FintoModello(chiama("regola_temperatura", """{"compito":"TURNO","valore":0.62,"perche":"le proposte sono troppo caute"}"""), testo("Proposto."), testo("Ecco."))
+        val shell = Shell(archivio, imp, modello, FintoMondo())
+        val id = shell.turno("regolati").proposte.single()
+        shell.conferma(id)
+        assertEquals(0.6, imp.temperature["TURNO"]!!, 1e-9)
+        assertTrue(db.voci().elenco().any { it.pilastro == Pilastro.ADAM && it.testo.contains("t 0,4 → t 0,6") && it.testo.contains("troppo caute") })
+        shell.turno("prova")
+        assertEquals(0.6, modello.temperature.last()!!, 1e-9)
+    }
+
+    @Test fun ilFondoNonSpendePiuDelSaldo() = runBlocking {
+        db.fondo().inserisci(it.resonance.adam.dati.Movimento(giorno = LocalDate.now().toString(), tipo = it.resonance.adam.dati.TipoMovimento.VERSAMENTO, importo = 100.0, motivo = "primo", creato = 1))
+        val modello = FintoModello(
+            chiama("movimento_fondo", """{"tipo":"uscita","importo":120,"motivo":"hosting"}"""),
+            chiama("movimento_fondo", """{"tipo":"uscita","importo":12,"motivo":"dominio neutro"}"""),
+            testo("Proposti."),
+        )
+        val shell = Shell(archivio, imp, modello, FintoMondo())
+        val (troppo, giusto) = shell.turno("paga").proposte
+        assertTrue(shell.conferma(troppo).contains("supera il saldo"))
+        assertTrue(shell.conferma(giusto).contains("Saldo 88,00 €"))
+    }
+
+    // La cassetta: la lettera parte al tocco del Ghost con lo stato dell'app; torna solo ciò che porta il segno dell'architetto.
+    @Test fun unaLetteraParteConLoStatoEUnaRispostaTorna() = runBlocking {
+        val cassetta = FintaCassetta()
+        val modello = FintoModello(chiama("scrivi_all_architetto", """{"oggetto":"Fondo: primo mese","testo":"Contesto: 25/09. Domanda: A o B?"}"""), testo("Proposta."))
+        val shell = Shell(archivio, imp, modello, FintoMondo(), cassetta)
+        val id = shell.turno("scrivi all'architetto").proposte.single()
+        assertTrue(shell.conferma(id).contains("parte appena in Setup c'è la cassetta"))
+        assertEquals(it.resonance.adam.dati.StatoLettera.DA_INVIARE, db.lettere().elenco().single().stato)
+
+        imp.cassetta = "flavio/adam-lettere"
+        imp.tokenCassetta = "t"
+        val posta = Corrispondenza(archivio, imp, cassetta)
+        assertEquals(1, posta.spedisciInSospeso())
+        val (titolo, corpo) = cassetta.aperte.single()
+        assertEquals("Fondo: primo mese", titolo)
+        assertTrue(corpo, corpo.contains("Domanda: A o B?") && corpo.contains("Stato dell'app (automatico)") && corpo.contains(Cassetta.MARCA_SHELL))
+        cassetta.commenti[1] = listOf(Cassetta.Commento(10, "un commento del Ghost"), Cassetta.Commento(11, "${Cassetta.MARCA}\nB, per questo motivo."))
+        val nuove = posta.ritira()
+        assertEquals(listOf("B, per questo motivo."), nuove.map { it.second.testo })
+        assertTrue(posta.ritira().isEmpty())
+        assertEquals(it.resonance.adam.dati.StatoLettera.RISPOSTA, db.lettere().elenco().single().stato)
+    }
+
+    @Test fun laCassettaNonPuoEssereIlRepositoryPubblico() {
+        assertTrue(!Cassetta.valido("flavioalbarello/Resonance---pwa"))
+        assertTrue(Cassetta.valido("flavioalbarello/adam-lettere"))
+        assertTrue(!Cassetta.valido("non un repo"))
     }
 
     // ── Scelta automatica del motore ──

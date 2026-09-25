@@ -240,3 +240,58 @@ data class Profilo(
     // Nomi che identificano il Ghost e non escono dal telefono senza un suo gesto (es. il marchio professionale).
     @ColumnInfo(defaultValue = "") val nomiProtetti: String = "",
 )
+
+// ── Pacchetto Adam (25/09/2026) ──
+
+// Il Taccuino dello Shell: note sue, scritte senza conferma perché non toccano niente. Nel prompt sono ipotesi, non
+// fatti. Evaporano: una nota non ripresa per 21 giorni esce dal prompt, ma resta qui (Legge 14).
+@Serializable
+@Entity(tableName = "taccuino")
+data class Nota(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val testo: String,
+    val creata: Long,
+    val ripresa: Long,
+    // Tolta dal Ghost: come evaporata, ma per sua mano.
+    val tolta: Boolean = false,
+)
+
+enum class TipoMovimento(val etichetta: String) { VERSAMENTO("versamento del Ghost"), ENTRATA("entrata"), USCITA("uscita") }
+
+// Il fondo di Adam: denaro vero, a fondo perduto, per vedere come lo Shell si organizza. Decide lo Shell, esegue e
+// paga il Ghost; ogni movimento ha il suo motivo. Importi in euro, sempre positivi: il verso lo dice il tipo.
+@Serializable
+@Entity(tableName = "movimenti")
+data class Movimento(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val giorno: String,
+    val tipo: TipoMovimento,
+    val importo: Double,
+    val motivo: String,
+    val creato: Long,
+)
+
+enum class StatoLettera { DA_INVIARE, INVIATA, RISPOSTA, ERRORE }
+
+// Lettere fra lo Shell e l'architetto (Claude Code), via una cassetta GitHub privata. Il Ghost le vede tutte.
+@Serializable
+@Entity(tableName = "lettere")
+data class Lettera(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val oggetto: String,
+    val testo: String,
+    val creata: Long,
+    val stato: StatoLettera = StatoLettera.DA_INVIARE,
+    val numero: Int? = null,
+    val errore: String = "",
+)
+
+@Serializable
+@Entity(tableName = "risposte")
+data class RispostaLettera(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val letteraId: Long,
+    val idCommento: Long,
+    val testo: String,
+    val istante: Long,
+)

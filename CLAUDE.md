@@ -123,6 +123,10 @@ Vale per ogni futura coppia genera/controlla, non solo per i plasmidi:
   pilastro AIR" e lo Shell ha risposto come se si riferisse alla vecchia strategia contenuti,
   ignaro che "Semi" fosse una feature appena costruita.
 
+**Nell'APK (`android/`, dal 25/09/2026)** l'equivalente è `logica/Capacita.kt`: ogni strumento nuovo dello Shell vuole
+la sua riga nell'area giusta, e ciò che il Ghost fa da solo va in `SOLO_GHOST`. Il banco (`PacchettoAdamTest`)
+fallisce se uno strumento manca dalla mappa.
+
 ## Prima di ogni task
 1. Leggi il codice esistente prima di proporre modifiche — non assumere, verificare.
 2. Se il task è ambiguo o tocca il vincolo AIR/PhysioAlba, segnala invece di procedere.

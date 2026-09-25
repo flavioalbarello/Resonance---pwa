@@ -143,6 +143,29 @@ senza una parte è impossibile. Il percorso compare anche in ogni pilastro che t
 dentro, una barra per pilastro. Strumenti: `crea_percorso` accetta ADAM, `aggiungi_nodi` accetta «pilastro»,
 nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo chiede.
 
+**Il pacchetto Adam (25/09/2026)**, costruito dopo una consulenza chiesta dallo Shell stesso, via il Ghost.
+- *Cosa sa fare l'app*: `logica/Capacita.kt` entra nel prompt con la versione, per area e con gli strumenti. È l'erede
+  di `CAPACITA` della PWA: lo Shell scopriva dal Ghost funzioni già costruite. Il banco verifica che ogni strumento
+  abbia la sua riga, e che la mappa non ne inventi.
+- *Taccuino dello Shell* (`taccuino`, strumenti INTERNI `scrivi_taccuino` / `riprendi_nota`, senza conferma perché
+  non toccano niente): nel prompt come ipotesi, non fatti; evapora dopo 21 giorni senza ripresa (Adam City), non si
+  cancella. Il Ghost lo vede e toglie.
+- *Voce sulla temperatura*: `regola_temperatura` è una proposta; confermata, vale dal turno dopo e resta nel diario
+  di Adam col perché. Lo Shell non sceglie la temperatura a ogni chiamata: non si sceglie come pensare prima di pensare.
+- *Dado della domenica* (`logica/Dado.kt`): il caso lo tira il programma, con un seme scritto; sceglie un ricordo, un
+  nodo fermo o un pilastro trascurato, e lo Shell ne scrive a 0,9. Il caso entra in ciò che lo Shell dice, mai in
+  ciò che l'app fa.
+- *Fondo di Adam* (`movimenti`, `logica/Fondo.kt`): denaro vero del Ghost, a fondo perduto. Lo Shell decide e propone
+  (`movimento_fondo`), il Ghost esegue, paga, conferma. Soglie scritte dallo Shell: sotto metà del versato
+  sopravvivenza, a zero fermo (nessuna uscita parte). Autosufficienza = sue entrate ≥ sue uscite negli ultimi 30
+  giorni; la spesa dei modelli è del Ghost e non si mescola. Nome professionale mai; contenuti AI dichiarati.
+- *Cassetta delle lettere* (`cervello/Cassetta.kt`): lo Shell scrive all'architetto (`scrivi_all_architetto`), la
+  lettera parte al tocco del Ghost come issue di un repository GitHub PRIVATO, con lo stato dell'app allegato; una
+  routine di Claude Code risponde una volta al giorno (istruzioni in `android/cassetta/ARCHITETTO.md`), le risposte
+  portano `<!-- architetto -->` e tornano allo Shell come nota. Il Ghost non fa più da passacarte, ma vede tutto.
+  L'architetto dalla cassetta consiglia; il codice cambia solo col sì del Ghost.
+- DB 8. Adam ha sette schede, scorrevoli: Percorsi, Diario, Quaderno, Taccuino, Fondo, Lettere, Regolazione.
+
 **Promesse sul futuro.** Gemini ha scritto «Domani… riprendiamo»: lo Shell non torna da solo. Regola nel prompt
 (proporre `crea_evento` come promemoria) e controllo del programma (`Testi.promette`), che aggiunge una nota se la
 risposta promette senza aver proposto niente.

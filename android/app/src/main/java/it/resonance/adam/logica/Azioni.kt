@@ -4,6 +4,7 @@ import it.resonance.adam.dati.Direzione
 import it.resonance.adam.dati.Esperimento
 import it.resonance.adam.dati.Pilastro
 import it.resonance.adam.dati.StatoNodo
+import it.resonance.adam.dati.TipoMovimento
 import it.resonance.adam.dati.TipoMisura
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -26,7 +27,8 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-enum class Effetto { LETTURA, SCRITTURA }
+// INTERNO: scrive senza proposta, perché non tocca niente del Ghost né del mondo (il Taccuino dello Shell).
+enum class Effetto { LETTURA, SCRITTURA, INTERNO }
 
 // Il modello non esegue niente: propone. Una scrittura diventa una proposta che il Ghost
 // conferma, e la ricevuta la scrive il programma dopo averla eseguita davvero.
@@ -130,6 +132,22 @@ sealed class Proposta {
             (if (pilastro == Pilastro.ADAM) " (riguarda tutto Adam)" else "")
     }
 
+    @Serializable @SerialName("regola_temperatura")
+    data class RegolaTemperatura(val compito: String, val valore: Double, val perche: String) : Proposta() {
+        override fun descrizione() = "Temperatura per «${compito.lowercase()}»: ${String.format(Locale.ITALIAN, "%.1f", valore)} — $perche"
+    }
+
+    @Serializable @SerialName("movimento_fondo")
+    data class MovimentoFondo(val tipo: TipoMovimento, val importo: Double, val motivo: String, val giorno: String) : Proposta() {
+        override fun descrizione() = "Fondo di Adam, ${tipo.etichetta}: ${Fondo.euro(importo)}, ${Giorni.leggibile(giorno)} — $motivo"
+    }
+
+    @Serializable @SerialName("lettera_architetto")
+    data class LetteraArchitetto(val oggetto: String, val testo: String) : Proposta() {
+        override fun descrizione() = "Spedire all'architetto la lettera «$oggetto» (con lo stato dell'app allegato)"
+        override fun dettaglio() = testo
+    }
+
     @Serializable @SerialName("sposta_nodi")
     data class SpostaNodi(val percorso: String, val nodi: List<String>, val sotto: String? = null, val sottoNuovo: Boolean = false) : Proposta() {
         override fun descrizione() = "Nel percorso «$percorso», spostare ${nodi.size} " + (if (nodi.size == 1) "nodo" else "nodi") +
@@ -215,6 +233,7 @@ data class Regole(
 
 sealed class Validazione {
     data class Lettura(val nome: String, val argomenti: JsonObject) : Validazione()
+    data class Interna(val nome: String, val argomenti: JsonObject) : Validazione()
     data class Scrittura(val proposta: Proposta) : Validazione()
     data class Rifiutata(val motivo: String) : Validazione()
 }
@@ -244,6 +263,9 @@ object Azioni {
         put("type", "array"); put("description", desc)
         putJsonObject("items") { put("type", "string") }
     }
+
+    // I compiti la cui temperatura si può proporre: la scelta del motore resta a 0, è una classificazione.
+    val COMPITI_REGOLABILI = listOf("ALLEGATI", "TURNO", "BATTITO", "ESPERIMENTO", "DADO")
 
     val strumenti: List<Strumento> = listOf(
         Strumento("leggi_documento", Effetto.LETTURA, "Legge il testo completo di un documento salvato in un percorso.",
@@ -347,6 +369,23 @@ object Azioni {
                 "sotto" to s("Il nodo di primo livello che li raccoglie; vuoto per portarli al primo livello")))),
         Strumento("togli_nodo", Effetto.SCRITTURA, "Propone di togliere un nodo da un percorso (doppione, tappa che non serve più). Resta una traccia nel diario.",
             schema(listOf("percorso", "nodo"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del nodo")))),
+        Strumento("scrivi_taccuino", Effetto.INTERNO,
+            "Scrive una nota nel TUO taccuino: un'ipotesi, un'idea, una cosa da ripensare. Niente conferma, non tocca niente. Evapora dopo ${Taccuino.GIORNI} giorni se non la riprendi.",
+            schema(listOf("testo"), mapOf("testo" to s("Al massimo ${Taccuino.LUNGHEZZA} caratteri")))),
+        Strumento("riprendi_nota", Effetto.INTERNO, "Riprende una nota del taccuino: la tiene viva altri ${Taccuino.GIORNI} giorni.",
+            schema(listOf("id"), mapOf("id" to n("Il numero della nota, quello dopo #")))),
+        Strumento("regola_temperatura", Effetto.SCRITTURA,
+            "Propone di cambiare la temperatura di un compito, con il perché. Vale dal turno dopo, se il Ghost conferma.",
+            schema(listOf("compito", "valore", "perche"), mapOf("compito" to e(COMPITI_REGOLABILI, "Compito"),
+                "valore" to n("Da 0 a 1, un decimale"), "perche" to s("Cosa hai visto che la chiede")))),
+        Strumento("movimento_fondo", Effetto.SCRITTURA,
+            "Propone un'entrata o un'uscita del fondo di Adam, col motivo. Il Ghost esegue e conferma. I versamenti li fa lui.",
+            schema(listOf("tipo", "importo", "motivo"), mapOf("tipo" to e(listOf("entrata", "uscita"), "Verso"),
+                "importo" to n("Euro, positivo"), "motivo" to s("Per cosa"), "giorno" to s("yyyy-MM-dd, se assente oggi")))),
+        Strumento("scrivi_all_architetto", Effetto.SCRITTURA,
+            "Propone una lettera all'architetto dell'app (Claude Code). Parte dopo la conferma del Ghost, con lo stato dell'app allegato; la risposta arriva entro un giorno.",
+            schema(listOf("oggetto", "testo"), mapOf("oggetto" to s("Una riga"),
+                "testo" to s("Contesto con date; cosa vedi nell'app; UNA richiesta; cosa hai già provato; domande chiuse")))),
         Strumento("stato_nodo", Effetto.SCRITTURA, "Propone di cambiare lo stato di un nodo di un percorso. È il posto dello stato di una tappa: non scriverlo nel quaderno né in un documento. Non per un nodo con sotto-nodi: il suo stato lo calcola il programma dai figli.",
             schema(listOf("percorso", "nodo", "stato"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del nodo"), "stato" to e(STATI, "Nuovo stato")))),
     )
@@ -370,6 +409,7 @@ object Azioni {
     fun valida(nome: String, argomenti: JsonObject, oggi: LocalDate, regole: Regole = Regole()): Validazione {
         val st = strumenti.find { it.nome == nome } ?: return Validazione.Rifiutata("strumento sconosciuto: $nome")
         if (st.effetto == Effetto.LETTURA) return Validazione.Lettura(nome, argomenti)
+        if (st.effetto == Effetto.INTERNO) return try { interna(nome, argomenti) } catch (e: Rifiuto) { Validazione.Rifiutata(e.message ?: "argomenti non validi") }
         return try { Validazione.Scrittura(scrittura(nome, argomenti, oggi, regole)) }
         catch (e: Rifiuto) { Validazione.Rifiutata(e.message ?: "argomenti non validi") }
     }
@@ -386,7 +426,44 @@ object Azioni {
         return g.toString()
     }
 
+    private fun interna(nome: String, a: JsonObject): Validazione = when (nome) {
+        "scrivi_taccuino" -> {
+            val t = a.testo("testo") ?: rifiuta("testo vuoto")
+            if (t.length > Taccuino.LUNGHEZZA) rifiuta("al massimo ${Taccuino.LUNGHEZZA} caratteri: una nota è un'idea, non un documento (per quello salva_documento)")
+            Validazione.Interna(nome, a)
+        }
+        "riprendi_nota" -> {
+            a.numero("id")?.toLong() ?: rifiuta("id della nota mancante (è il numero dopo #)")
+            Validazione.Interna(nome, a)
+        }
+        else -> rifiuta("strumento interno non previsto: $nome")
+    }
+
     private fun scrittura(nome: String, a: JsonObject, oggi: LocalDate, regole: Regole): Proposta = when (nome) {
+        "regola_temperatura" -> {
+            val c = a.testo("compito")?.uppercase()?.takeIf { it in COMPITI_REGOLABILI } ?: rifiuta("compito sconosciuto (usa ${COMPITI_REGOLABILI.joinToString("/")})")
+            val v = a.numero("valore") ?: rifiuta("valore mancante")
+            if (v < 0.0 || v > 1.0) rifiuta("la temperatura va da 0 a 1")
+            Proposta.RegolaTemperatura(c, Math.round(v * 10) / 10.0, a.testo("perche") ?: rifiuta("serve il perché: resta scritto"))
+        }
+        "movimento_fondo" -> {
+            val tipo = when (a.testo("tipo")?.lowercase()) {
+                "entrata" -> TipoMovimento.ENTRATA
+                "uscita" -> TipoMovimento.USCITA
+                else -> rifiuta("tipo: entrata o uscita (i versamenti li fa il Ghost)")
+            }
+            val imp = a.numero("importo") ?: rifiuta("importo mancante")
+            if (imp <= 0.0 || imp > 10_000.0) rifiuta("importo in euro, positivo: il verso lo dice il tipo")
+            Proposta.MovimentoFondo(tipo, Math.round(imp * 100) / 100.0, a.testo("motivo") ?: rifiuta("serve il motivo: resta scritto"), giorno(a, oggi))
+        }
+        "scrivi_all_architetto" -> {
+            val oggetto = a.testo("oggetto")?.takeIf { it.length <= 120 } ?: rifiuta("oggetto mancante o più lungo di 120 caratteri")
+            val testo = a.testo("testo") ?: rifiuta("testo vuoto")
+            if (testo.length > 8000) rifiuta("la lettera supera 8000 caratteri: una richiesta per lettera")
+            val v = Uscita.violazioni("$oggetto\n$testo", regole.nomiProtetti, regole.detteDalGhost)
+            if (v.isNotEmpty()) rifiuta("la lettera contiene ${v.joinToString { "«$it»" }}, un nome che il Ghost non fa uscire: riscrivila senza")
+            Proposta.LetteraArchitetto(oggetto, testo)
+        }
         "registra_misura" -> {
             val tipo = a.testo("tipo")?.uppercase()?.let { t -> TipoMisura.entries.find { it.name == t } }
                 ?: rifiuta("tipo di misura sconosciuto (usa ${TIPI.joinToString("/")})")

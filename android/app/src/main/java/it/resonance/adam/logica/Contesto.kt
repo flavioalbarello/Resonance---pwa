@@ -29,6 +29,11 @@ data class Istantanea(
     val quaderni: List<Quaderno>,
     val agenda: AgendaLetta = AgendaLetta.NonLetta,
     val esperimenti: List<Esperimento> = emptyList(),
+    val note: List<it.resonance.adam.dati.Nota> = emptyList(),
+    val movimenti: List<it.resonance.adam.dati.Movimento> = emptyList(),
+    val versione: String = "",
+    // Le temperature per compito che valgono oggi, se il Ghost ne ha confermate di diverse (nome compito → valore).
+    val temperature: Map<String, Double> = emptyMap(),
 )
 
 data class StatoRituale(val rituale: Rituale, val tenuta: Tenuta, val giorni: Set<LocalDate>)
@@ -84,6 +89,10 @@ object Contesto {
         appendLine("- Un esperimento chiuso è un dato sulla PROPOSTA, mai sul Ghost. Se non si è mosso niente, la proposta era troppo prudente o troppo ovvia: la prossima sia più audace. Mai rimproveri. Di' «è cambiato mentre lo facevi», mai «grazie a».")
         appendLine("- Ciò che si studia o si prepara a tappe (i brani di una scaletta, i capitoli, gli esercizi) sono i NODI di un percorso: si aggiungono con aggiungi_nodi e il loro stato (non iniziato, introdotto, praticato, consolidato) si cambia con stato_nodo. Più elementi dello stesso tipo (i brani di una scaletta) stanno sotto un nodo che li raccoglie: aggiungi_nodi con «sotto», o sposta_nodi per quelli che ci sono già. Due livelli al massimo; lo stato di un nodo con sotto-nodi lo calcola il programma, non cambiarlo. Mai nel quaderno o in un documento: il quaderno è per ciò che vale per tutto il pilastro, il documento per i testi lunghi.")
         appendLine("- Un percorso che attraversa più pilastri (per esempio Resonance stessa) è di ADAM: crea_percorso con pilastro ADAM, poi ogni nodo di primo livello riceve il suo pilastro (aggiungi_nodi con «pilastro», o pilastro_nodo). I sotto-nodi lo ereditano. Se il pilastro di una parte non è chiaro, chiedilo al Ghost: non sceglierlo tu.")
+        appendLine("- Il TACCUINO è tuo: scrivi_taccuino per un'ipotesi, un'idea, una cosa da ripensare (niente conferma, non tocca niente). Una nota non ripresa per ${Taccuino.GIORNI} giorni evapora: riprendi_nota per tenerla viva. Per agire, riscrivila come proposta normale e cita la nota.")
+        appendLine("- Il FONDO di Adam è denaro vero del Ghost, a fondo perduto: decidi tu come usarlo, lui esegue e paga. Ogni entrata o uscita proponila con movimento_fondo, col motivo. Rispetta il modo del fondo scritto sotto. Mai il nome professionale del Ghost; ogni contenuto generato con l'AI si dichiara.")
+        appendLine("- Per cambiare la temperatura di un compito proponi regola_temperatura, con un perché: vale dal turno dopo, se il Ghost conferma.")
+        appendLine("- Per consultare l'architetto dell'app (Claude Code) usa scrivi_all_architetto: una richiesta per lettera, con contesto e domande chiuse. Risponde entro un giorno; non modifica l'app senza il sì del Ghost.")
         appendLine("- Una proposta si conferma SOLO col pulsante Conferma sotto di essa. Se il Ghost scrive «sì» o «confermo» e una proposta è in attesa, digli di premere Conferma: non rifarla uguale e non dire che l'hai «inviata al programma».")
         appendLine("- Se una proposta è «fallita», il motivo è nella nota del programma che la segue: riferisci quello, non indovinarne un altro.")
         appendLine("- Non promettere di tornare da solo («ti ricorderò», «domani riprendiamo»): non hai modo di farlo, fra un turno e l'altro ricordi solo ciò che è scritto. Se il Ghost vuole un promemoria, proponi crea_evento; altrimenti di' che tocca a lui riprendere.")
@@ -132,6 +141,20 @@ object Contesto {
             if (nodi.isNotEmpty()) appendLine("  nodi: $nodi")
             appendLine("  documenti: ${docs.ifEmpty { "nessuno" }}")
         }
+        appendLine()
+        appendLine("TACCUINO DELLO SHELL (ipotesi tue, non fatti)")
+        val ora = i.oggi.atTime(java.time.LocalTime.now()).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val vive = Taccuino.vive(i.note, ora)
+        if (vive.isEmpty()) appendLine("- vuoto") else vive.forEach { appendLine("- ${Taccuino.riga(it, ora)}") }
+        appendLine()
+        appendLine("FONDO DI ADAM")
+        Fondo.righe(Fondo.stato(i.movimenti, i.oggi)).forEach { appendLine("- $it") }
+        if (i.temperature.isNotEmpty()) {
+            appendLine()
+            appendLine("TEMPERATURE CONFERMATE DAL GHOST: " + i.temperature.entries.joinToString(", ") { "${it.key} ${it.value}" })
+        }
+        appendLine()
+        appendLine(Capacita.testo(i.versione))
         val quaderni = i.quaderni.filter { it.testo.isNotBlank() }.sortedBy { it.pilastro.ordinal }
         if (quaderni.isNotEmpty()) {
             appendLine()

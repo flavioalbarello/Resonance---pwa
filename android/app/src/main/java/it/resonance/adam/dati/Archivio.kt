@@ -8,6 +8,7 @@ import it.resonance.adam.logica.Giorni
 import it.resonance.adam.logica.Importato
 import it.resonance.adam.logica.Proposta
 import it.resonance.adam.logica.Nodi
+import it.resonance.adam.logica.Fondo
 import it.resonance.adam.logica.Testi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -27,6 +28,11 @@ data class Copia(
     val percorsi: List<Percorso>, val nodi: List<Nodo>, val documenti: List<Documento>,
     val quaderni: List<Quaderno>, val messaggi: List<Messaggio>, val spesa: List<SpesaMese>, val profilo: Profilo?,
     val esperimenti: List<Esperimento> = emptyList(),
+    // Pacchetto Adam: il taccuino dello Shell, il fondo, le lettere. I turni no: sono diagnostica, si rifanno.
+    val taccuino: List<Nota> = emptyList(),
+    val movimenti: List<Movimento> = emptyList(),
+    val lettere: List<Lettera> = emptyList(),
+    val risposte: List<RispostaLettera> = emptyList(),
 )
 
 class Ambiguo(m: String) : Exception(m)
@@ -249,6 +255,22 @@ class Archivio(val db: Db) {
             Esecuzione(true, "Esperimento «${e.titolo}» lasciato. Traccia nel diario di Adam")
         }
         // Calendario e posta stanno fuori dall'archivio: li esegue il Mondo (cervello/Mondo.kt).
+        // Il fondo di Adam: un'uscita non supera il saldo, e a fondo fermo non ne parte nessuna (le soglie dello Shell).
+        is Proposta.MovimentoFondo -> {
+            val prima = Fondo.stato(db.fondo().elenco(), oggi)
+            when {
+                p.tipo == TipoMovimento.USCITA && prima.modo == Fondo.Modo.FERMO -> Esecuzione(false, "Non registrata: il fondo è a zero, è fermo")
+                p.tipo == TipoMovimento.USCITA && p.importo > prima.saldo + 1e-9 ->
+                    Esecuzione(false, "Non registrata: ${Fondo.euro(p.importo)} supera il saldo di ${Fondo.euro(prima.saldo)}")
+                else -> {
+                    db.fondo().inserisci(Movimento(giorno = p.giorno, tipo = p.tipo, importo = p.importo, motivo = p.motivo, creato = ora))
+                    val dopo = Fondo.stato(db.fondo().elenco(), oggi)
+                    Esecuzione(true, "Fondo di Adam: ${p.tipo.etichetta} ${Fondo.euro(p.importo)} — ${p.motivo}. Saldo ${Fondo.euro(dopo.saldo)}" +
+                        if (dopo.modo != prima.modo) ". Ora: ${dopo.modo.etichetta}" else "")
+                }
+            }
+        }
+        is Proposta.RegolaTemperatura, is Proposta.LetteraArchitetto -> Esecuzione(false, "Non eseguito: la esegue lo Shell, non l'archivio")
         is Proposta.CreaEvento, is Proposta.SpostaEvento, is Proposta.TogliEvento, is Proposta.ScriviMail ->
             Esecuzione(false, "Non eseguito: calendario e posta non sono nell'archivio")
     }
@@ -379,6 +401,7 @@ class Archivio(val db: Db) {
         percorsi = db.percorsi().elenco(), nodi = db.percorsi().elencoNodi(), documenti = db.percorsi().elencoDocumenti(),
         quaderni = db.quaderni().elenco(), messaggi = db.messaggi().elenco(), spesa = db.spesa().elenco(), profilo = db.profilo().leggi(),
         esperimenti = db.esperimenti().elenco(),
+        taccuino = db.taccuino().elenco(), movimenti = db.fondo().elenco(), lettere = db.lettere().elenco(), risposte = db.lettere().risposte(),
     ))
 
     fun eUnaCopia(testo: String) = testo.contains("\"_formato\":\"resonance-apk\"") || testo.contains("\"_formato\": \"resonance-apk\"")
@@ -387,7 +410,8 @@ class Archivio(val db: Db) {
     suspend fun ripristina(testo: String): Int {
         val c = json.decodeFromString(Copia.serializer(), testo)
         db.withTransaction {
-            listOf("misure", "voci", "versioni", "rituali", "spunte", "percorsi", "nodi", "documenti", "quaderni", "messaggi", "spesa", "profilo", "esperimenti")
+            listOf("misure", "voci", "versioni", "rituali", "spunte", "percorsi", "nodi", "documenti", "quaderni", "messaggi", "spesa", "profilo", "esperimenti",
+                "taccuino", "movimenti", "lettere", "risposte")
                 .forEach { db.openHelper.writableDatabase.execSQL("DELETE FROM $it") }
             c.misure.forEach { db.misure().sostituisci(it) }
             c.voci.forEach { db.voci().inserisci(it) }
@@ -402,6 +426,10 @@ class Archivio(val db: Db) {
             c.spesa.forEach { db.spesa().salva(it) }
             c.profilo?.let { db.profilo().salva(it) }
             c.esperimenti.forEach { db.esperimenti().inserisci(it) }
+            c.taccuino.forEach { db.taccuino().inserisci(it) }
+            c.movimenti.forEach { db.fondo().inserisci(it) }
+            c.lettere.forEach { db.lettere().inserisci(it) }
+            c.risposte.forEach { db.lettere().inserisciRisposta(it) }
         }
         return c.misure.size + c.voci.size + c.documenti.size
     }

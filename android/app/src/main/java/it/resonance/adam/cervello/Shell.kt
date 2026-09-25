@@ -5,6 +5,7 @@ import it.resonance.adam.dati.Archivio
 import it.resonance.adam.dati.Esecuzione
 import it.resonance.adam.dati.Messaggio
 import it.resonance.adam.dati.Nodo
+import it.resonance.adam.dati.Nota
 import it.resonance.adam.dati.Pilastro
 import it.resonance.adam.dati.Voce
 import it.resonance.adam.dati.Ruolo
@@ -25,6 +26,7 @@ import it.resonance.adam.logica.Contesto
 import it.resonance.adam.logica.Istantanea
 import it.resonance.adam.logica.Nodi
 import it.resonance.adam.logica.Testi
+import it.resonance.adam.logica.Taccuino
 import it.resonance.adam.logica.Validazione
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -48,6 +50,9 @@ suspend fun Archivio.istantanea(oggi: LocalDate = LocalDate.now(), agenda: Agend
     quaderni = db.quaderni().elenco(),
     agenda = agenda,
     esperimenti = db.esperimenti().elenco(),
+    note = db.taccuino().elenco(),
+    movimenti = db.fondo().elenco(),
+    versione = it.resonance.adam.BuildConfig.VERSION_NAME,
 )
 
 class Shell(
@@ -55,6 +60,7 @@ class Shell(
     private val impostazioni: Impostazioni,
     private val client: OpenRouter = OpenRouter(),
     private val mondo: Mondo? = null,
+    private val cassetta: Cassetta = Cassetta(),
 ) {
     data class Esito(val testo: String, val proposte: List<Long>)
 
@@ -127,7 +133,7 @@ class Shell(
         controllaSpesa()?.let { nota(it); return Esito(it, emptyList()) }
 
         val oggi = LocalDate.now()
-        val istantanea = archivio.istantanea(oggi, mondo?.agenda(oggi, 2) ?: AgendaLetta.NonLetta)
+        val istantanea = fotografia(oggi, 2)
         val sistema = Contesto.sistema(istantanea)
         val regole = regole(istantanea, testoGhost)
         val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", sistema) })
@@ -154,7 +160,7 @@ class Shell(
         controllaSpesa()?.let { return Esito(it, emptyList()) }
         nota("Il programma ha visto un ristagno: ${motivi.joinToString("; ")}.")
         val oggi = LocalDate.now()
-        val istantanea = archivio.istantanea(oggi, mondo?.agenda(oggi, 2) ?: AgendaLetta.NonLetta)
+        val istantanea = fotografia(oggi, 2)
         val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", Contesto.sistema(istantanea)) })
         lavoro += storia(archivio.db.messaggi().ultimi(16))
         lavoro += buildJsonObject {
@@ -169,7 +175,7 @@ class Shell(
     private suspend fun ciclo(lavoro: MutableList<JsonObject>, oggi: LocalDate, regole: Regole, modello: String, motore: String?,
                               costoIniziale: Double, origine: String = "shell", compito: Compito = Compito.TURNO, forza: Forzatura? = null): Esito {
         var costoTurno = costoIniziale
-        val temperatura = forza?.temperatura ?: compito.temperatura
+        val temperatura = forza?.temperatura ?: temperaturaDi(compito)
         var usata: Double? = null
         var rifiutate = 0
         var troncata = false
@@ -211,6 +217,7 @@ class Shell(
                         "Per cambiare una parte usa modifica_quaderno o modifica_documento con un'ancora corta."
                     else when (val v = Azioni.valida(c.nome, args, oggi, regole)) {
                         is Validazione.Lettura -> lettura(v)
+                        is Validazione.Interna -> interna(v)
                         is Validazione.Rifiutata -> "Rifiutata dal programma: ${v.motivo}. Correggi e riprova, oppure chiedi al Ghost."
                         is Validazione.Scrittura -> when (val r = risolvi((v.proposta as? Proposta.ApriEsperimento)?.copy(origine = origine) ?: v.proposta)) {
                             is Risoluzione.Domanda -> "Non proposta: ${r.motivo}."
@@ -229,6 +236,7 @@ class Shell(
                         risultato.startsWith("Rifiutata") || risultato.startsWith("Chiamata non eseguita") -> " rifiutato (${Testi.corto(risultato.substringAfter(": "), 70)})"
                         risultato.startsWith("Non proposta") -> " fermato (${Testi.corto(risultato.substringAfter(": "), 70)})"
                         risultato.startsWith("Proposta mostrata") -> " proposto"
+                        risultato.startsWith("Nel taccuino") -> " scritto nel taccuino"
                         else -> " letto"
                     }
                     lavoro += buildJsonObject {
@@ -403,6 +411,69 @@ class Shell(
         else Risoluzione.Pronta(Proposta.AggiungiNodi(per.titolo, nuovi, sotto, nuovo, saltati, p.pilastro))
     }
 
+    // ── Pacchetto Adam (25/09/2026) ──
+
+    private suspend fun fotografia(oggi: LocalDate, giorniAgenda: Int) =
+        archivio.istantanea(oggi, mondo?.agenda(oggi, giorniAgenda) ?: AgendaLetta.NonLetta).copy(temperature = impostazioni.temperature)
+
+    // La temperatura di un compito: quella confermata dal Ghost su proposta dello Shell, altrimenti la tabella.
+    private fun temperaturaDi(c: Compito) = impostazioni.temperature[c.name] ?: c.temperatura
+
+    // Il taccuino: lo Shell scrive e riprende senza conferma, perché non tocca niente. Il risultato torna al modello.
+    private suspend fun interna(v: Validazione.Interna): String = when (v.nome) {
+        "scrivi_taccuino" -> {
+            val id = archivio.db.taccuino().inserisci(Nota(testo = Azioni.stringa(v.argomenti, "testo").orEmpty().trim(), creata = ora, ripresa = ora))
+            "Nel taccuino: nota #$id. Evapora tra ${Taccuino.GIORNI} giorni se non la riprendi."
+        }
+        "riprendi_nota" -> {
+            val id = Azioni.intero(v.argomenti, "id", -1).toLong()
+            val n = archivio.db.taccuino().per(id)
+            when {
+                n == null -> "Nel taccuino non c'è la nota #$id."
+                n.tolta -> "Nel taccuino la nota #$id l'ha tolta il Ghost: non si riprende. Se l'idea vale ancora, scrivila di nuovo."
+                else -> { archivio.db.taccuino().aggiorna(n.copy(ripresa = ora)); "Nel taccuino: nota #$id ripresa, vive altri ${Taccuino.GIORNI} giorni." }
+            }
+        }
+        else -> "Strumento interno non previsto."
+    }
+
+    // La voce dello Shell sulla propria regolazione: vale dal turno dopo, resta scritta nel diario di Adam col perché.
+    private suspend fun regolaTemperatura(p: Proposta.RegolaTemperatura): Esecuzione {
+        val c = Compito.entries.find { it.name == p.compito } ?: return Esecuzione(false, "Compito sconosciuto: ${p.compito}")
+        val prima = temperaturaDi(c)
+        impostazioni.temperature = impostazioni.temperature + (c.name to p.valore)
+        val t = "Temperatura per «${c.etichetta}»: ${Temperatura.etichetta(prima, false)} → ${Temperatura.etichetta(p.valore, false)}, dal prossimo turno. Perché: ${p.perche}"
+        archivio.db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = LocalDate.now().toString(), testo = t, fonte = "regolazione", creato = ora, aggiornato = ora))
+        return Esecuzione(true, t)
+    }
+
+    private suspend fun spedisciLettera(p: Proposta.LetteraArchitetto): Esecuzione {
+        val id = archivio.db.lettere().inserisci(it.resonance.adam.dati.Lettera(oggetto = p.oggetto, testo = p.testo, creata = ora))
+        val posta = Corrispondenza(archivio, impostazioni, cassetta)
+        if (!posta.pronta()) return Esecuzione(true, "Lettera «${p.oggetto}» pronta: parte appena in Setup c'è la cassetta delle lettere")
+        val l = posta.spedisci(archivio.db.lettere().per(id)!!)
+        return if (l.stato == it.resonance.adam.dati.StatoLettera.INVIATA) Esecuzione(true, "Lettera «${p.oggetto}» spedita all'architetto (n. ${l.numero}): risponde entro un giorno")
+        else Esecuzione(true, "Lettera «${p.oggetto}» salvata, ma non è partita (${l.errore}): si riprova da sola")
+    }
+
+    // Il dado della domenica: il caso lo tira il programma (seme scritto), lo Shell ci lavora sopra. Da qui esce una
+    // domanda o una proposta da confermare, mai un'azione.
+    suspend fun dado(scelta: it.resonance.adam.logica.Dado.Scelta, seme: Long): Esito {
+        controllaSpesa()?.let { return Esito(it, emptyList()) }
+        val cosa = it.resonance.adam.logica.Dado.descrizione(scelta)
+        nota("Il dado della domenica (seme $seme) ha scelto $cosa.")
+        val oggi = LocalDate.now()
+        val istantanea = fotografia(oggi, 2)
+        val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", Contesto.sistema(istantanea)) })
+        lavoro += storia(archivio.db.messaggi().ultimi(16))
+        lavoro += buildJsonObject {
+            put("role", "user")
+            put("content", "[Nota del programma, non del Ghost] Il dado della domenica ti porta $cosa. Non l'hai scelto tu. " +
+                "Scrivi al Ghost poche righe: cosa ti fa pensare, e una domanda o una proposta (anche con gli strumenti). Non spiegare il dado.")
+        }
+        return ciclo(lavoro, oggi, regole(istantanea, ""), impostazioni.modello, null, 0.0, origine = "dado", compito = Compito.DADO)
+    }
+
     // Il Ghost scrive «sì» e il modello rifà la stessa proposta: una sola in attesa basta.
     private suspend fun inAttesa(codifica: String) = archivio.db.messaggi().ultimi(40)
         .any { it.ruolo == Ruolo.PROPOSTA && it.stato == StatoProposta.IN_ATTESA && it.proposta == codifica }
@@ -453,8 +524,12 @@ class Shell(
         val p = archivio.proposta(m) ?: return "Proposta illeggibile."
         // Ciò che sta per uscire dal calendario si scrive PRIMA nel diario di Adam: si cerca, si legge, si può rimettere.
         mondo?.copia(p)?.let { archivio.db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = LocalDate.now().toString(), testo = it, fonte = "calendario", creato = ora, aggiornato = ora)) }
-        val e = if (versoIlMondo(p)) mondo?.esegui(p) ?: Esecuzione(false, "Non eseguito: calendario e posta si usano dall'app aperta")
-        else archivio.esegui(p)
+        val e = when {
+            p is Proposta.RegolaTemperatura -> regolaTemperatura(p)
+            p is Proposta.LetteraArchitetto -> spedisciLettera(p)
+            versoIlMondo(p) -> mondo?.esegui(p) ?: Esecuzione(false, "Non eseguito: calendario e posta si usano dall'app aperta")
+            else -> archivio.esegui(p)
+        }
         archivio.db.messaggi().aggiorna(m.copy(stato = if (e.riuscita) StatoProposta.ESEGUITA else StatoProposta.FALLITA))
         archivio.db.messaggi().inserisci(Messaggio(ruolo = if (e.riuscita) Ruolo.RICEVUTA else Ruolo.NOTA, testo = e.ricevuta, istante = ora))
         return e.ricevuta
@@ -469,7 +544,7 @@ class Shell(
     suspend fun parlaPerPrimo(momento: String, riassunto: String): String? {
         if (controllaSpesa() != null) return null
         val oggi = LocalDate.now()
-        val sistema = Contesto.sistema(archivio.istantanea(oggi, mondo?.agenda(oggi, 1) ?: AgendaLetta.NonLetta))
+        val sistema = Contesto.sistema(fotografia(oggi, 1))
         val richiesta = "È il momento: $momento. Dati del programma per questo momento:\n$riassunto\n\n" +
             "Scrivi al Ghost UN messaggio di notifica: al massimo due righe, nessun saluto di rito. " +
             "Nomina un solo fatto dai dati e una sola cosa concreta da fare o da notare. Non inventare numeri."
@@ -478,7 +553,7 @@ class Shell(
             buildJsonObject { put("role", "user"); put("content", richiesta) },
         ))
         return runCatching {
-            val (r, _) = chiama(impostazioni.modello, messaggi, null, MAX_TOKEN_BATTITO, Compito.BATTITO.temperatura)
+            val (r, _) = chiama(impostazioni.modello, messaggi, null, MAX_TOKEN_BATTITO, temperaturaDi(Compito.BATTITO))
             registraCosto(r)
             r.testo.takeIf { it.isNotBlank() }
         }.getOrNull()

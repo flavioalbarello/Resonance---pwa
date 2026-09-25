@@ -40,6 +40,18 @@ class MigrazioneTest {
         db.close()
     }
 
+    @Test fun dallaSetteAllaOttoNasconoTaccuinoFondoELettere() {
+        aiuto.createDatabase("otto.db", 7).close()
+        aiuto.runMigrationsAndValidate("otto.db", 8, true).close()
+        val db = Room.databaseBuilder(RuntimeEnvironment.getApplication(), Db::class.java, "otto.db").allowMainThreadQueries().build()
+        runBlocking {
+            assertTrue(db.taccuino().elenco().isEmpty())
+            assertTrue(db.fondo().elenco().isEmpty())
+            assertTrue(db.lettere().elenco().isEmpty())
+        }
+        db.close()
+    }
+
     @Test fun dallaSeiAllaSetteNodiEMessaggiRestanoComeErano() {
         aiuto.createDatabase("sette.db", 6).apply {
             execSQL("INSERT INTO percorsi (id, pilastro, titolo, scopo, creato, archiviato) VALUES (1, 'VIDYA', 'Tributo', '', 0, 0)")

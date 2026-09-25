@@ -2,6 +2,7 @@ package it.resonance.adam.ui
 
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -18,13 +19,17 @@ fun RegolazioneUi(vm: Adam) {
     val turni by vm.turni.collectAsState()
     val messaggi by vm.messaggi.collectAsState()
     val rinunce = remember(vm.avviso) { vm.senzaTemperatura() }
+    val confermate = remember(vm.avviso) { vm.temperatureConfermate() }
 
     Scheda(Colori.ambra) {
         Etichetta("Temperatura per compito", Colori.ambraInchiostro)
-        Tenue("La decide il programma, non il modello. Per forzarla su un messaggio: ＋ nella chat → «Più preciso» o «Più libero».")
+        Tenue("La decide il programma, non il modello. Lo Shell può proporre di cambiarla, con un perché, e tu confermi. Per forzarla su un messaggio: ＋ nella chat → «Più preciso» o «Più libero».")
         Compito.entries.forEach { c ->
-            Riga("${c.etichetta.replaceFirstChar { it.uppercase() }}: ${String.format(Locale.ITALIAN, "%.1f", c.temperatura)}")
+            val v = confermate[c.name]
+            Riga("${c.etichetta.replaceFirstChar { it.uppercase() }}: ${String.format(Locale.ITALIAN, "%.1f", v ?: c.temperatura)}" +
+                if (v != null) " (confermata da te; in tabella ${String.format(Locale.ITALIAN, "%.1f", c.temperatura)})" else "")
             Tenue(c.perche)
+            if (v != null) TextButton({ vm.ripristinaTemperatura(c) }) { Text("Riporta alla tabella") }
         }
     }
 

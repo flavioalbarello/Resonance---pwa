@@ -83,6 +83,10 @@ class Adam(app: Application) : AndroidViewModel(app) {
     val esperimenti = db.esperimenti().tutti().stato()
     val messaggi = db.messaggi().tutti().stato()
     val turni = db.turni().osserva(300).stato()
+    val note = db.taccuino().tutte().stato()
+    val movimenti = db.fondo().tutti().stato()
+    val lettere = db.lettere().tutte().stato()
+    val risposte = db.lettere().tutteLeRisposte().stato()
     val profilo: StateFlow<Profilo?> = db.profilo().osserva().stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val spesaMese = db.spesa().osserva(YearMonth.now().toString()).stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -381,6 +385,34 @@ class Adam(app: Application) : AndroidViewModel(app) {
     fun togliNodo(n: Nodo) = viewModelScope.launch { avviso = archivio.togliNodo(n) }
     fun pilastroNodo(n: Nodo, p: Pilastro?) = viewModelScope.launch { avviso = archivio.pilastroNodo(n, p) }
     fun senzaTemperatura() = impostazioni.senzaTemperatura
+    fun temperatureConfermate() = impostazioni.temperature
+    fun ripristinaTemperatura(c: it.resonance.adam.cervello.Compito) = viewModelScope.launch {
+        impostazioni.temperature = impostazioni.temperature - c.name
+        archivio.scriviVoce(Pilastro.ADAM, "Temperatura per «${c.etichetta}» riportata alla tabella (${c.temperatura}) dal Ghost.", LocalDate.now().toString())
+        avviso = "«${c.etichetta}» torna a ${c.temperatura}"
+    }
+    // Il Ghost toglie una nota dal taccuino: non si cancella, smette di essere letta (Legge 14).
+    fun togliNota(n: it.resonance.adam.dati.Nota) = viewModelScope.launch { db.taccuino().aggiorna(n.copy(tolta = true)) }
+    fun aggiungiMovimento(tipo: it.resonance.adam.dati.TipoMovimento, importo: Double, motivo: String) = viewModelScope.launch {
+        if (importo <= 0.0 || motivo.isBlank()) { avviso = "Serve un importo positivo e un motivo"; return@launch }
+        db.fondo().inserisci(it.resonance.adam.dati.Movimento(giorno = LocalDate.now().toString(), tipo = tipo, importo = importo, motivo = motivo.trim(), creato = System.currentTimeMillis()))
+    }
+    fun cassettaPronta() = it.resonance.adam.cervello.Corrispondenza(archivio, impostazioni).pronta()
+    fun controllaLettere() = viewModelScope.launch {
+        val posta = it.resonance.adam.cervello.Corrispondenza(archivio, impostazioni)
+        if (!posta.pronta()) { avviso = "Cassetta non configurata: Setup → Cassetta delle lettere"; return@launch }
+        val spedite = posta.spedisciInSospeso()
+        val nuove = posta.ritira()
+        nuove.forEach { (l, r) -> db.messaggi().inserisci(Messaggio(ruolo = Ruolo.NOTA, testo = "Risposta dell'architetto alla lettera «${l.oggetto}»:\n${r.testo}", istante = System.currentTimeMillis())) }
+        avviso = "Spedite $spedite, risposte nuove ${nuove.size}"
+    }
+    fun salvaCassetta(repo: String, token: String) {
+        if (!it.resonance.adam.cervello.Cassetta.valido(repo)) { avviso = "Serve «proprietario/nome» di un repository privato, non quello pubblico dell'app"; return }
+        impostazioni.cassetta = repo
+        if (token.isNotBlank()) impostazioni.tokenCassetta = token
+        avviso = "Cassetta salvata"
+    }
+    fun cassetta() = impostazioni.cassetta
     // Il modello si riprova con la temperatura: se la rifiuta ancora, torna in elenco da solo.
     fun dimenticaRinunce() { impostazioni.senzaTemperatura = emptySet(); avviso = "Al prossimo turno la temperatura si riprova con tutti i modelli." }
     fun spostaNodo(n: Nodo, genitoreId: Long?) = viewModelScope.launch { avviso = archivio.spostaNodo(n, genitoreId) }

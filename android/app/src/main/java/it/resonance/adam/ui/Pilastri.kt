@@ -60,8 +60,11 @@ fun PilastroUi(vm: Adam, p: Pilastro) {
         Text(p.etichetta.uppercase(), color = colore, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
             modifier = Modifier.padding(start = 16.dp, top = 12.dp))
         // Adam non ha numeri suoi: ha i percorsi che attraversano i pilastri e il modo in cui lo Shell si regola.
-        val schede = if (p == Pilastro.ADAM) listOf("Percorsi", "Diario", "Quaderno", "Regolazione") else listOf("Numeri", "Diario", "Percorsi", "Quaderno")
-        PrimaryTabRow(scheda, containerColor = Colori.fondo, contentColor = colore) {
+        val schede = if (p == Pilastro.ADAM) listOf("Percorsi", "Diario", "Quaderno", "Taccuino", "Fondo", "Lettere", "Regolazione")
+            else listOf("Numeri", "Diario", "Percorsi", "Quaderno")
+        if (p == Pilastro.ADAM) androidx.compose.material3.PrimaryScrollableTabRow(scheda, containerColor = Colori.fondo, contentColor = colore, edgePadding = 8.dp) {
+            schede.forEachIndexed { i, t -> Tab(scheda == i, { scheda = i }, text = { Text(t, maxLines = 1, softWrap = false, fontSize = 13.sp) }) }
+        } else PrimaryTabRow(scheda, containerColor = Colori.fondo, contentColor = colore) {
             schede.forEachIndexed { i, t -> Tab(scheda == i, { scheda = i }, text = { Text(t, maxLines = 1, softWrap = false, fontSize = 13.sp) }) }
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).imePadding()) {
@@ -70,6 +73,9 @@ fun PilastroUi(vm: Adam, p: Pilastro) {
                 "Diario" -> Diario(vm, p)
                 "Percorsi" -> Percorsi(vm, p)
                 "Regolazione" -> RegolazioneUi(vm)
+                "Taccuino" -> TaccuinoUi(vm)
+                "Fondo" -> FondoUi(vm)
+                "Lettere" -> LettereUi(vm)
                 else -> QuadernoUi(vm, p)
             }
             Spazio(120)

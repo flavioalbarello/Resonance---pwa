@@ -56,6 +56,20 @@ open class Impostazioni(context: Context) {
     var senzaTemperatura: Set<String>
         get() = p.getStringSet("senzaTemperatura", emptySet())!!.toSet()
         set(v) = p.edit().putStringSet("senzaTemperatura", v).apply()
+    // Le temperature per compito confermate dal Ghost su proposta dello Shell (nome compito → valore). Vuoto = la tabella.
+    var temperature: Map<String, Double>
+        get() = p.getString("temperature", "")!!.split(";").mapNotNull { r ->
+            r.split("=").takeIf { it.size == 2 }?.let { (k, v) -> v.toDoubleOrNull()?.let { k to it } }
+        }.toMap()
+        set(v) = p.edit().putString("temperature", v.entries.joinToString(";") { "${it.key}=${it.value}" }).apply()
+    // La cassetta delle lettere con l'architetto: un repository GitHub PRIVATO («proprietario/nome») e un token che può
+    // solo leggere e scrivere le issue di quel repository. Il token si cifra come la chiave OpenRouter.
+    var cassetta: String
+        get() = p.getString("cassetta", "")!!
+        set(v) = p.edit().putString("cassetta", v.trim()).apply()
+    open var tokenCassetta: String
+        get() = p.getString("tokenCassetta", null)?.let { runCatching { Segreti.decifra(it) }.getOrNull() }.orEmpty()
+        set(v) = p.edit().putString("tokenCassetta", if (v.isBlank()) null else Segreti.cifra(v.trim())).apply()
     // Quanti secondi di silenzio chiudono un messaggio a voce in modalità auto.
     var pausaInvio: Int
         get() = p.getInt("pausaInvio", 4)

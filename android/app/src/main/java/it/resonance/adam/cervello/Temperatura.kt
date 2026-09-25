@@ -11,6 +11,7 @@ enum class Compito(val etichetta: String, val temperatura: Double, val perche: S
     TURNO("conversazione e proposte", 0.4, "le proposte vogliono date, numeri e nomi esatti"),
     BATTITO("messaggio del battito", 0.7, "due righe che non siano sempre le stesse"),
     ESPERIMENTO("perturbazione ed esperimenti", 0.9, "deve proporre l'audace, non l'ovvio"),
+    DADO("dado della domenica", 0.9, "il caso l'ha tirato il programma: lo Shell ci lavora sopra libero"),
 }
 
 enum class Forzatura(val etichetta: String, val temperatura: Double) {

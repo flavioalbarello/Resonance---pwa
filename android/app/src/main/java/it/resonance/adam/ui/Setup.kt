@@ -177,6 +177,18 @@ fun Setup(vm: Adam, sistema: Sistema) {
             Button({ sistema.chiediCalendario() }, colors = ButtonDefaults.buttonColors(containerColor = Colori.air)) { Text("Collega il calendario") }
         }
 
+        // La cassetta delle lettere fra lo Shell e l'architetto: un repository GitHub privato e un token solo per le sue issue.
+        Scheda {
+            Etichetta("Cassetta delle lettere")
+            Tenue("Lo Shell scrive all'architetto dell'app senza che tu faccia da passacarte: ogni lettera parte da un tuo tocco. Serve un repository GitHub PRIVATO (non quello dell'app, che è pubblico) e un token «fine-grained» con Issues in lettura e scrittura solo su quel repository. Il token si cifra e non va nelle copie.")
+            var repo by remember { mutableStateOf(vm.cassetta()) }
+            var token by remember { mutableStateOf("") }
+            OutlinedTextField(repo, { repo = it }, label = { Text("proprietario/nome") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            OutlinedTextField(token, { token = it }, label = { Text(if (vm.cassettaPronta()) "Token (salvato; scrivi per sostituirlo)" else "Token") },
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), singleLine = true)
+            OutlinedButton({ vm.salvaCassetta(repo, token); token = "" }) { Text("Salva") }
+        }
+
         Scheda {
             Etichetta("Voce")
             Row(verticalAlignment = Alignment.CenterVertically) {

@@ -32,6 +32,7 @@ import it.resonance.adam.dati.Archivio
 import it.resonance.adam.dati.Db
 import it.resonance.adam.logica.AgendaLetta
 import it.resonance.adam.logica.Battito
+import it.resonance.adam.logica.Dado
 import it.resonance.adam.logica.Esperimenti
 import it.resonance.adam.logica.Perturbazione
 import it.resonance.adam.logica.Ristagno
@@ -61,6 +62,12 @@ object Battiti {
         wm.enqueueUniquePeriodicWork(
             "sensi", ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<SensiWorker>(6, TimeUnit.HOURS).build(),
+        )
+        // La cassetta delle lettere con l'architetto: spedisce ciò che è rimasto indietro e ritira le risposte.
+        wm.enqueueUniquePeriodicWork(
+            "lettere", ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<LettereWorker>(3, TimeUnit.HOURS)
+                .setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build()).build(),
         )
         // Le attese delle versioni precedenti suonerebbero una seconda volta.
         Battito.entries.forEach { wm.cancelUniqueWork(it.name) }
@@ -214,6 +221,15 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                         e.testo.ifBlank { "Lo Shell propone un esperimento." }, motivi.joinToString("\n"), "SHELL")
                 }
             }
+            // Il dado della domenica, dopo lo specchio della settimana: il caso lo tira il programma, e lascia il seme.
+            if (!prova && b == Battito.SETTIMANA) runCatching {
+                val seme = System.nanoTime()
+                Dado.scegli(i, archivio.db.voci().elenco(), seme)?.let { scelta ->
+                    val e = Shell(archivio, imp, mondo = mondo).dado(scelta, seme)
+                    if (e.testo.isNotBlank() || e.proposte.isNotEmpty()) Battiti.notifica(applicationContext, 112, "Il dado della domenica",
+                        e.testo.ifBlank { "Lo Shell ha una proposta." }, Dado.descrizione(scelta), "SHELL")
+                }
+            }
             when {
                 !arrivato -> "NON arrivato: ${Battiti.muto(applicationContext) ?: "notifica rifiutata"}"
                 voce != null -> "arrivato, scritto dal modello"
@@ -234,6 +250,27 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
 class SensiWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         runCatching { Sensi(applicationContext).sincronizza(Archivio(Db.di(applicationContext)), 7) }
+        return Result.success()
+    }
+}
+
+// Spedisce le lettere dello Shell rimaste indietro e ritira le risposte dell'architetto. Una risposta nuova entra in
+// chat come nota del programma (così lo Shell la legge al turno dopo) e, se il Ghost non è nell'app, notifica.
+class LettereWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val archivio = Archivio(Db.di(applicationContext))
+        val posta = it.resonance.adam.cervello.Corrispondenza(archivio, Impostazioni(applicationContext))
+        if (!posta.pronta()) return Result.success()
+        runCatching { posta.spedisciInSospeso() }
+        val nuove = runCatching { posta.ritira() }.getOrDefault(emptyList())
+        nuove.forEach { (l, r) ->
+            archivio.db.messaggi().inserisci(it.resonance.adam.dati.Messaggio(ruolo = it.resonance.adam.dati.Ruolo.NOTA,
+                testo = "Risposta dell'architetto alla lettera «${l.oggetto}»:\n${r.testo}", istante = System.currentTimeMillis()))
+        }
+        if (nuove.isNotEmpty() && !Primopiano.visibile) {
+            TurnoWorker.creaCanali(applicationContext)
+            Battiti.notifica(applicationContext, 113, "L'architetto ha risposto", nuove.joinToString("\n") { "«${it.first.oggetto}»" }, "", "ADAM", TurnoWorker.CANALE_RISPOSTE)
+        }
         return Result.success()
     }
 }

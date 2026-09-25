@@ -62,6 +62,34 @@ interface RitualiDao {
 }
 
 @Dao
+interface TaccuinoDao {
+    @Insert suspend fun inserisci(n: Nota): Long
+    @Update suspend fun aggiorna(n: Nota)
+    @Query("SELECT * FROM taccuino ORDER BY ripresa DESC") suspend fun elenco(): List<Nota>
+    @Query("SELECT * FROM taccuino ORDER BY ripresa DESC") fun tutte(): Flow<List<Nota>>
+    @Query("SELECT * FROM taccuino WHERE id = :id") suspend fun per(id: Long): Nota?
+}
+
+@Dao
+interface FondoDao {
+    @Insert suspend fun inserisci(m: Movimento): Long
+    @Query("SELECT * FROM movimenti ORDER BY giorno, creato") suspend fun elenco(): List<Movimento>
+    @Query("SELECT * FROM movimenti ORDER BY giorno DESC, creato DESC") fun tutti(): Flow<List<Movimento>>
+}
+
+@Dao
+interface LettereDao {
+    @Insert suspend fun inserisci(l: Lettera): Long
+    @Update suspend fun aggiorna(l: Lettera)
+    @Query("SELECT * FROM lettere WHERE id = :id") suspend fun per(id: Long): Lettera?
+    @Query("SELECT * FROM lettere ORDER BY creata") suspend fun elenco(): List<Lettera>
+    @Query("SELECT * FROM lettere ORDER BY creata DESC") fun tutte(): Flow<List<Lettera>>
+    @Insert suspend fun inserisciRisposta(r: RispostaLettera): Long
+    @Query("SELECT * FROM risposte ORDER BY istante") suspend fun risposte(): List<RispostaLettera>
+    @Query("SELECT * FROM risposte ORDER BY istante") fun tutteLeRisposte(): Flow<List<RispostaLettera>>
+}
+
+@Dao
 interface TurniDao {
     @Insert suspend fun inserisci(t: Turno): Long
     @Query("SELECT * FROM (SELECT * FROM turni ORDER BY istante DESC LIMIT :n) ORDER BY istante") suspend fun ultimi(n: Int): List<Turno>
@@ -122,14 +150,14 @@ interface ProfiloDao {
 
 @Database(
     entities = [Misura::class, Voce::class, Versione::class, Rituale::class, Spunta::class, Percorso::class,
-        Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class, Esperimento::class, Turno::class],
-    version = 7,
+        Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class, Esperimento::class, Turno::class, Nota::class, Movimento::class, Lettera::class, RispostaLettera::class],
+    version = 8,
     exportSchema = true,
     // 2: Profilo.nomiProtetti (calendario e posta, 23/09/2026).
     // 3: Messaggio.allegati (immagini e documenti nella chat, 23/09/2026).
     // 4: Messaggio.modello, costo, motore (scelta automatica del motore).
     // 5: esperimenti (l'anello di Anochin sulla vita).
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun misure(): MisureDao
@@ -140,6 +168,9 @@ abstract class Db : RoomDatabase() {
     abstract fun quaderni(): QuaderniDao
     abstract fun messaggi(): MessaggiDao
     abstract fun turni(): TurniDao
+    abstract fun taccuino(): TaccuinoDao
+    abstract fun fondo(): FondoDao
+    abstract fun lettere(): LettereDao
     abstract fun spesa(): SpesaDao
     abstract fun profilo(): ProfiloDao
     abstract fun esperimenti(): EsperimentiDao
