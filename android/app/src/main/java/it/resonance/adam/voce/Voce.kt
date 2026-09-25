@@ -10,8 +10,10 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import java.util.Locale
 
-// Un ascolto = una frase. Il modo "auto" lo riaccende da fuori, dopo la risposta: così l'app
-// non ascolta mai mentre parla, per costruzione e non per una finestra di tempo da azzeccare.
+// Un ascolto = una frase. Il riconoscimento di Google chiude alla prima pausa di un secondo, e ignora la durata del
+// silenzio che gli si chiede: le frasi si concatenano da fuori (ui/Adam.kt), e il messaggio lo chiude l'app, non il
+// riconoscimento (Raccolta, qui sotto). Il modo "auto" lo riaccende dopo la risposta: così l'app non ascolta mai
+// mentre parla, per costruzione e non per una finestra di tempo da azzeccare.
 class Ascolto(
     private val context: Context,
     private val parziale: (String) -> Unit,
@@ -84,6 +86,7 @@ class Ascolto(
 class Parlato(context: Context) : TextToSpeech.OnInitListener {
     private var pronto = false
     private var dopo: (() -> Unit)? = null
+    @Volatile private var ultimo = ""
     private val principale = android.os.Handler(android.os.Looper.getMainLooper())
     private val tts = TextToSpeech(context, this)
 
@@ -93,7 +96,7 @@ class Parlato(context: Context) : TextToSpeech.OnInitListener {
         tts.language = Locale.ITALIAN
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(id: String?) {}
-            override fun onDone(id: String?) = finito()
+            override fun onDone(id: String?) { if (id == ultimo) finito() }
             @Deprecated("Deprecated in Java") override fun onError(id: String?) = finito()
         })
     }
@@ -104,11 +107,16 @@ class Parlato(context: Context) : TextToSpeech.OnInitListener {
         principale.post(f)
     }
 
+    // Un testo lungo (un piano di sette giorni) supera il massimo che la sintesi accetta in una volta, e non si
+    // sentiva niente: si divide in pezzi accodati, e la fine è quella dell'ultimo.
     fun parla(testo: String, allaFine: () -> Unit) {
-        val pulito = perLaVoce(testo)
-        if (!pronto || pulito.isBlank()) { allaFine(); return }
+        val max = runCatching { TextToSpeech.getMaxSpeechInputLength() }.getOrDefault(4000).coerceAtMost(3000)
+        val pezzi = pezzi(perLaVoce(testo), max)
+        if (!pronto || pezzi.isEmpty()) { allaFine(); return }
         dopo = allaFine
-        tts.speak(pulito, TextToSpeech.QUEUE_FLUSH, null, "r${System.nanoTime()}")
+        val base = "r${System.nanoTime()}"
+        ultimo = "$base-${pezzi.size - 1}"
+        pezzi.forEachIndexed { i, p -> tts.speak(p, if (i == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, "$base-$i") }
     }
 
     fun zitto() { tts.stop(); dopo = null }
@@ -116,6 +124,54 @@ class Parlato(context: Context) : TextToSpeech.OnInitListener {
 
     companion object {
         fun perLaVoce(t: String) = t.replace(Regex("[*_#`>]+"), "").replace(Regex("\\[(.*?)]\\(.*?\\)"), "$1").trim()
+
+        /** Pezzi di al massimo `max` caratteri, tagliati dove la voce farebbe comunque una pausa. */
+        fun pezzi(t: String, max: Int): List<String> {
+            val unita = t.split(Regex("(?<=[.!?:;\\n])\\s+")).flatMap { u -> if (u.length <= max) listOf(u) else u.chunked(max) }
+            val fuori = mutableListOf<String>()
+            val b = StringBuilder()
+            for (u in unita.map { it.trim() }.filter { it.isNotEmpty() }) {
+                if (b.isNotEmpty() && b.length + 1 + u.length > max) { fuori += b.toString(); b.clear() }
+                if (b.isNotEmpty()) b.append(' ')
+                b.append(u)
+            }
+            if (b.isNotEmpty()) fuori += b.toString()
+            return fuori
+        }
+    }
+}
+
+// Un messaggio a voce fatto di più frasi. Si chiude dopo una pausa lunga (la decide l'app, non il riconoscimento)
+// o subito se finisce con «invia»; «annulla messaggio» lo cancella. Così si parla come si parla, con le pause,
+// senza toccare il telefono — anche guidando.
+object Raccolta {
+    sealed class Esito {
+        data class Continua(val testo: String) : Esito()
+        data class Invia(val testo: String) : Esito()
+        data object Azzera : Esito()
+    }
+
+    private val INVIO = Regex("""[\s,.;:]*\b(invia(\s+(il\s+)?messaggio)?|fine\s+messaggio)[\s.!]*$""", RegexOption.IGNORE_CASE)
+    private val AZZERA = setOf("annulla messaggio", "cancella messaggio", "cancella tutto", "ricomincia")
+
+    fun aggiungi(raccolto: String, segmento: String): Esito {
+        val s = segmento.trim()
+        if (s.lowercase().trimEnd('.', '!') in AZZERA) return Esito.Azzera
+        val chiude = INVIO.containsMatchIn(s)
+        val pulito = if (chiude) s.replace(INVIO, "").trim() else s
+        val testo = listOf(raccolto.trim(), pulito).filter { it.isNotEmpty() }.joinToString(" ")
+        return if (chiude && testo.isNotEmpty()) Esito.Invia(testo) else Esito.Continua(testo)
+    }
+}
+
+// Un segnale breve quando il messaggio parte o si cancella: con gli occhi sulla strada, l'orecchio basta.
+object Segnale {
+    fun dai(ok: Boolean) {
+        runCatching {
+            val t = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 70)
+            t.startTone(if (ok) android.media.ToneGenerator.TONE_PROP_ACK else android.media.ToneGenerator.TONE_PROP_NACK, 200)
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ t.release() }, 400)
+        }
     }
 }
 

@@ -83,7 +83,11 @@ fun ShellUi(vm: Adam, sistema: Sistema) {
         }
         if (vm.pensa) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Colori.ambra)
         if (vm.parziale.isNotBlank()) Text("${vm.parziale}…", color = Colori.tenue, fontStyle = FontStyle.Italic, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-        if (vm.ascolta == Ascolta.AUTO) Text("Modalità auto: ascolto e rispondo a voce. Tocca l'ancora rossa per fermare.", color = Colori.allarme, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
+        if (vm.ascolta == Ascolta.AUTO) {
+            if (vm.raccolto.isNotBlank()) Text("«${vm.raccolto}»", color = Colori.inchiostro, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
+            Text("Modalità auto: parla anche con pause. Parte dopo ${vm.pausaInvio()} secondi di silenzio, o subito se dici «invia»; «annulla messaggio» lo cancella. Tocca l'ancora rossa per fermare.",
+                color = Colori.allarme, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
+        }
         if (vm.inAllegato.isNotEmpty() || vm.preparo > 0) Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -134,10 +138,15 @@ private fun Messaggio(vm: Adam, m: Messaggio) {
                     .border(1.dp, Colori.linea, RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp))
                     .padding(12.dp))
             }
-            // Chi ha risposto e quanto è costato: per scegliere il modello con un numero.
-            m.modello?.let { mod ->
-                Text(listOfNotNull(Instradatore.etichetta(mod), m.motore, m.costo?.let { "%.2f ¢".format(it * 100) }).joinToString(" · "),
-                    color = Colori.tenue, fontSize = 11.sp, modifier = Modifier.padding(start = 8.dp, top = 2.dp))
+            // Chi ha risposto e quanto è costato (per scegliere il modello con un numero), e la lettura ad alta voce.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                m.modello?.let { mod ->
+                    Text(listOfNotNull(Instradatore.etichetta(mod), m.motore, m.costo?.let { "%.2f ¢".format(it * 100) }).joinToString(" · "),
+                        color = Colori.tenue, fontSize = 11.sp, modifier = Modifier.padding(start = 8.dp))
+                }
+                TextButton({ vm.leggi(m) }, modifier = Modifier.testTag("leggi-${m.id}")) {
+                    Text(if (vm.inLettura == m.id) "⏹ Ferma" else "🔊 Ascolta", fontSize = 12.sp, color = Colori.ambraInchiostro)
+                }
             }
         }
         Ruolo.PROPOSTA -> Column(Modifier

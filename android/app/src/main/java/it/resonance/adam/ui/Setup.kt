@@ -183,6 +183,14 @@ fun Setup(vm: Adam, sistema: Sistema) {
                 Switch(leggiAuto, { leggiAuto = it; imp.leggiRisposteInAuto = it })
                 Text("  In modalità auto leggi le risposte ad alta voce")
             }
+            // Il riconoscimento chiude alla prima pausa; il messaggio lo chiude l'app, dopo questo silenzio.
+            Tenue("Modalità auto: il messaggio parte dopo questi secondi di silenzio, o subito se finisci con «invia». «Annulla messaggio» lo cancella.")
+            var pausa by remember { mutableStateOf(imp.pausaInvio) }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(2, 3, 4, 6, 8).forEach { sec ->
+                    androidx.compose.material3.FilterChip(pausa == sec, { pausa = sec; imp.pausaInvio = sec }, label = { Text("$sec s") })
+                }
+            }
         }
 
         ProfiloUi(vm, profilo ?: Profilo())

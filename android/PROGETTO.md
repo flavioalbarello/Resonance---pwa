@@ -119,6 +119,14 @@ automatica). Due livelli al massimo; un nodo con sotto-nodi non ha uno stato suo
 Nell'app il padre si apre al tocco; la pressione lunga sposta sotto un altro nodo, al primo livello, o toglie.
 `crea_percorso` ora chiede tappe concrete: le fasi generiche del tributo le aveva inventate lo Shell.
 
+**La voce senza fretta (25/09/2026).** In modalità auto partiva solo l'inizio della frase: il riconoscimento di
+Google chiude alla prima pausa di un secondo e ignora la durata di silenzio richiesta. Ora le frasi si concatenano
+(`voce/Raccolta`): il messaggio parte dopo N secondi di silenzio (Setup → Voce, 2–8 s, predefinito 4), o subito se
+finisce con «invia»; «annulla messaggio» lo cancella; un segnale sonoro dice partito/cancellato. La bozza da
+confermare col dito era l'alternativa, scartata: un gesto in più mentre si guida. La dettatura continua di frase in
+frase fino al silenzio lungo o al tocco. Sotto ogni risposta «🔊 Ascolta»; i testi lunghi si leggono a pezzi
+(`Parlato.pezzi`), perché oltre il massimo della sintesi non si sentiva niente.
+
 **Promesse sul futuro.** Gemini ha scritto «Domani… riprendiamo»: lo Shell non torna da solo. Regola nel prompt
 (proporre `crea_evento` come promemoria) e controllo del programma (`Testi.promette`), che aggiunge una nota se la
 risposta promette senza aver proposto niente.

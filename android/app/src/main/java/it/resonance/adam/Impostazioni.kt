@@ -52,6 +52,10 @@ open class Impostazioni(context: Context) {
     var mattinoDalModello: Boolean
         get() = p.getBoolean("mattinoModello", true)
         set(v) = p.edit().putBoolean("mattinoModello", v).apply()
+    // Quanti secondi di silenzio chiudono un messaggio a voce in modalità auto.
+    var pausaInvio: Int
+        get() = p.getInt("pausaInvio", 4)
+        set(v) = p.edit().putInt("pausaInvio", v).apply()
     var leggiRisposteInAuto: Boolean
         get() = p.getBoolean("leggiAuto", true)
         set(v) = p.edit().putBoolean("leggiAuto", v).apply()

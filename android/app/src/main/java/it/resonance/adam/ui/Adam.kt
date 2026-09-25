@@ -46,6 +46,8 @@ import it.resonance.adam.sensi.Sensi
 import it.resonance.adam.voce.Ascolto
 import it.resonance.adam.voce.ComandiVocali
 import it.resonance.adam.voce.Parlato
+import it.resonance.adam.voce.Segnale
+import it.resonance.adam.voce.Raccolta
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -199,13 +201,21 @@ class Adam(app: Application) : AndroidViewModel(app) {
     private var silenzi = 0
     private val ascolto by lazy {
         Ascolto(getApplication(),
-            parziale = { parziale = it },
+            parziale = { p -> parziale = p; if (p.isNotBlank()) invioJob?.cancel() },
             finale = { t -> parziale = ""; ricevuto(t) },
             fine = { errore -> finito(errore) },
         )
     }
 
+    // Modalità auto: ciò che il Ghost ha detto finora in questo messaggio. Parte dopo `pausaInvio` secondi di silenzio,
+    // o subito con «invia». Prima partiva alla prima pausa del riconoscimento, a metà frase (visto il 25/09).
+    var raccolto by mutableStateOf("")
+    private var invioJob: kotlinx.coroutines.Job? = null
+    // Il segmento appena arrivato ha già fatto partire qualcosa (invio, sì/no): chi chiude l'ascolto non lo riaccende.
+    private var azione = false
+
     fun microfonoDisponibile() = ascolto.disponibile()
+    fun pausaInvio() = impostazioni.pausaInvio
 
     fun avviaDettatura() { ferma(); ascolta = Ascolta.DETTATURA; ascolto.avvia() }
 
@@ -218,10 +228,15 @@ class Adam(app: Application) : AndroidViewModel(app) {
     }
 
     fun ferma() {
+        invioJob?.cancel()
         ascolto.ferma()
         parlato.zitto()
+        inLettura = null
         ascolta = Ascolta.SPENTO
         parziale = ""
+        // Ciò che era stato detto non si perde: resta nella casella, da inviare o correggere.
+        if (raccolto.isNotBlank()) input = listOf(input.trim(), raccolto).filter { it.isNotEmpty() }.joinToString(" ")
+        raccolto = ""
     }
 
     private fun ricevuto(t: String) {
@@ -232,20 +247,75 @@ class Adam(app: Application) : AndroidViewModel(app) {
             }
             Ascolta.AUTO -> {
                 silenzi = 0
-                viewModelScope.launch {
-                    val inAttesa = db.messaggi().ultimaInAttesa()
-                    when {
-                        inAttesa != null && ComandiVocali.eSi(t) -> {
-                            db.messaggi().inserisci(Messaggio(ruolo = Ruolo.GHOST, testo = t, istante = System.currentTimeMillis()))
-                            val r = shell.conferma(inAttesa.id)
-                            parla(r)
+                invioJob?.cancel()
+                // «sì» / «no» da soli, a messaggio vuoto, rispondono alla proposta in attesa.
+                if (raccolto.isBlank() && (ComandiVocali.eSi(t) || ComandiVocali.eNo(t))) {
+                    azione = true
+                    viewModelScope.launch {
+                        val inAttesa = db.messaggi().ultimaInAttesa()
+                        when {
+                            // Nessuna proposta: era una parola del messaggio. Chi ha chiuso l'ascolto è già passato, quindi si riaccende qui.
+                            inAttesa == null -> { segmento(t); azione = false; if (ascolta == Ascolta.AUTO && !pensa) ascolto.avvia() }
+                            ComandiVocali.eSi(t) -> {
+                                db.messaggi().inserisci(Messaggio(ruolo = Ruolo.GHOST, testo = t, istante = System.currentTimeMillis()))
+                                parla(shell.conferma(inAttesa.id))
+                            }
+                            else -> {
+                                db.messaggi().inserisci(Messaggio(ruolo = Ruolo.GHOST, testo = t, istante = System.currentTimeMillis()))
+                                shell.rifiuta(inAttesa.id)
+                                parla("Annullato.")
+                            }
                         }
-                        inAttesa != null && ComandiVocali.eNo(t) -> {
-                            db.messaggi().inserisci(Messaggio(ruolo = Ruolo.GHOST, testo = t, istante = System.currentTimeMillis()))
-                            shell.rifiuta(inAttesa.id)
-                            parla("Annullato.")
-                        }
-                        else -> invia(t)
+                    }
+                    return
+                }
+                segmento(t)
+            }
+            Ascolta.SPENTO -> {}
+        }
+    }
+
+    private fun segmento(t: String) {
+        when (val e = Raccolta.aggiungi(raccolto, t)) {
+            is Raccolta.Esito.Invia -> { azione = true; spedisci(e.testo) }
+            Raccolta.Esito.Azzera -> { raccolto = ""; Segnale.dai(false) }
+            is Raccolta.Esito.Continua -> {
+                raccolto = e.testo
+                invioJob = viewModelScope.launch {
+                    kotlinx.coroutines.delay(impostazioni.pausaInvio * 1000L)
+                    if (ascolta == Ascolta.AUTO && !pensa && raccolto.isNotBlank()) spedisci(raccolto)
+                }
+            }
+        }
+    }
+
+    private fun spedisci(t: String) {
+        invioJob?.cancel()
+        raccolto = ""
+        parziale = ""
+        Segnale.dai(true)
+        ascolto.ferma()
+        invia(t)
+    }
+
+    private fun finito(errore: String?) {
+        when (ascolta) {
+            // La dettatura continua di frase in frase; si ferma al silenzio lungo del riconoscimento o col tocco.
+            Ascolta.DETTATURA -> if (errore == null) ascolto.avvia() else {
+                ascolta = Ascolta.SPENTO
+                parziale = ""
+                if (errore != "silenzio" && errore != "annullato") avviso = "Voce: $errore"
+            }
+            Ascolta.AUTO -> {
+                if (azione) { azione = false; return }
+                if (pensa || errore == "annullato") return
+                when {
+                    errore == null -> ascolto.avvia()
+                    raccolto.isNotBlank() -> spedisci(raccolto)
+                    errore == "silenzio" && ++silenzi < 3 -> ascolto.avvia()
+                    else -> {
+                        ascolta = Ascolta.SPENTO
+                        avviso = if (errore == "silenzio") "Modalità auto in pausa dopo tre silenzi." else "Modalità auto ferma: $errore"
                     }
                 }
             }
@@ -253,18 +323,18 @@ class Adam(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun finito(errore: String?) {
-        when (ascolta) {
-            Ascolta.DETTATURA -> { ascolta = Ascolta.SPENTO; if (errore != null && errore != "silenzio" && errore != "annullato") avviso = "Voce: $errore" }
-            Ascolta.AUTO -> {
-                if (errore == null || errore == "annullato" || pensa) return
-                if (errore == "silenzio" && ++silenzi < 3) { ascolto.avvia(); return }
-                ascolta = Ascolta.SPENTO
-                avviso = if (errore == "silenzio") "Modalità auto in pausa dopo tre silenzi." else "Modalità auto ferma: $errore"
-            }
-            Ascolta.SPENTO -> {}
-        }
+    // ── Lettura ad alta voce di un messaggio, a richiesta ──
+    var inLettura by mutableStateOf<Long?>(null)
+
+    fun leggi(m: Messaggio) {
+        if (inLettura == m.id) { parlato.zitto(); inLettura = null; riprendiAuto(); return }
+        invioJob?.cancel()
+        ascolto.ferma()
+        inLettura = m.id
+        parlato.parla(m.testo) { inLettura = null; riprendiAuto() }
     }
+
+    private fun riprendiAuto() { if (ascolta == Ascolta.AUTO && !pensa) ascolto.avvia() }
 
     private suspend fun rispondiAVoce(esito: Shell.Esito) {
         val proposte = esito.proposte.mapNotNull { db.messaggi().per(it)?.testo }
@@ -278,7 +348,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
     private fun parla(testo: String) {
         if (ascolta != Ascolta.AUTO) return
         ascolto.ferma()
-        parlato.parla(testo) { if (ascolta == Ascolta.AUTO) ascolto.avvia() }
+        parlato.parla(testo) { riprendiAuto() }
     }
 
     // ── Gesti diretti, senza modello ──
