@@ -123,7 +123,19 @@ class Parlato(context: Context) : TextToSpeech.OnInitListener {
     fun chiudi() { tts.shutdown() }
 
     companion object {
-        fun perLaVoce(t: String) = t.replace(Regex("[*_#`>]+"), "").replace(Regex("\\[(.*?)]\\(.*?\\)"), "$1").trim()
+        // Ciò che si vede ma non si dice (riunione del 26/09: «i segni delle tabelle, riprodotti in audio, sono un incubo»).
+        // Le righe di sola cornice spariscono; le celle diventano una frase; trattini e frecce a inizio riga non si leggono.
+        fun perLaVoce(t: String): String = t.lines().mapNotNull { riga ->
+            val r = riga.trim()
+            when {
+                r.isEmpty() -> ""
+                Regex("^[|:\\-\\s]+$").matches(r) && r.contains('-') -> null
+                r.startsWith("|") || r.endsWith("|") -> r.trim('|').split('|').map { it.trim() }.filter { it.isNotEmpty() }.joinToString(", ") + "."
+                else -> r.replace(Regex("^([-•→]|\\d+[.)])\\s+"), "")
+            }
+        }.joinToString("\n")
+            .replace(Regex("[*_#`>]+"), "").replace(Regex("\\[(.*?)]\\(.*?\\)"), "$1")
+            .replace(Regex("\\s*→\\s*"), ", ").replace(" · ", ", ").replace(Regex("\\n{3,}"), "\n\n").trim()
 
         /** Pezzi di al massimo `max` caratteri, tagliati dove la voce farebbe comunque una pausa. */
         fun pezzi(t: String, max: Int): List<String> {

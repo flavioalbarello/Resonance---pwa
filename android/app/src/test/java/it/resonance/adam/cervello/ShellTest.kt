@@ -744,6 +744,19 @@ class ShellTest {
         assertTrue(contenuto(protetto.ricevuti[1], protetto.ricevuti[1].size - 1).contains("non fa uscire"))
     }
 
+    @Test fun unaConsegnaDettaMaNonPropostaTornaAlModelloEPoiSiSegnala() = runBlocking {
+        archivio.esegui(Proposta.CreaPercorso(Pilastro.ADAM, "Resonance", "", listOf("x")))
+        // Prima volta: il programma lo rimanda al modello, che questa volta la propone davvero.
+        val m = FintoModello(testo("Consegna presa: il documento entro 3 giorni."),
+            chiama("prendi_consegna", """{"cosa":"Sintesi","documento":"Occhi e orecchie di Adam","percorso":"Resonance","giorni":3}"""), testo("Proposta."))
+        val e = shell(m, FintaCassetta()).turno("prendi la consegna")
+        assertTrue(contenuto(m.ricevuti[1], m.ricevuti[1].size - 1).contains("non l'hai proposta"))
+        assertEquals(1, e.proposte.size)
+        // Se insiste senza proporla, resta una nota per il Ghost.
+        shell(FintoModello(testo("Prendo in carico la consegna."), testo("Consegna presa, davvero.")), FintaCassetta()).turno("ok")
+        assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.NOTA && it.testo.startsWith("Lo Shell dice di aver preso una consegna") })
+    }
+
     @Test fun lEtichettaDellArchitettoScrittaDalloShellSiToglie() = runBlocking {
         shell(FintoModello(testo("[L'architetto (Claude Code), non il Ghost] Ricevuto.")), FintaCassetta()).turno("effetto")
         assertEquals("Ricevuto.", db.messaggi().elenco().single { it.ruolo == Ruolo.SHELL }.testo)

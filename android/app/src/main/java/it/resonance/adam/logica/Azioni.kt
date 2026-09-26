@@ -834,6 +834,10 @@ object Testi {
 
     // Le chiamate scritte come testo invece che fatte (visto il 26/09 con un modello leggero): «crea_evento(titolo=…)».
     // Il Ghost le legge come proposte, e non esiste niente da confermare.
+    // «Consegna presa», «prendo in carico la consegna» senza averla proposta (riunione del 26/09, due volte di fila).
+    private val DICHIARA_CONSEGNA = Regex("""consegna\s+(presa|accettata)|prendo\s+(in\s+carico\s+)?(la|una|questa)\s+consegna|ho\s+preso\s+(la|una)\s+consegna""", RegexOption.IGNORE_CASE)
+    fun dichiaraConsegna(t: String) = DICHIARA_CONSEGNA.containsMatchIn(t)
+
     fun chiamateScritte(t: String, nomi: Collection<String>): List<String> =
         nomi.filter { n -> Regex("""(?<![\w])""" + Regex.escape(n) + """\s*\(""").containsMatchIn(t) }
 }

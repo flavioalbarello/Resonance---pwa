@@ -292,6 +292,18 @@ class Shell(
                 if (r.troncata) troncata = true
                 if (r.chiamate.isEmpty()) {
                     val scritte = Testi.chiamateScritte(r.testo, Azioni.strumenti.map { it.nome })
+                    // Una consegna dichiarata a parole e mai proposta: si rimanda al modello una volta, come le chiamate scritte.
+                    if (scritte.isEmpty() && Testi.dichiaraConsegna(r.testo) && !consegnaProposta(proposte) && !corretto && giro < GIRI_MASSIMI - 1) {
+                        corretto = true
+                        traccia += "consegna dichiarata senza proporla"
+                        lavoro += buildJsonObject { put("role", "assistant"); put("content", r.testo) }
+                        lavoro += buildJsonObject {
+                            put("role", "user")
+                            put("content", "[Nota del programma, non del Ghost] Hai scritto di aver preso una consegna, ma non l'hai proposta: così non " +
+                                "esiste. Usa prendi_consegna (cosa, titolo del documento, percorso, giorni), poi rispondi al Ghost.")
+                        }
+                        continue
+                    }
                     if (scritte.isNotEmpty() && !corretto && giro < GIRI_MASSIMI - 1) {
                         corretto = true
                         traccia += "chiamate scritte come testo (${scritte.joinToString()})"
@@ -386,10 +398,15 @@ class Shell(
         Testi.chiamateScritte(testo, Azioni.strumenti.map { it.nome }).takeIf { it.isNotEmpty() && proposte.isEmpty() }?.let {
             nota("Lo Shell ha scritto ${it.joinToString()} come testo invece di proporlo: non c'è niente da confermare. Chiedigli di proporlo davvero.")
         }
+        if (Testi.dichiaraConsegna(testo) && !consegnaProposta(proposte))
+            nota("Lo Shell dice di aver preso una consegna, ma non l'ha proposta: non esiste. Chiedigli di usare prendi_consegna.")
         if (proposte.isEmpty() && Testi.promette(testo))
             nota("Lo Shell non torna da solo su questo, a meno di una consegna (prendi_consegna) o di un evento in calendario: chiedigli l'una o l'altro.")
         return Esito(testo, proposte)
     }
+
+    private suspend fun consegnaProposta(proposte: List<Long>) =
+        proposte.any { id -> archivio.db.messaggi().per(id)?.let { archivio.proposta(it) } is Proposta.PrendiConsegna }
 
     companion object {
         // Erano 4: tre letture e una ricerca bastavano a finirli (visto il 24/09, «dove hai registrato…»).
