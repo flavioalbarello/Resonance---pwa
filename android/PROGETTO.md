@@ -216,6 +216,8 @@ nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo ch
     spunta è del Ghost, piccola, si annulla con un tocco, e la ricevuta va in chat. Tasti: Copia (righe da fare, da
     incollare nella nota condivisa di Keep: Keep non ha API per gli account normali), Condividi, Fissa (notifica che
     resta finché la lista vive, `battito/Fissati.kt`), Tieni. Il battito pulisce e ridisegna le notifiche.
+    Poi, su richiesta del Ghost: «Aggiungi una voce» in fondo a ogni appunto, e pressione lunga su una voce per
+    correggerla o toglierla (la spunta resta com'era; una lista finita a cui si aggiunge torna a vivere).
   - *PDF allegato* (`mondo/Pdf.kt`, `PdfDocument` di Android, nessuna libreria): `scrivi_mail` con `allegato` (un
     appunto o un documento). Il testo si risolve PRIMA di proporre, e il guardiano dei nomi protetti lo controlla lì;
     parte con ACTION_SEND verso Gmail. **Carenza**: Robolectric non implementa `PdfDocument`, il PDF non ha una prova

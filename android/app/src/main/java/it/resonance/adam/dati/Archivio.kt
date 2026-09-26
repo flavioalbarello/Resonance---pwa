@@ -389,6 +389,9 @@ class Archivio(val db: Db) {
     } catch (e: Ambiguo) { Esecuzione(false, "Non spuntato: ${e.message}") }
 
     suspend fun alternaRiga(a: Appunto, indice: Int, oggi: LocalDate = LocalDate.now()) = db.lavagna().aggiorna(Lavagna.alterna(a, indice, oggi))
+    // Gesti del Ghost sulla sua lavagna: niente conferma, è lui che scrive.
+    suspend fun aggiungiRighe(a: Appunto, testo: String, oggi: LocalDate = LocalDate.now()) = db.lavagna().aggiorna(Lavagna.aggiungi(a, testo, oggi))
+    suspend fun cambiaRiga(a: Appunto, indice: Int, testo: String, oggi: LocalDate = LocalDate.now()) = db.lavagna().aggiorna(Lavagna.cambia(a, indice, testo, oggi))
 
     /** «Tieni»: l'appunto diventa un documento in un percorso, e lascia la lavagna. */
     suspend fun tieniAppunto(a: Appunto, percorso: Percorso, oggi: LocalDate = LocalDate.now()): String {

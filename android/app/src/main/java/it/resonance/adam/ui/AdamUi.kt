@@ -22,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import it.resonance.adam.dati.StatoConsegna
@@ -74,8 +76,10 @@ fun LavagnaUi(vm: Adam) {
     val oggi = LocalDate.now()
     var nuovo by remember { mutableStateOf(false) }
     var daTenere by remember { mutableStateOf<Appunto?>(null) }
+    // La riga tenuta premuta: si corregge o si toglie.
+    var inModifica by remember { mutableStateOf<Pair<Appunto, Int>?>(null) }
     val (vivi, finiti) = appunti.filterNot { it.tenuto }.partition { Lavagna.vivo(it, oggi) }
-    Tenue("Appunti usa e getta: la lista della spesa, le cose di questi giorni. Tocca una riga per spuntarla. Finito o scaduto, un appunto esce da qui e dalla memoria dello Shell; dopo ${Lavagna.GIORNI_DOPO} giorni si cancella. Quello che merita di restare: Tieni.")
+    Tenue("Appunti usa e getta: la lista della spesa, le cose di questi giorni. Tocca una riga per spuntarla, tienila premuta per correggerla. Finito o scaduto, un appunto esce da qui e dalla memoria dello Shell; dopo ${Lavagna.GIORNI_DOPO} giorni si cancella. Quello che merita di restare: Tieni.")
     OutlinedButton({ nuovo = true }) { Text("+ Appunto") }
     if (vivi.isEmpty()) Tenue("Lavagna pulita.")
     vivi.forEach { a ->
@@ -85,11 +89,22 @@ fun LavagnaUi(vm: Adam) {
                 Tenue("scade ${Giorni.leggibile(a.scade)}")
             }
             Lavagna.righe(a).forEachIndexed { i, r ->
-                Row(Modifier.fillMaxWidth().clickable { vm.alternaRiga(a, i) }.testTag("riga-${a.id}-$i"), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().testTag("riga-${a.id}-$i")
+                    .pointerInput(a.id, i, r) { detectTapGestures(onTap = { vm.alternaRiga(a, i) }, onLongPress = { inModifica = a to i }) },
+                    verticalAlignment = Alignment.CenterVertically) {
                     androidx.compose.material3.Checkbox(r.fatta, { vm.alternaRiga(a, i) })
                     Text(r.testo, color = if (r.fatta) Colori.tenue else Colori.inchiostro,
                         textDecoration = if (r.fatta) androidx.compose.ui.text.style.TextDecoration.LineThrough else null)
                 }
+            }
+            // Una voce nuova in fondo: si scrive e si preme +, o Invio.
+            var nuova by remember(a.id) { mutableStateOf("") }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(nuova, { nuova = it }, placeholder = { Text("Aggiungi una voce") }, singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { vm.aggiungiRighe(a, nuova); nuova = "" }),
+                    modifier = Modifier.weight(1f).testTag("aggiungi-${a.id}"))
+                TextButton({ vm.aggiungiRighe(a, nuova); nuova = "" }, enabled = nuova.isNotBlank()) { Text("＋", fontSize = 20.sp) }
             }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TextButton({
@@ -133,6 +148,24 @@ fun LavagnaUi(vm: Adam) {
             confirmButton = { TextButton({ vm.nuovoAppunto(titolo, testo); nuovo = false }) { Text("Scrivi") } },
             dismissButton = { TextButton({ nuovo = false }) { Text("Annulla") } },
         )
+    }
+    inModifica?.let { (a, i) ->
+        val attuale = Lavagna.righe(a).getOrNull(i)
+        if (attuale == null) inModifica = null else {
+            var testo by remember(a.id, i) { mutableStateOf(attuale.testo) }
+            AlertDialog(
+                onDismissRequest = { inModifica = null },
+                title = { Text("Correggi la voce") },
+                text = { OutlinedTextField(testo, { testo = it }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
+                confirmButton = { TextButton({ vm.cambiaRiga(a, i, testo); inModifica = null }, enabled = testo.isNotBlank()) { Text("Salva") } },
+                dismissButton = {
+                    Row {
+                        TextButton({ vm.cambiaRiga(a, i, ""); inModifica = null }) { Text("Togli", color = Colori.allarme) }
+                        TextButton({ inModifica = null }) { Text("Annulla") }
+                    }
+                },
+            )
+        }
     }
     daTenere?.let { a ->
         AlertDialog(

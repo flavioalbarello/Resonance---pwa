@@ -499,6 +499,8 @@ class Adam(app: Application) : AndroidViewModel(app) {
     init { viewModelScope.launch { appunti.collect { lista -> runCatching { it.resonance.adam.battito.Fissati.aggiorna(getApplication(), lista) } } } }
 
     fun alternaRiga(a: it.resonance.adam.dati.Appunto, indice: Int) = viewModelScope.launch { archivio.alternaRiga(a, indice) }
+    fun aggiungiRighe(a: it.resonance.adam.dati.Appunto, testo: String) = viewModelScope.launch { archivio.aggiungiRighe(a, testo) }
+    fun cambiaRiga(a: it.resonance.adam.dati.Appunto, indice: Int, testo: String) = viewModelScope.launch { archivio.cambiaRiga(a, indice, testo) }
     fun fissa(a: it.resonance.adam.dati.Appunto) = viewModelScope.launch { db.lavagna().aggiorna(a.copy(fissato = !a.fissato)) }
     fun tieni(a: it.resonance.adam.dati.Appunto, p: it.resonance.adam.dati.Percorso) = viewModelScope.launch { avviso = archivio.tieniAppunto(a, p) }
     fun nuovoAppunto(titolo: String, testo: String) = viewModelScope.launch {

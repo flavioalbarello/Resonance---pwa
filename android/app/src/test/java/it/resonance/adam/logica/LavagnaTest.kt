@@ -51,6 +51,22 @@ class LavagnaTest {
         assertEquals(listOf("latte", "uova"), Lavagna.daTesto("- latte\n\n☐ uova  "))
     }
 
+    @Test fun siAggiungonoSiCorreggonoESiTolgonoVoci() {
+        val a = appunto("latte" to true, "uova" to false)
+        val piu = Lavagna.aggiungi(a, "pane\n- ceci", oggi)
+        assertEquals(listOf("latte", "uova", "pane", "ceci"), Lavagna.righe(piu).map { it.testo })
+        // Correggere lascia la spunta com'era; vuoto toglie.
+        val corretto = Lavagna.cambia(piu, 0, "latte intero", oggi)
+        assertEquals(Lavagna.Riga("latte intero", true), Lavagna.righe(corretto)[0])
+        assertEquals(listOf("latte intero", "pane", "ceci"), Lavagna.righe(Lavagna.cambia(corretto, 1, " ", oggi)).map { it.testo })
+        // Una lista finita a cui si aggiunge una voce torna a vivere.
+        val finita = Lavagna.alterna(appunto("latte" to false), 0, oggi)
+        assertFalse(Lavagna.vivo(finita, oggi))
+        val riaperta = Lavagna.aggiungi(finita, "uova", oggi)
+        assertTrue(Lavagna.vivo(riaperta, oggi))
+        assertEquals(null, riaperta.finito)
+    }
+
     @Test fun nelPromptSoloIVivi() {
         val vivo = appunto("latte" to false, "uova" to true)
         val finito = appunto("pane" to true).copy(id = 2, titolo = "Vecchia")

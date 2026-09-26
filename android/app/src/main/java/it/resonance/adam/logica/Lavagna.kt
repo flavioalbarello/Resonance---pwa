@@ -47,6 +47,22 @@ object Lavagna {
         return conFine(a.copy(righe = codifica(r)), oggi)
     }
 
+    /** Righe nuove in fondo (anche più d'una, una per riga di testo); un appunto finito torna a vivere. */
+    fun aggiungi(a: Appunto, testo: String, oggi: LocalDate): Appunto {
+        val nuove = daTesto(testo).map { Riga(it) }
+        if (nuove.isEmpty()) return a
+        return conFine(a.copy(righe = codifica((righe(a) + nuove).take(RIGHE_MAX))), oggi)
+    }
+
+    /** Cambia il testo di una riga; vuoto la toglie. La spunta resta com'era. */
+    fun cambia(a: Appunto, indice: Int, testo: String, oggi: LocalDate): Appunto {
+        val r = righe(a).toMutableList()
+        if (indice !in r.indices) return a
+        val t = testo.trim()
+        if (t.isEmpty()) r.removeAt(indice) else r[indice] = r[indice].copy(testo = t)
+        return conFine(a.copy(righe = codifica(r)), oggi)
+    }
+
     // Finito oggi se non vive più; riaperto se torna a vivere (una spunta tolta).
     fun conFine(a: Appunto, oggi: LocalDate): Appunto = when {
         vivo(a, oggi) -> a.copy(finito = null)

@@ -37,7 +37,7 @@ object Capacita {
         "gli interventi dell'architetto (riunione e lettere) si ascoltano con «🔊 Ascolta», e in auto si leggono da soli",
         "Adam → Consegne: le tue consegne aperte e chiuse; il Ghost può lasciarne una",
         "documenti: il Ghost li toglie con la pressione lunga (o Togli dentro il documento); i tolti stanno in fondo al percorso e si rimettono; da lì solo il Ghost può eliminarli per sempre (tu no)",
-        "Adam → Lavagna: spunta col tocco, Copia (righe da fare, per una nota condivisa come Keep), Condividi, Fissa nelle notifiche, Tieni (diventa documento), + Appunto a mano",
+        "Adam → Lavagna: spunta col tocco, pressione lunga per correggere o togliere una voce, campo «Aggiungi una voce» in fondo a ogni appunto, Copia (righe da fare, per una nota condivisa come Keep), Condividi, Fissa nelle notifiche, Tieni (diventa documento), + Appunto a mano",
         "Setup → Calendario e posta: il Ghost sceglie due calendari, uno per le cose di Adam e uno per i suoi impegni (crea_evento con per = adam o personale); senza scelta lì non si scrive. Il mittente delle mail non si può imporre: lo indica per controllarlo nella bozza",
     )
 
