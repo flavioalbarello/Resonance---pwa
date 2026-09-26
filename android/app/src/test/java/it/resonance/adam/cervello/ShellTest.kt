@@ -633,7 +633,7 @@ class ShellTest {
 
     @Test fun leChiamateScritteComeTestoTornanoAlModelloUnaVolta() = runBlocking {
         val modello = FintoModello(testo("Propongo:\ncrea_evento(titolo='Scheda', inizio='2026-09-29')"),
-            chiama("crea_evento", """{"titolo":"Scheda","inizio":"${LocalDate.now().plusDays(3)}"}"""), testo("Proposto l'evento."))
+            chiama("crea_evento", """{"titolo":"Scheda","inizio":"${LocalDate.now().plusDays(3)}","per":"adam"}"""), testo("Proposto l'evento."))
         val e = shell(modello, FintaCassetta()).turno("mettilo in calendario")
         assertTrue(contenuto(modello.ricevuti[1], modello.ricevuti[1].size - 1).contains("crea_evento come testo"))
         assertEquals(1, e.proposte.size)

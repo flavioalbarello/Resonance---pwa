@@ -169,6 +169,10 @@ fun Setup(vm: Adam, sistema: Sistema) {
             Etichetta("Calendario e posta", Colori.air)
             Riga("Il calendario del telefono, lo stesso che si sincronizza con Google Calendar: lo Shell legge gli impegni veri e ne propone di nuovi, che entrano solo se confermi.")
             Riga("La posta non parte da qui: lo Shell prepara la mail, si apre come bozza nella tua app di posta e la invii tu.")
+            var mittente by remember { mutableStateOf(vm.impostazioni.mittente) }
+            OutlinedTextField(mittente, { mittente = it; vm.impostazioni.mittente = it }, label = { Text("Mittente da controllare nella bozza") },
+                singleLine = true, modifier = Modifier.fillMaxWidth())
+            Tenue("L'app non può scegliere il mittente: la bozza la apre Gmail con l'account attivo. Questo indirizzo compare nella proposta e nella ricevuta, per ricordarti di controllarlo.")
             val cal = vm.mondo.calendario
             vm.agenda // si rilegge dopo ogni permesso: leggerla qui ridisegna la riga sotto
             Tenue(when {
@@ -183,16 +187,8 @@ fun Setup(vm: Adam, sistema: Sistema) {
                 val calendari by androidx.compose.runtime.produceState(emptyList<it.resonance.adam.mondo.Calendario.Scelto>(), vm.agenda) {
                     value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { cal.scrivibili() }.getOrDefault(emptyList()) }
                 }
-                var scelto by remember { mutableStateOf(vm.impostazioni.calendarioId) }
-                Etichetta("Scrivi in", Colori.air)
-                if (calendari.none { it.id == scelto }) Riga("Nessun calendario scelto: lo Shell non può mettere eventi finché non ne scegli uno.", Colori.allarme)
-                calendari.forEach { c ->
-                    Row(Modifier.fillMaxWidth().clickable { scelto = c.id; vm.impostazioni.calendarioId = c.id }.testTag("calendario-${c.id}"),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        androidx.compose.material3.RadioButton(scelto == c.id, { scelto = c.id; vm.impostazioni.calendarioId = c.id })
-                        Text(c.nome)
-                    }
-                }
+                SceltaCalendario("Cose di Adam (lo Shell, Resonance, i percorsi di Adam)", calendari, vm.impostazioni.calendarioId, "adam") { vm.impostazioni.calendarioId = it }
+                SceltaCalendario("Tuoi impegni", calendari, vm.impostazioni.calendarioPersonaleId, "personale") { vm.impostazioni.calendarioPersonaleId = it }
                 Tenue("Spostare o togliere un evento agisce sul calendario dove quell'evento sta già; la proposta lo dice.")
             }
         }
@@ -275,5 +271,19 @@ private fun QuaderniUi(vm: Adam) {
             }
         }
         QuadernoEditor(vm, scelto)
+    }
+}
+
+// Un calendario per chi: la scelta è del Ghost, e senza scelta lì non si scrive (26/09).
+@Composable
+private fun SceltaCalendario(titolo: String, calendari: List<it.resonance.adam.mondo.Calendario.Scelto>, iniziale: Long, tag: String, salva: (Long) -> Unit) {
+    var scelto by remember { mutableStateOf(iniziale) }
+    Etichetta("Scrivi in — $titolo", Colori.air)
+    if (calendari.none { it.id == scelto }) Riga("Nessun calendario scelto: qui lo Shell non può mettere eventi.", Colori.allarme)
+    calendari.forEach { c ->
+        Row(Modifier.fillMaxWidth().clickable { scelto = c.id; salva(c.id) }.testTag("calendario-$tag-${c.id}"), verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.material3.RadioButton(scelto == c.id, { scelto = c.id; salva(c.id) })
+            Text(c.nome)
+        }
     }
 }

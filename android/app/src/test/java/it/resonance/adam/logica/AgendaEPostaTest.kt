@@ -22,26 +22,28 @@ class AgendaEPostaTest {
     // ── Calendario ──
 
     @Test fun eventoConOrarioEDurata() {
-        val p = proposta(Azioni.valida("crea_evento", args("""{"titolo":"Dentista","inizio":"2026-09-25 10:30","durata_minuti":45,"luogo":"Via Roma"}"""), oggi))
-        assertEquals(Proposta.CreaEvento("Dentista", "2026-09-25T10:30", 45, "Via Roma", ""), p)
+        val p = proposta(Azioni.valida("crea_evento", args("""{"titolo":"Dentista","inizio":"2026-09-25 10:30","durata_minuti":45,"luogo":"Via Roma","per":"personale"}"""), oggi))
+        assertEquals(Proposta.CreaEvento("Dentista", "2026-09-25T10:30", 45, "Via Roma", "", per = "personale"), p)
         assertEquals(LocalDateTime.parse("2026-09-25T11:15"), Agenda.inizioFine(p as Proposta.CreaEvento).second)
     }
 
     @Test fun eventoDiTuttoIlGiornoFinisceIlGiornoDopo() {
-        val p = proposta(Azioni.valida("crea_evento", args("""{"titolo":"Ferie","inizio":"2026-10-01"}"""), oggi)) as Proposta.CreaEvento
+        val p = proposta(Azioni.valida("crea_evento", args("""{"titolo":"Ferie","inizio":"2026-10-01","per":"personale"}"""), oggi)) as Proposta.CreaEvento
         assertEquals("2026-10-01", p.inizio)
         assertEquals(LocalDateTime.parse("2026-10-02T00:00") , Agenda.inizioFine(p).second)
     }
 
     @Test fun ilCalendarioNonRiscriveIlPassato() {
-        assertTrue(rifiuto(Azioni.valida("crea_evento", args("""{"titolo":"X","inizio":"2026-09-22T10:00"}"""), oggi)).contains("passato"))
+        assertTrue(rifiuto(Azioni.valida("crea_evento", args("""{"titolo":"X","inizio":"2026-09-22T10:00","per":"adam"}"""), oggi)).contains("passato"))
         assertTrue(rifiuto(Azioni.valida("crea_evento", args("""{"titolo":"X","inizio":"2029-01-01T10:00"}"""), oggi)).contains("anno"))
         assertTrue(rifiuto(Azioni.valida("crea_evento", args("""{"titolo":"X","inizio":"giovedì alle 10"}"""), oggi)).contains("yyyy-MM-dd"))
         assertTrue(rifiuto(Azioni.valida("crea_evento", args("""{"titolo":"X","inizio":"2026-09-24T10:00","durata_minuti":2000}"""), oggi)).contains("durata"))
     }
 
     @Test fun oggiSiPuoMettereInCalendario() {
-        assertTrue(Azioni.valida("crea_evento", args("""{"titolo":"Telefonata","inizio":"2026-09-23T18:00"}"""), oggi) is Validazione.Scrittura)
+        assertTrue(Azioni.valida("crea_evento", args("""{"titolo":"Telefonata","inizio":"2026-09-23T18:00","per":"personale"}"""), oggi) is Validazione.Scrittura)
+        // Senza dire di chi è, non si sa in quale calendario va: il programma lo chiede (26/09).
+        assertTrue(rifiuto(Azioni.valida("crea_evento", args("""{"titolo":"Telefonata","inizio":"2026-09-23T18:00"}"""), oggi)).contains("personale"))
     }
 
     @Test fun laLetturaDelCalendarioNonEUnaProposta() {

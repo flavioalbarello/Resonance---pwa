@@ -81,10 +81,18 @@ open class Impostazioni(context: Context) {
     var riunioneViste: Set<String>
         get() = p.getStringSet("riunioneViste", emptySet())!!.toSet()
         set(v) = p.edit().putStringSet("riunioneViste", v).apply()
-    // In quale calendario entrano gli eventi nuovi: lo sceglie il Ghost (Setup). -1 = non scelto, e allora non si scrive.
+    // In quali calendari entrano gli eventi nuovi: li sceglie il Ghost (Setup), uno per le cose di Adam e uno per i suoi
+    // impegni (26/09). -1 = non scelto, e allora in quel calendario non si scrive.
     var calendarioId: Long
         get() = p.getLong("calendarioId", -1)
         set(v) = p.edit().putLong("calendarioId", v).apply()
+    var calendarioPersonaleId: Long
+        get() = p.getLong("calendarioPersonale", -1)
+        set(v) = p.edit().putLong("calendarioPersonale", v).apply()
+    // Il mittente che il Ghost vuole per le mail: l'app non può imporlo (la bozza la apre Gmail), ma lo dice prima e dopo.
+    var mittente: String
+        get() = p.getString("mittente", "")!!
+        set(v) = p.edit().putString("mittente", v.trim()).apply()
     // Il verbale già scritto dallo Shell e non ancora consegnato alla cassetta (rete caduta): si riprova, non si riscrive.
     var riunioneVerbale: String
         get() = p.getString("riunioneVerbale", "")!!

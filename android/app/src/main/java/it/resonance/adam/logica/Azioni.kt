@@ -180,6 +180,8 @@ sealed class Proposta {
         // Il calendario lo sceglie il Ghost in Setup; la proposta lo porta, così si vede PRIMA di confermare (26/09:
         // un evento di Adam era finito nel calendario professionale, scelto a caso fra calendari a pari punteggio).
         val calendarioId: Long? = null, val calendario: String? = null,
+        // Per chi è: "adam" (Adam, lo Shell, Resonance) o "personale" (la vita del Ghost). Decide il calendario.
+        val per: String? = null,
     ) : Proposta() {
         override fun descrizione(): String {
             val (da, a) = Agenda.inizioFine(this)
@@ -224,9 +226,10 @@ sealed class Proposta {
     }
 
     @Serializable @SerialName("scrivi_mail")
-    data class ScriviMail(val a: String, val oggetto: String, val corpo: String) : Proposta() {
+    data class ScriviMail(val a: String, val oggetto: String, val corpo: String, val da: String = "") : Proposta() {
         override fun descrizione() = "Preparare una mail" + (if (a.isNotBlank()) " a $a" else " (destinatario lo scrivi tu)") +
-            " — «${Testi.corto(oggetto, 60)}»: «${Testi.corto(corpo, 160)}». Si apre come bozza nell'app di posta: parte solo se premi Invia tu."
+            " — «${Testi.corto(oggetto, 60)}»: «${Testi.corto(corpo, 160)}». Si apre come bozza nell'app di posta: parte solo se premi Invia tu." +
+            (if (da.isNotBlank()) " Nella bozza controlla che il mittente sia $da: l'app non può sceglierlo." else "")
         override fun dettaglio() = "Oggetto: $oggetto\n\n$corpo"
     }
 }
@@ -327,8 +330,10 @@ object Azioni {
             "Legge gli impegni veri dal calendario del telefono. Usalo prima di dire cosa c'è o non c'è in agenda.",
             schema(emptyList(), mapOf("da" to s("yyyy-MM-dd, se assente oggi"), "giorni" to n("Quanti giorni, da 1 a 31; se assente 7")))),
         Strumento("crea_evento", Effetto.SCRITTURA,
-            "Propone di mettere un impegno nel calendario del Ghost. Esiste solo dopo la sua conferma.",
-            schema(listOf("titolo", "inizio"), mapOf(
+            "Propone di mettere un impegno nel calendario del Ghost. Esiste solo dopo la sua conferma. «per» sceglie il calendario: " +
+                "adam per ciò che riguarda Adam, lo Shell, Resonance e i suoi percorsi; personale per gli impegni della vita del Ghost.",
+            schema(listOf("titolo", "inizio", "per"), mapOf(
+                "per" to e(listOf("adam", "personale"), "Di chi è l'impegno"),
                 "titolo" to s("Nome breve dell'impegno"),
                 "inizio" to s("yyyy-MM-ddTHH:mm; solo yyyy-MM-dd se dura tutto il giorno"),
                 "durata_minuti" to n("Se assente 60"), "luogo" to s("Facoltativo"), "note" to s("Facoltative"),
@@ -573,8 +578,10 @@ object Azioni {
             if (inizio.toLocalDate().isAfter(oggi.plusYears(2))) rifiuta("il ${inizio.toLocalDate()} è oltre due anni: controlla l'anno")
             val durata = intero(a, "durata_minuti", 60)
             if (!tutto && durata !in 5..1440) rifiuta("durata di $durata minuti fuori dall'intervallo 5–1440")
+            val per = a.testo("per")?.lowercase()?.takeIf { it in setOf("adam", "personale") }
+                ?: rifiuta("per: adam (Adam, lo Shell, Resonance) o personale (la vita del Ghost). Decide in quale calendario entra")
             Proposta.CreaEvento(titolo, if (tutto) inizio.toLocalDate().toString() else inizio.toString(), if (tutto) 0 else durata,
-                a.testo("luogo") ?: "", a.testo("note") ?: "")
+                a.testo("luogo") ?: "", a.testo("note") ?: "", per = per)
         }
         "sposta_evento" -> {
             val (titolo, giorno, ora) = occorrenza(a, oggi)

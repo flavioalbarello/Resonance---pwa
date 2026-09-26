@@ -204,6 +204,9 @@ nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo ch
     (principale, proprio, Google): con sei account Google i principali pareggiavano e vinceva il primo letto — un evento
     di Adam è finito nel calendario professionale. Ora la proposta porta il calendario e lo dice PRIMA della conferma;
     la conferma scrive lì e non altrove; senza scelta crea_evento non si propone e lo Shell chiede di scegliere.
+    Poi, su richiesta del Ghost: DUE calendari, uno per le cose di Adam e uno per i suoi impegni; `crea_evento` porta
+    `per` (adam/personale, obbligatorio). Il mittente delle mail non si può imporre a Gmail (l'intent mailto non lo
+    porta): si scrive in Setup e compare in proposta e ricevuta, da controllare nella bozza.
 - *Schermo acceso in auto*: finché l'ascolto è AUTO la vista tiene `keepScreenOn`; si spegne quando l'auto si ferma
   (a mano o dopo tre silenzi). Prima lo schermo si bloccava mentre lo Shell rispondeva e il microfono non ripartiva.
 

@@ -40,7 +40,11 @@ class MondoAndroid(context: Context) : Mondo {
 
     override suspend fun agenda(da: LocalDate, giorni: Int) = calendario.leggi(da, giorni)
 
-    override suspend fun risolvi(p: Proposta) = calendario.risolvi(p)
+    override suspend fun risolvi(p: Proposta) = when (p) {
+        // Il mittente non si può imporre a Gmail: si dice nella proposta, perché il Ghost lo controlli nella bozza.
+        is Proposta.ScriviMail -> it.resonance.adam.logica.Risoluzione.Pronta(p.copy(da = calendario.mittente()))
+        else -> calendario.risolvi(p)
+    }
     override suspend fun copia(p: Proposta) = calendario.copia(p)
 
     override suspend fun esegui(p: Proposta): Esecuzione = when (p) {
@@ -140,8 +144,9 @@ class Calendario(private val context: Context) {
     suspend fun risolvi(p: Proposta): Risoluzione = withContext(Dispatchers.IO) {
         if (p is Proposta.CreaEvento) {
             if (!puoScrivere()) return@withContext Risoluzione.Domanda("il Ghost non ha dato il permesso di scrivere nel calendario (Setup → Calendario e posta)")
-            val cal = runCatching { scelto(null) }.getOrNull()
-                ?: return@withContext Risoluzione.Domanda("il Ghost non ha scelto in quale calendario scrivere: chiedigli di sceglierlo in Setup → Calendario e posta → Scrivi in")
+            val cal = runCatching { scelto(null, p.per) }.getOrNull()
+                ?: return@withContext Risoluzione.Domanda("il Ghost non ha scelto il calendario per " + (if (p.per == "personale") "i suoi impegni" else "le cose di Adam") +
+                    ": chiedigli di sceglierlo in Setup → Calendario e posta")
             return@withContext Risoluzione.Pronta(p.copy(calendarioId = cal.id, calendario = cal.nome))
         }
         val giorno = when (p) { is Proposta.TogliEvento -> p.giorno; is Proposta.SpostaEvento -> p.giorno; else -> return@withContext Risoluzione.Pronta(p) }
@@ -316,18 +321,21 @@ class Calendario(private val context: Context) {
         }.orEmpty()
     }
 
-    private fun scelto(id: Long?): Scelto? {
-        val cercato = id ?: impostazioni.calendarioId.takeIf { it >= 0 } ?: return null
+    fun mittente() = impostazioni.mittente
+
+    // Il calendario per chi: le cose di Adam in uno, gli impegni del Ghost in un altro (li sceglie lui in Setup).
+    private fun idPer(per: String?) = (if (per == "personale") impostazioni.calendarioPersonaleId else impostazioni.calendarioId).takeIf { it >= 0 }
+
+    private fun scelto(id: Long?, per: String? = null): Scelto? {
+        val cercato = id ?: idPer(per) ?: return null
         return scrivibili().find { it.id == cercato }
     }
-
-    fun sceltoOra(): Scelto? = runCatching { scelto(null) }.getOrNull()
 
     suspend fun crea(p: Proposta.CreaEvento): Esecuzione = withContext(Dispatchers.IO) {
         if (!puoScrivere()) return@withContext Esecuzione(false, "Non messo in calendario: manca il permesso (Setup → Calendario e posta)")
         try {
             // Si scrive dove la proposta diceva: ciò che il Ghost ha visto prima di confermare.
-            val cal = scelto(p.calendarioId) ?: return@withContext Esecuzione(false,
+            val cal = scelto(p.calendarioId, p.per) ?: return@withContext Esecuzione(false,
                 "Non messo in calendario: " + (if (p.calendarioId != null) "il calendario della proposta non c'è più" else "non hai scelto in quale calendario scrivere") +
                     " (Setup → Calendario e posta → Scrivi in)")
             val (inizio, fine) = Agenda.inizioFine(p)
@@ -374,7 +382,8 @@ class Posta(private val context: Context) {
         try {
             context.startActivity(intent)
             Esecuzione(true, "Bozza aperta${app?.let { " in $it" } ?: ""}" + (if (p.a.isNotBlank()) " per ${p.a}" else "") +
-                " — «${p.oggetto}». Parte solo se premi Invia: l'app non può sapere se l'hai fatto.")
+                " — «${p.oggetto}». Parte solo se premi Invia: l'app non può sapere se l'hai fatto." +
+                (if (p.da.isNotBlank()) " Prima di inviare controlla il mittente: ${p.da}." else ""))
         } catch (e: ActivityNotFoundException) {
             Esecuzione(false, "Mail non preparata: sul telefono non c'è un'app di posta")
         }
