@@ -273,6 +273,24 @@ data class Movimento(
     val creato: Long,
 )
 
+// La lavagna del Ghost (riunione del 26/09/2026, «funzioni uso quotidiano»): appunti usa e getta, come la lista della
+// spesa. Righe spuntabili (JSON in `righe`, logica/Lavagna.kt). Un appunto vive finché ha righe da fare e non è scaduto;
+// poi esce dallo schermo e dal prompt, e dopo 30 giorni si cancella davvero — per scelta del Ghost: non deve diventare
+// spazzatura che appesantisce lo Shell. Ciò che merita di restare si «tiene»: diventa un documento.
+@Serializable
+@Entity(tableName = "appunti")
+data class Appunto(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val titolo: String,
+    val righe: String,
+    val creato: Long,
+    val scade: String,
+    // Quando ha smesso di vivere (tutte spuntate, scaduto o tenuto): da qui contano i 30 giorni.
+    val finito: String? = null,
+    val fissato: Boolean = false,
+    val tenuto: Boolean = false,
+)
+
 enum class StatoConsegna { APERTA, MANTENUTA, MANCATA, LASCIATA }
 
 // Una consegna dello Shell (dalla riunione del 26/09/2026, dove si chiamava «impegno»: nell'app impegno vuol già dire

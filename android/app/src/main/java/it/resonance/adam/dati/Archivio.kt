@@ -10,6 +10,7 @@ import it.resonance.adam.logica.Proposta
 import it.resonance.adam.logica.Nodi
 import it.resonance.adam.logica.Fondo
 import it.resonance.adam.logica.Consegne
+import it.resonance.adam.logica.Lavagna
 import it.resonance.adam.logica.Testi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -35,6 +36,7 @@ data class Copia(
     val lettere: List<Lettera> = emptyList(),
     val risposte: List<RispostaLettera> = emptyList(),
     val consegne: List<Consegna> = emptyList(),
+    val appunti: List<Appunto> = emptyList(),
 )
 
 class Ambiguo(m: String) : Exception(m)
@@ -284,6 +286,25 @@ class Archivio(val db: Db) {
                 }
             }
         }
+        is Proposta.ScriviAppunto -> {
+            val vivi = db.lavagna().elenco().filter { Lavagna.vivo(it, oggi) }
+            if (vivi.any { Testi.normalizza(it.titolo) == Testi.normalizza(p.titolo) }) Esecuzione(false, "Non scritto: sulla lavagna c'è già «${p.titolo}»")
+            else {
+                db.lavagna().inserisci(Appunto(titolo = p.titolo, righe = Lavagna.codifica(p.righe.map { Lavagna.Riga(it) }), creato = ora, scade = p.scade))
+                Esecuzione(true, "Sulla lavagna: «${p.titolo}», ${p.righe.size} righe, scade ${Giorni.leggibile(p.scade, oggi)}")
+            }
+        }
+        is Proposta.ModificaAppunto -> {
+            val a = appuntoVivo(p.appunto, oggi)
+            val (via, dubbie) = Lavagna.trova(a, p.togli)
+            if (dubbie.isNotEmpty()) Esecuzione(false, "Non modificato: in «${a.titolo}» non trovo con certezza ${dubbie.joinToString { "«$it»" }}")
+            else {
+                val righe = Lavagna.righe(a).filterIndexed { i, _ -> i !in via } + p.aggiungi.map { Lavagna.Riga(it) }
+                db.lavagna().aggiorna(Lavagna.conFine(a.copy(righe = Lavagna.codifica(righe.take(Lavagna.RIGHE_MAX))), oggi))
+                Esecuzione(true, "Lavagna, «${a.titolo}»: " + listOfNotNull(
+                    p.aggiungi.takeIf { it.isNotEmpty() }?.let { "aggiunte ${it.size} righe" }, via.takeIf { it.isNotEmpty() }?.let { "tolte ${it.size}" }).joinToString(", "))
+            }
+        }
         is Proposta.RegolaTemperatura, is Proposta.LetteraArchitetto -> Esecuzione(false, "Non eseguito: la esegue lo Shell, non l'archivio")
         is Proposta.CreaEvento, is Proposta.SpostaEvento, is Proposta.TogliEvento, is Proposta.ScriviMail ->
             Esecuzione(false, "Non eseguito: calendario e posta non sono nell'archivio")
@@ -302,6 +323,45 @@ class Archivio(val db: Db) {
             chiuso
         }
     }
+
+    // ── La lavagna del Ghost ──
+    /** L'appunto nominato fra quelli vivi (poi fra tutti): due candidati non si indovinano. */
+    suspend fun appuntoVivo(titolo: String, oggi: LocalDate = LocalDate.now()): Appunto {
+        val tutti = db.lavagna().elenco().filterNot { it.tenuto }
+        val vivi = tutti.filter { Lavagna.vivo(it, oggi) }
+        // Prima fra i vivi; se nessuno ha quel nome, fra tutti (per togliere una spunta a una lista appena finita).
+        return try { trova(vivi, titolo, { it.titolo }, "appunto vivo") }
+        catch (e: Ambiguo) { if (e.message.orEmpty().startsWith("nessun")) trova(tutti, titolo, { it.titolo }, "appunto") else throw e }
+    }
+
+    /** Spunte dello Shell e del Ghost: senza conferma, si annullano con un tocco. Restituisce la ricevuta. */
+    suspend fun spunta(titolo: String, righe: List<String>, fatta: Boolean, oggi: LocalDate = LocalDate.now()): Esecuzione = try {
+        val a = appuntoVivo(titolo, oggi)
+        val (trovate, dubbie) = Lavagna.trova(a, righe)
+        if (trovate.isEmpty()) Esecuzione(false, "In «${a.titolo}» non trovo ${dubbie.joinToString { "«$it»" }}: righe ${Lavagna.righe(a).joinToString("; ") { it.testo }}")
+        else {
+            val r = Lavagna.righe(a).mapIndexed { i, x -> if (i in trovate) x.copy(fatta = fatta) else x }
+            val dopo = Lavagna.conFine(a.copy(righe = Lavagna.codifica(r)), oggi)
+            db.lavagna().aggiorna(dopo)
+            val nomi = trovate.joinToString(", ") { r[it].testo }
+            Esecuzione(true, (if (fatta) "Spuntato" else "Tolta la spunta") + " in «${a.titolo}»: $nomi" +
+                (if (dubbie.isNotEmpty()) ". Non trovate con certezza: ${dubbie.joinToString { "«$it»" }}" else "") +
+                (if (!Lavagna.vivo(dopo, oggi)) ". Lista finita: esce dalla lavagna" else ". Restano ${Lavagna.daFare(dopo).size}"))
+        }
+    } catch (e: Ambiguo) { Esecuzione(false, "Non spuntato: ${e.message}") }
+
+    suspend fun alternaRiga(a: Appunto, indice: Int, oggi: LocalDate = LocalDate.now()) = db.lavagna().aggiorna(Lavagna.alterna(a, indice, oggi))
+
+    /** «Tieni»: l'appunto diventa un documento in un percorso, e lascia la lavagna. */
+    suspend fun tieniAppunto(a: Appunto, percorso: Percorso, oggi: LocalDate = LocalDate.now()): String {
+        db.percorsi().inserisciDocumento(Documento(percorsoId = percorso.id, titolo = a.titolo, testo = Lavagna.perCondividere(a).substringAfter("\n\n"), creato = ora, aggiornato = ora))
+        db.lavagna().aggiorna(a.copy(tenuto = true, finito = a.finito ?: oggi.toString(), fissato = false))
+        return "«${a.titolo}» tenuto: ora è un documento in «${percorso.titolo}»"
+    }
+
+    /** Ciò che è finito da più di 30 giorni si cancella davvero: la scelta del Ghost, niente spazzatura. */
+    suspend fun pulisciLavagna(oggi: LocalDate = LocalDate.now()): Int = db.lavagna().elenco().filter { Lavagna.daCancellare(it, oggi) }
+        .onEach { db.lavagna().togli(it) }.size
 
     // Le consegne dello Shell: il programma guarda se il documento c'è. Chiuse, vanno nel diario di Adam.
     suspend fun verificaConsegne(oggi: LocalDate = LocalDate.now()): List<Consegna> = db.withTransaction {
@@ -434,7 +494,7 @@ class Archivio(val db: Db) {
         quaderni = db.quaderni().elenco(), messaggi = db.messaggi().elenco(), spesa = db.spesa().elenco(), profilo = db.profilo().leggi(),
         esperimenti = db.esperimenti().elenco(),
         taccuino = db.taccuino().elenco(), movimenti = db.fondo().elenco(), lettere = db.lettere().elenco(), risposte = db.lettere().risposte(),
-        consegne = db.consegne().elenco(),
+        consegne = db.consegne().elenco(), appunti = db.lavagna().elenco(),
     ))
 
     fun eUnaCopia(testo: String) = testo.contains("\"_formato\":\"resonance-apk\"") || testo.contains("\"_formato\": \"resonance-apk\"")
@@ -444,7 +504,7 @@ class Archivio(val db: Db) {
         val c = json.decodeFromString(Copia.serializer(), testo)
         db.withTransaction {
             listOf("misure", "voci", "versioni", "rituali", "spunte", "percorsi", "nodi", "documenti", "quaderni", "messaggi", "spesa", "profilo", "esperimenti",
-                "taccuino", "movimenti", "lettere", "risposte", "consegne")
+                "taccuino", "movimenti", "lettere", "risposte", "consegne", "appunti")
                 .forEach { db.openHelper.writableDatabase.execSQL("DELETE FROM $it") }
             c.misure.forEach { db.misure().sostituisci(it) }
             c.voci.forEach { db.voci().inserisci(it) }
@@ -464,6 +524,7 @@ class Archivio(val db: Db) {
             c.lettere.forEach { db.lettere().inserisci(it) }
             c.risposte.forEach { db.lettere().inserisciRisposta(it) }
             c.consegne.forEach { db.consegne().inserisci(it) }
+            c.appunti.forEach { db.lavagna().inserisci(it) }
         }
         return c.misure.size + c.voci.size + c.documenti.size
     }

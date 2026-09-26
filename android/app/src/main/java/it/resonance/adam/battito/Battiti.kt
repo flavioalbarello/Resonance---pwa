@@ -208,6 +208,9 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 Battiti.notifica(applicationContext, 115, "Lo Shell ha lavorato a una consegna", "«${c.cosa}»: " +
                     if (e?.proposte?.isNotEmpty() == true) "c'è una proposta da confermare" else "guarda cosa ha scritto", "", "SHELL")
             }
+            // La lavagna: ciò che è finito da 30 giorni si cancella davvero; le notifiche fissate seguono le scadenze.
+            runCatching { archivio.pulisciLavagna(oggi) }
+            runCatching { Fissati.aggiorna(applicationContext) }
             val agenda = if (b == Battito.MATTINO) runCatching { mondo.agenda(oggi, 1) }.getOrDefault(AgendaLetta.NonLetta) else AgendaLetta.NonLetta
             val i = archivio.istantanea(oggi, agenda)
             val riassunto = when (b) {

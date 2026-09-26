@@ -40,6 +40,14 @@ class MigrazioneTest {
         db.close()
     }
 
+    @Test fun dallaNoveAllaDieciNasceLaLavagna() {
+        aiuto.createDatabase("dieci.db", 9).close()
+        aiuto.runMigrationsAndValidate("dieci.db", 10, true).close()
+        val db = Room.databaseBuilder(RuntimeEnvironment.getApplication(), Db::class.java, "dieci.db").allowMainThreadQueries().build()
+        runBlocking { assertTrue(db.lavagna().elenco().isEmpty()) }
+        db.close()
+    }
+
     @Test fun dallaOttoAllaNoveNasconoLeConsegneEIMessaggiRestano() {
         aiuto.createDatabase("nove.db", 8).apply {
             execSQL("INSERT INTO messaggi (ruolo, testo, istante, allegati, forzata) VALUES ('NOTA', 'Architetto (riunione): vecchia nota', 1, '', 0)")

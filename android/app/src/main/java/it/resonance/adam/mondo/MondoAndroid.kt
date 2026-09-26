@@ -371,21 +371,43 @@ class Calendario(private val context: Context) {
 
 // La mail non parte da qui: si apre una bozza e l'invio è un gesto del Ghost su quella mail precisa.
 class Posta(private val context: Context) {
-    suspend fun apri(p: Proposta.ScriviMail): Esecuzione = withContext(Dispatchers.Main.immediate) {
-        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:")).apply {
-            if (p.a.isNotBlank()) putExtra(Intent.EXTRA_EMAIL, arrayOf(p.a))
-            putExtra(Intent.EXTRA_SUBJECT, p.oggetto)
-            putExtra(Intent.EXTRA_TEXT, p.corpo)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    suspend fun apri(p: Proposta.ScriviMail): Esecuzione {
+        // Con un allegato: il PDF si scrive dal testo CONFERMATO (quello nella proposta) e parte con ACTION_SEND, che a
+        // differenza di mailto porta un file. Si prova Gmail; se non c'è, il Ghost sceglie l'app.
+        val allegato = p.allegatoTesto?.let { testo ->
+            withContext(Dispatchers.IO) {
+                val nome = (p.allegato ?: "allegato").replace(Regex("[^\\p{L}\\p{N} _-]+"), "").trim().ifEmpty { "allegato" }.take(60)
+                val file = java.io.File(context.filesDir, "allegati/$nome.pdf")
+                Pdf.scrivi(file, testo)
+                androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.allegati", file)
+            }
         }
-        val app = context.packageManager.queryIntentActivities(intent, 0).singleOrNull()?.loadLabel(context.packageManager)?.toString()
-        try {
-            context.startActivity(intent)
-            Esecuzione(true, "Bozza aperta${app?.let { " in $it" } ?: ""}" + (if (p.a.isNotBlank()) " per ${p.a}" else "") +
-                " — «${p.oggetto}». Parte solo se premi Invia: l'app non può sapere se l'hai fatto." +
-                (if (p.da.isNotBlank()) " Prima di inviare controlla il mittente: ${p.da}." else ""))
-        } catch (e: ActivityNotFoundException) {
-            Esecuzione(false, "Mail non preparata: sul telefono non c'è un'app di posta")
+        return withContext(Dispatchers.Main.immediate) {
+            val intent = if (allegato == null) Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:")) else Intent(Intent.ACTION_SEND).apply {
+                type = "application/pdf"
+                putExtra(Intent.EXTRA_STREAM, allegato)
+                clipData = android.content.ClipData.newRawUri(p.allegato, allegato)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            intent.apply {
+                if (p.a.isNotBlank()) putExtra(Intent.EXTRA_EMAIL, arrayOf(p.a))
+                putExtra(Intent.EXTRA_SUBJECT, p.oggetto)
+                putExtra(Intent.EXTRA_TEXT, p.corpo)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val app = if (allegato == null) context.packageManager.queryIntentActivities(intent, 0).singleOrNull()?.loadLabel(context.packageManager)?.toString() else null
+            try {
+                if (allegato != null) try {
+                    context.startActivity(Intent(intent).setPackage("com.google.android.gm"))
+                } catch (e: ActivityNotFoundException) {
+                    context.startActivity(Intent.createChooser(intent, "Manda con").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } else context.startActivity(intent)
+                Esecuzione(true, "Bozza aperta${app?.let { " in $it" } ?: ""}" + (if (p.a.isNotBlank()) " per ${p.a}" else "") +
+                    " — «${p.oggetto}»" + (p.allegato?.let { ", con «$it».pdf allegato" } ?: "") + ". Parte solo se premi Invia: l'app non può sapere se l'hai fatto." +
+                    (if (p.da.isNotBlank()) " Prima di inviare controlla il mittente: ${p.da}." else ""))
+            } catch (e: ActivityNotFoundException) {
+                Esecuzione(false, "Mail non preparata: sul telefono non c'è un'app di posta")
+            }
         }
     }
 }

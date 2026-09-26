@@ -88,6 +88,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
     val lettere = db.lettere().tutte().stato()
     val risposte = db.lettere().tutteLeRisposte().stato()
     val consegne = db.consegne().tutte().stato()
+    val appunti = db.lavagna().tutti().stato()
     val profilo: StateFlow<Profilo?> = db.profilo().osserva().stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val spesaMese = db.spesa().osserva(YearMonth.now().toString()).stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -488,6 +489,21 @@ class Adam(app: Application) : AndroidViewModel(app) {
         }
     }
     fun lasciaConsegna(c: it.resonance.adam.dati.Consegna) = viewModelScope.launch { avviso = archivio.lasciaConsegna(c) }
+
+    // ── La lavagna del Ghost: gesti diretti, senza modello ──
+    // Le notifiche fissate seguono la lavagna: qualunque cambio (tocco, turno dello Shell) le ridisegna.
+    init { viewModelScope.launch { appunti.collect { lista -> runCatching { it.resonance.adam.battito.Fissati.aggiorna(getApplication(), lista) } } } }
+
+    fun alternaRiga(a: it.resonance.adam.dati.Appunto, indice: Int) = viewModelScope.launch { archivio.alternaRiga(a, indice) }
+    fun fissa(a: it.resonance.adam.dati.Appunto) = viewModelScope.launch { db.lavagna().aggiorna(a.copy(fissato = !a.fissato)) }
+    fun tieni(a: it.resonance.adam.dati.Appunto, p: it.resonance.adam.dati.Percorso) = viewModelScope.launch { avviso = archivio.tieniAppunto(a, p) }
+    fun nuovoAppunto(titolo: String, testo: String) = viewModelScope.launch {
+        val righe = it.resonance.adam.logica.Lavagna.daTesto(testo)
+        if (titolo.isBlank() || righe.isEmpty()) { avviso = "Serve un titolo e almeno una riga"; return@launch }
+        val p = it.resonance.adam.logica.Proposta.ScriviAppunto(titolo.trim(), righe.take(it.resonance.adam.logica.Lavagna.RIGHE_MAX),
+            LocalDate.now().plusDays(it.resonance.adam.logica.Lavagna.GIORNI_PREDEFINITI.toLong()).toString())
+        avviso = archivio.esegui(p).ricevuta
+    }
     // Il modello si riprova con la temperatura: se la rifiuta ancora, torna in elenco da solo.
     fun dimenticaRinunce() { impostazioni.senzaTemperatura = emptySet(); avviso = "Al prossimo turno la temperatura si riprova con tutti i modelli." }
     fun spostaNodo(n: Nodo, genitoreId: Long?) = viewModelScope.launch { avviso = archivio.spostaNodo(n, genitoreId) }

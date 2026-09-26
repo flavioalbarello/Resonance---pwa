@@ -165,7 +165,7 @@ nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo ch
   portano `<!-- architetto -->` e tornano allo Shell come nota. Il Ghost non fa più da passacarte, ma vede tutto.
   L'architetto dalla cassetta consiglia; il codice cambia solo col sì del Ghost.
 - DB 8. Adam ha sette schede, scorrevoli: Percorsi, Diario, Quaderno, Taccuino, Fondo, Lettere, Regolazione.
-  Dal 26/09: DB 9 e otto schede, con Consegne dopo Taccuino.
+  Dal 26/09: DB 10 e nove schede: Percorsi, Lavagna, Diario, Quaderno, Taccuino, Consegne, Fondo, Lettere, Regolazione.
 - *Riunione a tre* (`cervello/Tavolo.kt`, 25/09/2026): briefing Ghost + Shell + architetto sulla progettazione
   macroscopica, MAI su dati di pazienti o personali. Il verbale è una cartella `riunioni/<id>/` nella cassetta, un
   file per intervento (`AAAAMMGG-hhmmss-mmm-autore.md`), creato e mai riscritto (Legge 14; niente conflitti fra
@@ -207,6 +207,21 @@ nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo ch
     Poi, su richiesta del Ghost: DUE calendari, uno per le cose di Adam e uno per i suoi impegni; `crea_evento` porta
     `per` (adam/personale, obbligatorio). Il mittente delle mail non si può imporre a Gmail (l'intent mailto non lo
     porta): si scrive in Setup e compare in proposta e ricevuta, da controllare nella bozza.
+- *Dalla seconda riunione (26/09/2026, «funzioni uso quotidiano»)*:
+  - *Lavagna del Ghost* (`logica/Lavagna.kt`, tabella `appunti`, DB 10; scheda Adam → Lavagna). Appunti usa e getta a
+    righe spuntabili. Vive finché ha righe da fare e non è scaduto (7 giorni, 1–30); poi esce dallo schermo e dal
+    prompt, e 30 giorni dopo si cancella DAVVERO — scelta esplicita del Ghost («non deve diventare spazzatura»): è
+    l'unico posto dell'app dove la Legge 14 non vale, e per questo ha «Tieni», che ne fa un documento. Strumenti:
+    `scrivi_appunto` e `modifica_appunto` (con conferma), `spunta_appunto` SENZA conferma — eccezione dichiarata: la
+    spunta è del Ghost, piccola, si annulla con un tocco, e la ricevuta va in chat. Tasti: Copia (righe da fare, da
+    incollare nella nota condivisa di Keep: Keep non ha API per gli account normali), Condividi, Fissa (notifica che
+    resta finché la lista vive, `battito/Fissati.kt`), Tieni. Il battito pulisce e ridisegna le notifiche.
+  - *PDF allegato* (`mondo/Pdf.kt`, `PdfDocument` di Android, nessuna libreria): `scrivi_mail` con `allegato` (un
+    appunto o un documento). Il testo si risolve PRIMA di proporre, e il guardiano dei nomi protetti lo controlla lì;
+    parte con ACTION_SEND verso Gmail. **Carenza**: Robolectric non implementa `PdfDocument`, il PDF non ha una prova
+    sul banco — la prima è sul telefono.
+  - *Guardie*: il verbale oscura gli indirizzi mail («[indirizzo]»); dal testo dello Shell si toglie anche l'etichetta
+    dell'architetto (la seconda imitazione in un giorno, dopo quella del programma).
 - *Schermo acceso in auto*: finché l'ascolto è AUTO la vista tiene `keepScreenOn`; si spegne quando l'auto si ferma
   (a mano o dopo tre silenzi). Prima lo schermo si bloccava mentre lo Shell rispondeva e il microfono non ripartiva.
 

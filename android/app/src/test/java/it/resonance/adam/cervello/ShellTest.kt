@@ -14,6 +14,7 @@ import it.resonance.adam.dati.Consegna
 import it.resonance.adam.logica.AgendaLetta
 import it.resonance.adam.logica.Azioni
 import it.resonance.adam.logica.Consegne
+import it.resonance.adam.logica.Lavagna
 import it.resonance.adam.logica.Contesto
 import it.resonance.adam.logica.Regole
 import it.resonance.adam.logica.Validazione
@@ -671,6 +672,59 @@ class ShellTest {
         assertTrue(prova("""{"cosa":"x","documento":"d1","giorni":3}""", Regole(consegneAperte = aperte.take(1))) is Validazione.Rifiutata)
         assertTrue(prova("""{"cosa":"x","documento":"D9","giorni":0}""", Regole()) is Validazione.Rifiutata)
         assertTrue(prova("""{"cosa":"x","documento":"D9","giorni":5}""", Regole()) is Validazione.Scrittura)
+    }
+
+    // ── La lavagna del Ghost (seconda riunione del 26/09) ──
+
+    @Test fun laListaSiScriveConConfermaESiSpuntaSenza() = runBlocking {
+        val scrivi = FintoModello(chiama("scrivi_appunto", """{"titolo":"Spesa","righe":["latte","uova","fagioli cannellini"]}"""), testo("Proposta la lista."))
+        val e = shell(scrivi, FintaCassetta()).turno("fammi la lista della spesa")
+        assertTrue(db.lavagna().elenco().isEmpty())
+        shell(FintoModello(), FintaCassetta()).conferma(e.proposte.single())
+        assertEquals(3, Lavagna.righe(db.lavagna().elenco().single()).size)
+        assertTrue(Contesto.sistema(archivio.istantanea()).contains("LAVAGNA DEL GHOST"))
+
+        // Al supermercato: nessuna proposta, la spunta avviene e la ricevuta è in chat.
+        val spunta = FintoModello(chiama("spunta_appunto", """{"appunto":"spesa","righe":["latte"]}"""), testo("Spuntato."))
+        val s = shell(spunta, FintaCassetta()).turno("preso il latte")
+        assertTrue(s.proposte.isEmpty())
+        assertEquals(listOf(true, false, false), Lavagna.righe(db.lavagna().elenco().single()).map { it.fatta })
+        assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.RICEVUTA && it.testo.startsWith("Spuntato in «Spesa»: latte. Restano 2") })
+
+        // Togliere una riga che non c'è: il programma lo dice prima di proporre.
+        val togli = FintoModello(chiama("modifica_appunto", """{"appunto":"Spesa","togli":["pane"]}"""), testo("Ok."))
+        assertTrue(shell(togli, FintaCassetta()).turno("togli il pane").proposte.isEmpty())
+        assertTrue(contenuto(togli.ricevuti[1], togli.ricevuti[1].size - 1).contains("non trovo con certezza «pane»"))
+    }
+
+    @Test fun lAllegatoSiRisolvePrimaEIlNomeProtettoNonEsce() = runBlocking {
+        db.profilo().salva(it.resonance.adam.dati.Profilo(nomiProtetti = "PhysioAlba"))
+        archivio.esegui(Proposta.ScriviAppunto("Spesa", listOf("latte", "uova"), LocalDate.now().plusDays(7).toString()))
+        val mail = FintoModello(chiama("scrivi_mail", """{"oggetto":"Spesa","corpo":"Ecco la lista","allegato":"spesa"}"""), testo("Proposta."))
+        val e = shell(mail, FintaCassetta()).turno("mandala a me in pdf")
+        val p = archivio.proposta(db.messaggi().per(e.proposte.single())!!) as Proposta.ScriviMail
+        assertEquals("Spesa", p.allegato)
+        assertEquals("Spesa\n\n☐ latte\n☐ uova", p.allegatoTesto)
+        assertTrue(p.descrizione().contains("con allegato «Spesa».pdf"))
+
+        archivio.esegui(Proposta.CreaPercorso(Pilastro.ADAM, "Lavoro", "", listOf("x")))
+        archivio.esegui(Proposta.SalvaDocumento("Lavoro", "Biglietto", "Studio PhysioAlba, via Roma"))
+        val protetto = FintoModello(chiama("scrivi_mail", """{"oggetto":"Biglietto","corpo":"In allegato","allegato":"Biglietto"}"""), testo("Ok."))
+        assertTrue(shell(protetto, FintaCassetta()).turno("allegalo").proposte.isEmpty())
+        assertTrue(contenuto(protetto.ricevuti[1], protetto.ricevuti[1].size - 1).contains("non fa uscire"))
+    }
+
+    @Test fun lEtichettaDellArchitettoScrittaDalloShellSiToglie() = runBlocking {
+        shell(FintoModello(testo("[L'architetto (Claude Code), non il Ghost] Ricevuto.")), FintaCassetta()).turno("effetto")
+        assertEquals("Ricevuto.", db.messaggi().elenco().single { it.ruolo == Ruolo.SHELL }.testo)
+    }
+
+    @Test fun nelVerbaleGliIndirizziNonEscono() = runBlocking {
+        val cassetta = FintaCassetta()
+        riunioneAperta(cassetta)
+        shell(FintoModello(testo("La mando a marta.x85@gmail.com, va bene?")), cassetta).turno("mandala a mia moglie")
+        val shellMd = cassetta.file.entries.single { it.key.endsWith("-shell.md") }.value
+        assertEquals("La mando a [indirizzo], va bene?", shellMd)
     }
 
     @Test fun laCassettaNonPuoEssereIlRepositoryPubblico() {

@@ -20,10 +20,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import it.resonance.adam.dati.StatoConsegna
+import it.resonance.adam.dati.Appunto
 import it.resonance.adam.dati.StatoLettera
 import it.resonance.adam.dati.TipoMovimento
 import it.resonance.adam.logica.Consegne
+import it.resonance.adam.logica.Lavagna
 import it.resonance.adam.logica.Fondo
 import it.resonance.adam.logica.Giorni
 import it.resonance.adam.logica.Taccuino
@@ -54,6 +60,93 @@ fun TaccuinoUi(vm: Adam) {
     if (spente.isNotEmpty()) {
         Etichetta("Evaporate o tolte")
         spente.forEach { n -> Tenue("#${n.id} ${if (n.tolta) "(tolta da te)" else "(evaporata)"} · ${n.testo}") }
+    }
+}
+
+// La lavagna del Ghost (riunione del 26/09/2026): appunti usa e getta. Le righe si spuntano col tocco; Copia porta le
+// righe da fare in una nota condivisa (Keep), Condividi le manda a un'altra app, Fissa le tiene nelle notifiche, Tieni
+// ne fa un documento. Finito o scaduto, un appunto esce da qui e dal prompt; dopo 30 giorni si cancella.
+@Composable
+fun LavagnaUi(vm: Adam) {
+    val appunti by vm.appunti.collectAsState()
+    val percorsi by vm.percorsi.collectAsState()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val oggi = LocalDate.now()
+    var nuovo by remember { mutableStateOf(false) }
+    var daTenere by remember { mutableStateOf<Appunto?>(null) }
+    val (vivi, finiti) = appunti.filterNot { it.tenuto }.partition { Lavagna.vivo(it, oggi) }
+    Tenue("Appunti usa e getta: la lista della spesa, le cose di questi giorni. Tocca una riga per spuntarla. Finito o scaduto, un appunto esce da qui e dalla memoria dello Shell; dopo ${Lavagna.GIORNI_DOPO} giorni si cancella. Quello che merita di restare: Tieni.")
+    OutlinedButton({ nuovo = true }) { Text("+ Appunto") }
+    if (vivi.isEmpty()) Tenue("Lavagna pulita.")
+    vivi.forEach { a ->
+        Scheda(Colori.ambra) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(a.titolo, color = Colori.inchiostro, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                Tenue("scade ${Giorni.leggibile(a.scade)}")
+            }
+            Lavagna.righe(a).forEachIndexed { i, r ->
+                Row(Modifier.fillMaxWidth().clickable { vm.alternaRiga(a, i) }.testTag("riga-${a.id}-$i"), verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Checkbox(r.fatta, { vm.alternaRiga(a, i) })
+                    Text(r.testo, color = if (r.fatta) Colori.tenue else Colori.inchiostro,
+                        textDecoration = if (r.fatta) androidx.compose.ui.text.style.TextDecoration.LineThrough else null)
+                }
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton({
+                    ctx.getSystemService(android.content.ClipboardManager::class.java)
+                        .setPrimaryClip(android.content.ClipData.newPlainText(a.titolo, Lavagna.perCopia(a)))
+                    vm.avviso = "Copiate le righe da fare: incollale nella nota"
+                }) { Text("Copia") }
+                TextButton({
+                    ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_SUBJECT, a.titolo)
+                        putExtra(android.content.Intent.EXTRA_TEXT, Lavagna.perCondividere(a))
+                    }, "Condividi «${a.titolo}»"))
+                }) { Text("Condividi") }
+                TextButton({ vm.fissa(a) }, modifier = Modifier.testTag("fissa-${a.id}")) { Text(if (a.fissato) "Sfissa" else "Fissa") }
+                TextButton({ daTenere = a }) { Text("Tieni") }
+            }
+        }
+    }
+    if (finiti.isNotEmpty()) {
+        Etichetta("Finiti o scaduti (si cancellano dopo ${Lavagna.GIORNI_DOPO} giorni)")
+        finiti.forEach { a ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("${a.titolo} · ${Lavagna.righe(a).count { it.fatta }}/${Lavagna.righe(a).size} fatte", color = Colori.tenue, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                TextButton({ daTenere = a }) { Text("Tieni", color = Colori.tenue) }
+            }
+        }
+    }
+    if (nuovo) {
+        var titolo by remember { mutableStateOf("") }
+        var testo by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { nuovo = false },
+            title = { Text("Nuovo appunto") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(titolo, { titolo = it }, label = { Text("Titolo") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(testo, { testo = it }, label = { Text("Una riga per voce") }, minLines = 4, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = { TextButton({ vm.nuovoAppunto(titolo, testo); nuovo = false }) { Text("Scrivi") } },
+            dismissButton = { TextButton({ nuovo = false }) { Text("Annulla") } },
+        )
+    }
+    daTenere?.let { a ->
+        AlertDialog(
+            onDismissRequest = { daTenere = null },
+            title = { Text("Tenere «${a.titolo}»") },
+            text = {
+                Column {
+                    Tenue("Diventa un documento, e lascia la lavagna. In quale percorso?")
+                    percorsi.forEach { p -> TextButton({ vm.tieni(a, p); daTenere = null }) { Text(p.titolo) } }
+                    if (percorsi.isEmpty()) Tenue("Nessun percorso: creane uno prima.")
+                }
+            },
+            confirmButton = { TextButton({ daTenere = null }) { Text("Annulla") } },
+        )
     }
 }
 

@@ -142,6 +142,20 @@ sealed class Proposta {
         override fun descrizione() = "Fondo di Adam, ${tipo.etichetta}: ${Fondo.euro(importo)}, ${Giorni.leggibile(giorno)} — $motivo"
     }
 
+    @Serializable @SerialName("scrivi_appunto")
+    data class ScriviAppunto(val titolo: String, val righe: List<String>, val scade: String) : Proposta() {
+        override fun descrizione() = "Sulla lavagna: «$titolo» — ${Testi.corto(righe.joinToString("; "), 160)} (${righe.size} righe, scade ${Giorni.leggibile(scade)})"
+        override fun dettaglio() = righe.joinToString("\n") { "☐ $it" }
+    }
+
+    @Serializable @SerialName("modifica_appunto")
+    data class ModificaAppunto(val appunto: String, val aggiungi: List<String> = emptyList(), val togli: List<String> = emptyList()) : Proposta() {
+        override fun descrizione() = "Sulla lavagna, «$appunto»: " + listOfNotNull(
+            aggiungi.takeIf { it.isNotEmpty() }?.let { "aggiungere ${Testi.corto(it.joinToString("; "), 120)}" },
+            togli.takeIf { it.isNotEmpty() }?.let { "togliere ${Testi.corto(it.joinToString("; "), 120)}" },
+        ).joinToString(", ")
+    }
+
     @Serializable @SerialName("prendi_consegna")
     data class PrendiConsegna(val cosa: String, val documento: String, val percorso: String? = null, val scadenza: String) : Proposta() {
         override fun descrizione() = "Consegna dello Shell: «$cosa» — documento «$documento»" + (percorso?.let { " nel percorso «$it»" } ?: "") +
@@ -226,11 +240,15 @@ sealed class Proposta {
     }
 
     @Serializable @SerialName("scrivi_mail")
-    data class ScriviMail(val a: String, val oggetto: String, val corpo: String, val da: String = "") : Proposta() {
+    data class ScriviMail(val a: String, val oggetto: String, val corpo: String, val da: String = "",
+                          // Un appunto della lavagna o un documento, allegato in PDF (26/09). Il testo si risolve PRIMA di
+                          // proporre: parte ciò che il Ghost ha visto e confermato, non ciò che c'è al momento dell'invio.
+                          val allegato: String? = null, val allegatoTesto: String? = null) : Proposta() {
         override fun descrizione() = "Preparare una mail" + (if (a.isNotBlank()) " a $a" else " (destinatario lo scrivi tu)") +
-            " — «${Testi.corto(oggetto, 60)}»: «${Testi.corto(corpo, 160)}». Si apre come bozza nell'app di posta: parte solo se premi Invia tu." +
+            " — «${Testi.corto(oggetto, 60)}»: «${Testi.corto(corpo, 160)}»" + (allegato?.let { ", con allegato «$it».pdf" } ?: "") +
+            ". Si apre come bozza nell'app di posta: parte solo se premi Invia tu." +
             (if (da.isNotBlank()) " Nella bozza controlla che il mittente sia $da: l'app non può sceglierlo." else "")
-        override fun dettaglio() = "Oggetto: $oggetto\n\n$corpo"
+        override fun dettaglio() = "Oggetto: $oggetto\n\n$corpo" + (allegatoTesto?.let { "\n\n— Allegato «$allegato».pdf —\n$it" } ?: "")
     }
 }
 
@@ -242,6 +260,7 @@ data class Regole(
     val detteDalGhost: String = "",
     val esperimentiAperti: List<Esperimento> = emptyList(),
     val consegneAperte: List<it.resonance.adam.dati.Consegna> = emptyList(),
+    val appuntiVivi: List<it.resonance.adam.dati.Appunto> = emptyList(),
 )
 
 sealed class Validazione {
@@ -370,6 +389,7 @@ object Azioni {
             schema(listOf("oggetto", "corpo"), mapOf(
                 "a" to s("Indirizzo esatto come l'ha scritto il Ghost; lascia vuoto se non te l'ha dato"),
                 "oggetto" to s("Oggetto"), "corpo" to s("Testo completo"),
+                "allegato" to s("Facoltativo: titolo di un appunto della lavagna o di un documento, da allegare in PDF"),
             ))),
         Strumento("aggiungi_nodi", Effetto.SCRITTURA,
             "Propone di aggiungere nodi (tappe, brani, capitoli…) in fondo a un percorso che esiste già; partono non iniziati. Poi lo stato di ciascuno si cambia con stato_nodo.",
@@ -397,6 +417,18 @@ object Azioni {
             "Propone un'entrata o un'uscita del fondo di Adam, col motivo. Il Ghost esegue e conferma. I versamenti li fa lui.",
             schema(listOf("tipo", "importo", "motivo"), mapOf("tipo" to e(listOf("entrata", "uscita"), "Verso"),
                 "importo" to n("Euro, positivo"), "motivo" to s("Per cosa"), "giorno" to s("yyyy-MM-dd, se assente oggi")))),
+        Strumento("scrivi_appunto", Effetto.SCRITTURA,
+            "Propone un appunto sulla LAVAGNA del Ghost: cose usa e getta (la lista della spesa, cose da fare nei prossimi giorni). Righe spuntabili; " +
+                "sparisce quando è tutto spuntato o alla scadenza. Non per ciò che deve restare: per quello salva_documento.",
+            schema(listOf("titolo", "righe"), mapOf("titolo" to s("Breve: «Spesa», «Da fare sabato»"), "righe" to lista("Una voce per riga"),
+                "giorni" to n("Fra quanti giorni scade, ${Lavagna.GIORNI_MIN}–${Lavagna.GIORNI_MAX}; se assente ${Lavagna.GIORNI_PREDEFINITI}")))),
+        Strumento("modifica_appunto", Effetto.SCRITTURA, "Propone di aggiungere o togliere righe a un appunto della lavagna.",
+            schema(listOf("appunto"), mapOf("appunto" to s("Titolo dell'appunto"), "aggiungi" to lista("Righe nuove"), "togli" to lista("Righe da togliere, come sono scritte")))),
+        Strumento("spunta_appunto", Effetto.INTERNO,
+            "Spunta righe di un appunto della lavagna quando il Ghost dice di averle fatte («preso il latte»). Senza conferma: è una spunta sua, " +
+                "si annulla con un tocco. Con fatta=false toglie la spunta.",
+            schema(listOf("appunto", "righe"), mapOf("appunto" to s("Titolo dell'appunto"), "righe" to lista("Le righe fatte, come sono scritte"),
+                "fatta" to e(listOf("true", "false"), "true se fatte (predefinito), false per togliere la spunta")))),
         Strumento("prendi_consegna", Effetto.SCRITTURA,
             "Propone una tua consegna: quando dici «lo preparo nei prossimi giorni», prendila qui. Dichiari ORA la forma che il programma verificherà: " +
                 "un documento con un titolo, in un percorso. Il giorno prima della scadenza parte da solo un tuo turno di lavoro; alla scadenza il programma " +
@@ -458,6 +490,11 @@ object Azioni {
             a.numero("id")?.toLong() ?: rifiuta("id della nota mancante (è il numero dopo #)")
             Validazione.Interna(nome, a)
         }
+        "spunta_appunto" -> {
+            a.testo("appunto") ?: rifiuta("quale appunto: serve il titolo")
+            if (elenco(a, "righe").isEmpty()) rifiuta("quali righe: servono come elenco")
+            Validazione.Interna(nome, a)
+        }
         else -> rifiuta("strumento interno non previsto: $nome")
     }
 
@@ -477,6 +514,25 @@ object Azioni {
             val imp = a.numero("importo") ?: rifiuta("importo mancante")
             if (imp <= 0.0 || imp > 10_000.0) rifiuta("importo in euro, positivo: il verso lo dice il tipo")
             Proposta.MovimentoFondo(tipo, Math.round(imp * 100) / 100.0, a.testo("motivo") ?: rifiuta("serve il motivo: resta scritto"), giorno(a, oggi))
+        }
+        "scrivi_appunto" -> {
+            val titolo = a.testo("titolo")?.takeIf { it.length <= 80 } ?: rifiuta("titolo mancante o più lungo di 80 caratteri")
+            val righe = elenco(a, "righe")
+            if (righe.size !in 1..Lavagna.RIGHE_MAX) rifiuta("servono da 1 a ${Lavagna.RIGHE_MAX} righe, come elenco")
+            righe.find { it.length > 200 }?.let { rifiuta("«${Testi.corto(it, 40)}» è troppo lunga per una riga di lavagna") }
+            val giorni = intero(a, "giorni", Lavagna.GIORNI_PREDEFINITI)
+            if (giorni !in Lavagna.GIORNI_MIN..Lavagna.GIORNI_MAX) rifiuta("giorni fuori da ${Lavagna.GIORNI_MIN}–${Lavagna.GIORNI_MAX}: la lavagna è per cose brevi")
+            regole.appuntiVivi.find { Testi.normalizza(it.titolo) == Testi.normalizza(titolo) }?.let {
+                rifiuta("sulla lavagna c'è già «${it.titolo}»: aggiungi le righe con modifica_appunto")
+            }
+            Proposta.ScriviAppunto(titolo, righe, oggi.plusDays(giorni.toLong()).toString())
+        }
+        "modifica_appunto" -> {
+            val appunto = a.testo("appunto") ?: rifiuta("quale appunto: serve il titolo")
+            val aggiungi = elenco(a, "aggiungi")
+            val togli = elenco(a, "togli")
+            if (aggiungi.isEmpty() && togli.isEmpty()) rifiuta("niente da aggiungere né da togliere")
+            Proposta.ModificaAppunto(appunto, aggiungi, togli)
         }
         "prendi_consegna" -> {
             val cosa = a.testo("cosa")?.takeIf { it.length <= 200 } ?: rifiuta("cosa mancante o più lungo di 200 caratteri: una riga")
@@ -634,7 +690,7 @@ object Azioni {
             val corpo = a.testo("corpo") ?: rifiuta("corpo vuoto")
             val v = Uscita.violazioni("$dest\n$oggetto\n$corpo", regole.nomiProtetti, regole.detteDalGhost)
             if (v.isNotEmpty()) rifiuta("la mail contiene ${v.joinToString { "«$it»" }}, un nome che il Ghost non fa uscire: riscrivila senza")
-            Proposta.ScriviMail(dest, oggetto, corpo)
+            Proposta.ScriviMail(dest, oggetto, corpo, allegato = a.testo("allegato")?.takeIf { it.length <= 120 })
         }
         else -> rifiuta("scrittura non prevista: $nome")
     }
@@ -649,6 +705,10 @@ object Azioni {
 
     fun codifica(p: Proposta): String = json.encodeToString(Proposta.serializer(), p)
     fun decodifica(s: String): Proposta = json.decodeFromString(Proposta.serializer(), s)
+
+    fun elenco(a: JsonObject, k: String): List<String> =
+        runCatching { a[k]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf(String::isNotEmpty) } }.getOrNull()
+            ?: a.testo(k)?.let { Lavagna.daTesto(it) }.orEmpty()
 
     fun intero(a: JsonObject, k: String, predefinito: Int) = a[k]?.let { runCatching { it.jsonPrimitive.intOrNull ?: it.jsonPrimitive.doubleOrNull?.toInt() }.getOrNull() } ?: predefinito
     fun stringa(a: JsonObject, k: String) = a.testo(k)
@@ -755,9 +815,10 @@ object Testi {
     )
     fun promette(t: String) = PROMETTE.containsMatchIn(t)
 
-    // Lo Shell che imita la voce del programma (visto in riunione il 26/09: «[Nota del programma: la riunione è chiusa…]»).
-    // Quella riga distingue ciò che è successo da ciò che è stato detto: se la scrive il modello, non distingue più.
-    private val FINTA_NOTA = Regex("""\[\s*nota del programma[^\]]*]""", RegexOption.IGNORE_CASE)
+    // Lo Shell che imita la voce del programma (visto in riunione il 26/09: «[Nota del programma: la riunione è chiusa…]»),
+    // e poche ore dopo quella dell'architetto («[L'architetto (Claude Code), non il Ghost] …»): copia le etichette che
+    // vede nella storia. Quelle righe distinguono chi parla e cosa è successo: se le scrive il modello, non distinguono più.
+    private val FINTA_NOTA = Regex("""\[\s*(nota del programma|l['’]architetto)[^\]]*]""", RegexOption.IGNORE_CASE)
     fun fintaNota(t: String) = FINTA_NOTA.containsMatchIn(t)
     fun senzaFinteNote(t: String) = t.replace(FINTA_NOTA, "").replace(Regex("\n{3,}"), "\n\n").trim()
 

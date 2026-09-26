@@ -46,10 +46,12 @@ class Tavolo(private val archivio: Archivio, private val imp: Impostazioni, priv
         cassetta.scrivi(imp.cassetta, imp.tokenCassetta, "${cartella()}/${marca()}-$autore.md", pulisci(testo), "Riunione: $autore")
     }
 
-    // Il guardiano dove il dato esce: la regola dei nomi protetti vale anche per il verbale.
+    // Il guardiano dove il dato esce: la regola dei nomi protetti vale anche per il verbale. Dal 26/09 anche gli indirizzi
+    // mail: nella seconda riunione lo Shell vi aveva scritto quello della moglie del Ghost. Il verbale è privato, ma è
+    // fuori dal telefono.
     private suspend fun pulisci(t: String): String {
         val nomi = Uscita.nomi(archivio.db.profilo().leggi()?.nomiProtetti.orEmpty())
-        return nomi.fold(t) { acc, n -> acc.replace(n, "[nome protetto]", ignoreCase = true) }
+        return senzaIndirizzi(nomi.fold(t) { acc, n -> acc.replace(n, "[nome protetto]", ignoreCase = true) })
     }
 
     /** Cosa ha portato un ritiro: i messaggi nuovi dell'architetto, e quello a cui lo Shell deve rispondere (se c'è). */
@@ -100,6 +102,8 @@ class Tavolo(private val archivio: Archivio, private val imp: Impostazioni, priv
 
     companion object {
         const val GIRI_SENZA_GHOST = 3
+        private val INDIRIZZO = Regex("[\\w.+-]+@[\\w-]+(\\.[\\w-]+)+")
+        fun senzaIndirizzi(t: String) = t.replace(INDIRIZZO, "[indirizzo]")
         private val chiave = Mutex()
 
         // Il verbale: la forma si dichiara al modello e si controlla sul testo con la stessa lista (detta e verifica).

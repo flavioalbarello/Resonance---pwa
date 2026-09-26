@@ -41,6 +41,8 @@ class TurnoWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         if (id < 0) return Result.failure()
         val forza = inputData.getString(FORZA)?.let { f -> it.resonance.adam.cervello.Forzatura.entries.find { it.name == f } }
         val esito = Shell(Archivio(Db.di(applicationContext)), Impostazioni(applicationContext), mondo = MondoAndroid(applicationContext)).rispondi(id, forza)
+        // Lo Shell può aver spuntato la lista mentre l'app era chiusa: la notifica fissata segue.
+        runCatching { Fissati.aggiorna(applicationContext) }
         if (!Primopiano.visibile && (esito.testo.isNotBlank() || esito.proposte.isNotEmpty())) {
             creaCanali(applicationContext)
             val proposte = if (esito.proposte.isEmpty()) "" else "\n${esito.proposte.size} proposta da confermare"

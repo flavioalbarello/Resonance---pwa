@@ -38,6 +38,8 @@ data class Istantanea(
     val riunione: String = "",
     // Le consegne aperte dello Shell (logica/Consegne.kt).
     val consegne: List<it.resonance.adam.dati.Consegna> = emptyList(),
+    // Gli appunti vivi della lavagna del Ghost.
+    val appunti: List<it.resonance.adam.dati.Appunto> = emptyList(),
 )
 
 data class StatoRituale(val rituale: Rituale, val tenuta: Tenuta, val giorni: Set<LocalDate>)
@@ -92,6 +94,7 @@ object Contesto {
         appendLine("- Tu non esegui niente: proponi con gli strumenti. Ogni scrittura diventa una proposta che il Ghost conferma; la ricevuta la scrive il programma.")
         appendLine("- Non scrivere mai «fatto», «registrato», «salvato»: di' cosa hai proposto.")
         appendLine("- Le righe «[Nota del programma …]» le scrive solo il programma: tu mai. E non scrivere le chiamate agli strumenti come testo («crea_evento(...)»): falle, altrimenti non esiste nessuna proposta.")
+        appendLine("- Le cose usa e getta del Ghost (la lista della spesa, cose da fare nei prossimi giorni) vanno sulla LAVAGNA: scrivi_appunto, modifica_appunto. Quando dice di averne fatta una («preso il latte»), spunta_appunto: senza conferma, e lui la vede. Per mandarne una: scrivi_mail con allegato (diventa un PDF).")
         appendLine("- Quando dici che farai una cosa più avanti («la preparo nei prossimi giorni»), prendila come consegna con prendi_consegna: il titolo del documento che consegnerai e fra quanti giorni. Senza, resta una dichiarazione che nessuno tiene.")
         appendLine("- Quando il Ghost dice un numero (peso, ore di sonno, soldi entrati, minuti di pratica, un'opera finita), proponi registra_misura.")
         appendLine("- I numeri qui sotto li ha calcolati il programma. Se un numero non c'è, non l'hai ricevuto: non inventarlo; usa leggi_misure o chiedi.")
@@ -164,6 +167,11 @@ object Contesto {
         val vive = Taccuino.vive(i.note, ora)
         if (vive.isEmpty()) appendLine("- vuoto") else vive.forEach { appendLine("- ${Taccuino.riga(it, ora)}") }
         appendLine()
+        if (i.appunti.isNotEmpty()) {
+            appendLine("LAVAGNA DEL GHOST (appunti usa e getta, vivi)")
+            Lavagna.perPrompt(i.appunti, i.oggi).forEach { appendLine("- $it") }
+            appendLine()
+        }
         if (i.consegne.isNotEmpty()) {
             appendLine("LE TUE CONSEGNE APERTE (le verifica il programma alla scadenza)")
             i.consegne.forEach { appendLine("- ${Consegne.riga(it)}") }

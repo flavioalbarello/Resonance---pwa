@@ -129,6 +129,8 @@ class SchermateTest {
             proposta = it.resonance.adam.logica.Azioni.codifica(modifica)))
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.NOTA, testo = "Nessuna azione è stata eseguita in questo turno: le azioni vere compaiono come proposte da confermare e poi come ricevute.", istante = t + 5))
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.ARCHITETTO, testo = "→ Shell\nIl pilastro di un nodo dice dove altro atterra: **ADAM** solo per il sistema.", istante = t - 1))
+        db.lavagna().inserisci(it.resonance.adam.dati.Appunto(titolo = "Spesa", creato = 1, scade = java.time.LocalDate.now().plusDays(5).toString(), fissato = true,
+            righe = it.resonance.adam.logica.Lavagna.codifica(listOf("Latte", "Uova", "Fagioli cannellini", "Pane").mapIndexed { i, t -> it.resonance.adam.logica.Lavagna.Riga(t, i == 1) })))
         db.consegne().inserisci(it.resonance.adam.dati.Consegna(cosa = "Scheda del primo micro-asset", documento = "Scheda micro-asset", percorso = "Resonance",
             presa = g(1), scadenza = java.time.LocalDate.now().plusDays(2).toString(), creata = 1))
     }
@@ -212,6 +214,9 @@ class SchermateTest {
         regola.onNodeWithText("Taccuino").performScrollTo().performClick()
         regola.onNodeWithText("Un planner per chi suona", substring = true).assertExists()
         scatta("8d-adam-taccuino")
+        regola.onNodeWithText("Lavagna").performScrollTo().performClick()
+        regola.onNodeWithText("Fagioli cannellini").assertExists()
+        scatta("8h-adam-lavagna")
         regola.onNodeWithText("Consegne").performScrollTo().performClick()
         regola.onNodeWithText("Scheda del primo micro-asset").assertExists()
         scatta("8g-adam-consegne")

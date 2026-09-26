@@ -26,6 +26,8 @@ import it.resonance.adam.logica.Contesto
 import it.resonance.adam.logica.Istantanea
 import it.resonance.adam.logica.Nodi
 import it.resonance.adam.logica.Testi
+import it.resonance.adam.logica.Lavagna
+import it.resonance.adam.dati.Ambiguo
 import it.resonance.adam.logica.Taccuino
 import it.resonance.adam.logica.Validazione
 import kotlinx.serialization.json.Json
@@ -53,6 +55,7 @@ suspend fun Archivio.istantanea(oggi: LocalDate = LocalDate.now(), agenda: Agend
     note = db.taccuino().elenco(),
     movimenti = db.fondo().elenco(),
     consegne = db.consegne().aperte(),
+    appunti = db.lavagna().elenco().filter { Lavagna.vivo(it, oggi) },
     versione = it.resonance.adam.BuildConfig.VERSION_NAME,
 )
 
@@ -379,7 +382,7 @@ class Shell(
         registraTurno(compito, modello, usata, forza != null, proposte, rifiutate, troncata, esauriti, errore = false, costoTurno)
         if (proposte.isEmpty() && Testi.affermaAzione(testo))
             nota("Nessuna azione è stata eseguita in questo turno: le azioni vere compaiono come proposte da confermare e poi come ricevute.")
-        if (finta) nota("Lo Shell aveva scritto una riga «[Nota del programma …]»: tolta. Le note del programma le scrive solo il programma.")
+        if (finta) nota("Lo Shell aveva scritto un'etichetta che non è sua («[Nota del programma …]» o «[L'architetto …]»): tolta. Le etichette le mette solo il programma.")
         Testi.chiamateScritte(testo, Azioni.strumenti.map { it.nome }).takeIf { it.isNotEmpty() && proposte.isEmpty() }?.let {
             nota("Lo Shell ha scritto ${it.joinToString()} come testo invece di proporlo: non c'è niente da confermare. Chiedigli di proporlo davvero.")
         }
@@ -419,7 +422,17 @@ class Shell(
     // L'accettore prima dell'effettore: una modifica che alla conferma fallirebbe non si mostra al Ghost. Visto il 24/09:
     // tre proposte sul quaderno Vidya, vuoto, con un'ancora che non c'era; il Ghost confermava e riceveva «non modificato».
     private suspend fun risolvi(p: Proposta): Risoluzione = when (p) {
-        is Proposta.CreaEvento, is Proposta.SpostaEvento, is Proposta.TogliEvento, is Proposta.ScriviMail -> mondo?.risolvi(p) ?: Risoluzione.Domanda("il calendario non è raggiungibile da qui")
+        is Proposta.CreaEvento, is Proposta.SpostaEvento, is Proposta.TogliEvento -> mondo?.risolvi(p) ?: Risoluzione.Domanda("il calendario non è raggiungibile da qui")
+        is Proposta.ScriviMail -> when (val r = risolviAllegato(p)) {
+            is Risoluzione.Pronta -> mondo?.risolvi(r.proposta) ?: r
+            is Risoluzione.Domanda -> r
+        }
+        is Proposta.ModificaAppunto -> try {
+            val a = archivio.appuntoVivo(p.appunto)
+            val (_, dubbie) = Lavagna.trova(a, p.togli)
+            if (dubbie.isEmpty()) Risoluzione.Pronta(p.copy(appunto = a.titolo))
+            else Risoluzione.Domanda("in «${a.titolo}» non trovo con certezza ${dubbie.joinToString { "«$it»" }}; le righe sono: ${Lavagna.righe(a).joinToString("; ") { it.testo }}")
+        } catch (e: Ambiguo) { Risoluzione.Domanda(e.message ?: "appunto non trovato") }
         is Proposta.ModificaQuaderno -> if (p.modo == "aggiungi") Risoluzione.Pronta(p) else {
             val attuale = archivio.db.quaderni().elenco().find { it.pilastro == p.pilastro }?.testo.orEmpty()
             provaAncora(p, "il quaderno ${p.pilastro.etichetta}", attuale, p.ancora)
@@ -427,7 +440,7 @@ class Shell(
         is Proposta.ModificaDocumento -> try {
             val d = archivio.documento(p.documento)
             provaAncora(p, "il documento «${d.titolo}»", d.testo, p.ancora)
-        } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "documento non trovato") }
+        } catch (e: Ambiguo) { Risoluzione.Domanda(e.message ?: "documento non trovato") }
         is Proposta.AggiungiNodi -> risolviAggiungi(p)
         is Proposta.SpostaNodi -> try {
             val per = archivio.percorso(p.percorso)
@@ -444,7 +457,7 @@ class Shell(
                 !nuovo && nodi.all { it.genitoreId == g?.id } -> Risoluzione.Domanda("sono già " + (sotto?.let { "sotto «$it»" } ?: "al primo livello"))
                 else -> Risoluzione.Pronta(Proposta.SpostaNodi(per.titolo, nodi.map { it.etichetta }, sotto, nuovo))
             }
-        } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
+        } catch (e: Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
         // Anche il nodo si cerca prima: una proposta che alla conferma non trova il nodo non si mostra.
         is Proposta.StatoDelNodo -> when (val n = nodo(p.percorso, p.nodo)) {
             is Risoluzione.Domanda -> n
@@ -501,11 +514,30 @@ class Shell(
                 (if (nodi.isEmpty()) "Il percorso non ha nodi: aggiungili con aggiungi_nodi" else "Nodi: ${nodi.sortedBy { it.ordine }.joinToString("; ") { it.etichetta }}. Se manca, aggiungilo con aggiungi_nodi"))
             else -> Risoluzione.Domanda("«$nodo» corrisponde a più nodi: ${trovati.joinToString("; ") { it.etichetta }}. Usa l'etichetta intera")
         }
-    } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
+    } catch (e: Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
+
+    // L'allegato si risolve PRIMA di proporre: un appunto della lavagna o un documento, col testo che partirà. Il PDF esce
+    // dal telefono: il guardiano dei nomi protetti lo controlla qui, come le lettere.
+    private suspend fun risolviAllegato(p: Proposta.ScriviMail): Risoluzione {
+        val nome = p.allegato ?: return Risoluzione.Pronta(p)
+        val (titolo, testo) = try {
+            archivio.appuntoVivo(nome).let { it.titolo to Lavagna.perCondividere(it) }
+        } catch (e: Ambiguo) {
+            val docs = archivio.db.percorsi().elencoDocumenti()
+            val n = Testi.normalizza(nome)
+            val d = docs.filter { Testi.normalizza(it.titolo) == n }.ifEmpty { docs.filter { Testi.normalizza(it.titolo).contains(n) } }
+            if (d.size != 1) return Risoluzione.Domanda("non trovo con certezza «$nome» da allegare, né sulla lavagna né fra i documenti" +
+                if (d.size > 1) ": più documenti corrispondono (${d.joinToString { "«${it.titolo}»" }})" else "")
+            d.single().titolo to (d.single().titolo + "\n\n" + d.single().testo)
+        }
+        val v = Uscita.violazioni(testo, Uscita.nomi(archivio.db.profilo().leggi()?.nomiProtetti.orEmpty()), "")
+        if (v.isNotEmpty()) return Risoluzione.Domanda("l'allegato «$titolo» contiene ${v.joinToString { "«$it»" }}, un nome che il Ghost non fa uscire: non si allega")
+        return Risoluzione.Pronta(p.copy(allegato = titolo, allegatoTesto = testo))
+    }
 
     private suspend fun risolviAggiungi(p: Proposta.AggiungiNodi): Risoluzione = try {
         risolviAggiungiDentro(p)
-    } catch (e: it.resonance.adam.dati.Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
+    } catch (e: Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
 
     private suspend fun risolviAggiungiDentro(p: Proposta.AggiungiNodi): Risoluzione {
         val per = archivio.percorso(p.percorso)
@@ -546,6 +578,14 @@ class Shell(
                 n.tolta -> "Nel taccuino la nota #$id l'ha tolta il Ghost: non si riprende. Se l'idea vale ancora, scrivila di nuovo."
                 else -> { archivio.db.taccuino().aggiorna(n.copy(ripresa = ora)); "Nel taccuino: nota #$id ripresa, vive altri ${Taccuino.GIORNI} giorni." }
             }
+        }
+        // Le spunte della lavagna: senza conferma (sono del Ghost, piccole, si annullano con un tocco), ma la ricevuta
+        // va in chat come ogni azione vera — il Ghost al supermercato deve vedere cosa è stato spuntato.
+        "spunta_appunto" -> {
+            val fatta = Azioni.stringa(v.argomenti, "fatta")?.lowercase() != "false"
+            val e = archivio.spunta(Azioni.stringa(v.argomenti, "appunto").orEmpty(), Azioni.elenco(v.argomenti, "righe"), fatta)
+            archivio.db.messaggi().inserisci(Messaggio(ruolo = if (e.riuscita) Ruolo.RICEVUTA else Ruolo.NOTA, testo = e.ricevuta, istante = ora))
+            if (e.riuscita) "Fatto davvero, senza conferma: ${e.ricevuta}." else "Non spuntato: ${e.ricevuta}."
         }
         else -> "Strumento interno non previsto."
     }
@@ -609,7 +649,7 @@ class Shell(
             archivio.db.quaderni().elenco().forEach { appendLine(it.testo) }
             archivio.db.profilo().leggi()?.let { appendLine(it.vincoli); appendLine(it.motivazione) }
         }
-        return Regole(Uscita.nomi(nomiProtetti), Uscita.indirizzi(scritti), testoGhost, it.resonance.adam.logica.Esperimenti.aperti(i.esperimenti), i.consegne)
+        return Regole(Uscita.nomi(nomiProtetti), Uscita.indirizzi(scritti), testoGhost, it.resonance.adam.logica.Esperimenti.aperti(i.esperimenti), i.consegne, i.appunti)
     }
 
     private suspend fun lettura(v: Validazione.Lettura): String = when (v.nome) {
