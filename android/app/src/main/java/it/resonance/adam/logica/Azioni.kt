@@ -142,6 +142,12 @@ sealed class Proposta {
         override fun descrizione() = "Fondo di Adam, ${tipo.etichetta}: ${Fondo.euro(importo)}, ${Giorni.leggibile(giorno)} — $motivo"
     }
 
+    @Serializable @SerialName("togli_documento")
+    data class TogliDocumento(val titolo: String, val perche: String = "") : Proposta() {
+        override fun descrizione() = "Togliere il documento «$titolo»" + (if (perche.isNotBlank()) " — $perche" else "") +
+            ". Non si vedrà più e non lo leggerai; resta recuperabile in fondo al percorso (Tolti)"
+    }
+
     @Serializable @SerialName("scrivi_appunto")
     data class ScriviAppunto(val titolo: String, val righe: List<String>, val scade: String) : Proposta() {
         override fun descrizione() = "Sulla lavagna: «$titolo» — ${Testi.corto(righe.joinToString("; "), 160)} (${righe.size} righe, scade ${Giorni.leggibile(scade)})"
@@ -417,6 +423,9 @@ object Azioni {
             "Propone un'entrata o un'uscita del fondo di Adam, col motivo. Il Ghost esegue e conferma. I versamenti li fa lui.",
             schema(listOf("tipo", "importo", "motivo"), mapOf("tipo" to e(listOf("entrata", "uscita"), "Verso"),
                 "importo" to n("Euro, positivo"), "motivo" to s("Per cosa"), "giorno" to s("yyyy-MM-dd, se assente oggi")))),
+        Strumento("togli_documento", Effetto.SCRITTURA,
+            "Propone di togliere un documento vecchio, sbagliato o doppio da un percorso. Il Ghost conferma; il documento resta recuperabile, non si cancella.",
+            schema(listOf("titolo"), mapOf("titolo" to s("Titolo del documento"), "perche" to s("In una riga: vecchio, sbagliato, doppio di…")))),
         Strumento("scrivi_appunto", Effetto.SCRITTURA,
             "Propone un appunto sulla LAVAGNA del Ghost: cose usa e getta (la lista della spesa, cose da fare nei prossimi giorni). Righe spuntabili; " +
                 "sparisce quando è tutto spuntato o alla scadenza. Non per ciò che deve restare: per quello salva_documento.",
@@ -515,6 +524,7 @@ object Azioni {
             if (imp <= 0.0 || imp > 10_000.0) rifiuta("importo in euro, positivo: il verso lo dice il tipo")
             Proposta.MovimentoFondo(tipo, Math.round(imp * 100) / 100.0, a.testo("motivo") ?: rifiuta("serve il motivo: resta scritto"), giorno(a, oggi))
         }
+        "togli_documento" -> Proposta.TogliDocumento(a.testo("titolo") ?: rifiuta("quale documento: serve il titolo"), a.testo("perche") ?: "")
         "scrivi_appunto" -> {
             val titolo = a.testo("titolo")?.takeIf { it.length <= 80 } ?: rifiuta("titolo mancante o più lungo di 80 caratteri")
             val righe = elenco(a, "righe")

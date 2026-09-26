@@ -79,6 +79,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
     val percorsi = db.percorsi().attivi().stato()
     val nodi = db.percorsi().nodi().stato()
     val documenti = db.percorsi().documenti().stato()
+    val documentiTolti = db.percorsi().documentiTolti().stato()
     val quaderni = db.quaderni().tutti().stato()
     val esperimenti = db.esperimenti().tutti().stato()
     val messaggi = db.messaggi().tutti().stato()
@@ -400,6 +401,8 @@ class Adam(app: Application) : AndroidViewModel(app) {
         archivio.aggiornaQuaderno(p, testo.trim())
         avviso = if (testo.isBlank()) "Quaderno ${p.etichetta} svuotato: la versione precedente resta nello storico" else "Quaderno ${p.etichetta} salvato"
     }
+    fun togliDocumento(d: Documento) = viewModelScope.launch { avviso = archivio.togliDocumento(d); if (documentoAperto == d.id) documentoAperto = null }
+    fun rimettiDocumento(d: Documento) = viewModelScope.launch { avviso = archivio.rimettiDocumento(d) }
     fun salvaDocumento(d: Documento, testo: String) = viewModelScope.launch { archivio.salvaTestoDocumento(d, testo); avviso = "Documento salvato" }
     fun togliNodo(n: Nodo) = viewModelScope.launch { avviso = archivio.togliNodo(n) }
     fun pilastroNodo(n: Nodo, p: Pilastro?) = viewModelScope.launch { avviso = archivio.pilastroNodo(n, p) }

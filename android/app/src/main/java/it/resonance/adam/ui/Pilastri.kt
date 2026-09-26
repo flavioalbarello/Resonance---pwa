@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.width
 import it.resonance.adam.logica.Nodi
 import it.resonance.adam.dati.Nodo
+import it.resonance.adam.dati.Documento
+import androidx.compose.material3.AlertDialog
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -178,8 +180,11 @@ private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.
     val percorsi by vm.percorsi.collectAsState()
     val nodi by vm.nodi.collectAsState()
     val documenti by vm.documenti.collectAsState()
+    val tolti by vm.documentiTolti.collectAsState()
     val per = percorsi.find { it.id == id } ?: return
     var nuovoDoc by remember { mutableStateOf(false) }
+    var docDaTogliere by remember { mutableStateOf<Documento?>(null) }
+    var vediTolti by remember(id) { mutableStateOf(false) }
     var daTogliere by remember { mutableStateOf<Nodo?>(null) }
     var menuNodo by remember { mutableStateOf<Nodo?>(null) }
     var nuovoNodo by remember { mutableStateOf(false) }
@@ -273,10 +278,23 @@ private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.
             Etichetta("Documenti")
             TextButton({ nuovoDoc = true }) { Text("+ Nuovo") }
         }
+        // Tocco: apri. Pressione lunga: togli (26/09: documenti vecchi o sbagliati). I tolti restano in fondo, e si rimettono.
         documenti.filter { it.percorsoId == per.id }.forEach { d ->
-            Scheda(modifier = Modifier.clickable { vm.documentoAperto = d.id }) {
+            Scheda(modifier = Modifier.testTag("documento-${d.titolo}")
+                .pointerInput(d.id) { detectTapGestures(onTap = { vm.documentoAperto = d.id }, onLongPress = { docDaTogliere = d }) }) {
                 Riga(d.titolo)
                 Tenue("${d.testo.length} caratteri" + (nodi.find { it.id == d.nodoId }?.let { " · ${it.etichetta}" } ?: ""))
+            }
+        }
+        Tenue("Tieni premuto un documento per toglierlo.")
+        val tolti = tolti.filter { it.percorsoId == per.id }
+        if (tolti.isNotEmpty()) {
+            TextButton({ vediTolti = !vediTolti }) { Text((if (vediTolti) "▾" else "▸") + " Tolti (${tolti.size})", color = Colori.tenue) }
+            if (vediTolti) tolti.forEach { d ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(d.titolo, color = Colori.tenue, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    TextButton({ vm.rimettiDocumento(d) }) { Text("Rimetti") }
+                }
             }
         }
         Spazio(16)
@@ -284,7 +302,17 @@ private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.
         Spazio(120)
     }
     if (nuovoDoc) DialogoTesto("Titolo del documento", onOk = { vm.nuovoDocumento(per, it) }, onChiudi = { nuovoDoc = false })
+    docDaTogliere?.let { d -> DialogoTogliDocumento(d, { vm.togliDocumento(d) }) { docDaTogliere = null } }
 }
+
+@Composable
+private fun DialogoTogliDocumento(d: Documento, togli: () -> Unit, chiudi: () -> Unit) = AlertDialog(
+    onDismissRequest = chiudi,
+    title = { Text("Togliere «${d.titolo}»?") },
+    text = { Text("Non si vedrà più nel percorso e lo Shell non lo leggerà. Resta recuperabile in fondo al percorso, in «Tolti»; nel diario resta una riga.") },
+    confirmButton = { TextButton({ togli(); chiudi() }) { Text("Togli", color = Colori.allarme) } },
+    dismissButton = { TextButton(chiudi) { Text("Lascia") } },
+)
 
 @Composable
 private fun DocumentoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.Color) {
@@ -293,6 +321,7 @@ private fun DocumentoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics
     var testo by remember(d.id) { mutableStateOf(d.testo) }
     val versioni by remember(d.id) { vm.versioni("documento", d.id) }.collectAsState(emptyList())
     var storico by remember { mutableStateOf(false) }
+    var togliere by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).imePadding()) {
         TextButton({ vm.documentoAperto = null }) { Text("‹ Percorso") }
         Text(d.titolo, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = colore)
@@ -301,7 +330,9 @@ private fun DocumentoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics
             Button({ vm.salvaDocumento(d, testo) }, enabled = testo != d.testo,
                 colors = ButtonDefaults.buttonColors(containerColor = colore)) { Text("Salva") }
             OutlinedButton({ testo = d.testo }, enabled = testo != d.testo) { Text("Annulla") }
+            TextButton({ togliere = true }) { Text("Togli", color = Colori.tenue) }
         }
+        if (togliere) DialogoTogliDocumento(d, { vm.togliDocumento(d) }) { togliere = false }
         if (versioni.isNotEmpty()) {
             TextButton({ storico = !storico }) { Text("${versioni.size} versioni precedenti") }
             if (storico) versioni.forEach { v ->

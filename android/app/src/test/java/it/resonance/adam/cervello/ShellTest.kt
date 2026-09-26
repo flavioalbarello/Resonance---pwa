@@ -674,6 +674,23 @@ class ShellTest {
         assertTrue(prova("""{"cosa":"x","documento":"D9","giorni":5}""", Regole()) is Validazione.Scrittura)
     }
 
+    @Test fun unDocumentoSiTogliePerLoShellMaNonSiPerde() = runBlocking {
+        archivio.esegui(Proposta.CreaPercorso(Pilastro.VIDYA, "Tributo", "", listOf("Gianna")))
+        archivio.esegui(Proposta.SalvaDocumento("Tributo", "Scaletta vecchia", "1. Gianna"))
+        archivio.esegui(Proposta.SalvaDocumento("Tributo", "Scaletta", "1. Gianna 2. Berta"))
+        val m = FintoModello(chiama("togli_documento", """{"titolo":"scaletta vecchia","perche":"doppione"}"""), testo("Proposto."))
+        val e = shell(m, FintaCassetta()).turno("togli la scaletta vecchia")
+        shell(FintoModello(), FintaCassetta()).conferma(e.proposte.single())
+        assertEquals(listOf("Scaletta"), db.percorsi().elencoDocumenti().map { it.titolo })
+        assertTrue(!Contesto.sistema(archivio.istantanea()).contains("Scaletta vecchia"))
+        assertTrue(db.voci().elenco().any { it.fonte == "documento" && it.testo.contains("«Scaletta vecchia» tolto") && it.testo.contains("doppione") })
+        // Nella copia di sicurezza c'è ancora, e si rimette.
+        assertTrue(archivio.copia().contains("Scaletta vecchia"))
+        val tolto = db.percorsi().tuttiIDocumenti().single { it.tolto != null }
+        archivio.rimettiDocumento(tolto)
+        assertEquals(2, db.percorsi().elencoDocumenti().size)
+    }
+
     // ── La lavagna del Ghost (seconda riunione del 26/09) ──
 
     @Test fun laListaSiScriveConConfermaESiSpuntaSenza() = runBlocking {

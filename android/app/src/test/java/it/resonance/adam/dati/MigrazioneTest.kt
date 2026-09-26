@@ -40,6 +40,18 @@ class MigrazioneTest {
         db.close()
     }
 
+    @Test fun dallaDieciAllUndiciIDocumentiRestanoVisibili() {
+        aiuto.createDatabase("undici.db", 10).apply {
+            execSQL("INSERT INTO percorsi (id, pilastro, titolo, scopo, creato, archiviato) VALUES (1, 'VIDYA', 'Tributo', '', 0, 0)")
+            execSQL("INSERT INTO documenti (percorsoId, titolo, testo, creato, aggiornato) VALUES (1, 'Scaletta', 'x', 0, 0)")
+            close()
+        }
+        aiuto.runMigrationsAndValidate("undici.db", 11, true).close()
+        val db = Room.databaseBuilder(RuntimeEnvironment.getApplication(), Db::class.java, "undici.db").allowMainThreadQueries().build()
+        runBlocking { assertEquals(null, db.percorsi().elencoDocumenti().single().tolto) }
+        db.close()
+    }
+
     @Test fun dallaNoveAllaDieciNasceLaLavagna() {
         aiuto.createDatabase("dieci.db", 9).close()
         aiuto.runMigrationsAndValidate("dieci.db", 10, true).close()

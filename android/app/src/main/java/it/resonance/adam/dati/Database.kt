@@ -128,8 +128,11 @@ interface PercorsiDao {
     @Update suspend fun aggiornaNodo(n: Nodo)
     @Delete suspend fun togliNodo(n: Nodo)
     @Query("UPDATE documenti SET nodoId = NULL WHERE nodoId = :id") suspend fun sganciaDocumenti(id: Long)
-    @Query("SELECT * FROM documenti ORDER BY creato") fun documenti(): Flow<List<Documento>>
-    @Query("SELECT * FROM documenti") suspend fun elencoDocumenti(): List<Documento>
+    @Query("SELECT * FROM documenti WHERE tolto IS NULL ORDER BY creato") fun documenti(): Flow<List<Documento>>
+    @Query("SELECT * FROM documenti WHERE tolto IS NOT NULL ORDER BY tolto DESC") fun documentiTolti(): Flow<List<Documento>>
+    // Solo i documenti vivi: ciò che lo Shell legge, cerca, allega e verifica. I tolti li vede solo il Ghost.
+    @Query("SELECT * FROM documenti WHERE tolto IS NULL") suspend fun elencoDocumenti(): List<Documento>
+    @Query("SELECT * FROM documenti") suspend fun tuttiIDocumenti(): List<Documento>
     @Insert suspend fun inserisciDocumento(d: Documento): Long
     @Update suspend fun aggiornaDocumento(d: Documento)
 }
@@ -171,7 +174,7 @@ interface ProfiloDao {
 @Database(
     entities = [Misura::class, Voce::class, Versione::class, Rituale::class, Spunta::class, Percorso::class,
         Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class, Esperimento::class, Turno::class, Nota::class, Movimento::class, Lettera::class, RispostaLettera::class, Consegna::class, Appunto::class],
-    version = 10,
+    version = 11,
     exportSchema = true,
     // 2: Profilo.nomiProtetti (calendario e posta, 23/09/2026).
     // 3: Messaggio.allegati (immagini e documenti nella chat, 23/09/2026).
@@ -179,7 +182,8 @@ interface ProfiloDao {
     // 5: esperimenti (l'anello di Anochin sulla vita).
     // 9: consegne dello Shell (riunione del 26/09/2026).
     // 10: la lavagna del Ghost (seconda riunione del 26/09/2026).
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9), AutoMigration(from = 9, to = 10)],
+    // 11: Documento.tolto (togliere documenti vecchi o sbagliati, recuperabili).
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9), AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun misure(): MisureDao

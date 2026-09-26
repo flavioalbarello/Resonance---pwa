@@ -171,6 +171,9 @@ data class Documento(
     val testo: String,
     val creato: Long,
     val aggiornato: Long,
+    // Tolto dal percorso (26/09/2026, «documenti vecchi o sbagliati»): non si vede, lo Shell non lo legge, ma resta
+    // recuperabile in fondo al percorso. Legge 14: niente sparisce davvero.
+    val tolto: Long? = null,
 )
 
 // La memoria procedurale: letta dallo Shell a ogni turno, leggibile e correggibile dal Ghost.

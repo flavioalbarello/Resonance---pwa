@@ -427,6 +427,9 @@ class Shell(
             is Risoluzione.Pronta -> mondo?.risolvi(r.proposta) ?: r
             is Risoluzione.Domanda -> r
         }
+        is Proposta.TogliDocumento -> try {
+            Risoluzione.Pronta(p.copy(titolo = archivio.documento(p.titolo).titolo))
+        } catch (e: Ambiguo) { Risoluzione.Domanda(e.message ?: "documento non trovato") }
         is Proposta.ModificaAppunto -> try {
             val a = archivio.appuntoVivo(p.appunto)
             val (_, dubbie) = Lavagna.trova(a, p.togli)

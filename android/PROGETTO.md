@@ -222,6 +222,10 @@ nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo ch
     sul banco — la prima è sul telefono.
   - *Guardie*: il verbale oscura gli indirizzi mail («[indirizzo]»); dal testo dello Shell si toglie anche l'etichetta
     dell'architetto (la seconda imitazione in un giorno, dopo quella del programma).
+- *Documenti tolti* (26/09/2026, DB 11, `Documento.tolto`): pressione lunga sul documento, o «Togli» dentro; anche lo
+  Shell può proporlo (`togli_documento`). Il documento esce dal percorso, dal prompt, dalle ricerche, dagli allegati e
+  dalle verifiche delle consegne; resta nel database e nelle copie, con una riga nel diario, e si rimette da «Tolti» in
+  fondo al percorso. Legge 14: sembra una cancellazione, non lo è.
 - *Schermo acceso in auto*: finché l'ascolto è AUTO la vista tiene `keepScreenOn`; si spegne quando l'auto si ferma
   (a mano o dopo tre silenzi). Prima lo schermo si bloccava mentre lo Shell rispondeva e il microfono non ripartiva.
 

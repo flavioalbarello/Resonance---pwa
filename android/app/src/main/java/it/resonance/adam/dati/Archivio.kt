@@ -286,6 +286,10 @@ class Archivio(val db: Db) {
                 }
             }
         }
+        is Proposta.TogliDocumento -> {
+            val d = documento(p.titolo)
+            Esecuzione(true, togliDocumento(d, p.perche, oggi))
+        }
         is Proposta.ScriviAppunto -> {
             val vivi = db.lavagna().elenco().filter { Lavagna.vivo(it, oggi) }
             if (vivi.any { Testi.normalizza(it.titolo) == Testi.normalizza(p.titolo) }) Esecuzione(false, "Non scritto: sulla lavagna c'è già «${p.titolo}»")
@@ -322,6 +326,22 @@ class Archivio(val db: Db) {
             db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = oggi.toString(), testo = Esperimenti.traccia(chiuso), fonte = "esperimento", creato = ora, aggiornato = ora))
             chiuso
         }
+    }
+
+    // ── Documenti tolti: spariscono dal percorso e dallo Shell, restano recuperabili ──
+    suspend fun togliDocumento(d: Documento, perche: String = "", oggi: LocalDate = LocalDate.now()): String {
+        if (d.tolto != null) return "«${d.titolo}» è già tolto"
+        val per = db.percorsi().elenco().find { it.id == d.percorsoId }
+        db.percorsi().aggiornaDocumento(d.copy(tolto = ora))
+        per?.let { p -> db.voci().inserisci(Voce(pilastro = p.pilastro, giorno = oggi.toString(), fonte = "documento", creato = ora, aggiornato = ora,
+            testo = "Documento «${d.titolo}» tolto dal percorso «${p.titolo}» (${d.testo.length} caratteri)" + (if (perche.isNotBlank()) ": $perche" else "") +
+                ". Si rimette dal percorso, in fondo: Tolti.")) }
+        return "Tolto «${d.titolo}»: non si vede più e lo Shell non lo legge. Si rimette dal percorso, in fondo: Tolti"
+    }
+
+    suspend fun rimettiDocumento(d: Documento): String {
+        db.percorsi().aggiornaDocumento(d.copy(tolto = null))
+        return "«${d.titolo}» è tornato nel percorso"
     }
 
     // ── La lavagna del Ghost ──
@@ -490,7 +510,7 @@ class Archivio(val db: Db) {
         creato = ora,
         misure = db.misure().elenco(), voci = db.voci().elenco(), versioni = db.versioni().elenco(),
         rituali = db.rituali().elenco(), spunte = db.rituali().elencoSpunte(),
-        percorsi = db.percorsi().elenco(), nodi = db.percorsi().elencoNodi(), documenti = db.percorsi().elencoDocumenti(),
+        percorsi = db.percorsi().elenco(), nodi = db.percorsi().elencoNodi(), documenti = db.percorsi().tuttiIDocumenti(),
         quaderni = db.quaderni().elenco(), messaggi = db.messaggi().elenco(), spesa = db.spesa().elenco(), profilo = db.profilo().leggi(),
         esperimenti = db.esperimenti().elenco(),
         taccuino = db.taccuino().elenco(), movimenti = db.fondo().elenco(), lettere = db.lettere().elenco(), risposte = db.lettere().risposte(),
