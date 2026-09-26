@@ -229,6 +229,9 @@ nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo ch
   Poi, su richiesta del Ghost («documenti errati da rimuovere del tutto»): da «Tolti» il Ghost può **eliminare per
   sempre**. Eccezione dichiarata alla Legge 14, con due argini: solo un documento già tolto, e solo da un suo gesto —
   nessuno strumento dello Shell elimina. Se ne vanno testo e versioni; nel diario resta una riga col titolo.
+- *APK compresso* (26/09/2026): `useLegacyPackaging` sul codice, da 30 a 11,5 MB senza toccare una riga — il limite
+  d'invio era 30 MB. Il passo dopo (R8, togliere il codice che non si usa) scende ancora, ma può rompere solo sul
+  telefono ciò che il banco non vede: si fa con una prova del Ghost subito dopo, se serve.
 - *Schermo acceso in auto*: finché l'ascolto è AUTO la vista tiene `keepScreenOn`; si spegne quando l'auto si ferma
   (a mano o dopo tre silenzi). Prima lo schermo si bloccava mentre lo Shell rispondeva e il microfono non ripartiva.
 

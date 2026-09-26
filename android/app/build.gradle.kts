@@ -46,6 +46,9 @@ android {
             signingConfig = signingConfigs.findByName("resonance")
         }
     }
+    // Il codice compresso dentro l'APK (26/09/2026): da 30 MB a circa 11, lo stesso codice. Con minSdk 28 Android lo
+    // terrebbe non compresso per avviarlo un filo prima; qui conta di più poterlo mandare (il limite era 30 MB).
+    packaging { dex { useLegacyPackaging = true } }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
