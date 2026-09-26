@@ -47,6 +47,7 @@ interface VersioniDao {
     @Insert suspend fun inserisci(v: Versione): Long
     @Query("SELECT * FROM versioni WHERE entita = :entita AND idEntita = :id ORDER BY sostituitoIl DESC") fun di(entita: String, id: Long): Flow<List<Versione>>
     @Query("SELECT * FROM versioni") suspend fun elenco(): List<Versione>
+    @Query("DELETE FROM versioni WHERE entita = :entita AND idEntita = :id") suspend fun togliDi(entita: String, id: Long)
 }
 
 @Dao
@@ -135,6 +136,7 @@ interface PercorsiDao {
     @Query("SELECT * FROM documenti") suspend fun tuttiIDocumenti(): List<Documento>
     @Insert suspend fun inserisciDocumento(d: Documento): Long
     @Update suspend fun aggiornaDocumento(d: Documento)
+    @Delete suspend fun eliminaDocumento(d: Documento)
 }
 
 @Dao

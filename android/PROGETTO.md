@@ -226,6 +226,9 @@ nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo ch
   Shell può proporlo (`togli_documento`). Il documento esce dal percorso, dal prompt, dalle ricerche, dagli allegati e
   dalle verifiche delle consegne; resta nel database e nelle copie, con una riga nel diario, e si rimette da «Tolti» in
   fondo al percorso. Legge 14: sembra una cancellazione, non lo è.
+  Poi, su richiesta del Ghost («documenti errati da rimuovere del tutto»): da «Tolti» il Ghost può **eliminare per
+  sempre**. Eccezione dichiarata alla Legge 14, con due argini: solo un documento già tolto, e solo da un suo gesto —
+  nessuno strumento dello Shell elimina. Se ne vanno testo e versioni; nel diario resta una riga col titolo.
 - *Schermo acceso in auto*: finché l'ascolto è AUTO la vista tiene `keepScreenOn`; si spegne quando l'auto si ferma
   (a mano o dopo tre silenzi). Prima lo schermo si bloccava mentre lo Shell rispondeva e il microfono non ripartiva.
 

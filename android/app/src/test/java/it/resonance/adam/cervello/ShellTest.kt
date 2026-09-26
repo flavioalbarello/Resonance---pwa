@@ -689,6 +689,19 @@ class ShellTest {
         val tolto = db.percorsi().tuttiIDocumenti().single { it.tolto != null }
         archivio.rimettiDocumento(tolto)
         assertEquals(2, db.percorsi().elencoDocumenti().size)
+
+        // Eliminare per sempre: solo un documento già tolto; se ne vanno testo e versioni, resta il titolo nel diario.
+        val vivo = db.percorsi().elencoDocumenti().single { it.titolo == "Scaletta" }
+        archivio.salvaTestoDocumento(vivo, "1. Gianna 2. Berta 3. Ahi Maria")
+        assertTrue(archivio.eliminaDocumento(vivo).startsWith("Prima si toglie"))
+        archivio.togliDocumento(db.percorsi().elencoDocumenti().single { it.titolo == "Scaletta" })
+        val daEliminare = db.percorsi().tuttiIDocumenti().single { it.titolo == "Scaletta" }
+        assertEquals("«Scaletta» eliminato per sempre", archivio.eliminaDocumento(daEliminare))
+        assertTrue(db.percorsi().tuttiIDocumenti().none { it.titolo == "Scaletta" })
+        assertTrue(db.versioni().elenco().none { it.entita == "documento" && it.idEntita == daEliminare.id })
+        assertTrue(db.voci().elenco().any { it.testo == "Documento «Scaletta» eliminato per sempre dal Ghost (percorso «Tributo»)." })
+        // Nessuno strumento dello Shell elimina: togli_documento toglie soltanto.
+        assertTrue(Azioni.strumenti.none { it.nome.contains("elimina") })
     }
 
     // ── La lavagna del Ghost (seconda riunione del 26/09) ──

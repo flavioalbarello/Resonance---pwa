@@ -403,6 +403,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
     }
     fun togliDocumento(d: Documento) = viewModelScope.launch { avviso = archivio.togliDocumento(d); if (documentoAperto == d.id) documentoAperto = null }
     fun rimettiDocumento(d: Documento) = viewModelScope.launch { avviso = archivio.rimettiDocumento(d) }
+    fun eliminaDocumento(d: Documento) = viewModelScope.launch { avviso = archivio.eliminaDocumento(d) }
     fun salvaDocumento(d: Documento, testo: String) = viewModelScope.launch { archivio.salvaTestoDocumento(d, testo); avviso = "Documento salvato" }
     fun togliNodo(n: Nodo) = viewModelScope.launch { avviso = archivio.togliNodo(n) }
     fun pilastroNodo(n: Nodo, p: Pilastro?) = viewModelScope.launch { avviso = archivio.pilastroNodo(n, p) }

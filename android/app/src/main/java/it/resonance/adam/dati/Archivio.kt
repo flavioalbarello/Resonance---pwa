@@ -339,6 +339,24 @@ class Archivio(val db: Db) {
         return "Tolto «${d.titolo}»: non si vede più e lo Shell non lo legge. Si rimette dal percorso, in fondo: Tolti"
     }
 
+    /**
+     * Eliminare per sempre (26/09/2026, su richiesta del Ghost: «documenti errati da rimuovere del tutto»). Eccezione
+     * dichiarata alla Legge 14, con due argini: solo un documento già tolto, e solo da un gesto del Ghost — nessuno
+     * strumento dello Shell arriva qui. Se ne vanno testo e versioni; resta una riga nel diario col titolo soltanto.
+     * Le copie di sicurezza già fatte lo contengono ancora: da qui non si raggiungono.
+     */
+    suspend fun eliminaDocumento(d: Documento, oggi: LocalDate = LocalDate.now()): String = db.withTransaction {
+        val attuale = db.percorsi().tuttiIDocumenti().find { it.id == d.id } ?: return@withTransaction "Il documento non c'è più"
+        if (attuale.tolto == null) return@withTransaction "Prima si toglie, poi si elimina: «${d.titolo}» è ancora nel percorso"
+        db.versioni().togliDi("documento", attuale.id)
+        db.percorsi().eliminaDocumento(attuale)
+        db.percorsi().elenco().find { it.id == attuale.percorsoId }?.let { p ->
+            db.voci().inserisci(Voce(pilastro = p.pilastro, giorno = oggi.toString(), fonte = "documento", creato = ora, aggiornato = ora,
+                testo = "Documento «${attuale.titolo}» eliminato per sempre dal Ghost (percorso «${p.titolo}»)."))
+        }
+        "«${attuale.titolo}» eliminato per sempre"
+    }
+
     suspend fun rimettiDocumento(d: Documento): String {
         db.percorsi().aggiornaDocumento(d.copy(tolto = null))
         return "«${d.titolo}» è tornato nel percorso"

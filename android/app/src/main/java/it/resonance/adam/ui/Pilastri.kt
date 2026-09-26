@@ -184,6 +184,7 @@ private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.
     val per = percorsi.find { it.id == id } ?: return
     var nuovoDoc by remember { mutableStateOf(false) }
     var docDaTogliere by remember { mutableStateOf<Documento?>(null) }
+    var docDaEliminare by remember { mutableStateOf<Documento?>(null) }
     var vediTolti by remember(id) { mutableStateOf(false) }
     var daTogliere by remember { mutableStateOf<Nodo?>(null) }
     var menuNodo by remember { mutableStateOf<Nodo?>(null) }
@@ -294,6 +295,7 @@ private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(d.titolo, color = Colori.tenue, fontSize = 14.sp, modifier = Modifier.weight(1f))
                     TextButton({ vm.rimettiDocumento(d) }) { Text("Rimetti") }
+                    TextButton({ docDaEliminare = d }, modifier = Modifier.testTag("elimina-${d.titolo}")) { Text("Elimina", color = Colori.allarme) }
                 }
             }
         }
@@ -303,6 +305,15 @@ private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.
     }
     if (nuovoDoc) DialogoTesto("Titolo del documento", onOk = { vm.nuovoDocumento(per, it) }, onChiudi = { nuovoDoc = false })
     docDaTogliere?.let { d -> DialogoTogliDocumento(d, { vm.togliDocumento(d) }) { docDaTogliere = null } }
+    docDaEliminare?.let { d ->
+        AlertDialog(
+            onDismissRequest = { docDaEliminare = null },
+            title = { Text("Eliminare per sempre «${d.titolo}»?") },
+            text = { Text("Testo e versioni precedenti se ne vanno e non si recuperano più. Nel diario resta solo una riga col titolo. Le copie di sicurezza già fatte lo contengono ancora.") },
+            confirmButton = { TextButton({ vm.eliminaDocumento(d); docDaEliminare = null }) { Text("Elimina per sempre", color = Colori.allarme) } },
+            dismissButton = { TextButton({ docDaEliminare = null }) { Text("Lascia") } },
+        )
+    }
 }
 
 @Composable
