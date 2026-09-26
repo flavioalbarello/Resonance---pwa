@@ -195,6 +195,19 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             val chiusi = runCatching { archivio.chiudiScaduti(oggi) }.getOrDefault(emptyList())
             if (chiusi.isNotEmpty()) Battiti.notifica(applicationContext, 110, if (chiusi.size == 1) "Esperimento finito" else "Esperimenti finiti",
                 chiusi.joinToString("\n") { "«${it.titolo}»: ${it.esito?.etichetta}" }, chiusi.joinToString("\n") { Esperimenti.traccia(it) }, "SPECCHIO")
+            // Le consegne dello Shell: il programma guarda se il documento c'è, e il giorno prima della scadenza apre
+            // il turno di lavoro, una volta sola (segnato PRIMA della chiamata: un turno fallito non si ripete a ogni battito).
+            runCatching { archivio.verificaConsegne(oggi) }.getOrDefault(emptyList()).forEach { c ->
+                val t = it.resonance.adam.logica.Consegne.traccia(c)
+                archivio.db.messaggi().inserisci(it.resonance.adam.dati.Messaggio(ruolo = it.resonance.adam.dati.Ruolo.NOTA, testo = t, istante = System.currentTimeMillis()))
+                Battiti.notifica(applicationContext, 114, "Consegna dello Shell", t, "", "ADAM")
+            }
+            if (!prova) it.resonance.adam.logica.Consegne.daLavorare(archivio.db.consegne().aperte(), oggi).forEach { c ->
+                archivio.db.consegne().aggiorna(c.copy(lavorata = true))
+                val e = runCatching { Shell(archivio, imp, mondo = mondo).lavoraConsegna(c) }.getOrNull()
+                Battiti.notifica(applicationContext, 115, "Lo Shell ha lavorato a una consegna", "«${c.cosa}»: " +
+                    if (e?.proposte?.isNotEmpty() == true) "c'è una proposta da confermare" else "guarda cosa ha scritto", "", "SHELL")
+            }
             val agenda = if (b == Battito.MATTINO) runCatching { mondo.agenda(oggi, 1) }.getOrDefault(AgendaLetta.NonLetta) else AgendaLetta.NonLetta
             val i = archivio.istantanea(oggi, agenda)
             val riassunto = when (b) {
@@ -263,9 +276,11 @@ class LettereWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         if (!posta.pronta()) return Result.success()
         runCatching { posta.spedisciInSospeso() }
         val nuove = runCatching { posta.ritira() }.getOrDefault(emptyList())
-        runCatching { it.resonance.adam.cervello.Tavolo(archivio, Impostazioni(applicationContext)).ritira() }
+        // Un intervento rivolto allo Shell («→ Shell») fa partire il suo turno, in coda come quelli del Ghost.
+        runCatching { it.resonance.adam.cervello.Tavolo(archivio, Impostazioni(applicationContext)).ritira() }.getOrNull()
+            ?.allaShell?.let { TurnoWorker.accoda(applicationContext, it) }
         nuove.forEach { (l, r) ->
-            archivio.db.messaggi().inserisci(it.resonance.adam.dati.Messaggio(ruolo = it.resonance.adam.dati.Ruolo.NOTA,
+            archivio.db.messaggi().inserisci(it.resonance.adam.dati.Messaggio(ruolo = it.resonance.adam.dati.Ruolo.ARCHITETTO,
                 testo = "Risposta dell'architetto alla lettera «${l.oggetto}»:\n${r.testo}", istante = System.currentTimeMillis()))
         }
         if (nuove.isNotEmpty() && !Primopiano.visibile) {

@@ -9,14 +9,21 @@ import it.resonance.adam.dati.Messaggio
 import it.resonance.adam.dati.Pilastro
 import it.resonance.adam.dati.Ruolo
 import it.resonance.adam.dati.StatoProposta
+import it.resonance.adam.dati.StatoConsegna
+import it.resonance.adam.dati.Consegna
 import it.resonance.adam.logica.AgendaLetta
 import it.resonance.adam.logica.Azioni
+import it.resonance.adam.logica.Consegne
+import it.resonance.adam.logica.Contesto
+import it.resonance.adam.logica.Regole
+import it.resonance.adam.logica.Validazione
 import it.resonance.adam.logica.Evento
 import it.resonance.adam.logica.Proposta
 import it.resonance.adam.logica.Risolutore
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
@@ -54,7 +61,9 @@ class ShellTest {
         override suspend fun apri(repo: String, token: String, titolo: String, corpo: String): Int { aperte += titolo to corpo; return aperte.size }
         override suspend fun commenti(repo: String, token: String, numero: Int) = commenti[numero].orEmpty()
         val file = sortedMapOf<String, String>()
+        var giu = false
         override suspend fun scrivi(repo: String, token: String, percorso: String, testo: String, messaggio: String) {
+            if (giu) throw java.io.IOException("Unable to resolve host \"api.github.com\"")
             require(percorso !in file) { "un file del verbale non si riscrive: $percorso" }
             file[percorso] = testo
         }
@@ -518,7 +527,8 @@ class ShellTest {
         val cartella = "riunioni/${imp.riunione}"
         assertTrue(imp.riunione.endsWith("-cifratura-fasi"))
 
-        val modello = FintoModello(testo("Prima fase: solo numeri, niente immagini. Architetto, regge?"), testo("Verbale: decisa la fase uno."))
+        val modello = FintoModello(testo("Prima fase: solo numeri, niente immagini. Architetto, regge?"),
+            testo("**Decisioni**\n- fase uno: solo numeri\n**Questioni aperte**\n- nessuna\n**Chi fa cosa**\n- Ghost: prova sul telefono"))
         val shell = Shell(archivio, imp, modello, FintoMondo(), cassetta)
         shell.turno("ragioniamo sulla cifratura, lo studio PhysioAlba può aspettare")
         assertTrue(contenuto(modello.ricevuti[0], 0).contains("RIUNIONE A TRE IN CORSO: «Cifratura: fasi»"))
@@ -528,14 +538,139 @@ class ShellTest {
         assertTrue(scritti.keys.any { it.endsWith("-shell.md") })
 
         cassetta.file["$cartella/20990101-000000-000-architetto.md"] = "Regge, se i numeri restano sul telefono."
-        assertEquals(1, tavolo.ritira())
-        assertEquals(0, tavolo.ritira())
-        assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.NOTA && it.testo.startsWith("Architetto (riunione «Cifratura: fasi»):\nRegge") })
+        assertEquals(1, tavolo.ritira().nuovi.size)
+        assertEquals(0, tavolo.ritira().nuovi.size)
+        // Dal 26/09 l'architetto ha un ruolo suo: si distingue dalle note e si ascolta.
+        assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.ARCHITETTO && it.testo == "Regge, se i numeri restano sul telefono." })
 
         shell.chiudiRiunione()
-        assertTrue(cassetta.file.keys.any { it.startsWith(cartella) && it.endsWith("-verbale.md") })
+        val verbale = cassetta.file.entries.single { it.key.startsWith(cartella) && it.key.endsWith("-verbale.md") }.value
+        assertTrue(verbale, verbale.contains("Decisioni") && !verbale.startsWith("(Verbale"))
+        // Il verbale è anche in chat, e la chiamata del verbale non porta strumenti.
+        assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.SHELL && it.testo.startsWith("Verbale della riunione «Cifratura: fasi»") })
         assertTrue(cassetta.file.keys.any { it.startsWith(cartella) && it.endsWith("-chiusura.md") })
         assertEquals("", imp.riunione)
+    }
+
+    private suspend fun riunioneAperta(cassetta: FintaCassetta): String {
+        imp.cassetta = "flavio/adam-lettere"
+        imp.tokenCassetta = "t"
+        Tavolo(archivio, imp, cassetta).apri("Primo contatto")
+        return "riunioni/${imp.riunione}"
+    }
+
+    @Test fun lArchitettoRivoltoAlloShellLoFaRispondereFinoATreGiri() = runBlocking {
+        val cassetta = FintaCassetta()
+        val cartella = riunioneAperta(cassetta)
+        val tavolo = Tavolo(archivio, imp, cassetta)
+        shell(FintoModello(testo("Ciao.")), cassetta).turno("apriamo")
+        // Senza freccia: si legge e basta.
+        cassetta.file["$cartella/20990101-000000-000-architetto.md"] = "Presente."
+        assertEquals(null, tavolo.ritira().allaShell)
+        val ids = (1..3).map { n ->
+            cassetta.file["$cartella/20990101-00000$n-000-architetto.md"] = "→ Shell\nDomanda $n?"
+            tavolo.ritira().allaShell
+        }
+        assertTrue(ids.all { it != null })
+        // Il quarto giro senza il Ghost non parte: si dice una volta, in chat e nel verbale.
+        cassetta.file["$cartella/20990101-000009-000-architetto.md"] = "→ Shell\nDomanda 4?"
+        assertEquals(null, tavolo.ritira().allaShell)
+        assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.NOTA && it.testo.startsWith("3 giri di fila") })
+        assertEquals(1, cassetta.file.keys.count { it.endsWith("-programma.md") })
+
+        // Il turno su un intervento dell'architetto: il modello lo vede come architetto, e nel verbale non c'è un falso «ghost».
+        val prima = cassetta.file.keys.count { it.endsWith("-ghost.md") }
+        val modello = FintoModello(testo("Risposta all'architetto."))
+        shell(modello, cassetta).rispondi(ids.last()!!)
+        val ultimo = modello.ricevuti.single().last().jsonObject["content"]!!.jsonPrimitive.content
+        assertTrue(ultimo, ultimo.startsWith("[L'architetto (Claude Code), non il Ghost] → Shell"))
+        assertEquals(prima, cassetta.file.keys.count { it.endsWith("-ghost.md") })
+        assertTrue(cassetta.file.values.any { it == "Risposta all'architetto." })
+
+        // Scrive il Ghost: i giri ripartono da zero.
+        shell(FintoModello(testo("Ok.")), cassetta).turno("continuate pure")
+        cassetta.file["$cartella/20990101-000010-000-architetto.md"] = "→ Shell\nUltima?"
+        assertTrue(tavolo.ritira().allaShell != null)
+    }
+
+    private fun shell(modello: FintoModello, cassetta: FintaCassetta) = Shell(archivio, imp, modello, FintoMondo(), cassetta)
+
+    @Test fun ilVerbaleSenzaLaFormaTornaAlModelloUnaVoltaPoiLaRinunciaResta() = runBlocking {
+        val cassetta = FintaCassetta()
+        val cartella = riunioneAperta(cassetta)
+        val modello = FintoModello(testo("Tutto proposto. Conferma quello che vuoi."), testo("Decisioni\n- nessuna"))
+        shell(modello, cassetta).chiudiRiunione()
+        assertTrue(contenuto(modello.ricevuti[1], modello.ricevuti[1].size - 1).contains("«Questioni aperte», «Chi fa cosa»"))
+        val verbale = cassetta.file.entries.single { it.key.startsWith(cartella) && it.key.endsWith("-verbale.md") }.value
+        assertTrue(verbale, verbale.startsWith("(Verbale senza la forma richiesta: mancano «Questioni aperte», «Chi fa cosa».)"))
+        assertEquals("", imp.riunione)
+    }
+
+    @Test fun senzaModelloLaRiunioneSiChiudeLoStessoESenzaReteIlVerbaleNonSiRiscrive() = runBlocking {
+        val cassetta = FintaCassetta()
+        val cartella = riunioneAperta(cassetta)
+        cassetta.giu = true
+        val modello = FintoModello()   // nessuna risposta: il modello «cade»
+        assertTrue(runCatching { shell(modello, cassetta).chiudiRiunione() }.isFailure)
+        // Rete giù verso la cassetta: la riunione resta aperta, il verbale (qui: la sua mancanza) resta da consegnare.
+        assertTrue(imp.riunione.isNotBlank())
+        assertTrue(imp.riunioneVerbale.startsWith("(Verbale non scritto: il modello non ha risposto"))
+        cassetta.giu = false
+        val secondo = FintoModello()
+        shell(secondo, cassetta).chiudiRiunione()
+        assertTrue(secondo.ricevuti.isEmpty())
+        assertTrue(cassetta.file.entries.any { it.key.startsWith(cartella) && it.key.endsWith("-verbale.md") && it.value.startsWith("(Verbale non scritto") })
+        assertEquals("", imp.riunione)
+        assertEquals("", imp.riunioneVerbale)
+    }
+
+    @Test fun laFintaNotaDelProgrammaSiTogleESiSegnala() = runBlocking {
+        shell(FintoModello(testo("Ho proposto tre cose.\n\n[Nota del programma: la riunione è chiusa.]")), FintaCassetta()).turno("chiudo")
+        val m = db.messaggi().elenco()
+        assertEquals("Ho proposto tre cose.", m.single { it.ruolo == Ruolo.SHELL }.testo)
+        assertTrue(m.any { it.ruolo == Ruolo.NOTA && it.testo.contains("tolta") })
+    }
+
+    @Test fun leChiamateScritteComeTestoTornanoAlModelloUnaVolta() = runBlocking {
+        val modello = FintoModello(testo("Propongo:\ncrea_evento(titolo='Scheda', inizio='2026-09-29')"),
+            chiama("crea_evento", """{"titolo":"Scheda","inizio":"${LocalDate.now().plusDays(3)}"}"""), testo("Proposto l'evento."))
+        val e = shell(modello, FintaCassetta()).turno("mettilo in calendario")
+        assertTrue(contenuto(modello.ricevuti[1], modello.ricevuti[1].size - 1).contains("crea_evento come testo"))
+        assertEquals(1, e.proposte.size)
+        assertTrue(db.messaggi().elenco().none { it.ruolo == Ruolo.NOTA && it.testo.contains("come testo") })
+    }
+
+    @Test fun unaConsegnaSiPrendeSiLavoraESiChiudeGuardandoIlDocumento() = runBlocking {
+        archivio.esegui(Proposta.CreaPercorso(Pilastro.ADAM, "Resonance", "", listOf("Fondo")))
+        val prendi = FintoModello(chiama("prendi_consegna", """{"cosa":"Scheda del micro-asset","documento":"Scheda micro-asset","percorso":"Resonance","giorni":3}"""), testo("Proposta la consegna."))
+        val e = shell(prendi, FintaCassetta()).turno("preparami la scheda nei prossimi giorni")
+        shell(FintoModello(), FintaCassetta()).conferma(e.proposte.single())
+        val c = db.consegne().aperte().single()
+        assertEquals(LocalDate.now().plusDays(3).toString(), c.scadenza)
+        assertTrue(Contesto.sistema(archivio.istantanea()).contains("LE TUE CONSEGNE APERTE"))
+        // Troppo presto per il turno di lavoro; il giorno prima sì.
+        assertTrue(Consegne.daLavorare(listOf(c), LocalDate.now()).isEmpty())
+        assertEquals(1, Consegne.daLavorare(listOf(c), LocalDate.now().plusDays(2)).size)
+
+        val lavora = FintoModello(chiama("salva_documento", """{"percorso":"Resonance","titolo":"Scheda micro-asset","testo":"Nicchia: planner per musicisti."}"""), testo("Pronta, da confermare."))
+        val l = shell(lavora, FintaCassetta()).lavoraConsegna(c)
+        assertTrue(contenuto(lavora.ricevuti[0], lavora.ricevuti[0].size - 1).contains("documento «Scheda micro-asset» nel percorso «Resonance»"))
+        // Finché il Ghost non conferma, il documento non c'è e la consegna resta aperta.
+        assertTrue(archivio.verificaConsegne().isEmpty())
+        shell(FintoModello(), FintaCassetta()).conferma(l.proposte.single())
+        assertEquals(StatoConsegna.MANTENUTA, db.consegne().elenco().single().stato)
+        assertTrue(db.voci().elenco().any { it.pilastro == Pilastro.ADAM && it.fonte == "consegna" && it.testo.startsWith("Consegna dello Shell mantenuta") })
+        assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.NOTA && it.testo.startsWith("Consegna dello Shell mantenuta") })
+    }
+
+    @Test fun leConsegneHannoUnTettoENonSiDoppiano() = runBlocking {
+        val oggi = LocalDate.now()
+        val aperte = (1..3).map { Consegna(cosa = "c$it", documento = "D$it", presa = oggi.toString(), scadenza = oggi.plusDays(2).toString(), creata = 0) }
+        fun prova(args: String, r: Regole) = Azioni.valida("prendi_consegna", Json.parseToJsonElement(args).jsonObject, oggi, r)
+        assertTrue(prova("""{"cosa":"x","documento":"D9","giorni":3}""", Regole(consegneAperte = aperte)) is Validazione.Rifiutata)
+        assertTrue(prova("""{"cosa":"x","documento":"d1","giorni":3}""", Regole(consegneAperte = aperte.take(1))) is Validazione.Rifiutata)
+        assertTrue(prova("""{"cosa":"x","documento":"D9","giorni":0}""", Regole()) is Validazione.Rifiutata)
+        assertTrue(prova("""{"cosa":"x","documento":"D9","giorni":5}""", Regole()) is Validazione.Scrittura)
     }
 
     @Test fun laCassettaNonPuoEssereIlRepositoryPubblico() {

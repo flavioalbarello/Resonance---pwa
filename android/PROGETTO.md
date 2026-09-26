@@ -165,6 +165,7 @@ nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo ch
   portano `<!-- architetto -->` e tornano allo Shell come nota. Il Ghost non fa più da passacarte, ma vede tutto.
   L'architetto dalla cassetta consiglia; il codice cambia solo col sì del Ghost.
 - DB 8. Adam ha sette schede, scorrevoli: Percorsi, Diario, Quaderno, Taccuino, Fondo, Lettere, Regolazione.
+  Dal 26/09: DB 9 e otto schede, con Consegne dopo Taccuino.
 - *Riunione a tre* (`cervello/Tavolo.kt`, 25/09/2026): briefing Ghost + Shell + architetto sulla progettazione
   macroscopica, MAI su dati di pazienti o personali. Il verbale è una cartella `riunioni/<id>/` nella cassetta, un
   file per intervento (`AAAAMMGG-hhmmss-mmm-autore.md`), creato e mai riscritto (Legge 14; niente conflitti fra
@@ -173,6 +174,32 @@ nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo ch
   una sessione aperta con `strumenti/guardiano.sh` (nel repository delle lettere), che si sveglia sui file nuovi;
   interviene se nominato, se lo Shell lo chiede, o su un errore di progetto. «Chiudi» fa scrivere il verbale allo
   Shell. Il token vuole anche il permesso *Contents: Read and write*.
+- *Dopo la prima riunione (26/09/2026, «primo contatto»)* — cose decise lì o viste lì:
+  - *L'architetto ha un ruolo suo* (`Ruolo.ARCHITETTO`): riunione e lettere. Si distingue dallo Shell, ha «🔊 Ascolta»
+    e in auto si legge da solo, in coda (la voce non si tronca quando arriva lo Shell). Le note vecchie restano note.
+  - *Ritiro al ritorno*: fuori dall'app Android la congela e gli interventi dell'architetto arrivavano minuti dopo.
+    Ora il giro dei 20 s riparte (ritirando subito) a ogni ritorno; «Ritira ora» nella fascia. Un lucchetto solo per il
+    processo: lo stesso file non entra due volte anche se ritirano insieme il giro, il ritorno e il lavoro delle lettere.
+  - *Giri diretti*: se la prima riga di un intervento dell'architetto è `→ Shell`, parte da solo un turno dello Shell
+    (la decide il programma sulla riga, non il modello sul tono). Al massimo 3 di fila senza il Ghost, poi si ferma e
+    lo scrive in chat e nel verbale. Nel verbale non compare un falso «ghost»; i nomi scritti dall'architetto non
+    sbloccano i nomi protetti.
+  - *Consegne dello Shell* (`logica/Consegne.kt`, tabella `consegne`, DB 9). Nella riunione si chiamavano «impegni»:
+    ma nell'app impegno vuol già dire evento di calendario, e il modello li avrebbe confusi. `prendi_consegna`:
+    cosa, il TITOLO del documento che consegnerà, il percorso, fra quanti giorni (1–30); al massimo 3 aperte. Il giorno
+    prima della scadenza il battito apre da solo un turno di lavoro (una volta, segnato prima della chiamata): ciò che
+    prepara resta proposta. Alla conferma di un documento, e a ogni battito, il programma guarda: documento con quel
+    titolo, in quel percorso, scritto dopo la presa, non vuoto → mantenuta; scadenza passata → mancata. Verifica che
+    ci sia, non che sia buono. Traccia nel diario di Adam in ogni caso; il Ghost può lasciarne una (Adam → Consegne).
+  - *Il verbale ha una forma*: una chiamata SENZA strumenti, con le sezioni «Decisioni», «Questioni aperte», «Chi fa
+    cosa» (`Tavolo.SEZIONI`: la stessa lista le detta e le verifica). Il primo verbale vero era «Tutto proposto.
+    Conferma quello che vuoi…». Senza la forma torna al modello una volta, poi la rinuncia resta scritta nel verbale.
+    Senza modello la riunione si chiude lo stesso («verbale non scritto: …»); senza rete verso la cassetta resta aperta
+    e il verbale già scritto si riprova, non si riscrive. La scheda e la fascia dicono «chiusura in corso».
+  - *Due guardie sul testo dello Shell*: una riga «[Nota del programma …]» scritta dal modello si toglie e si segnala
+    (in riunione ne aveva scritta una falsa: «la riunione è chiusa»); le chiamate scritte come testo («crea_evento(…)»,
+    viste con un modello leggero) tornano al modello una volta, e se restano lo dice una nota.
+  - Il prompt dice sempre se c'è una riunione aperta: senza, lo Shell l'aveva data per aperta sulla parola del Ghost.
 - *Schermo acceso in auto*: finché l'ascolto è AUTO la vista tiene `keepScreenOn`; si spegne quando l'auto si ferma
   (a mano o dopo tre silenzi). Prima lo schermo si bloccava mentre lo Shell rispondeva e il microfono non ripartiva.
 

@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import it.resonance.adam.dati.Documento
 import it.resonance.adam.dati.Messaggio
 import it.resonance.adam.dati.Misura
@@ -127,6 +128,9 @@ class SchermateTest {
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.PROPOSTA, testo = modifica.descrizione(), istante = t + 4, stato = StatoProposta.IN_ATTESA,
             proposta = it.resonance.adam.logica.Azioni.codifica(modifica)))
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.NOTA, testo = "Nessuna azione è stata eseguita in questo turno: le azioni vere compaiono come proposte da confermare e poi come ricevute.", istante = t + 5))
+        db.messaggi().inserisci(Messaggio(ruolo = Ruolo.ARCHITETTO, testo = "→ Shell\nIl pilastro di un nodo dice dove altro atterra: **ADAM** solo per il sistema.", istante = t - 1))
+        db.consegne().inserisci(it.resonance.adam.dati.Consegna(cosa = "Scheda del primo micro-asset", documento = "Scheda micro-asset", percorso = "Resonance",
+            presa = g(1), scadenza = java.time.LocalDate.now().plusDays(2).toString(), creata = 1))
     }
 
     @Test fun leSchermateSiDisegnanoConIDatiVeri() {
@@ -139,7 +143,7 @@ class SchermateTest {
             Evento("Ferie", oggi.plusDays(1).atStartOfDay(), oggi.plusDays(2).atStartOfDay(), true),
         ))
         regola.setContent { TemaResonance { App(vm, sistema) { it() } } }
-        regola.waitUntil(10_000) { vm.istantanea.value.misure.size >= 90 && vm.istantanea.value.rituali.size == 2 && vm.messaggi.value.size == 6 }
+        regola.waitUntil(10_000) { vm.istantanea.value.misure.size >= 90 && vm.istantanea.value.rituali.size == 2 && vm.messaggi.value.size == 7 }
 
         scatta("1-specchio")
         regola.onNodeWithText("Stabilità mantenuta", substring = true, ignoreCase = true).assertExists()
@@ -157,6 +161,7 @@ class SchermateTest {
         vm.vai(Schermata.SHELL)
         vm.inAllegato += it.resonance.adam.logica.Allegato("referto.pdf", it.resonance.adam.logica.Allegato.Tipo.PDF, immagini = listOf("a", "b"), pagineTotali = 2)
         scatta("3-shell")
+        regola.onNode(androidx.compose.ui.test.hasScrollToNodeAction()).performScrollToNode(androidx.compose.ui.test.hasText("🖼 scaletta.jpg"))
         regola.onNodeWithText("🖼 scaletta.jpg").assertExists()
         regola.onNodeWithTag("allegato").assertExists()
         vm.inAllegato.clear()
@@ -166,6 +171,10 @@ class SchermateTest {
         regola.onNodeWithText("Esce:", substring = true).assertExists()
         regola.onNodeWithText("Entra:\n1. E io ci sto\n2. Al compleanno", substring = true).assertExists()
         scatta("3b-proposta-vedi-tutto")
+        // L'architetto ha la sua bolla e si ascolta; la freccia si legge a parole.
+        regola.onNode(androidx.compose.ui.test.hasScrollToNodeAction()).performScrollToNode(androidx.compose.ui.test.hasText("Allo Shell:", substring = true))
+        regola.onNodeWithText("Allo Shell:", substring = true).assertExists()
+        scatta("3c-architetto")
 
         vm.vai(Schermata.VIDYA)
         regola.onNodeWithText("Percorsi").performClick()
@@ -203,6 +212,9 @@ class SchermateTest {
         regola.onNodeWithText("Taccuino").performScrollTo().performClick()
         regola.onNodeWithText("Un planner per chi suona", substring = true).assertExists()
         scatta("8d-adam-taccuino")
+        regola.onNodeWithText("Consegne").performScrollTo().performClick()
+        regola.onNodeWithText("Scheda del primo micro-asset").assertExists()
+        scatta("8g-adam-consegne")
         regola.onNodeWithText("Fondo").performScrollTo().performClick()
         regola.onNodeWithText("Saldo 88,00 €", substring = true).assertExists()
         scatta("8e-adam-fondo")

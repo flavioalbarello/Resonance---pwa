@@ -40,6 +40,21 @@ class MigrazioneTest {
         db.close()
     }
 
+    @Test fun dallaOttoAllaNoveNasconoLeConsegneEIMessaggiRestano() {
+        aiuto.createDatabase("nove.db", 8).apply {
+            execSQL("INSERT INTO messaggi (ruolo, testo, istante, allegati, forzata) VALUES ('NOTA', 'Architetto (riunione): vecchia nota', 1, '', 0)")
+            close()
+        }
+        aiuto.runMigrationsAndValidate("nove.db", 9, true).close()
+        val db = Room.databaseBuilder(RuntimeEnvironment.getApplication(), Db::class.java, "nove.db").allowMainThreadQueries().build()
+        runBlocking {
+            assertTrue(db.consegne().elenco().isEmpty())
+            // Le note vecchie dell'architetto restano note: nessuna riscrittura (Legge 14).
+            assertEquals(Ruolo.NOTA, db.messaggi().elenco().single().ruolo)
+        }
+        db.close()
+    }
+
     @Test fun dallaSetteAllaOttoNasconoTaccuinoFondoELettere() {
         aiuto.createDatabase("otto.db", 7).close()
         aiuto.runMigrationsAndValidate("otto.db", 8, true).close()

@@ -20,8 +20,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import it.resonance.adam.dati.StatoConsegna
 import it.resonance.adam.dati.StatoLettera
 import it.resonance.adam.dati.TipoMovimento
+import it.resonance.adam.logica.Consegne
 import it.resonance.adam.logica.Fondo
 import it.resonance.adam.logica.Giorni
 import it.resonance.adam.logica.Taccuino
@@ -52,6 +54,27 @@ fun TaccuinoUi(vm: Adam) {
     if (spente.isNotEmpty()) {
         Etichetta("Evaporate o tolte")
         spente.forEach { n -> Tenue("#${n.id} ${if (n.tolta) "(tolta da te)" else "(evaporata)"} · ${n.testo}") }
+    }
+}
+
+// Le consegne dello Shell: cosa ha promesso, in che forma, per quando. Le chiude il programma guardando il documento;
+// il Ghost può lasciarne una, e anche questo resta nel diario di Adam.
+@Composable
+fun ConsegneUi(vm: Adam) {
+    val consegne by vm.consegne.collectAsState()
+    Tenue("Quando lo Shell dice «lo preparo nei prossimi giorni», prende una consegna: un documento con un titolo, per una data. Il giorno prima ci lavora da solo e ti lascia una proposta; alla scadenza il programma guarda se il documento c'è. Mantenuta o mancata, resta nel diario di Adam.")
+    val (aperte, chiuse) = consegne.partition { it.stato == StatoConsegna.APERTA }
+    if (consegne.isEmpty()) Tenue("Nessuna consegna ancora.")
+    aperte.forEach { c ->
+        Scheda(Colori.ambra) {
+            Riga(c.cosa)
+            Tenue("${Consegne.forma(c)} · entro ${Giorni.leggibile(c.scadenza)}" + if (c.lavorata) " · lo Shell ci ha già lavorato" else "")
+            TextButton({ vm.lasciaConsegna(c) }) { Text("Lascia", color = Colori.tenue) }
+        }
+    }
+    if (chiuse.isNotEmpty()) {
+        Etichetta("Chiuse")
+        chiuse.forEach { c -> Tenue("${when (c.stato) { StatoConsegna.MANTENUTA -> "✓ mantenuta"; StatoConsegna.MANCATA -> "✗ mancata"; else -> "lasciata" }} · ${c.cosa} — ${c.esito}") }
     }
 }
 
@@ -117,8 +140,9 @@ fun LettereUi(vm: Adam) {
             OutlinedButton({ nuovaRiunione = true }, enabled = pronta) { Text("Apri riunione") }
         } else {
             Riga("In corso: «$r»")
-            Tenue("Parla con lo Shell nella chat. Gli interventi dell'architetto arrivano come «Architetto».")
-            OutlinedButton({ chiudere = true }) { Text("Chiudi riunione") }
+            Tenue("Parla con lo Shell nella chat. Gli interventi dell'architetto arrivano come «Architetto», e si ascoltano.")
+            if (vm.chiudendo) Tenue("Chiusura in corso: lo Shell scrive il verbale. Resta nell'app finché non finisce.")
+            OutlinedButton({ chiudere = true }, enabled = !vm.chiudendo) { Text("Chiudi riunione") }
         }
     }
     if (nuovaRiunione) DialogoTesto("Tema della riunione", onOk = { vm.apriRiunione(it) }, onChiudi = { nuovaRiunione = false })

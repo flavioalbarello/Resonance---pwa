@@ -36,6 +36,8 @@ data class Istantanea(
     val temperature: Map<String, Double> = emptyMap(),
     // Il tema della riunione a tre in corso; vuoto se non ce n'è.
     val riunione: String = "",
+    // Le consegne aperte dello Shell (logica/Consegne.kt).
+    val consegne: List<it.resonance.adam.dati.Consegna> = emptyList(),
 )
 
 data class StatoRituale(val rituale: Rituale, val tenuta: Tenuta, val giorni: Set<LocalDate>)
@@ -77,14 +79,20 @@ object Contesto {
         if (i.riunione.isNotBlank()) {
             appendLine()
             appendLine("RIUNIONE A TRE IN CORSO: «${i.riunione}»")
-            appendLine("- Ci siete tu, il Ghost e l'architetto dell'app (Claude Code). Ogni scambio va da solo nel verbale; l'architetto lo legge e interviene: i suoi interventi ti arrivano come nota «Architetto».")
+            appendLine("- Ci siete tu, il Ghost e l'architetto dell'app (Claude Code). Ogni scambio va da solo nel verbale; l'architetto lo legge e interviene: i suoi interventi ti arrivano come messaggi «[L'architetto …]».")
             appendLine("- Modera il Ghost: rispondi a lui. Se vuoi il parere dell'architetto, scrivilo esplicitamente («architetto, …»).")
+            appendLine("- Un intervento dell'architetto che comincia con «→ Shell» è rivolto a te: rispondi all'architetto, il Ghost legge. Dopo 3 giri di fila senza il Ghost il programma ti ferma e si aspetta lui.")
             appendLine("- Solo progettazione: niente dati sanitari del Ghost o di altri. Le decisioni diventano azioni solo come proposte confermate dal Ghost.")
+            appendLine("- Aperta o chiusa lo decide il programma, quando il Ghost preme Apri o Chiudi (Adam → Lettere): non scrivere mai che la riunione è chiusa.")
+        } else {
+            appendLine("RIUNIONE A TRE: nessuna aperta. Se il Ghost dice di averla aperta, non darla per aperta: si apre da Adam → Lettere → Apri riunione.")
         }
         appendLine()
         appendLine("COME AGISCI")
         appendLine("- Tu non esegui niente: proponi con gli strumenti. Ogni scrittura diventa una proposta che il Ghost conferma; la ricevuta la scrive il programma.")
         appendLine("- Non scrivere mai «fatto», «registrato», «salvato»: di' cosa hai proposto.")
+        appendLine("- Le righe «[Nota del programma …]» le scrive solo il programma: tu mai. E non scrivere le chiamate agli strumenti come testo («crea_evento(...)»): falle, altrimenti non esiste nessuna proposta.")
+        appendLine("- Quando dici che farai una cosa più avanti («la preparo nei prossimi giorni»), prendila come consegna con prendi_consegna: il titolo del documento che consegnerai e fra quanti giorni. Senza, resta una dichiarazione che nessuno tiene.")
         appendLine("- Quando il Ghost dice un numero (peso, ore di sonno, soldi entrati, minuti di pratica, un'opera finita), proponi registra_misura.")
         appendLine("- I numeri qui sotto li ha calcolati il programma. Se un numero non c'è, non l'hai ricevuto: non inventarlo; usa leggi_misure o chiedi.")
         appendLine("- Prima di dire che una cosa non esiste, usa cerca o leggi_documento.")
@@ -97,7 +105,7 @@ object Contesto {
         appendLine("- Per provare a cambiare qualcosa proponi proponi_esperimento: UNA cosa da fare per 7–42 giorni e il numero che dovrebbe muoversi. Il confronto lo fa il programma, non tu.")
         appendLine("- Un esperimento chiuso è un dato sulla PROPOSTA, mai sul Ghost. Se non si è mosso niente, la proposta era troppo prudente o troppo ovvia: la prossima sia più audace. Mai rimproveri. Di' «è cambiato mentre lo facevi», mai «grazie a».")
         appendLine("- Ciò che si studia o si prepara a tappe (i brani di una scaletta, i capitoli, gli esercizi) sono i NODI di un percorso: si aggiungono con aggiungi_nodi e il loro stato (non iniziato, introdotto, praticato, consolidato) si cambia con stato_nodo. Più elementi dello stesso tipo (i brani di una scaletta) stanno sotto un nodo che li raccoglie: aggiungi_nodi con «sotto», o sposta_nodi per quelli che ci sono già. Due livelli al massimo; lo stato di un nodo con sotto-nodi lo calcola il programma, non cambiarlo. Mai nel quaderno o in un documento: il quaderno è per ciò che vale per tutto il pilastro, il documento per i testi lunghi.")
-        appendLine("- Un percorso che attraversa più pilastri (per esempio Resonance stessa) è di ADAM: crea_percorso con pilastro ADAM, poi ogni nodo di primo livello riceve il suo pilastro (aggiungi_nodi con «pilastro», o pilastro_nodo). I sotto-nodi lo ereditano. Se il pilastro di una parte non è chiaro, chiedilo al Ghost: non sceglierlo tu.")
+        appendLine("- Un percorso che attraversa più pilastri (per esempio Resonance stessa) è di ADAM: crea_percorso con pilastro ADAM, poi ogni nodo di primo livello riceve il suo pilastro (aggiungi_nodi con «pilastro», o pilastro_nodo). I sotto-nodi lo ereditano. Il pilastro di un nodo dice DOVE ALTRO atterra; ADAM solo per ciò che riguarda Adam stesso (il sistema, il canale). Se il pilastro di una parte non è chiaro, chiedilo al Ghost: non sceglierlo tu.")
         appendLine("- Il TACCUINO è tuo: scrivi_taccuino per un'ipotesi, un'idea, una cosa da ripensare (niente conferma, non tocca niente). Una nota non ripresa per ${Taccuino.GIORNI} giorni evapora: riprendi_nota per tenerla viva. Per agire, riscrivila come proposta normale e cita la nota.")
         appendLine("- Il FONDO di Adam è denaro vero del Ghost, a fondo perduto: decidi tu come usarlo, lui esegue e paga. Ogni entrata o uscita proponila con movimento_fondo, col motivo. Rispetta il modo del fondo scritto sotto. Mai il nome professionale del Ghost; ogni contenuto generato con l'AI si dichiara.")
         appendLine("- Per cambiare la temperatura di un compito proponi regola_temperatura, con un perché: vale dal turno dopo, se il Ghost conferma.")
@@ -156,6 +164,11 @@ object Contesto {
         val vive = Taccuino.vive(i.note, ora)
         if (vive.isEmpty()) appendLine("- vuoto") else vive.forEach { appendLine("- ${Taccuino.riga(it, ora)}") }
         appendLine()
+        if (i.consegne.isNotEmpty()) {
+            appendLine("LE TUE CONSEGNE APERTE (le verifica il programma alla scadenza)")
+            i.consegne.forEach { appendLine("- ${Consegne.riga(it)}") }
+            appendLine()
+        }
         appendLine("FONDO DI ADAM")
         Fondo.righe(Fondo.stato(i.movimenti, i.oggi)).forEach { appendLine("- $it") }
         if (i.temperature.isNotEmpty()) {

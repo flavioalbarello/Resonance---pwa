@@ -52,6 +52,7 @@ suspend fun Archivio.istantanea(oggi: LocalDate = LocalDate.now(), agenda: Agend
     esperimenti = db.esperimenti().elenco(),
     note = db.taccuino().elenco(),
     movimenti = db.fondo().elenco(),
+    consegne = db.consegne().aperte(),
     versione = it.resonance.adam.BuildConfig.VERSION_NAME,
 )
 
@@ -113,9 +114,13 @@ class Shell(
             Ruolo.RICEVUTA -> "user" to "[Nota del programma, non del Ghost] Eseguito davvero: ${m.testo}"
             // Le note dicono perché una proposta è fallita: senza, il modello si inventava il motivo (visto il 24/09).
             Ruolo.NOTA -> "user" to "[Nota del programma, non del Ghost] ${m.testo}"
+            Ruolo.ARCHITETTO -> "user" to dallArchitetto(m.testo)
         }
         buildJsonObject { put("role", ruolo); put("content", testo) }
     }
+
+    // L'architetto non è il Ghost e non si finge tale: il modello lo vede con la sua etichetta.
+    private fun dallArchitetto(t: String) = "[L'architetto (Claude Code), non il Ghost] $t"
 
     suspend fun turno(testoGhost: String, allegati: List<Allegato> = emptyList()): Esito = rispondi(registra(testoGhost, allegati))
 
@@ -129,19 +134,22 @@ class Shell(
         // Se il sistema interrompe il lavoro e lo rilancia, un messaggio già risposto non si risponde due volte.
         archivio.db.messaggi().dopo(idGhost).firstOrNull { it.ruolo == Ruolo.SHELL }?.let { return Esito(it.testo, emptyList()) }
         val testoGhost = m.testo
+        // Un turno può partire anche da un intervento dell'architetto rivolto allo Shell («→ Shell», in riunione).
+        val architetto = m.ruolo == Ruolo.ARCHITETTO
         val allegati = Allegati.decodifica(m.allegati)
         controllaSpesa()?.let { nota(it); return Esito(it, emptyList()) }
 
         val oggi = LocalDate.now()
         val istantanea = fotografia(oggi, 2)
         val sistema = Contesto.sistema(istantanea)
-        val regole = regole(istantanea, testoGhost)
+        // I nomi che il Ghost ha detto possono uscire; quelli scritti dall'architetto no.
+        val regole = regole(istantanea, if (architetto) "" else testoGhost)
         val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", sistema) })
         lavoro += storia(archivio.db.messaggi().ultimi(24).filter { it.id != idGhost })
         // Il messaggio di adesso porta i suoi allegati; i precedenti solo la nota che c'erano.
         lavoro += buildJsonObject {
             put("role", "user")
-            if (allegati.isEmpty()) put("content", testoGhost)
+            if (allegati.isEmpty()) put("content", if (architetto) dallArchitetto(testoGhost) else testoGhost)
             else put("content", Contenuto.parti(testoGhost, allegati) { java.io.File(it).readBytes() })
         }
         var costoTurno = 0.0
@@ -154,7 +162,8 @@ class Shell(
         // In riunione lo scambio va nel verbale da solo: il Ghost non spiega due volte. Gli allegati non escono.
         val tavolo = Tavolo(archivio, impostazioni, cassetta)
         if (tavolo.aperta()) try {
-            tavolo.registra("ghost", testoGhost + if (allegati.isNotEmpty()) "\n[${allegati.size} allegati: non copiati nel verbale]" else "")
+            // L'intervento dell'architetto è già nel verbale: è lì che è nato.
+            if (!architetto) tavolo.registra("ghost", testoGhost + if (allegati.isNotEmpty()) "\n[${allegati.size} allegati: non copiati nel verbale]" else "")
             val proposte = esito.proposte.mapNotNull { archivio.db.messaggi().per(it)?.testo }
             tavolo.registra("shell", esito.testo + if (proposte.isNotEmpty()) "\n\nProposte (da confermare dal Ghost):\n" + proposte.joinToString("\n") { "- $it" } else "")
         } catch (e: Exception) {
@@ -163,25 +172,77 @@ class Shell(
         return esito
     }
 
-    // La riunione si chiude con il verbale dello Shell: decisioni, questioni aperte, chi fa cosa. Può proporre: le
-    // decisioni diventano azioni solo così, con la conferma del Ghost.
+    // La riunione si chiude con il verbale dello Shell: decisioni, questioni aperte, chi fa cosa. Il 26/09 il verbale
+    // poteva proporre azioni, e ne è uscito «Tutto proposto. Conferma quello che vuoi…» al posto del verbale: ora è
+    // una chiamata SENZA strumenti, con la forma dichiarata prima e controllata dopo (Tavolo.SEZIONI, detta e
+    // verifica). La chiusura non dipende dal modello: senza risposta si chiude lo stesso, e la mancanza resta scritta.
+    // Se cade la rete verso la cassetta, la riunione resta aperta e il verbale già scritto si riprova, non si riscrive.
     suspend fun chiudiRiunione(): Esito {
         val tavolo = Tavolo(archivio, impostazioni, cassetta)
         if (!tavolo.aperta()) return Esito("", emptyList())
         val tema = impostazioni.riunioneTema
+        val verbale = impostazioni.riunioneVerbale.ifBlank {
+            scriviVerbale(tema).also { v ->
+                impostazioni.riunioneVerbale = v
+                archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.SHELL, testo = "Verbale della riunione «$tema»\n\n$v", istante = ora, modello = impostazioni.modello))
+            }
+        }
+        tavolo.chiudi(verbale)
+        return Esito(verbale, emptyList())
+    }
+
+    private suspend fun scriviVerbale(tema: String): String {
+        controllaSpesa()?.let { return "(Verbale non scritto: $it)" }
+        val istantanea = fotografia(LocalDate.now(), 0)
+        val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", Contesto.sistema(istantanea)) })
+        lavoro += storia(archivio.db.messaggi().ultimi(60))
+        lavoro += buildJsonObject {
+            put("role", "user")
+            put("content", "[Nota del programma, non del Ghost] Il Ghost chiude la riunione «$tema». Scrivi il verbale, denso, con queste " +
+                "sezioni, ognuna su una riga sua seguita da elenchi «- »: ${Tavolo.SEZIONI.joinToString(", ") { "«$it»" }}. Solo ciò che è stato " +
+                "detto in riunione. Non proporre azioni adesso: ciò che va fatto sta sotto «Chi fa cosa», e il Ghost lo chiederà in chat.")
+        }
+        for (giro in 0..1) {
+            val r = try {
+                chiama(impostazioni.modello, JsonArray(lavoro), null, MAX_TOKEN, temperaturaDi(Compito.TURNO)).first
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                return "(Verbale non scritto: il modello non ha risposto — ${e.message ?: e.javaClass.simpleName}.)"
+            }
+            registraCosto(r)
+            val t = Testi.senzaFinteNote(r.testo)
+            val mancano = Tavolo.mancano(t)
+            if (mancano.isEmpty()) return t
+            // Il disaccordo torna al modello una volta; poi la rinuncia resta scritta nel verbale stesso.
+            if (giro == 1) return "(Verbale senza la forma richiesta: mancano ${mancano.joinToString(", ") { "«$it»" }}.)\n\n$t"
+            lavoro += buildJsonObject { put("role", "assistant"); put("content", t) }
+            lavoro += buildJsonObject {
+                put("role", "user")
+                put("content", "[Nota del programma, non del Ghost] Nel verbale mancano le sezioni ${mancano.joinToString(", ") { "«$it»" }}. Riscrivilo intero, con tutte e tre.")
+            }
+        }
+        return ""
+    }
+
+    // Il turno di lavoro su una consegna: lo apre il programma, il giorno prima della scadenza, anche ad app chiusa.
+    // Ciò che lo Shell prepara resta proposta: niente si salva senza il tocco del Ghost.
+    suspend fun lavoraConsegna(c: it.resonance.adam.dati.Consegna): Esito {
+        controllaSpesa()?.let { return Esito(it, emptyList()) }
+        nota("Turno di lavoro dello Shell sulla consegna ${it.resonance.adam.logica.Consegne.riga(c)}.")
         val oggi = LocalDate.now()
         val istantanea = fotografia(oggi, 2)
         val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", Contesto.sistema(istantanea)) })
-        lavoro += storia(archivio.db.messaggi().ultimi(40))
+        lavoro += storia(archivio.db.messaggi().ultimi(16))
         lavoro += buildJsonObject {
             put("role", "user")
-            put("content", "[Nota del programma, non del Ghost] Il Ghost chiude la riunione «$tema». Scrivi il verbale, denso: " +
-                "decisioni prese; questioni aperte; chi fa cosa (Ghost, Shell, architetto). Se una decisione va eseguita, proponila con gli strumenti.")
+            put("content", "[Nota del programma, non del Ghost] È il turno di lavoro sulla tua consegna presa il ${c.presa}: «${c.cosa}». " +
+                "Il programma verificherà: ${it.resonance.adam.logica.Consegne.forma(c)}, scritto da quando l'hai presa e non vuoto. Scadenza: ${c.scadenza}. " +
+                "Lavoraci adesso: leggi ciò che ti serve, poi proponi salva_documento con quel titolo esatto (o modifica_documento se esiste già) e il " +
+                "contenuto completo. Poi scrivi al Ghost in tre righe cosa hai preparato e cosa deve confermare. Se non ci riesci, dillo e perché: " +
+                "una consegna mancata è una traccia legittima.")
         }
-        val esito = if (controllaSpesa() == null) ciclo(lavoro, oggi, regole(istantanea, ""), impostazioni.modello, null, 0.0, origine = "riunione")
-            else Esito("Verbale non scritto: tetto di spesa raggiunto.", emptyList())
-        tavolo.chiudi(esito.testo.ifBlank { "(verbale vuoto)" })
-        return esito
+        return ciclo(lavoro, oggi, regole(istantanea, ""), impostazioni.modello, null, 0.0, origine = "consegna")
     }
 
     // La perturbazione: il programma ha visto un ristagno nei numeri e chiede allo Shell UN esperimento. Non è un
@@ -215,6 +276,8 @@ class Shell(
         // Cosa ha fatto lo Shell con gli strumenti, in breve: se finisce i giri, il Ghost vede dove si è impigliato.
         val traccia = mutableListOf<String>()
         var esauriti = false
+        // Chiamate scritte come testo: si rimandano al modello una volta sola.
+        var corretto = false
 
         try {
             for (giro in 0 until GIRI_MASSIMI) {
@@ -225,6 +288,18 @@ class Shell(
                 testo = r.testo
                 if (r.troncata) troncata = true
                 if (r.chiamate.isEmpty()) {
+                    val scritte = Testi.chiamateScritte(r.testo, Azioni.strumenti.map { it.nome })
+                    if (scritte.isNotEmpty() && !corretto && giro < GIRI_MASSIMI - 1) {
+                        corretto = true
+                        traccia += "chiamate scritte come testo (${scritte.joinToString()})"
+                        lavoro += buildJsonObject { put("role", "assistant"); put("content", r.testo) }
+                        lavoro += buildJsonObject {
+                            put("role", "user")
+                            put("content", "[Nota del programma, non del Ghost] Hai scritto ${scritte.joinToString()} come testo: così non esiste nessuna " +
+                                "proposta. Falle con gli strumenti, poi rispondi al Ghost senza riscriverle.")
+                        }
+                        continue
+                    }
                     if (r.troncata) nota(if (r.testo.isBlank()) "La risposta si è interrotta prima di arrivare (limite di lunghezza): riprova, o chiedi una cosa per volta."
                         else "La risposta è stata tagliata dal limite di lunghezza.")
                     break
@@ -297,13 +372,19 @@ class Shell(
             registraTurno(compito, modello, usata ?: temperatura, forza != null, proposte, rifiutate, troncata, esauriti, errore = true, costoTurno)
             return Esito(t, proposte)
         }
+        val finta = Testi.fintaNota(testo)
+        if (finta) testo = Testi.senzaFinteNote(testo)
         if (testo.isNotBlank()) archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.SHELL, testo = testo, istante = ora,
             modello = modello, costo = costoTurno.takeIf { it > 0 }, motore = motore, temperatura = usata, forzata = forza != null))
         registraTurno(compito, modello, usata, forza != null, proposte, rifiutate, troncata, esauriti, errore = false, costoTurno)
         if (proposte.isEmpty() && Testi.affermaAzione(testo))
             nota("Nessuna azione è stata eseguita in questo turno: le azioni vere compaiono come proposte da confermare e poi come ricevute.")
+        if (finta) nota("Lo Shell aveva scritto una riga «[Nota del programma …]»: tolta. Le note del programma le scrive solo il programma.")
+        Testi.chiamateScritte(testo, Azioni.strumenti.map { it.nome }).takeIf { it.isNotEmpty() && proposte.isEmpty() }?.let {
+            nota("Lo Shell ha scritto ${it.joinToString()} come testo invece di proporlo: non c'è niente da confermare. Chiedigli di proporlo davvero.")
+        }
         if (proposte.isEmpty() && Testi.promette(testo))
-            nota("Lo Shell non torna da solo su questo: non ha un modo di farlo. Se vuoi un promemoria, chiedigli di metterlo in calendario.")
+            nota("Lo Shell non torna da solo su questo, a meno di una consegna (prendi_consegna) o di un evento in calendario: chiedigli l'una o l'altro.")
         return Esito(testo, proposte)
     }
 
@@ -528,7 +609,7 @@ class Shell(
             archivio.db.quaderni().elenco().forEach { appendLine(it.testo) }
             archivio.db.profilo().leggi()?.let { appendLine(it.vincoli); appendLine(it.motivazione) }
         }
-        return Regole(Uscita.nomi(nomiProtetti), Uscita.indirizzi(scritti), testoGhost, it.resonance.adam.logica.Esperimenti.aperti(i.esperimenti))
+        return Regole(Uscita.nomi(nomiProtetti), Uscita.indirizzi(scritti), testoGhost, it.resonance.adam.logica.Esperimenti.aperti(i.esperimenti), i.consegne)
     }
 
     private suspend fun lettura(v: Validazione.Lettura): String = when (v.nome) {
@@ -564,6 +645,8 @@ class Shell(
         }
         archivio.db.messaggi().aggiorna(m.copy(stato = if (e.riuscita) StatoProposta.ESEGUITA else StatoProposta.FALLITA))
         archivio.db.messaggi().inserisci(Messaggio(ruolo = if (e.riuscita) Ruolo.RICEVUTA else Ruolo.NOTA, testo = e.ricevuta, istante = ora))
+        // Un documento appena salvato può mantenere una consegna: si guarda subito, non alla scadenza.
+        if (e.riuscita) runCatching { archivio.verificaConsegne() }.getOrDefault(emptyList()).forEach { c -> nota(it.resonance.adam.logica.Consegne.traccia(c)) }
         return e.ricevuta
     }
 

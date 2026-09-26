@@ -39,6 +39,8 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
         vista.keepScreenOn = vm.ascolta == Ascolta.AUTO
         onDispose { vista.keepScreenOn = false }
     }
+    // Al ritorno nell'app la riunione si ritira subito: fuori, Android la congela e gli interventi aspettavano (26/09).
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { vm.alRitorno() }
     BackHandler(enabled = vm.schermata != Schermata.SPECCHIO || vm.percorsoAperto != null || vm.documentoAperto != null) { vm.indietro() }
 
     Box(Modifier.fillMaxSize()) {

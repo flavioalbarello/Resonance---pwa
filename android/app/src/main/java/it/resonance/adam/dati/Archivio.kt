@@ -9,6 +9,7 @@ import it.resonance.adam.logica.Importato
 import it.resonance.adam.logica.Proposta
 import it.resonance.adam.logica.Nodi
 import it.resonance.adam.logica.Fondo
+import it.resonance.adam.logica.Consegne
 import it.resonance.adam.logica.Testi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -33,6 +34,7 @@ data class Copia(
     val movimenti: List<Movimento> = emptyList(),
     val lettere: List<Lettera> = emptyList(),
     val risposte: List<RispostaLettera> = emptyList(),
+    val consegne: List<Consegna> = emptyList(),
 )
 
 class Ambiguo(m: String) : Exception(m)
@@ -256,6 +258,18 @@ class Archivio(val db: Db) {
         }
         // Calendario e posta stanno fuori dall'archivio: li esegue il Mondo (cervello/Mondo.kt).
         // Il fondo di Adam: un'uscita non supera il saldo, e a fondo fermo non ne parte nessuna (le soglie dello Shell).
+        is Proposta.PrendiConsegna -> {
+            val aperte = db.consegne().aperte()
+            when {
+                aperte.size >= Consegne.MASSIMO -> Esecuzione(false, "Non presa: ci sono già ${Consegne.MASSIMO} consegne aperte")
+                aperte.any { Testi.normalizza(it.documento) == Testi.normalizza(p.documento) } -> Esecuzione(false, "Non presa: c'è già una consegna aperta su «${p.documento}»")
+                else -> {
+                    val c = Consegna(cosa = p.cosa, documento = p.documento, percorso = p.percorso, presa = oggi.toString(), scadenza = p.scadenza, creata = ora)
+                    db.consegne().inserisci(c)
+                    Esecuzione(true, "Consegna presa: ${Consegne.riga(c)}. Il giorno prima lo Shell ci lavora; alla scadenza guarda il programma")
+                }
+            }
+        }
         is Proposta.MovimentoFondo -> {
             val prima = Fondo.stato(db.fondo().elenco(), oggi)
             when {
@@ -287,6 +301,24 @@ class Archivio(val db: Db) {
             db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = oggi.toString(), testo = Esperimenti.traccia(chiuso), fonte = "esperimento", creato = ora, aggiornato = ora))
             chiuso
         }
+    }
+
+    // Le consegne dello Shell: il programma guarda se il documento c'è. Chiuse, vanno nel diario di Adam.
+    suspend fun verificaConsegne(oggi: LocalDate = LocalDate.now()): List<Consegna> = db.withTransaction {
+        val aperte = db.consegne().aperte()
+        if (aperte.isEmpty()) return@withTransaction emptyList()
+        Consegne.verifica(aperte, db.percorsi().elencoDocumenti(), db.percorsi().elenco(), oggi).onEach { c ->
+            db.consegne().aggiorna(c)
+            db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = oggi.toString(), testo = Consegne.traccia(c), fonte = "consegna", creato = ora, aggiornato = ora))
+        }
+    }
+
+    suspend fun lasciaConsegna(c: Consegna, oggi: LocalDate = LocalDate.now()): String {
+        if (c.stato != StatoConsegna.APERTA) return "La consegna non è più aperta"
+        val chiusa = c.copy(stato = StatoConsegna.LASCIATA, chiusa = oggi.toString(), esito = "lasciata dal Ghost prima della scadenza")
+        db.consegne().aggiorna(chiusa)
+        db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = oggi.toString(), testo = Consegne.traccia(chiusa), fonte = "consegna", creato = ora, aggiornato = ora))
+        return "Consegna lasciata: resta nel diario di Adam"
     }
 
     // ── Legge 14: ogni sovrascrittura lascia la versione precedente ──
@@ -402,6 +434,7 @@ class Archivio(val db: Db) {
         quaderni = db.quaderni().elenco(), messaggi = db.messaggi().elenco(), spesa = db.spesa().elenco(), profilo = db.profilo().leggi(),
         esperimenti = db.esperimenti().elenco(),
         taccuino = db.taccuino().elenco(), movimenti = db.fondo().elenco(), lettere = db.lettere().elenco(), risposte = db.lettere().risposte(),
+        consegne = db.consegne().elenco(),
     ))
 
     fun eUnaCopia(testo: String) = testo.contains("\"_formato\":\"resonance-apk\"") || testo.contains("\"_formato\": \"resonance-apk\"")
@@ -411,7 +444,7 @@ class Archivio(val db: Db) {
         val c = json.decodeFromString(Copia.serializer(), testo)
         db.withTransaction {
             listOf("misure", "voci", "versioni", "rituali", "spunte", "percorsi", "nodi", "documenti", "quaderni", "messaggi", "spesa", "profilo", "esperimenti",
-                "taccuino", "movimenti", "lettere", "risposte")
+                "taccuino", "movimenti", "lettere", "risposte", "consegne")
                 .forEach { db.openHelper.writableDatabase.execSQL("DELETE FROM $it") }
             c.misure.forEach { db.misure().sostituisci(it) }
             c.voci.forEach { db.voci().inserisci(it) }
@@ -430,6 +463,7 @@ class Archivio(val db: Db) {
             c.movimenti.forEach { db.fondo().inserisci(it) }
             c.lettere.forEach { db.lettere().inserisci(it) }
             c.risposte.forEach { db.lettere().inserisciRisposta(it) }
+            c.consegne.forEach { db.consegne().inserisci(it) }
         }
         return c.misure.size + c.voci.size + c.documenti.size
     }

@@ -17,8 +17,8 @@ object Capacita {
             listOf("registra_misura", "leggi_misure")),
         Area("AIR", "entrate, divise fra legate al tempo e non (l'esito del pilastro sono le seconde)", listOf("registra_misura", "leggi_misure")),
         Area("VIDYA", "minuti di pratica, opere finite", listOf("registra_misura", "leggi_misure")),
-        Area("ADAM", "percorsi che attraversano i pilastri (il pilastro sta sui nodi di primo livello); il TUO taccuino; il fondo di Adam; la tua voce sulla temperatura; le lettere all'architetto",
-            listOf("pilastro_nodo", "scrivi_taccuino", "riprendi_nota", "movimento_fondo", "regola_temperatura", "scrivi_all_architetto")),
+        Area("ADAM", "percorsi che attraversano i pilastri (il pilastro sta sui nodi di primo livello); il TUO taccuino; il fondo di Adam; la tua voce sulla temperatura; le lettere all'architetto; le TUE consegne (una promessa con una forma che il programma verifica, e un turno di lavoro tuo il giorno prima)",
+            listOf("pilastro_nodo", "scrivi_taccuino", "riprendi_nota", "movimento_fondo", "regola_temperatura", "scrivi_all_architetto", "prendi_consegna")),
         Area("Mondo (con la conferma del Ghost)", "calendario del telefono; mail come bozza che invia il Ghost",
             listOf("leggi_calendario", "crea_evento", "sposta_evento", "togli_evento", "scrivi_mail")),
     )
@@ -31,7 +31,9 @@ object Capacita {
         "Adam → Regolazione: temperature per compito, modelli che la rifiutano, esiti dei turni, spesa del mese",
         "battito mattino, sera e domenica, con registro e «Prova ora» in Setup",
         "nodi: tocco per avanzare lo stato, pressione lunga per spostare, dare il pilastro, togliere",
-        "riunione a tre (Adam → Lettere → Apri riunione): ogni scambio col Ghost va nel verbale, l'architetto legge e interviene; alla chiusura scrivi tu il verbale",
+        "riunione a tre (Adam → Lettere → Apri riunione): ogni scambio col Ghost va nel verbale, l'architetto legge e interviene; un suo intervento che comincia con «→ Shell» ti fa rispondere da solo, al massimo 3 giri senza il Ghost; «Ritira ora» nella fascia; alla chiusura scrivi tu il verbale (senza strumenti)",
+        "gli interventi dell'architetto (riunione e lettere) si ascoltano con «🔊 Ascolta», e in auto si leggono da soli",
+        "Adam → Consegne: le tue consegne aperte e chiuse; il Ghost può lasciarne una",
     )
 
     fun strumenti(): Set<String> = AREE.flatMap { it.strumenti }.toSet()

@@ -142,6 +142,12 @@ sealed class Proposta {
         override fun descrizione() = "Fondo di Adam, ${tipo.etichetta}: ${Fondo.euro(importo)}, ${Giorni.leggibile(giorno)} — $motivo"
     }
 
+    @Serializable @SerialName("prendi_consegna")
+    data class PrendiConsegna(val cosa: String, val documento: String, val percorso: String? = null, val scadenza: String) : Proposta() {
+        override fun descrizione() = "Consegna dello Shell: «$cosa» — documento «$documento»" + (percorso?.let { " nel percorso «$it»" } ?: "") +
+            ", entro ${Giorni.leggibile(scadenza)}. Il giorno prima ci lavora da solo; alla scadenza il programma guarda se il documento c'è"
+    }
+
     @Serializable @SerialName("lettera_architetto")
     data class LetteraArchitetto(val oggetto: String, val testo: String) : Proposta() {
         override fun descrizione() = "Spedire all'architetto la lettera «$oggetto» (con lo stato dell'app allegato)"
@@ -229,6 +235,7 @@ data class Regole(
     val indirizziNoti: Set<String>? = null,
     val detteDalGhost: String = "",
     val esperimentiAperti: List<Esperimento> = emptyList(),
+    val consegneAperte: List<it.resonance.adam.dati.Consegna> = emptyList(),
 )
 
 sealed class Validazione {
@@ -382,6 +389,13 @@ object Azioni {
             "Propone un'entrata o un'uscita del fondo di Adam, col motivo. Il Ghost esegue e conferma. I versamenti li fa lui.",
             schema(listOf("tipo", "importo", "motivo"), mapOf("tipo" to e(listOf("entrata", "uscita"), "Verso"),
                 "importo" to n("Euro, positivo"), "motivo" to s("Per cosa"), "giorno" to s("yyyy-MM-dd, se assente oggi")))),
+        Strumento("prendi_consegna", Effetto.SCRITTURA,
+            "Propone una tua consegna: quando dici «lo preparo nei prossimi giorni», prendila qui. Dichiari ORA la forma che il programma verificherà: " +
+                "un documento con un titolo, in un percorso. Il giorno prima della scadenza parte da solo un tuo turno di lavoro; alla scadenza il programma " +
+                "guarda se il documento c'è, scritto dopo la presa e non vuoto. Mantenuta o mancata, resta nel diario di Adam. Al massimo ${Consegne.MASSIMO} aperte.",
+            schema(listOf("cosa", "documento", "giorni"), mapOf("cosa" to s("Cosa consegni, in una riga"),
+                "documento" to s("Titolo esatto del documento che consegnerai"), "percorso" to s("Titolo del percorso dove starà (consigliato)"),
+                "giorni" to n("Fra quanti giorni la scadenza, ${Consegne.GIORNI_MIN}–${Consegne.GIORNI_MAX}")))),
         Strumento("scrivi_all_architetto", Effetto.SCRITTURA,
             "Propone una lettera all'architetto dell'app (Claude Code). Parte dopo la conferma del Ghost, con lo stato dell'app allegato; la risposta arriva entro un giorno.",
             schema(listOf("oggetto", "testo"), mapOf("oggetto" to s("Una riga"),
@@ -455,6 +469,19 @@ object Azioni {
             val imp = a.numero("importo") ?: rifiuta("importo mancante")
             if (imp <= 0.0 || imp > 10_000.0) rifiuta("importo in euro, positivo: il verso lo dice il tipo")
             Proposta.MovimentoFondo(tipo, Math.round(imp * 100) / 100.0, a.testo("motivo") ?: rifiuta("serve il motivo: resta scritto"), giorno(a, oggi))
+        }
+        "prendi_consegna" -> {
+            val cosa = a.testo("cosa")?.takeIf { it.length <= 200 } ?: rifiuta("cosa mancante o più lungo di 200 caratteri: una riga")
+            val documento = a.testo("documento")?.takeIf { it.length <= 120 } ?: rifiuta("serve il titolo del documento che consegnerai (al massimo 120 caratteri): è la forma che il programma verifica")
+            val giorni = intero(a, "giorni", 0)
+            if (giorni !in Consegne.GIORNI_MIN..Consegne.GIORNI_MAX)
+                rifiuta("giorni fuori da ${Consegne.GIORNI_MIN}–${Consegne.GIORNI_MAX}: più in là si dimentica, e allora è una dichiarazione")
+            if (regole.consegneAperte.size >= Consegne.MASSIMO)
+                rifiuta("ci sono già ${Consegne.MASSIMO} consegne aperte: prima mantienine una, o chiedi al Ghost quale lasciare")
+            regole.consegneAperte.find { Testi.normalizza(it.documento) == Testi.normalizza(documento) }?.let {
+                rifiuta("c'è già una consegna aperta sul documento «${it.documento}» («${it.cosa}»)")
+            }
+            Proposta.PrendiConsegna(cosa, documento, a.testo("percorso"), oggi.plusDays(giorni.toLong()).toString())
         }
         "scrivi_all_architetto" -> {
             val oggetto = a.testo("oggetto")?.takeIf { it.length <= 120 } ?: rifiuta("oggetto mancante o più lungo di 120 caratteri")
@@ -717,4 +744,15 @@ object Testi {
         RegexOption.IGNORE_CASE,
     )
     fun promette(t: String) = PROMETTE.containsMatchIn(t)
+
+    // Lo Shell che imita la voce del programma (visto in riunione il 26/09: «[Nota del programma: la riunione è chiusa…]»).
+    // Quella riga distingue ciò che è successo da ciò che è stato detto: se la scrive il modello, non distingue più.
+    private val FINTA_NOTA = Regex("""\[\s*nota del programma[^\]]*]""", RegexOption.IGNORE_CASE)
+    fun fintaNota(t: String) = FINTA_NOTA.containsMatchIn(t)
+    fun senzaFinteNote(t: String) = t.replace(FINTA_NOTA, "").replace(Regex("\n{3,}"), "\n\n").trim()
+
+    // Le chiamate scritte come testo invece che fatte (visto il 26/09 con un modello leggero): «crea_evento(titolo=…)».
+    // Il Ghost le legge come proposte, e non esiste niente da confermare.
+    fun chiamateScritte(t: String, nomi: Collection<String>): List<String> =
+        nomi.filter { n -> Regex("""(?<![\w])""" + Regex.escape(n) + """\s*\(""").containsMatchIn(t) }
 }

@@ -90,6 +90,16 @@ interface LettereDao {
 }
 
 @Dao
+interface ConsegneDao {
+    @Insert suspend fun inserisci(c: Consegna): Long
+    @Update suspend fun aggiorna(c: Consegna)
+    @Query("SELECT * FROM consegne WHERE id = :id") suspend fun per(id: Long): Consegna?
+    @Query("SELECT * FROM consegne ORDER BY creata") suspend fun elenco(): List<Consegna>
+    @Query("SELECT * FROM consegne WHERE stato = 'APERTA' ORDER BY scadenza") suspend fun aperte(): List<Consegna>
+    @Query("SELECT * FROM consegne ORDER BY creata DESC") fun tutte(): Flow<List<Consegna>>
+}
+
+@Dao
 interface TurniDao {
     @Insert suspend fun inserisci(t: Turno): Long
     @Query("SELECT * FROM (SELECT * FROM turni ORDER BY istante DESC LIMIT :n) ORDER BY istante") suspend fun ultimi(n: Int): List<Turno>
@@ -150,14 +160,15 @@ interface ProfiloDao {
 
 @Database(
     entities = [Misura::class, Voce::class, Versione::class, Rituale::class, Spunta::class, Percorso::class,
-        Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class, Esperimento::class, Turno::class, Nota::class, Movimento::class, Lettera::class, RispostaLettera::class],
-    version = 8,
+        Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class, Esperimento::class, Turno::class, Nota::class, Movimento::class, Lettera::class, RispostaLettera::class, Consegna::class],
+    version = 9,
     exportSchema = true,
     // 2: Profilo.nomiProtetti (calendario e posta, 23/09/2026).
     // 3: Messaggio.allegati (immagini e documenti nella chat, 23/09/2026).
     // 4: Messaggio.modello, costo, motore (scelta automatica del motore).
     // 5: esperimenti (l'anello di Anochin sulla vita).
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8)],
+    // 9: consegne dello Shell (riunione del 26/09/2026).
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun misure(): MisureDao
@@ -171,6 +182,7 @@ abstract class Db : RoomDatabase() {
     abstract fun taccuino(): TaccuinoDao
     abstract fun fondo(): FondoDao
     abstract fun lettere(): LettereDao
+    abstract fun consegne(): ConsegneDao
     abstract fun spesa(): SpesaDao
     abstract fun profilo(): ProfiloDao
     abstract fun esperimenti(): EsperimentiDao

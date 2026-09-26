@@ -81,6 +81,10 @@ open class Impostazioni(context: Context) {
     var riunioneViste: Set<String>
         get() = p.getStringSet("riunioneViste", emptySet())!!.toSet()
         set(v) = p.edit().putStringSet("riunioneViste", v).apply()
+    // Il verbale già scritto dallo Shell e non ancora consegnato alla cassetta (rete caduta): si riprova, non si riscrive.
+    var riunioneVerbale: String
+        get() = p.getString("riunioneVerbale", "")!!
+        set(v) = p.edit().putString("riunioneVerbale", v).apply()
     // Quanti secondi di silenzio chiudono un messaggio a voce in modalità auto.
     var pausaInvio: Int
         get() = p.getInt("pausaInvio", 4)

@@ -87,6 +87,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
     val movimenti = db.fondo().tutti().stato()
     val lettere = db.lettere().tutte().stato()
     val risposte = db.lettere().tutteLeRisposte().stato()
+    val consegne = db.consegne().tutte().stato()
     val profilo: StateFlow<Profilo?> = db.profilo().osserva().stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val spesaMese = db.spesa().osserva(YearMonth.now().toString()).stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -185,20 +186,22 @@ class Adam(app: Application) : AndroidViewModel(app) {
         // La forzatura vale per questo messaggio e basta: poi la temperatura torna quella del compito.
         val f = forza
         forza = null
-        viewModelScope.launch {
-            val id = shell.registra(t, allegati)
-            val wm = lavori
-            if (wm == null) {
-                val esito = shell.rispondi(id, f)
-                pensa = false
-                if (ascolta == Ascolta.AUTO) rispondiAVoce(esito)
-                return@launch
-            }
-            val r = TurnoWorker.accoda(getApplication(), id, f)
-            val fine = wm.getWorkInfoByIdFlow(r.id).first { it?.state?.isFinished == true }
-            if (ascolta == Ascolta.AUTO && fine?.state == WorkInfo.State.SUCCEEDED) rispondiAVoce(Shell.Esito(
-                fine.outputData.getString(TurnoWorker.TESTO).orEmpty(), fine.outputData.getLongArray(TurnoWorker.PROPOSTE)?.toList().orEmpty()))
+        viewModelScope.launch { turnoSu(shell.registra(t, allegati), f) }
+    }
+
+    // Il turno dello Shell su un messaggio già salvato: del Ghost, o dell'architetto che gli si rivolge in riunione.
+    private suspend fun turnoSu(id: Long, f: it.resonance.adam.cervello.Forzatura? = null) {
+        val wm = lavori
+        if (wm == null) {
+            val esito = shell.rispondi(id, f)
+            pensa = false
+            if (ascolta == Ascolta.AUTO) rispondiAVoce(esito)
+            return
         }
+        val r = TurnoWorker.accoda(getApplication(), id, f)
+        val fine = wm.getWorkInfoByIdFlow(r.id).first { it?.state?.isFinished == true }
+        if (ascolta == Ascolta.AUTO && fine?.state == WorkInfo.State.SUCCEEDED) rispondiAVoce(Shell.Esito(
+            fine.outputData.getString(TurnoWorker.TESTO).orEmpty(), fine.outputData.getLongArray(TurnoWorker.PROPOSTE)?.toList().orEmpty()))
     }
 
     fun conferma(m: Messaggio) = viewModelScope.launch { avviso = shell.conferma(m.id); leggiAgenda() }
@@ -242,6 +245,8 @@ class Adam(app: Application) : AndroidViewModel(app) {
         invioJob?.cancel()
         ascolto.ferma()
         parlato.zitto()
+        daDire.clear()
+        parlando = false
         inLettura = null
         ascolta = Ascolta.SPENTO
         parziale = ""
@@ -338,11 +343,15 @@ class Adam(app: Application) : AndroidViewModel(app) {
     var inLettura by mutableStateOf<Long?>(null)
 
     fun leggi(m: Messaggio) {
+        // Una lettura a richiesta interrompe la coda della modalità auto: la sua fine non arriverebbe più.
+        daDire.clear()
+        parlando = false
         if (inLettura == m.id) { parlato.zitto(); inLettura = null; riprendiAuto(); return }
         invioJob?.cancel()
         ascolto.ferma()
         inLettura = m.id
-        parlato.parla(m.testo) { inLettura = null; riprendiAuto() }
+        val testo = if (m.ruolo == Ruolo.ARCHITETTO) it.resonance.adam.cervello.Tavolo.leggibile(m.testo) else m.testo
+        parlato.parla(testo) { inLettura = null; riprendiAuto() }
     }
 
     private fun riprendiAuto() { if (ascolta == Ascolta.AUTO && !pensa) ascolto.avvia() }
@@ -356,10 +365,19 @@ class Adam(app: Application) : AndroidViewModel(app) {
         parla(testo)
     }
 
+    // In coda, non uno sopra l'altro: l'intervento dell'architetto letto in auto non si tronca quando arriva lo Shell.
+    private val daDire = ArrayDeque<String>()
+    private var parlando = false
+
     private fun parla(testo: String) {
-        if (ascolta != Ascolta.AUTO) return
+        if (ascolta != Ascolta.AUTO || testo.isBlank()) return
+        if (parlando) { daDire.addLast(testo); return }
+        parlando = true
         ascolto.ferma()
-        parlato.parla(testo) { riprendiAuto() }
+        parlato.parla(testo) {
+            parlando = false
+            daDire.removeFirstOrNull()?.let { parla(it) } ?: riprendiAuto()
+        }
     }
 
     // ── Gesti diretti, senza modello ──
@@ -403,7 +421,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
         if (!posta.pronta()) { avviso = "Cassetta non configurata: Setup → Cassetta delle lettere"; return@launch }
         val spedite = posta.spedisciInSospeso()
         val nuove = posta.ritira()
-        nuove.forEach { (l, r) -> db.messaggi().inserisci(Messaggio(ruolo = Ruolo.NOTA, testo = "Risposta dell'architetto alla lettera «${l.oggetto}»:\n${r.testo}", istante = System.currentTimeMillis())) }
+        nuove.forEach { (l, r) -> db.messaggi().inserisci(Messaggio(ruolo = Ruolo.ARCHITETTO, testo = "Risposta dell'architetto alla lettera «${l.oggetto}»:\n${r.testo}", istante = System.currentTimeMillis())) }
         avviso = "Spedite $spedite, risposte nuove ${nuove.size}"
     }
     fun salvaCassetta(repo: String, token: String) {
@@ -419,16 +437,32 @@ class Adam(app: Application) : AndroidViewModel(app) {
     private var ascoltaRiunione: kotlinx.coroutines.Job? = null
     private val tavolo get() = it.resonance.adam.cervello.Tavolo(archivio, impostazioni)
 
-    // A riunione aperta e app viva, ogni 20 secondi: gli interventi dell'architetto entrano in chat.
+    var chiudendo by mutableStateOf(false)
+
+    // A riunione aperta e app viva, ogni 20 secondi: gli interventi dell'architetto entrano in chat. Riparte da capo
+    // (ritirando subito) quando il Ghost torna nell'app: fuori, Android la congela e il giro si ferma (visto il 26/09).
     private fun seguiRiunione() {
         ascoltaRiunione?.cancel()
         if (riunione == null) return
         ascoltaRiunione = viewModelScope.launch {
             while (riunione != null) {
-                runCatching { tavolo.ritira() }
+                ritiraOra(false)
                 kotlinx.coroutines.delay(20_000)
             }
         }
+    }
+
+    fun alRitorno() { if (riunione != null) seguiRiunione() }
+    fun ritiraRiunione() = viewModelScope.launch { ritiraOra(true) }
+
+    private suspend fun ritiraOra(aMano: Boolean) {
+        val r = try { tavolo.ritira() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+            if (aMano) avviso = "Ritiro non riuscito: ${e.message ?: e.javaClass.simpleName}"
+            return
+        }
+        if (aMano && r.nuovi.isEmpty()) avviso = "Niente di nuovo dall'architetto"
+        r.nuovi.forEach { m -> parla("L'architetto. " + it.resonance.adam.cervello.Tavolo.leggibile(m.testo)) }
+        r.allaShell?.let { id -> pensa = true; viewModelScope.launch { turnoSu(id) } }
     }
 
     // Dopo le dichiarazioni di sopra: un init più in alto le troverebbe ancora vuote.
@@ -441,13 +475,19 @@ class Adam(app: Application) : AndroidViewModel(app) {
             .onFailure { avviso = "Riunione non aperta: ${it.message}" }
     }
 
-    fun chiudiRiunione() = viewModelScope.launch {
-        pensa = true
-        val esito = runCatching { shell.chiudiRiunione() }
-        pensa = false
-        esito.onFailure { avviso = "Chiusura non riuscita: ${it.message}" }
-        if (!tavolo.aperta()) { riunione = null; ascoltaRiunione?.cancel() }
+    fun chiudiRiunione() {
+        if (chiudendo) return
+        chiudendo = true
+        viewModelScope.launch {
+            val esito = runCatching { shell.chiudiRiunione() }
+            chiudendo = false
+            if (!tavolo.aperta()) { riunione = null; ascoltaRiunione?.cancel(); avviso = "Riunione chiusa: il verbale è in chat e nella cassetta" }
+            else esito.exceptionOrNull()?.let {
+                avviso = "Chiusura non riuscita (${it.message ?: it.javaClass.simpleName}). Il verbale è salvato: riprova Chiudi quando c'è rete"
+            }
+        }
     }
+    fun lasciaConsegna(c: it.resonance.adam.dati.Consegna) = viewModelScope.launch { avviso = archivio.lasciaConsegna(c) }
     // Il modello si riprova con la temperatura: se la rifiuta ancora, torna in elenco da solo.
     fun dimenticaRinunce() { impostazioni.senzaTemperatura = emptySet(); avviso = "Al prossimo turno la temperatura si riprova con tutti i modelli." }
     fun spostaNodo(n: Nodo, genitoreId: Long?) = viewModelScope.launch { avviso = archivio.spostaNodo(n, genitoreId) }

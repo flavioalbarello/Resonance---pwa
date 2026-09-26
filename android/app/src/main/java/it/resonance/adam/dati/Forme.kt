@@ -35,7 +35,9 @@ enum class StatoNodo(val etichetta: String) {
     NON_INIZIATO("non iniziato"), INTRODOTTO("introdotto"), PRATICATO("praticato"), CONSOLIDATO("consolidato")
 }
 
-enum class Ruolo { GHOST, SHELL, PROPOSTA, RICEVUTA, NOTA }
+// ARCHITETTO (26/09/2026): gli interventi di Claude Code, dalla riunione o dalle lettere. Prima erano NOTA, e una nota
+// non si ascolta: il Ghost li voleva leggere a voce come quelli dello Shell. Le note vecchie restano note.
+enum class Ruolo { GHOST, SHELL, PROPOSTA, RICEVUTA, NOTA, ARCHITETTO }
 
 // L'anello (Anochin): un esperimento dichiara PRIMA il numero che dovrebbe muoversi e in che verso; il punto di
 // partenza si congela all'apertura; alla scadenza il programma confronta. Nessun modello nel confronto.
@@ -269,6 +271,29 @@ data class Movimento(
     val importo: Double,
     val motivo: String,
     val creato: Long,
+)
+
+enum class StatoConsegna { APERTA, MANTENUTA, MANCATA, LASCIATA }
+
+// Una consegna dello Shell (dalla riunione del 26/09/2026, dove si chiamava «impegno»: nell'app impegno vuol già dire
+// evento di calendario, e il modello li avrebbe confusi). «La preparo nei prossimi giorni» era una dichiarazione che
+// nessuno teneva. Qui la FORMA si dichiara quando la consegna si prende — un documento con un titolo, in un percorso —
+// e alla scadenza è il programma a guardare se c'è. Il giorno prima parte da solo un turno di lavoro. Mantenuta o
+// mancata, resta nel diario di Adam: una consegna mancata è una carenza legittima, non una colpa.
+@Serializable
+@Entity(tableName = "consegne")
+data class Consegna(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val cosa: String,
+    val documento: String,
+    val percorso: String? = null,
+    val presa: String,
+    val scadenza: String,
+    val stato: StatoConsegna = StatoConsegna.APERTA,
+    val lavorata: Boolean = false,
+    val chiusa: String? = null,
+    val esito: String = "",
+    val creata: Long,
 )
 
 enum class StatoLettera { DA_INVIARE, INVIATA, RISPOSTA, ERRORE }

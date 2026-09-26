@@ -84,9 +84,13 @@ fun ShellUi(vm: Adam, sistema: Sistema) {
         if (vm.pensa) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Colori.ambra)
         if (vm.parziale.isNotBlank()) Text("${vm.parziale}…", color = Colori.tenue, fontStyle = FontStyle.Italic, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         vm.riunione?.let { r ->
-            Text("Riunione in corso: «$r» · va nel verbale, l'architetto legge. Solo progettazione.", color = Colori.ambraInchiostro, fontSize = 12.sp,
-                modifier = Modifier.fillMaxWidth().background(Colori.ambra.copy(alpha = 0.15f)).padding(horizontal = 16.dp, vertical = 4.dp))
+            Row(Modifier.fillMaxWidth().background(Colori.ambra.copy(alpha = 0.15f)).padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(if (vm.chiudendo) "Chiusura di «$r»: lo Shell scrive il verbale…" else "Riunione in corso: «$r» · va nel verbale, l'architetto legge. Solo progettazione.",
+                    color = Colori.ambraInchiostro, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                TextButton({ vm.ritiraRiunione() }, enabled = !vm.chiudendo, modifier = Modifier.testTag("ritira-ora")) { Text("Ritira ora", fontSize = 12.sp) }
+            }
         }
+        if (vm.chiudendo) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Colori.ambra)
         if (vm.ascolta == Ascolta.AUTO) {
             if (vm.raccolto.isNotBlank()) Text("«${vm.raccolto}»", color = Colori.inchiostro, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
             Text("Modalità auto: parla anche con pause. Parte dopo ${vm.pausaInvio()} secondi di silenzio, o subito se dici «invia»; «annulla messaggio» lo cancella. Tocca l'ancora rossa per fermare.",
@@ -189,6 +193,22 @@ private fun Messaggio(vm: Adam, m: Messaggio) {
             }
         }
         Ruolo.RICEVUTA -> Text("✓ ${m.testo}", color = Colori.bio, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 4.dp))
+        // L'architetto (Claude Code): dalla riunione o dalle lettere. Si distingue dallo Shell, e si ascolta come lui.
+        Ruolo.ARCHITETTO -> Column {
+            Column(Modifier
+                .widthIn(max = 330.dp)
+                .background(Colori.fondo2, RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp))
+                .border(1.dp, Colori.ambra.copy(alpha = 0.6f), RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp))
+                .padding(12.dp)) {
+                Etichetta("Architetto", Colori.ambraInchiostro)
+                SelectionContainer {
+                    Text(Formato.annota(it.resonance.adam.cervello.Tavolo.leggibile(m.testo)), color = Colori.inchiostro, fontSize = 15.sp, lineHeight = 21.sp)
+                }
+            }
+            TextButton({ vm.leggi(m) }, modifier = Modifier.testTag("leggi-${m.id}")) {
+                Text(if (vm.inLettura == m.id) "⏹ Ferma" else "🔊 Ascolta", fontSize = 12.sp, color = Colori.ambraInchiostro)
+            }
+        }
         Ruolo.NOTA -> Text(m.testo, color = Colori.tenue, fontSize = 13.sp, fontStyle = FontStyle.Italic, modifier = Modifier.padding(horizontal = 4.dp))
     }
 }
