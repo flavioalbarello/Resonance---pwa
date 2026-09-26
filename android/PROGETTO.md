@@ -200,6 +200,10 @@ nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo ch
     (in riunione ne aveva scritta una falsa: «la riunione è chiusa»); le chiamate scritte come testo («crea_evento(…)»,
     viste con un modello leggero) tornano al modello una volta, e se restano lo dice una nota.
   - Il prompt dice sempre se c'è una riunione aperta: senza, lo Shell l'aveva data per aperta sulla parola del Ghost.
+  - *Il calendario lo sceglie il Ghost* (Setup → Calendario e posta → Scrivi in). Prima lo sceglieva un punteggio
+    (principale, proprio, Google): con sei account Google i principali pareggiavano e vinceva il primo letto — un evento
+    di Adam è finito nel calendario professionale. Ora la proposta porta il calendario e lo dice PRIMA della conferma;
+    la conferma scrive lì e non altrove; senza scelta crea_evento non si propone e lo Shell chiede di scegliere.
 - *Schermo acceso in auto*: finché l'ascolto è AUTO la vista tiene `keepScreenOn`; si spegne quando l'auto si ferma
   (a mano o dopo tre silenzi). Prima lo schermo si bloccava mentre lo Shell rispondeva e il microfono non ripartiva.
 

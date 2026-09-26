@@ -81,6 +81,10 @@ open class Impostazioni(context: Context) {
     var riunioneViste: Set<String>
         get() = p.getStringSet("riunioneViste", emptySet())!!.toSet()
         set(v) = p.edit().putStringSet("riunioneViste", v).apply()
+    // In quale calendario entrano gli eventi nuovi: lo sceglie il Ghost (Setup). -1 = non scelto, e allora non si scrive.
+    var calendarioId: Long
+        get() = p.getLong("calendarioId", -1)
+        set(v) = p.edit().putLong("calendarioId", v).apply()
     // Il verbale già scritto dallo Shell e non ancora consegnato alla cassetta (rete caduta): si riprova, non si riscrive.
     var riunioneVerbale: String
         get() = p.getString("riunioneVerbale", "")!!

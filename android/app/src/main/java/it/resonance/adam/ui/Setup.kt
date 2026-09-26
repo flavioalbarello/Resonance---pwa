@@ -3,6 +3,8 @@ package it.resonance.adam.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -175,6 +177,24 @@ fun Setup(vm: Adam, sistema: Sistema) {
                 else -> "Calendario non collegato."
             })
             Button({ sistema.chiediCalendario() }, colors = ButtonDefaults.buttonColors(containerColor = Colori.air)) { Text("Collega il calendario") }
+            if (cal.puoScrivere()) {
+                // Dove entrano gli eventi nuovi: lo sceglie il Ghost. Prima lo sceglieva un punteggio, e con più account
+                // Google vinceva il primo letto (26/09: un evento di Adam nel calendario professionale).
+                val calendari by androidx.compose.runtime.produceState(emptyList<it.resonance.adam.mondo.Calendario.Scelto>(), vm.agenda) {
+                    value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { cal.scrivibili() }.getOrDefault(emptyList()) }
+                }
+                var scelto by remember { mutableStateOf(vm.impostazioni.calendarioId) }
+                Etichetta("Scrivi in", Colori.air)
+                if (calendari.none { it.id == scelto }) Riga("Nessun calendario scelto: lo Shell non può mettere eventi finché non ne scegli uno.", Colori.allarme)
+                calendari.forEach { c ->
+                    Row(Modifier.fillMaxWidth().clickable { scelto = c.id; vm.impostazioni.calendarioId = c.id }.testTag("calendario-${c.id}"),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.RadioButton(scelto == c.id, { scelto = c.id; vm.impostazioni.calendarioId = c.id })
+                        Text(c.nome)
+                    }
+                }
+                Tenue("Spostare o togliere un evento agisce sul calendario dove quell'evento sta già; la proposta lo dice.")
+            }
         }
 
         // La cassetta delle lettere fra lo Shell e l'architetto: un repository GitHub privato e un token solo per le sue issue.

@@ -177,11 +177,14 @@ sealed class Proposta {
     data class CreaEvento(
         val titolo: String, val inizio: String, val durataMinuti: Int = 60,
         val luogo: String = "", val note: String = "",
+        // Il calendario lo sceglie il Ghost in Setup; la proposta lo porta, così si vede PRIMA di confermare (26/09:
+        // un evento di Adam era finito nel calendario professionale, scelto a caso fra calendari a pari punteggio).
+        val calendarioId: Long? = null, val calendario: String? = null,
     ) : Proposta() {
         override fun descrizione(): String {
             val (da, a) = Agenda.inizioFine(this)
             val tutto = inizio.trim().length == 10
-            return "Mettere in calendario «$titolo», ${Agenda.quando(da, a, tutto, LocalDate.now())}" +
+            return "Mettere in calendario " + (calendario?.let { "«$it» " } ?: "") + "«$titolo», ${Agenda.quando(da, a, tutto, LocalDate.now())}" +
                 (if (luogo.isNotBlank()) " ($luogo)" else "") + (if (note.isNotBlank()) " — ${Testi.corto(note, 80)}" else "")
         }
     }

@@ -419,7 +419,7 @@ class Shell(
     // L'accettore prima dell'effettore: una modifica che alla conferma fallirebbe non si mostra al Ghost. Visto il 24/09:
     // tre proposte sul quaderno Vidya, vuoto, con un'ancora che non c'era; il Ghost confermava e riceveva «non modificato».
     private suspend fun risolvi(p: Proposta): Risoluzione = when (p) {
-        is Proposta.SpostaEvento, is Proposta.TogliEvento -> mondo?.risolvi(p) ?: Risoluzione.Domanda("il calendario non è raggiungibile da qui")
+        is Proposta.CreaEvento, is Proposta.SpostaEvento, is Proposta.TogliEvento -> mondo?.risolvi(p) ?: Risoluzione.Domanda("il calendario non è raggiungibile da qui")
         is Proposta.ModificaQuaderno -> if (p.modo == "aggiungi") Risoluzione.Pronta(p) else {
             val attuale = archivio.db.quaderni().elenco().find { it.pilastro == p.pilastro }?.testo.orEmpty()
             provaAncora(p, "il quaderno ${p.pilastro.etichetta}", attuale, p.ancora)

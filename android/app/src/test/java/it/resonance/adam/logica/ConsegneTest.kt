@@ -65,6 +65,16 @@ class ConsegneTest {
         assertEquals(2, Tavolo.giri(storia))
     }
 
+    @Test fun laPropostaDiCalendarioDiceDoveScrivePrimaDiConfermare() {
+        val p = Proposta.CreaEvento("Scheda", "2026-09-29", 0)
+        assertTrue(p.descrizione(), p.descrizione().startsWith("Mettere in calendario «Scheda»"))
+        val scelta = p.copy(calendarioId = 7, calendario = "progettoresonance@gmail.com")
+        assertTrue(scelta.descrizione(), scelta.descrizione().startsWith("Mettere in calendario «progettoresonance@gmail.com» «Scheda»"))
+        // Una proposta scritta prima del 26/09 (senza calendario) si legge ancora.
+        val vecchia = Azioni.decodifica("""{"azione":"crea_evento","titolo":"X","inizio":"2026-09-29","durataMinuti":0}""") as Proposta.CreaEvento
+        assertEquals(null, vecchia.calendarioId)
+    }
+
     @Test fun leFinteNoteELeChiamateScritteSiRiconoscono() {
         assertTrue(Testi.fintaNota("x\n[Nota del programma: chiusa.]"))
         assertEquals("x", Testi.senzaFinteNote("x\n\n[nota del programma: chiusa]"))

@@ -55,6 +55,7 @@ class MondoAndroid(context: Context) : Mondo {
 // Il calendario di sistema: è lo stesso che Google Calendar sincronizza. Nessun accesso Google da configurare.
 class Calendario(private val context: Context) {
     private val zona get() = ZoneId.systemDefault()
+    private val impostazioni by lazy { it.resonance.adam.Impostazioni(context) }
 
     fun puoLeggere() = concesso(Manifest.permission.READ_CALENDAR)
     fun puoScrivere() = concesso(Manifest.permission.WRITE_CALENDAR) && puoLeggere()
@@ -137,6 +138,12 @@ class Calendario(private val context: Context) {
             ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
 
     suspend fun risolvi(p: Proposta): Risoluzione = withContext(Dispatchers.IO) {
+        if (p is Proposta.CreaEvento) {
+            if (!puoScrivere()) return@withContext Risoluzione.Domanda("il Ghost non ha dato il permesso di scrivere nel calendario (Setup → Calendario e posta)")
+            val cal = runCatching { scelto(null) }.getOrNull()
+                ?: return@withContext Risoluzione.Domanda("il Ghost non ha scelto in quale calendario scrivere: chiedigli di sceglierlo in Setup → Calendario e posta → Scrivi in")
+            return@withContext Risoluzione.Pronta(p.copy(calendarioId = cal.id, calendario = cal.nome))
+        }
         val giorno = when (p) { is Proposta.TogliEvento -> p.giorno; is Proposta.SpostaEvento -> p.giorno; else -> return@withContext Risoluzione.Pronta(p) }
         if (!puoScrivere()) return@withContext Risoluzione.Domanda("il Ghost non ha dato il permesso di scrivere nel calendario (Setup → Calendario e posta)")
         try {
@@ -291,28 +298,38 @@ class Calendario(private val context: Context) {
 
     data class Scelto(val id: Long, val nome: String)
 
-    // Il principale dell'account Google se c'è; altrimenti il primo in cui si può scrivere.
-    private fun principale(): Scelto? {
-        val colonne = arrayOf(Calendars._ID, Calendars.CALENDAR_DISPLAY_NAME, Calendars.ACCOUNT_NAME, Calendars.ACCOUNT_TYPE,
-            Calendars.OWNER_ACCOUNT, Calendars.IS_PRIMARY)
-        data class Riga(val id: Long, val nome: String, val punti: Int)
-        val righe = mutableListOf<Riga>()
-        context.contentResolver.query(Calendars.CONTENT_URI, colonne,
+    // Fino al 26/09 il calendario lo sceglieva un punteggio (principale, proprio, Google). Con più account Google i
+    // principali pareggiavano, e vinceva il primo letto: un evento di Adam è finito nel calendario professionale.
+    // Ora lo sceglie il Ghost, una volta, in Setup; senza scelta non si scrive e lo Shell glielo dice.
+    fun scrivibili(): List<Scelto> {
+        if (!puoScrivere()) return emptyList()
+        val colonne = arrayOf(Calendars._ID, Calendars.CALENDAR_DISPLAY_NAME, Calendars.ACCOUNT_NAME)
+        return context.contentResolver.query(Calendars.CONTENT_URI, colonne,
             "${Calendars.CALENDAR_ACCESS_LEVEL} >= ${Calendars.CAL_ACCESS_CONTRIBUTOR} AND ${Calendars.VISIBLE} = 1", null, null)?.use { c ->
-            while (c.moveToNext()) {
-                val google = c.getString(3) == "com.google"
-                val proprio = c.getString(2) != null && c.getString(2) == c.getString(4)
-                val primario = !c.isNull(5) && c.getInt(5) == 1
-                righe += Riga(c.getLong(0), c.getString(1).orEmpty(), (if (primario) 4 else 0) + (if (google && proprio) 2 else 0) + (if (google) 1 else 0))
+            buildList {
+                while (c.moveToNext()) {
+                    val nome = c.getString(1).orEmpty()
+                    val account = c.getString(2).orEmpty()
+                    add(Scelto(c.getLong(0), if (account.isBlank() || account == nome) nome else "$nome · $account"))
+                }
             }
-        }
-        return righe.maxByOrNull { it.punti }?.let { Scelto(it.id, it.nome) }
+        }.orEmpty()
     }
+
+    private fun scelto(id: Long?): Scelto? {
+        val cercato = id ?: impostazioni.calendarioId.takeIf { it >= 0 } ?: return null
+        return scrivibili().find { it.id == cercato }
+    }
+
+    fun sceltoOra(): Scelto? = runCatching { scelto(null) }.getOrNull()
 
     suspend fun crea(p: Proposta.CreaEvento): Esecuzione = withContext(Dispatchers.IO) {
         if (!puoScrivere()) return@withContext Esecuzione(false, "Non messo in calendario: manca il permesso (Setup → Calendario e posta)")
         try {
-            val cal = principale() ?: return@withContext Esecuzione(false, "Non messo in calendario: sul telefono non c'è un calendario in cui si possa scrivere")
+            // Si scrive dove la proposta diceva: ciò che il Ghost ha visto prima di confermare.
+            val cal = scelto(p.calendarioId) ?: return@withContext Esecuzione(false,
+                "Non messo in calendario: " + (if (p.calendarioId != null) "il calendario della proposta non c'è più" else "non hai scelto in quale calendario scrivere") +
+                    " (Setup → Calendario e posta → Scrivi in)")
             val (inizio, fine) = Agenda.inizioFine(p)
             val tutto = p.inizio.trim().length == 10
             val valori = ContentValues().apply {
