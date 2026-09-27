@@ -279,8 +279,10 @@ class Shell(
         // Cosa ha fatto lo Shell con gli strumenti, in breve: se finisce i giri, il Ghost vede dove si è impigliato.
         val traccia = mutableListOf<String>()
         var esauriti = false
-        // Chiamate scritte come testo: si rimandano al modello una volta sola.
+        // Chiamate scritte come testo, proposte o consegne dichiarate e non fatte: si rimandano al modello una volta sola.
         var corretto = false
+        // L'ultima proposta fermata dal programma, col motivo: se lo Shell dice che c'è, il Ghost sa perché non c'è.
+        var ultimoFermo: String? = null
 
         try {
             for (giro in 0 until GIRI_MASSIMI) {
@@ -292,6 +294,19 @@ class Shell(
                 if (r.troncata) troncata = true
                 if (r.chiamate.isEmpty()) {
                     val scritte = Testi.chiamateScritte(r.testo, Azioni.strumenti.map { it.nome })
+                    // Una proposta annunciata («conferma col pulsante sotto») in un turno che non ne ha creata nessuna.
+                    if (scritte.isEmpty() && Testi.dichiaraProposta(r.testo) && proposte.isEmpty() && !corretto && giro < GIRI_MASSIMI - 1) {
+                        corretto = true
+                        traccia += "proposta annunciata senza crearla"
+                        lavoro += buildJsonObject { put("role", "assistant"); put("content", r.testo) }
+                        lavoro += buildJsonObject {
+                            put("role", "user")
+                            put("content", "[Nota del programma, non del Ghost] Hai scritto che c'è una proposta da confermare, ma in questo turno non " +
+                                "ne hai creata nessuna: il pulsante non c'è." + (ultimoFermo?.let { " L'ultima è stata fermata: $it." } ?: "") +
+                                " Falla con lo strumento; se non si può, di' al Ghost cosa manca, senza dire che c'è un pulsante.")
+                        }
+                        continue
+                    }
                     // Una consegna dichiarata a parole e mai proposta: si rimanda al modello una volta, come le chiamate scritte.
                     if (scritte.isEmpty() && Testi.dichiaraConsegna(r.testo) && !consegnaProposta(proposte) && !corretto && giro < GIRI_MASSIMI - 1) {
                         corretto = true
@@ -352,7 +367,10 @@ class Shell(
                             }
                         }
                     }
-                    if (risultato.startsWith("Rifiutata") || risultato.startsWith("Chiamata non eseguita") || risultato.startsWith("Non proposta")) rifiutate++
+                    if (risultato.startsWith("Rifiutata") || risultato.startsWith("Chiamata non eseguita") || risultato.startsWith("Non proposta")) {
+                        rifiutate++
+                        ultimoFermo = "${c.nome}: ${Testi.corto(risultato.substringAfter(": "), 160)}"
+                    }
                     traccia += c.nome + when {
                         risultato.startsWith("Rifiutata") || risultato.startsWith("Chiamata non eseguita") -> " rifiutato (${Testi.corto(risultato.substringAfter(": "), 70)})"
                         risultato.startsWith("Non proposta") -> " fermato (${Testi.corto(risultato.substringAfter(": "), 70)})"
@@ -398,6 +416,9 @@ class Shell(
         Testi.chiamateScritte(testo, Azioni.strumenti.map { it.nome }).takeIf { it.isNotEmpty() && proposte.isEmpty() }?.let {
             nota("Lo Shell ha scritto ${it.joinToString()} come testo invece di proporlo: non c'è niente da confermare. Chiedigli di proporlo davvero.")
         }
+        if (proposte.isEmpty() && Testi.dichiaraProposta(testo))
+            nota("Lo Shell parla di una proposta da confermare, ma non ne ha creata nessuna: il pulsante non c'è." +
+                (ultimoFermo?.let { " Il programma l'aveva fermata — $it." } ?: " Chiedigli di farla davvero."))
         if (Testi.dichiaraConsegna(testo) && !consegnaProposta(proposte))
             nota("Lo Shell dice di aver preso una consegna, ma non l'ha proposta: non esiste. Chiedigli di usare prendi_consegna.")
         if (proposte.isEmpty() && Testi.promette(testo))

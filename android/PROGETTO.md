@@ -234,6 +234,10 @@ nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo ch
 - *Dalla terza riunione (26/09/2026, «smartglasses»)*: il lettore vocale non legge più la cornice delle tabelle, i
   trattini e le frecce (le celle diventano frasi); e una consegna dichiarata a parole («consegna presa») senza
   `prendi_consegna` torna al modello una volta, poi resta una nota per il Ghost — lo Shell l'aveva detto due volte di fila.
+- *Proposte annunciate e non create* (27/09/2026): «Proposta in attesa… conferma col pulsante sotto» in un turno senza
+  proposte (tre volte in un giorno: il modello descriveva la modifica invece di farla, o il programma l'aveva fermata
+  per un'ancora ripetuta). Ora torna al modello una volta, con il motivo dell'ultimo fermo; se insiste, una nota dice al
+  Ghost che il pulsante non c'è e perché. Non era l'aggiornamento: era un buco del controllo.
 - *APK compresso* (26/09/2026): `useLegacyPackaging` sul codice, da 30 a 11,5 MB senza toccare una riga — il limite
   d'invio era 30 MB. Il passo dopo (R8, togliere il codice che non si usa) scende ancora, ma può rompere solo sul
   telefono ciò che il banco non vede: si fa con una prova del Ghost subito dopo, se serve.

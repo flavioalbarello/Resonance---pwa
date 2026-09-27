@@ -744,6 +744,21 @@ class ShellTest {
         assertTrue(contenuto(protetto.ricevuti[1], protetto.ricevuti[1].size - 1).contains("non fa uscire"))
     }
 
+    @Test fun unaPropostaAnnunciataMaNonCreataTornaAlModelloEPoiSiSegnalaColMotivo() = runBlocking {
+        archivio.esegui(Proposta.CreaPercorso(Pilastro.BIO, "Alimentazione", "", listOf("x")))
+        archivio.esegui(Proposta.SalvaDocumento("Alimentazione", "Piano", "Lunedì: 200g petto di pollo.\nVenerdì: 200g petto di pollo."))
+        // L'ancora compare due volte: il programma ferma la modifica; il modello dice lo stesso che c'è il pulsante.
+        val m = FintoModello(
+            chiama("modifica_documento", """{"documento":"Piano","ancora":"200g petto di pollo","testo":"200g coscio"}"""),
+            testo("Proposta in attesa: sostituisco il petto. Conferma col pulsante sotto."),
+            testo("Proposta in attesa, conferma col pulsante sotto."))
+        val e = shell(m, FintaCassetta()).turno("sostituisci il petto con il coscio")
+        assertTrue(e.proposte.isEmpty())
+        assertTrue(contenuto(m.ricevuti[2], m.ricevuti[2].size - 1).contains("non ne hai creata nessuna"))
+        val nota = db.messaggi().elenco().last { it.ruolo == Ruolo.NOTA }.testo
+        assertTrue(nota, nota.startsWith("Lo Shell parla di una proposta da confermare, ma non ne ha creata nessuna") && nota.contains("modifica_documento"))
+    }
+
     @Test fun unaConsegnaDettaMaNonPropostaTornaAlModelloEPoiSiSegnala() = runBlocking {
         archivio.esegui(Proposta.CreaPercorso(Pilastro.ADAM, "Resonance", "", listOf("x")))
         // Prima volta: il programma lo rimanda al modello, che questa volta la propone davvero.
