@@ -222,6 +222,9 @@ data class Turno(
     val esauriti: Boolean = false,
     val errore: Boolean = false,
     val costo: Double? = null,
+    // Cosa ha fatto lo Shell con gli strumenti in quel turno (27/09/2026): «Prima il pulsante c'era sempre» non si poteva
+    // verificare, perché il turno registrava i conti ma non i gesti. Vuoto = turni di prima; «nessuno strumento» = ha solo scritto.
+    @ColumnInfo(defaultValue = "") val strumenti: String = "",
 )
 
 // Totalizzatore proprio: il tetto di spesa non può leggere da un registro che ruota.

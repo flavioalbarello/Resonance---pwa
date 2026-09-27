@@ -237,7 +237,9 @@ nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo ch
 - *Proposte annunciate e non create* (27/09/2026): «Proposta in attesa… conferma col pulsante sotto» in un turno senza
   proposte (tre volte in un giorno: il modello descriveva la modifica invece di farla, o il programma l'aveva fermata
   per un'ancora ripetuta). Ora torna al modello una volta, con il motivo dell'ultimo fermo; se insiste, una nota dice al
-  Ghost che il pulsante non c'è e perché. Non era l'aggiornamento: era un buco del controllo.
+  Ghost che il pulsante non c'è e perché. Il percorso proposta→pulsante non era cambiato in nessuno degli 11 aggiornamenti;
+  erano cresciuti gli strumenti (29→34) e le istruzioni (+17 righe). Per non doverlo più supporre: ogni turno registra i
+  gesti dello Shell (`Turno.strumenti`, DB 12), e Adam → Regolazione → «Ultimi turni, uno per uno» li mostra.
 - *APK compresso* (26/09/2026): `useLegacyPackaging` sul codice, da 30 a 11,5 MB senza toccare una riga — il limite
   d'invio era 30 MB. Il passo dopo (R8, togliere il codice che non si usa) scende ancora, ma può rompere solo sul
   telefono ciò che il banco non vede: si fa con una prova del Ghost subito dopo, se serve.

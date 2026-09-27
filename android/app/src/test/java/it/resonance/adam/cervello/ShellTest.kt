@@ -757,6 +757,11 @@ class ShellTest {
         assertTrue(contenuto(m.ricevuti[2], m.ricevuti[2].size - 1).contains("non ne hai creata nessuna"))
         val nota = db.messaggi().elenco().last { it.ruolo == Ruolo.NOTA }.testo
         assertTrue(nota, nota.startsWith("Lo Shell parla di una proposta da confermare, ma non ne ha creata nessuna") && nota.contains("modifica_documento"))
+        // Il turno resta registrato con i suoi gesti: si vede in Regolazione perché il pulsante non c'è.
+        val t = db.turni().ultimi(1).single().strumenti
+        assertTrue(t, t.startsWith("modifica_documento fermato (") && t.contains("proposta annunciata senza crearla"))
+        shell(FintoModello(testo("Ciao.")), FintaCassetta()).turno("ciao")
+        assertEquals("nessuno strumento", db.turni().ultimi(1).single().strumenti)
     }
 
     @Test fun unaConsegnaDettaMaNonPropostaTornaAlModelloEPoiSiSegnala() = runBlocking {

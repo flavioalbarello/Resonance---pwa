@@ -55,6 +55,19 @@ fun RegolazioneUi(vm: Adam) {
             "Con qualche settimana di questi numeri, la temperatura di un compito potrà spostarsi da sola per ciascun modello.")
     }
 
+    // Uno per uno, gli ultimi turni: quali strumenti ha chiamato lo Shell e cosa ne è stato. Se un pulsante manca,
+    // qui si vede se il modello ha solo scritto («nessuno strumento») o se il programma ha fermato la proposta, e perché.
+    Scheda {
+        Etichetta("Ultimi turni, uno per uno")
+        val recenti = turni.sortedByDescending { it.istante }.take(12)
+        if (recenti.none { it.strumenti.isNotBlank() }) Tenue("Si registrano da questa versione.")
+        recenti.filter { it.strumenti.isNotBlank() }.forEach { t ->
+            Riga(java.text.SimpleDateFormat("d MMM HH:mm", Locale.ITALIAN).format(java.util.Date(t.istante)) + " · " + Instradatore.etichetta(t.modello) +
+                (if (t.errore) " · errore" else ""))
+            Tenue(t.strumenti + (if (t.proposte.isNotBlank()) " · proposte ${t.proposte.split(',').size}" else "") + (if (t.rifiutate > 0) " · fermate ${t.rifiutate}" else ""))
+        }
+    }
+
     Scheda {
         Etichetta("Spesa del mese")
         Riga(String.format(Locale.ITALIAN, "%.2f $", vm.speso()))

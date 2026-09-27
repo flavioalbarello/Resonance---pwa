@@ -97,11 +97,11 @@ class Shell(
     }
 
     private suspend fun registraTurno(compito: Compito, modello: String, t: Double?, forzata: Boolean, proposte: List<Long>, rifiutate: Int,
-                                      troncata: Boolean, esauriti: Boolean, errore: Boolean, costo: Double) {
+                                      troncata: Boolean, esauriti: Boolean, errore: Boolean, costo: Double, strumenti: List<String> = emptyList()) {
         runCatching {
             archivio.db.turni().inserisci(it.resonance.adam.dati.Turno(istante = ora, compito = compito.name, modello = modello, temperatura = t,
                 forzata = forzata, proposte = proposte.joinToString(","), rifiutate = rifiutate, troncata = troncata, esauriti = esauriti,
-                errore = errore, costo = costo.takeIf { it > 0 }))
+                errore = errore, costo = costo.takeIf { it > 0 }, strumenti = strumenti.joinToString("; ").ifEmpty { "nessuno strumento" }))
         }
     }
 
@@ -402,14 +402,14 @@ class Shell(
         } catch (e: Exception) {
             val t = "Il modello non ha risposto: ${e.message ?: e.javaClass.simpleName}"
             nota(t)
-            registraTurno(compito, modello, usata ?: temperatura, forza != null, proposte, rifiutate, troncata, esauriti, errore = true, costoTurno)
+            registraTurno(compito, modello, usata ?: temperatura, forza != null, proposte, rifiutate, troncata, esauriti, errore = true, costoTurno, traccia)
             return Esito(t, proposte)
         }
         val finta = Testi.fintaNota(testo)
         if (finta) testo = Testi.senzaFinteNote(testo)
         if (testo.isNotBlank()) archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.SHELL, testo = testo, istante = ora,
             modello = modello, costo = costoTurno.takeIf { it > 0 }, motore = motore, temperatura = usata, forzata = forza != null))
-        registraTurno(compito, modello, usata, forza != null, proposte, rifiutate, troncata, esauriti, errore = false, costoTurno)
+        registraTurno(compito, modello, usata, forza != null, proposte, rifiutate, troncata, esauriti, errore = false, costoTurno, traccia)
         if (proposte.isEmpty() && Testi.affermaAzione(testo))
             nota("Nessuna azione è stata eseguita in questo turno: le azioni vere compaiono come proposte da confermare e poi come ricevute.")
         if (finta) nota("Lo Shell aveva scritto un'etichetta che non è sua («[Nota del programma …]» o «[L'architetto …]»): tolta. Le etichette le mette solo il programma.")

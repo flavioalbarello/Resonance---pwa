@@ -176,7 +176,7 @@ interface ProfiloDao {
 @Database(
     entities = [Misura::class, Voce::class, Versione::class, Rituale::class, Spunta::class, Percorso::class,
         Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class, Esperimento::class, Turno::class, Nota::class, Movimento::class, Lettera::class, RispostaLettera::class, Consegna::class, Appunto::class],
-    version = 11,
+    version = 12,
     exportSchema = true,
     // 2: Profilo.nomiProtetti (calendario e posta, 23/09/2026).
     // 3: Messaggio.allegati (immagini e documenti nella chat, 23/09/2026).
@@ -185,7 +185,8 @@ interface ProfiloDao {
     // 9: consegne dello Shell (riunione del 26/09/2026).
     // 10: la lavagna del Ghost (seconda riunione del 26/09/2026).
     // 11: Documento.tolto (togliere documenti vecchi o sbagliati, recuperabili).
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9), AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11)],
+    // 12: Turno.strumenti (cosa ha fatto lo Shell in ogni turno: per capire perché un pulsante non c'è).
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9), AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11), AutoMigration(from = 11, to = 12)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun misure(): MisureDao
