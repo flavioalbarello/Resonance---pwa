@@ -250,6 +250,42 @@ nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo ch
 (proporre `crea_evento` come promemoria) e controllo del programma (`Testi.promette`), che aggiunge una nota se la
 risposta promette senza aver proposto niente.
 
+## Il consulente esterno e Balthasar (riunione del 27/09/2026)
+
+Il Ghost: *«un consulente esterno che entra, tutti e tre lo interroghiamo, una volta che ci ha chiarito i dubbi esce e
+noi decidiamo»*; e poi: *«deve essere efficiente ed efficace, non portare ulteriore caos»*.
+
+**Il consulente** (`logica/Consulente.kt`, `Tavolo.convoca/congeda/aggiungiDomanda`, `Shell.consulta`,
+`OpenRouter.cerca`). Sotto la fascia della riunione: «Convoca consulente». Da lì una **cartella** di domande visibile
+a tutti: il Ghost le scrive nel campo, lo Shell con `chiedi_consulente` (interno, senza conferma: non esce niente),
+l'architetto con un file che comincia con «→ Consulente» (una domanda per voce «- »). I doppioni si vedono, e il
+programma rifiuta quelli identici. **Manda** (tocco del Ghost) fa partire UNA chiamata con la ricerca web di OpenRouter,
+con i parametri che la PWA usa dal 27/07 (`max_tool_calls` 3: senza, il motore faceva 30 ricerche). Torna UNA risposta
+numerata, con sotto le **fonti restituite dal motore** — non i link che il modello scrive a memoria — e l'avviso sui
+nomi citati senza averli trovati (la guardia di Balthasar della PWA: siti non fra le fonti, marchi con una maiuscola
+interna che nessun dominio contiene). La forma (`Consulente.FORMA`) si dice al modello e si controlla sulla risposta
+con la stessa costante: ai punti mancanti si torna **una volta, senza pagare un'altra ricerca**; se mancano ancora,
+la rinuncia resta scritta sotto.
+Il consulente **vede solo le domande**: non il prompt di Adam, non il verbale. Prima di uscire passano dal guardiano
+(nomi protetti → «[nome protetto]», indirizzi → «[indirizzo]»). Riconvocato nella stessa riunione riceve i suoi ultimi
+3 scambi, non altro. Tetto di 10 invii per riunione, visibile e alzabile dal Ghost: una protezione se qualcosa rimanda
+da solo, non un limite. Pesa sul **tetto mensile del Ghost**, non sul fondo di Adam. Congedato con domande in
+cartella, le domande restano scritte nella nota. Alla chiusura della riunione tutto si azzera.
+
+**Balthasar** (`logica/Balthasar.kt`, `Shell.balthasar`). I ruoli dell'Agorà Magi senza la sua sequenza fissa:
+l'architetto fa Melchior, il Ghost e il programma fanno Caspar, lo Shell fa Balthasar. Non nel turno normale (lì lo
+Shell ha gli strumenti, che vogliono date e nomi esatti: 0,4): «Perturba» apre la domanda sul tavolo (si parte
+dall'ultimo messaggio del Ghost, che la corregge) e tre intensità — leggera 0,7, media 0,85, profonda 1 (tetto a 1:
+alcuni modelli rifiutano di più, e un rifiuto li segnerebbe «senza temperatura»). Una chiamata sola, **senza
+strumenti**, con memoria e storia della riunione, un tetto di 90 parole (se lo supera lo si scrive sotto, non si
+taglia). Parte dalla domanda sul tavolo e solo da quella: il sorteggio da tutta la memoria l'ha scartato il Ghost
+(«più l'app cresce, più si perde lo scopo della riunione dietro vaneggiamenti»).
+
+Consulente e Balthasar hanno ruoli propri (`Ruolo.CONSULENTE`, `Ruolo.BALTHASAR`: valori nuovi di un enum salvato per
+nome, nessuna migrazione), la loro bolla, la loro voce («Il consulente.» legge la risposta e l'avviso, non gli
+indirizzi), il loro file nel verbale (`-consulente.md`, `-balthasar.md`), la loro etichetta nel prompt dello Shell.
+Nel registro dei turni: compiti `CONSULENTE` (0,2, regolabile) e `BALTHASAR` (la dose la dà l'intensità: non regolabile).
+
 ## L'anello di Anochin sulla vita, e la perturbazione al posto dei Magi (24/09/2026)
 
 **Prima.** Nell'APK il ciclo di Anochin c'era sulla singola azione (contesto → proposta → `Azioni.valida` prima
@@ -334,3 +370,5 @@ Maven Central qui limita le richieste: il progetto usa il mirror di Google, anch
 | Database | Versione 2 (`nomiProtetti`), migrazione automatica provata in `MigrazioneTest` sopra la 1 della 2.0.144 |
 | R8 spento | APK da 30 MB. La minificazione va accesa solo dopo una prova su telefono vero |
 | Modello predefinito | Llama 3.3 70B, lo stesso della PWA. Da scegliere con un numero, non col prezzario |
+| Consulente dal vivo | Provati sul banco la cartella, il guardiano, la forma, le fonti lette dalla risposta (`annotations` e `citations`) con un modello finto. Non provata una chiamata vera: la forma delle fonti del motore web di OpenRouter è quella che la PWA legge dal 31/08, non verificata da qui |
+| Agorà Magi | Non portata nell'APK: ne vive il ruolo di Balthasar in riunione. Melchior e Caspar sono persone (architetto, Ghost) e il programma |

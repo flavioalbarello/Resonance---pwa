@@ -102,7 +102,16 @@ class ShellTest {
             temperature += temperatura
             ricevuti += JsonArray(messaggi.toList())
             modelli += modello
+            conStrumenti += strumenti != null
             return coda.removeFirst()
+        }
+        val conStrumenti = mutableListOf<Boolean>()
+        // Il consulente: risposte con le fonti del motore, e se la chiamata portava la ricerca web.
+        val ricerche = ArrayDeque<RispostaWeb>()
+        val cercati = mutableListOf<Pair<JsonArray, Boolean>>()
+        override suspend fun cerca(chiave: String, modello: String, messaggi: JsonArray, maxToken: Int, temperatura: Double?, web: Boolean): RispostaWeb {
+            cercati += JsonArray(messaggi.toList()) to web
+            return ricerche.removeFirst()
         }
     }
 
@@ -846,5 +855,121 @@ class ShellTest {
         val esito = Shell(archivio, imp, modello, FintoMondo()).turno("prepara la mail per il corso")
         assertTrue(esito.proposte.isEmpty())
         assertTrue(modello.ricevuti[1].last().jsonObject["content"]!!.jsonPrimitive.content.contains("«PhysioAlba»"))
+    }
+
+    // ── Il consulente esterno e Balthasar (riunione del 27/09/2026) ──
+
+    private fun web(t: String, vararg domini: String) =
+        RispostaWeb(t, domini.map { d -> it.resonance.adam.logica.Consulente.Fonte("https://$d/p", "", d) }, 0.01, false)
+
+    @Test fun leDomandeDiTuttiETrePartonoInUnaChiamataSolaSenzaAdam() = runBlocking {
+        val cassetta = FintaCassetta()
+        val cartella = riunioneAperta(cassetta)
+        db.profilo().salva(it.resonance.adam.dati.Profilo(nome = "Flavio", nomiProtetti = "PhysioAlba"))
+        val tavolo = Tavolo(archivio, imp, cassetta)
+        // Fuori dalla stanza non si fa niente, né dal Ghost né dallo Shell.
+        assertTrue(tavolo.aggiungiDomanda("Ghost", "Quanto costa?")!!.contains("non è nella stanza"))
+        tavolo.convoca()
+        assertEquals(null, tavolo.aggiungiDomanda("Ghost", "Quanto costa la Fury? Scrivimi a mario.rossi@gmail.com"))
+        assertTrue(tavolo.aggiungiDomanda("Ghost", "quanto costa la fury? scrivimi a mario.rossi@gmail.com")!!.contains("già in cartella"))
+        // Lo Shell con lo strumento: niente conferma, finisce in cartella.
+        val modello = FintoModello(chiama("chiedi_consulente", """{"domanda":"Il kit Meta supporta i Gen 3 per PhysioAlba?"}"""), testo("Messa in cartella."))
+        shell(modello, cassetta).turno("chiediglielo tu")
+        assertTrue(modello.ricevuti[1].last().jsonObject["content"]!!.jsonPrimitive.content.startsWith("Domanda in cartella"))
+        // L'architetto dal verbale: due domande in un intervento.
+        cassetta.file["$cartella/20990101-000001-000-architetto.md"] = "→ Consulente\n- Prezzo in Italia?\n- Data degli Android XR?"
+        tavolo.ritira()
+        assertEquals(listOf("Ghost", "shell", "architetto", "architetto"), tavolo.domande().map { it.autore })
+
+        val m = FintoModello().apply { ricerche += web("1. · 299 dollari\n2. · non nominati\n3. · non trovato\n4. · autunno", "meta.com", "9to5google.com") }
+        shell(m, cassetta).consulta()
+        assertEquals(1, m.cercati.size)
+        val (inviati, conWeb) = m.cercati.single()
+        assertTrue(conWeb)
+        val tutto = inviati.toString()
+        // Vede solo le domande: non il prompt di Adam, non il nome protetto, non l'indirizzo.
+        assertEquals(2, inviati.size)
+        assertTrue(tutto, !tutto.contains("Sei lo Shell") && !tutto.contains("PhysioAlba") && !tutto.contains("mario.rossi"))
+        assertTrue(tutto, tutto.contains("[nome protetto]") && tutto.contains("[indirizzo]") && tutto.contains("4. Data degli Android XR?"))
+        val scheda = db.messaggi().elenco().single { it.ruolo == Ruolo.CONSULENTE }.testo
+        assertTrue(scheda, scheda.contains("Fonti trovate davvero (2)") && scheda.contains("3. [architetto] Prezzo in Italia?"))
+        assertTrue(cassetta.file.entries.single { it.key.endsWith("-consulente.md") }.value == scheda)
+        assertEquals(emptyList<Any>(), tavolo.domande())
+        assertEquals(1, imp.consulenteInvii)
+        // Il turno dopo, lo Shell lo vede con la sua etichetta.
+        val dopo = FintoModello(testo("Letto."))
+        shell(dopo, cassetta).turno("che ne dici?")
+        assertTrue(dopo.ricevuti.single().toString().contains("[Il consulente esterno"))
+    }
+
+    @Test fun aiPuntiMancantiSiTornaUnaVoltaSenzaUnAltraRicercaPoiLaRinunciaResta() = runBlocking {
+        val cassetta = FintaCassetta()
+        riunioneAperta(cassetta)
+        val tavolo = Tavolo(archivio, imp, cassetta)
+        tavolo.convoca()
+        listOf("uno?", "due?", "tre?").forEach { tavolo.aggiungiDomanda("Ghost", it) }
+        val m = FintoModello().apply { ricerche += web("1. · a", "a.it"); ricerche += web("2. · b") }
+        shell(m, cassetta).consulta()
+        assertEquals(listOf(true, false), m.cercati.map { it.second })
+        assertTrue(m.cercati[1].first.last().toString().contains("mancano i punti 2, 3"))
+        val scheda = db.messaggi().elenco().single { it.ruolo == Ruolo.CONSULENTE }.testo
+        assertTrue(scheda, scheda.contains("2. · b") && scheda.contains("(Senza risposta ai punti 3"))
+    }
+
+    @Test fun ilTettoFermaGliInviiEIlGhostLoAlza() = runBlocking {
+        val cassetta = FintaCassetta()
+        riunioneAperta(cassetta)
+        val tavolo = Tavolo(archivio, imp, cassetta)
+        tavolo.convoca()
+        tavolo.aggiungiDomanda("Ghost", "uno?")
+        imp.consulenteInvii = imp.consulenteTetto
+        val m = FintoModello()
+        assertTrue(shell(m, cassetta).consulta().testo.startsWith("Tetto di invii raggiunto"))
+        assertEquals(0, m.cercati.size)
+        tavolo.alzaTetto()
+        m.ricerche += web("1. · sì", "a.it")
+        shell(m, cassetta).consulta()
+        assertEquals(1, m.cercati.size)
+    }
+
+    @Test fun congedatoRiconvocatoRiprendeSoloIlSuoFiloEChiusoSiAzzera() = runBlocking {
+        val cassetta = FintaCassetta()
+        riunioneAperta(cassetta)
+        val tavolo = Tavolo(archivio, imp, cassetta)
+        tavolo.convoca()
+        tavolo.aggiungiDomanda("Ghost", "primo giro?")
+        val m = FintoModello().apply { ricerche += web("1. · risposta uno", "a.it"); ricerche += web("1. · risposta due", "a.it") }
+        shell(m, cassetta).consulta()
+        tavolo.aggiungiDomanda("Ghost", "mai mandata?")
+        tavolo.congeda()
+        // Le domande non mandate non spariscono in silenzio.
+        assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.NOTA && it.testo.contains("Domande non mandate: [Ghost] mai mandata?") })
+        tavolo.convoca()
+        tavolo.aggiungiDomanda("Ghost", "secondo giro?")
+        shell(m, cassetta).consulta()
+        val secondo = m.cercati[1].first.toString()
+        assertTrue(secondo, secondo.contains("primo giro?") && secondo.contains("risposta uno") && !secondo.contains("mai mandata?"))
+        // La chiusura della riunione azzera tutto.
+        shell(FintoModello(testo("Decisioni\n- a\nQuestioni aperte\n- b\nChi fa cosa\n- c")), cassetta).chiudiRiunione()
+        assertTrue(!imp.consulente && imp.consulenteInvii == 0 && imp.consulenteStoria.isEmpty() && imp.consulenteDomande.isEmpty())
+    }
+
+    @Test fun balthasarParlaSenzaStrumentiAllaDoseSceltaEConLaSuaEtichetta() = runBlocking {
+        val cassetta = FintaCassetta()
+        riunioneAperta(cassetta)
+        val m = FintoModello(testo("· E se gli occhiali fossero di Marta?\n· Il kit si prova prima di comprare."))
+        shell(m, cassetta).balthasar("Quali occhiali compro?", it.resonance.adam.logica.Balthasar.Intensita.PROFONDA)
+        assertEquals(listOf<Double?>(1.0), m.temperature)
+        assertEquals(listOf(false), m.conStrumenti)
+        val ultimo = m.ricevuti.single().last().jsonObject["content"]!!.jsonPrimitive.content
+        assertTrue(ultimo, ultimo.contains("BALTHASAR") && ultimo.contains("«Quali occhiali compro?»") && ultimo.contains("profonda"))
+        val b = db.messaggi().elenco().single { it.ruolo == Ruolo.BALTHASAR }
+        assertEquals("intensità profonda", b.motore)
+        assertTrue(cassetta.file.entries.single { it.key.endsWith("-balthasar.md") }.value.startsWith("Perturbazione (profonda) su: «Quali occhiali compro?»"))
+        assertTrue(db.turni().ultimi(10).any { it.compito == "BALTHASAR" && it.temperatura == 1.0 })
+        // Il turno normale dopo non lo confonde con sé stesso.
+        val dopo = FintoModello(testo("Ci penso."))
+        shell(dopo, cassetta).turno("e allora?")
+        assertTrue(dopo.ricevuti.single().toString().contains("[Balthasar: la perturbazione chiesta dal Ghost"))
     }
 }

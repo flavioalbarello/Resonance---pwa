@@ -12,6 +12,10 @@ enum class Compito(val etichetta: String, val temperatura: Double, val perche: S
     BATTITO("messaggio del battito", 0.7, "due righe che non siano sempre le stesse"),
     ESPERIMENTO("perturbazione ed esperimenti", 0.9, "deve proporre l'audace, non l'ovvio"),
     DADO("dado della domenica", 0.9, "il caso l'ha tirato il programma: lo Shell ci lavora sopra libero"),
+    // Riunione, 27/09/2026. Il consulente riporta ciò che ha trovato; Balthasar prende la dose dall'intensità scelta dal
+    // Ghost (logica/Balthasar.kt), e questa è solo la media.
+    CONSULENTE("consulente esterno", 0.2, "riporta ciò che la ricerca ha trovato, non inventa"),
+    BALTHASAR("Balthasar in riunione", 0.85, "la perturbazione: la dose la sceglie il Ghost con l'intensità (0,7 · 0,85 · 1)"),
 }
 
 enum class Forzatura(val etichetta: String, val temperatura: Double) {
@@ -30,5 +34,8 @@ object Temperatura {
     fun rifiutata(errore: String?) = errore != null && RIFIUTO.containsMatchIn(errore)
 
     fun etichetta(t: Double?, forzata: Boolean): String? =
-        t?.let { "t " + String.format(Locale.ITALIAN, "%.1f", it) + if (forzata) " forzata" else "" }
+        t?.let { "t " + DUE.format(it) + if (forzata) " forzata" else "" }
+
+    // Un decimale, due se servono: 0,85 di Balthasar non deve leggersi 0,9.
+    private val DUE get() = java.text.DecimalFormat("0.0#", java.text.DecimalFormatSymbols(Locale.ITALIAN))
 }

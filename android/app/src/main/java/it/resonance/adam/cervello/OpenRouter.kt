@@ -1,5 +1,6 @@
 package it.resonance.adam.cervello
 
+import it.resonance.adam.logica.Consulente
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -28,6 +29,8 @@ import java.util.concurrent.TimeUnit
 data class ChiamataStrumento(val id: String, val nome: String, val argomenti: String)
 
 data class Risposta(val testo: String, val chiamate: List<ChiamataStrumento>, val costo: Double?, val assistente: JsonObject, val troncata: Boolean)
+
+data class RispostaWeb(val testo: String, val fonti: List<Consulente.Fonte>, val costo: Double?, val troncata: Boolean)
 
 class ErroreModello(messaggio: String) : Exception(messaggio)
 
@@ -81,6 +84,84 @@ open class OpenRouter(
                 }
             }
         }
+
+    // Il consulente (27/09/2026): una chiamata con la ricerca web di OpenRouter, gli stessi parametri che la PWA usa dal
+    // 27/07 — senza tetto il motore faceva 30 ricerche invece di una. Senza streaming, perché le fonti arrivano intere
+    // nel messaggio (annotations): per questo il silenzio ammesso è lungo, la ricerca non manda segnali di vita.
+    // `web` = false serve al secondo invito, quello che chiede solo i punti mancanti: non si paga un'altra ricerca.
+    open suspend fun cerca(chiave: String, modello: String, messaggi: JsonArray, maxToken: Int, temperatura: Double?, web: Boolean = true): RispostaWeb =
+        withContext(Dispatchers.IO) {
+            val corpo = buildJsonObject {
+                put("model", modello)
+                put("messages", messaggi)
+                if (web) {
+                    put("tools", buildJsonArray {
+                        add(buildJsonObject {
+                            put("type", "openrouter:web_search")
+                            putJsonObject("parameters") { put("max_results", 5); put("max_total_results", 10); put("search_context_size", "low") }
+                        })
+                    })
+                    put("tool_choice", "required")
+                    put("max_tool_calls", 3)
+                }
+                put("max_tokens", maxToken)
+                if (temperatura != null) put("temperature", temperatura)
+                putJsonObject("reasoning") { put("exclude", true) }
+                putJsonObject("usage") { put("include", true) }
+            }
+            val req = Request.Builder()
+                .url("https://openrouter.ai/api/v1/chat/completions")
+                .header("Authorization", "Bearer $chiave")
+                .header("X-Title", "Resonance")
+                .post(corpo.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            val lento = httpLento
+            val chiamata = lento.newCall(req)
+            val legame = currentCoroutineContext()[Job]?.invokeOnCompletion { if (it != null) chiamata.cancel() }
+            try {
+                chiamata.execute().use { r ->
+                    val testo = r.body.string()
+                    if (!r.isSuccessful) throw ErroreModello("HTTP ${r.code}: ${testo.take(300)}")
+                    interpretaRicerca(testo)
+                }
+            } catch (e: java.io.IOException) {
+                ensureActive()
+                throw ErroreModello("connessione caduta (${e.message ?: e.javaClass.simpleName}). Le domande restano in cartella: riprova Manda")
+            } finally { legame?.dispose() }
+        }
+
+    private val httpLento by lazy { http.newBuilder().readTimeout(4, TimeUnit.MINUTES).build() }
+
+    // Il testo, e le fonti che il motore ha restituito davvero: `annotations` di tipo url_citation (la forma di OpenRouter),
+    // o `citations` in cima (quella di Perplexity). Il programma mostra queste, non i link che il modello scrive a memoria.
+    internal fun interpretaRicerca(testo: String): RispostaWeb {
+        val radice = runCatching { json.parseToJsonElement(testo).jsonObject }.getOrNull()
+            ?: throw ErroreModello("risposta non leggibile: ${testo.take(200)}")
+        radice["error"]?.let { throw ErroreModello(it.toString().take(300)) }
+        val scelta = radice["choices"]?.jsonArray?.firstOrNull()?.jsonObject ?: throw ErroreModello("risposta senza scelte")
+        val msg = scelta["message"]?.jsonObject ?: throw ErroreModello("risposta senza messaggio")
+        val viste = mutableSetOf<String>()
+        val fonti = mutableListOf<Consulente.Fonte>()
+        fun aggiungi(url: String?, titolo: String?) {
+            val u = url?.trim().orEmpty()
+            if (u.isEmpty() || !viste.add(u)) return
+            fonti += Consulente.Fonte(u, titolo?.trim().orEmpty(), Consulente.dominio(u))
+        }
+        msg["annotations"]?.let { runCatching { it.jsonArray }.getOrNull() }?.forEach { a ->
+            val o = runCatching { a.jsonObject }.getOrNull() ?: return@forEach
+            val c = o["url_citation"]?.let { runCatching { it.jsonObject }.getOrNull() } ?: o
+            aggiungi(c["url"]?.jsonPrimitive?.contentOrNull, c["title"]?.jsonPrimitive?.contentOrNull)
+        }
+        radice["citations"]?.let { runCatching { it.jsonArray }.getOrNull() }?.forEach { c ->
+            aggiungi(runCatching { c.jsonPrimitive.contentOrNull }.getOrNull(), null)
+        }
+        return RispostaWeb(
+            testo = msg["content"]?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }.orEmpty().trim(),
+            fonti = fonti,
+            costo = radice["usage"]?.jsonObject?.get("cost")?.jsonPrimitive?.doubleOrNull,
+            troncata = scelta["finish_reason"]?.jsonPrimitive?.contentOrNull == "length",
+        )
+    }
 
     // La chiamata segue il turno: se il lavoro viene fermato, la connessione si chiude invece di restare appesa.
     private suspend fun leggi(client: OkHttpClient, req: Request): Risposta {

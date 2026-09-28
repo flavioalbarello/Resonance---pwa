@@ -27,7 +27,8 @@ class PacchettoAdamTest {
         assertEquals(emptySet<String>(), strumenti - Capacita.strumenti())
         assertEquals(emptySet<String>(), Capacita.strumenti() - strumenti)
         assertTrue(Capacita.testo("2.260925.1200").startsWith("L'APP OGGI (versione 2.260925.1200)"))
-        assertEquals(Compito.entries.filter { it != Compito.MOTORE }.map { it.name }, Azioni.COMPITI_REGOLABILI)
+        // Fuori: la scelta del motore (una classificazione, sta a 0) e Balthasar (la dose la sceglie il Ghost con l'intensità).
+        assertEquals(Compito.entries.filter { it != Compito.MOTORE && it != Compito.BALTHASAR }.map { it.name }, Azioni.COMPITI_REGOLABILI)
     }
 
     @Test fun unaNotaNonRipresaEvapora() {

@@ -37,7 +37,11 @@ enum class StatoNodo(val etichetta: String) {
 
 // ARCHITETTO (26/09/2026): gli interventi di Claude Code, dalla riunione o dalle lettere. Prima erano NOTA, e una nota
 // non si ascolta: il Ghost li voleva leggere a voce come quelli dello Shell. Le note vecchie restano note.
-enum class Ruolo { GHOST, SHELL, PROPOSTA, RICEVUTA, NOTA, ARCHITETTO }
+// CONSULENTE e BALTHASAR (27/09/2026): le due voci nuove della riunione. Il consulente esterno risponde alle domande
+// del tavolo con la ricerca web; Balthasar è lo Shell a temperatura alta, senza strumenti, quando il Ghost tocca
+// «Perturba». Ognuno con la sua etichetta: nel verbale e nel prompt non si mescolano con la voce normale dello Shell.
+// Un valore nuovo di un enum salvato per nome non cambia lo schema: nessuna migrazione.
+enum class Ruolo { GHOST, SHELL, PROPOSTA, RICEVUTA, NOTA, ARCHITETTO, CONSULENTE, BALTHASAR }
 
 // L'anello (Anochin): un esperimento dichiara PRIMA il numero che dovrebbe muoversi e in che verso; il punto di
 // partenza si congela all'apertura; alla scadenza il programma confronta. Nessun modello nel confronto.

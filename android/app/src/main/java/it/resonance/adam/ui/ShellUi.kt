@@ -1,6 +1,8 @@
 package it.resonance.adam.ui
 
 import it.resonance.adam.logica.Azioni
+import it.resonance.adam.logica.Balthasar
+import it.resonance.adam.logica.Consulente
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
@@ -89,6 +91,7 @@ fun ShellUi(vm: Adam, sistema: Sistema) {
                     color = Colori.ambraInchiostro, fontSize = 12.sp, modifier = Modifier.weight(1f))
                 TextButton({ vm.ritiraRiunione() }, enabled = !vm.chiudendo, modifier = Modifier.testTag("ritira-ora")) { Text("Ritira ora", fontSize = 12.sp) }
             }
+            if (!vm.chiudendo) Tavolo(vm)
         }
         if (vm.chiudendo) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Colori.ambra)
         if (vm.ascolta == Ascolta.AUTO) {
@@ -210,6 +213,93 @@ private fun Messaggio(vm: Adam, m: Messaggio) {
             }
         }
         Ruolo.NOTA -> Text(m.testo, color = Colori.tenue, fontSize = 13.sp, fontStyle = FontStyle.Italic, modifier = Modifier.padding(horizontal = 4.dp))
+        // Le due voci nuove della riunione: ognuna col suo nome, perché non si confondano con lo Shell.
+        Ruolo.CONSULENTE -> Voce(vm, m, "Consulente esterno · ricerca web", Colori.linea)
+        Ruolo.BALTHASAR -> Voce(vm, m, "Balthasar · ${m.motore ?: "perturbazione"}", Colori.allarme.copy(alpha = 0.5f))
+    }
+}
+
+@Composable
+private fun Voce(vm: Adam, m: Messaggio, nome: String, bordo: androidx.compose.ui.graphics.Color) = Column {
+    Column(Modifier
+        .widthIn(max = 330.dp)
+        .background(Colori.fondo2, RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp))
+        .border(1.dp, bordo, RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp))
+        .padding(12.dp)) {
+        Etichetta(nome, Colori.ambraInchiostro)
+        SelectionContainer { Text(Formato.annota(m.testo), color = Colori.inchiostro, fontSize = 15.sp, lineHeight = 21.sp) }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        m.modello?.let { mod ->
+            Text(listOfNotNull(Instradatore.etichetta(mod), it.resonance.adam.cervello.Temperatura.etichetta(m.temperatura, false),
+                m.costo?.let { c -> "%.2f ¢".format(c * 100) }).joinToString(" · "), color = Colori.tenue, fontSize = 11.sp, modifier = Modifier.padding(start = 8.dp))
+        }
+        TextButton({ vm.leggi(m) }, modifier = Modifier.testTag("leggi-${m.id}")) {
+            Text(if (vm.inLettura == m.id) "⏹ Ferma" else "🔊 Ascolta", fontSize = 12.sp, color = Colori.ambraInchiostro)
+        }
+    }
+}
+
+// Sotto la fascia della riunione: il consulente esterno (convoca, cartella, manda, congeda) e Perturba (Balthasar).
+// Chiuso sta in una riga: la chat resta la parte grande dello schermo. Il margine a destra lascia posto all'ancora.
+@Composable
+private fun Tavolo(vm: Adam) {
+    var aperto by remember { mutableStateOf(false) }
+    var perturba by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().background(Colori.ambra.copy(alpha = 0.08f)).padding(start = 8.dp, end = 72.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (vm.consulentePresente) {
+                val (invii, tetto) = vm.inviiConsulente
+                TextButton({ aperto = !aperto }, modifier = Modifier.testTag("cartella")) {
+                    Text((if (aperto) "▾" else "▸") + " Consulente · ${vm.cartella.size} in cartella · $invii/$tetto", fontSize = 12.sp)
+                }
+            } else TextButton({ vm.convocaConsulente(); aperto = true }, modifier = Modifier.testTag("convoca")) { Text("Convoca consulente", fontSize = 12.sp) }
+            TextButton({ perturba = !perturba }, enabled = !vm.perturbando, modifier = Modifier.testTag("perturba")) {
+                Text(if (vm.perturbando) "Balthasar scrive…" else "Perturba", fontSize = 12.sp)
+            }
+        }
+        if (vm.consultando || vm.perturbando) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Colori.ambra)
+        if (vm.consulentePresente && aperto) {
+            val (invii, tetto) = vm.inviiConsulente
+            Tenue("Vede solo le domande, non Adam. Partono tutte insieme con Manda.")
+            vm.cartella.forEachIndexed { i, d ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("${i + 1}. [${d.autore}] ${d.testo}", fontSize = 13.sp, color = Colori.inchiostro, modifier = Modifier.weight(1f))
+                    TextButton({ vm.togliDomanda(i) }, enabled = !vm.consultando) { Text("✕", fontSize = 12.sp) }
+                }
+            }
+            var domanda by remember { mutableStateOf("") }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(domanda, { domanda = it }, placeholder = { Text("Domanda al consulente", fontSize = 13.sp) },
+                    modifier = Modifier.weight(1f).testTag("domanda-consulente"), maxLines = 3)
+                TextButton({ vm.domandaAlConsulente(domanda); domanda = "" }, enabled = domanda.isNotBlank()) { Text("＋") }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (invii >= tetto) TextButton({ vm.alzaTettoConsulente() }) { Text("Tetto raggiunto: alza di ${Consulente.ALZA_DI}", fontSize = 12.sp) }
+                else Button({ vm.mandaAlConsulente() }, enabled = vm.cartella.isNotEmpty() && !vm.consultando, modifier = Modifier.testTag("manda-consulente"),
+                    colors = ButtonDefaults.buttonColors(containerColor = Colori.ambra, contentColor = Colori.ambraInchiostro)) {
+                    Text(if (vm.consultando) "Il consulente cerca…" else "Manda (${vm.cartella.size})", fontSize = 13.sp)
+                }
+                TextButton({ vm.congedaConsulente(); aperto = false }, enabled = !vm.consultando, modifier = Modifier.testTag("congeda")) { Text("Congeda", fontSize = 12.sp) }
+            }
+        }
+        // Balthasar: la domanda sul tavolo (si parte dall'ultimo messaggio del Ghost) e la dose.
+        if (perturba) {
+            var domanda by remember { mutableStateOf(vm.domandaSulTavolo()) }
+            var intensita by remember { mutableStateOf(Balthasar.Intensita.MEDIA) }
+            Tenue("Balthasar: lo Shell senza strumenti, a temperatura alta. Devia sul come, non sul di cosa.")
+            OutlinedTextField(domanda, { domanda = it }, label = { Text("La domanda sul tavolo") }, maxLines = 4, modifier = Modifier.fillMaxWidth().testTag("domanda-balthasar"))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Balthasar.Intensita.entries.forEach { i ->
+                    androidx.compose.material3.FilterChip(intensita == i, { intensita = i }, label = { Text(i.etichetta, fontSize = 12.sp) }, modifier = Modifier.testTag("intensita-${i.name}"))
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button({ vm.perturba(domanda, intensita); perturba = false }, enabled = domanda.isNotBlank() && !vm.perturbando, modifier = Modifier.testTag("perturba-conferma"),
+                    colors = ButtonDefaults.buttonColors(containerColor = Colori.ambra, contentColor = Colori.ambraInchiostro)) { Text("Perturba (${intensita.etichetta})", fontSize = 13.sp) }
+                TextButton({ perturba = false }) { Text("Annulla", fontSize = 12.sp) }
+            }
+        }
     }
 }
 

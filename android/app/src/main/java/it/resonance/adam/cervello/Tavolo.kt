@@ -4,6 +4,8 @@ import it.resonance.adam.Impostazioni
 import it.resonance.adam.dati.Archivio
 import it.resonance.adam.dati.Messaggio
 import it.resonance.adam.dati.Ruolo
+import it.resonance.adam.logica.Consulente
+import it.resonance.adam.logica.Testi
 import it.resonance.adam.logica.Uscita
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -57,6 +59,58 @@ class Tavolo(private val archivio: Archivio, private val imp: Impostazioni, priv
     /** Cosa ha portato un ritiro: i messaggi nuovi dell'architetto, e quello a cui lo Shell deve rispondere (se c'è). */
     data class Ritiro(val nuovi: List<Messaggio>, val allaShell: Long?)
 
+    // ── Il consulente esterno (27/09/2026, logica/Consulente.kt) ──
+    // Lo stato sta nelle impostazioni come quello della riunione: se è nella stanza, la cartella, gli invii.
+
+    fun consulentePresente() = aperta() && imp.consulente
+    fun domande(): List<Consulente.Domanda> = Consulente.decodifica(imp.consulenteDomande)
+
+    suspend fun convoca(): String {
+        if (!aperta()) return "Il consulente si convoca in riunione"
+        if (imp.consulente) return "Il consulente è già nella stanza"
+        imp.consulente = true
+        val storia = Consulente.decodificaStoria(imp.consulenteStoria)
+        val t = "Consulente convocato: un modello con la ricerca web. Vede solo le domande, non Adam. Le domande si raccolgono " +
+            "nella cartella e partono insieme quando il Ghost tocca Manda." + if (storia.isNotEmpty()) " Riprende il filo dei suoi ${storia.size} scambi di questa riunione." else ""
+        archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.NOTA, istante = ora, testo = t))
+        runCatching { registra("programma", t) }
+        return "Consulente nella stanza"
+    }
+
+    suspend fun congeda(): String {
+        if (!imp.consulente) return "Il consulente non è nella stanza"
+        val rimaste = domande()
+        imp.consulente = false
+        imp.consulenteDomande = ""
+        // Le domande non mandate non spariscono in silenzio: restano scritte nella nota (Legge 14).
+        val t = "Consulente congedato." + if (rimaste.isNotEmpty()) " Domande non mandate: " + rimaste.joinToString("; ") { "[${it.autore}] ${it.testo}" } + "." else ""
+        archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.NOTA, istante = ora, testo = t))
+        runCatching { registra("programma", t) }
+        return "Consulente congedato"
+    }
+
+    /** Una domanda in cartella. Null se entra; altrimenti il perché no. */
+    fun aggiungiDomanda(autore: String, testo: String): String? {
+        val t = testo.trim()
+        return when {
+            !consulentePresente() -> "il consulente non è nella stanza: lo convoca il Ghost"
+            t.isEmpty() -> "domanda vuota"
+            t.length > Consulente.LUNGHEZZA_MAX -> "al massimo ${Consulente.LUNGHEZZA_MAX} caratteri: una domanda, non un documento"
+            domande().size >= Consulente.DOMANDE_MAX -> "la cartella ha già ${Consulente.DOMANDE_MAX} domande: prima si manda"
+            domande().any { Testi.normalizza(it.testo) == Testi.normalizza(t) } -> "questa domanda è già in cartella"
+            else -> { imp.consulenteDomande = Consulente.codifica(domande() + Consulente.Domanda(autore, t)); null }
+        }
+    }
+
+    fun togliDomanda(indice: Int) {
+        val c = domande().toMutableList()
+        if (indice in c.indices) { c.removeAt(indice); imp.consulenteDomande = Consulente.codifica(c) }
+    }
+
+    fun alzaTetto() { imp.consulenteTetto = imp.consulenteTetto + Consulente.ALZA_DI }
+
+    fun statoConsulente() = Consulente.stato(consulentePresente(), domande(), imp.consulenteInvii, imp.consulenteTetto)
+
     /**
      * Gli interventi nuovi dell'architetto, portati in chat come messaggi suoi. Se uno comincia con «→ Shell» e non si è
      * superato il tetto di giri senza il Ghost, `allaShell` dice a quale deve rispondere lo Shell: il turno lo fa
@@ -73,6 +127,17 @@ class Tavolo(private val archivio: Archivio, private val imp: Impostazioni, priv
             m.copy(id = archivio.db.messaggi().inserisci(m))
         }
         if (file.isNotEmpty()) imp.riunioneViste = viste + file
+        // Le domande dell'architetto per il consulente: nella cartella, se è nella stanza; se no lo si scrive nel verbale,
+        // dove l'architetto le vede.
+        nuovi.filter { Consulente.rivolto(it.testo) }.forEach { m ->
+            val esiti = Consulente.domandeDa(m.testo).map { d -> aggiungiDomanda("architetto", d)?.let { "«${Testi.corto(d, 60)}»: $it" } }
+            val no = esiti.filterNotNull()
+            if (no.isNotEmpty()) {
+                val t = "Domande dell'architetto per il consulente non messe in cartella — ${no.joinToString("; ")}."
+                archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.NOTA, istante = ora, testo = t))
+                runCatching { registra("programma", t) }
+            }
+        }
         val rivolti = nuovi.filter { rivolto(it.testo) }
         if (rivolti.isEmpty()) return@withLock Ritiro(nuovi, null)
         val giri = giri(archivio.db.messaggi().ultimi(60))
@@ -95,6 +160,11 @@ class Tavolo(private val archivio: Archivio, private val imp: Impostazioni, priv
         imp.riunioneTema = ""
         imp.riunioneViste = emptySet()
         imp.riunioneVerbale = ""
+        imp.consulente = false
+        imp.consulenteDomande = ""
+        imp.consulenteInvii = 0
+        imp.consulenteTetto = Consulente.TETTO_INVII
+        imp.consulenteStoria = ""
     }
 
     // Nomi che si ordinano nel tempo e non si scontrano: due autori non scrivono mai lo stesso file.
@@ -120,7 +190,7 @@ class Tavolo(private val archivio: Archivio, private val imp: Impostazioni, priv
         }
 
         /** Per la voce e lo schermo: la freccia si dice a parole. */
-        fun leggibile(t: String) = t.replaceFirst(Regex("^\\s*(→|->)\\s*shell\\b[:,.\\s—-]*", RegexOption.IGNORE_CASE), "Allo Shell: ")
+        fun leggibile(t: String) = Consulente.leggibile(t.replaceFirst(Regex("^\\s*(→|->)\\s*shell\\b[:,.\\s—-]*", RegexOption.IGNORE_CASE), "Allo Shell: "))
 
         fun slug(t: String) = Normalizer.normalize(t.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
             .replace(Regex("[^a-z0-9]+"), "-").trim('-').take(40).ifEmpty { "riunione" }

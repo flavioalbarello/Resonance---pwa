@@ -197,11 +197,14 @@ class Adam(app: Application) : AndroidViewModel(app) {
         if (wm == null) {
             val esito = shell.rispondi(id, f)
             pensa = false
+            aggiornaConsulente()
             if (ascolta == Ascolta.AUTO) rispondiAVoce(esito)
             return
         }
         val r = TurnoWorker.accoda(getApplication(), id, f)
         val fine = wm.getWorkInfoByIdFlow(r.id).first { it?.state?.isFinished == true }
+        // Lo Shell può aver messo domande nella cartella del consulente.
+        aggiornaConsulente()
         if (ascolta == Ascolta.AUTO && fine?.state == WorkInfo.State.SUCCEEDED) rispondiAVoce(Shell.Esito(
             fine.outputData.getString(TurnoWorker.TESTO).orEmpty(), fine.outputData.getLongArray(TurnoWorker.PROPOSTE)?.toList().orEmpty()))
     }
@@ -352,7 +355,11 @@ class Adam(app: Application) : AndroidViewModel(app) {
         invioJob?.cancel()
         ascolto.ferma()
         inLettura = m.id
-        val testo = if (m.ruolo == Ruolo.ARCHITETTO) it.resonance.adam.cervello.Tavolo.leggibile(m.testo) else m.testo
+        val testo = when (m.ruolo) {
+            Ruolo.ARCHITETTO -> it.resonance.adam.cervello.Tavolo.leggibile(m.testo)
+            Ruolo.CONSULENTE -> it.resonance.adam.logica.Consulente.perLaVoce(m.testo)
+            else -> m.testo
+        }
         parlato.parla(testo) { inLettura = null; riprendiAuto() }
     }
 
@@ -465,6 +472,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
             if (aMano) avviso = "Ritiro non riuscito: ${e.message ?: e.javaClass.simpleName}"
             return
         }
+        aggiornaConsulente()
         if (aMano && r.nuovi.isEmpty()) avviso = "Niente di nuovo dall'architetto"
         r.nuovi.forEach { m -> parla("L'architetto. " + it.resonance.adam.cervello.Tavolo.leggibile(m.testo)) }
         r.allaShell?.let { id -> pensa = true; viewModelScope.launch { turnoSu(id) } }
@@ -486,12 +494,58 @@ class Adam(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val esito = runCatching { shell.chiudiRiunione() }
             chiudendo = false
-            if (!tavolo.aperta()) { riunione = null; ascoltaRiunione?.cancel(); avviso = "Riunione chiusa: il verbale è in chat e nella cassetta" }
+            if (!tavolo.aperta()) { riunione = null; ascoltaRiunione?.cancel(); aggiornaConsulente(); avviso = "Riunione chiusa: il verbale è in chat e nella cassetta" }
             else esito.exceptionOrNull()?.let {
                 avviso = "Chiusura non riuscita (${it.message ?: it.javaClass.simpleName}). Il verbale è salvato: riprova Chiudi quando c'è rete"
             }
         }
     }
+    // ── Il consulente esterno e Balthasar, in riunione (27/09/2026) ──
+    // Lo stato vive nelle impostazioni (lo cambiano anche lo Shell e l'architetto): qui se ne tiene una copia per lo
+    // schermo, rinfrescata a ogni gesto, a ogni ritiro e a ogni turno.
+    var consulentePresente by mutableStateOf(false)
+    var cartella by mutableStateOf<List<it.resonance.adam.logica.Consulente.Domanda>>(emptyList())
+    var inviiConsulente by mutableStateOf(0 to 0)
+    var consultando by mutableStateOf(false)
+    var perturbando by mutableStateOf(false)
+
+    fun aggiornaConsulente() {
+        consulentePresente = tavolo.consulentePresente()
+        cartella = tavolo.domande()
+        inviiConsulente = impostazioni.consulenteInvii to impostazioni.consulenteTetto
+    }
+
+    fun convocaConsulente() = viewModelScope.launch { avviso = runCatching { tavolo.convoca() }.getOrElse { "Non convocato: ${it.message}" }; aggiornaConsulente() }
+    fun congedaConsulente() = viewModelScope.launch { avviso = runCatching { tavolo.congeda() }.getOrElse { "Non congedato: ${it.message}" }; aggiornaConsulente() }
+    fun domandaAlConsulente(t: String) { tavolo.aggiungiDomanda("Ghost", t)?.let { avviso = "Non in cartella: $it" }; aggiornaConsulente() }
+    fun togliDomanda(i: Int) { tavolo.togliDomanda(i); aggiornaConsulente() }
+    fun alzaTettoConsulente() { tavolo.alzaTetto(); aggiornaConsulente() }
+
+    fun mandaAlConsulente() {
+        if (consultando) return
+        consultando = true
+        viewModelScope.launch {
+            val esito = runCatching { shell.consulta() }
+            consultando = false
+            aggiornaConsulente()
+            esito.onSuccess { e -> parla("Il consulente. " + it.resonance.adam.logica.Consulente.perLaVoce(e.testo)) }
+                .onFailure { e -> avviso = "Consulente: ${e.message ?: e.javaClass.simpleName}" }
+        }
+    }
+
+    // La domanda sul tavolo, per partire: l'ultimo messaggio del Ghost. Il Ghost la corregge prima di toccare Perturba.
+    fun domandaSulTavolo(): String = messaggi.value.lastOrNull { it.ruolo == Ruolo.GHOST }?.testo.orEmpty()
+
+    fun perturba(domanda: String, intensita: it.resonance.adam.logica.Balthasar.Intensita) {
+        if (perturbando || domanda.isBlank()) return
+        perturbando = true
+        viewModelScope.launch {
+            val esito = runCatching { shell.balthasar(domanda, intensita) }
+            perturbando = false
+            esito.onSuccess { parla("Balthasar. " + it.testo) }.onFailure { avviso = "Perturba: ${it.message ?: it.javaClass.simpleName}" }
+        }
+    }
+
     fun lasciaConsegna(c: it.resonance.adam.dati.Consegna) = viewModelScope.launch { avviso = archivio.lasciaConsegna(c) }
 
     // ── La lavagna del Ghost: gesti diretti, senza modello ──

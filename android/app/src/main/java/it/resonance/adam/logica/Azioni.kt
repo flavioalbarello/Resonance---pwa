@@ -302,8 +302,9 @@ object Azioni {
         putJsonObject("items") { put("type", "string") }
     }
 
-    // I compiti la cui temperatura si può proporre: la scelta del motore resta a 0, è una classificazione.
-    val COMPITI_REGOLABILI = listOf("ALLEGATI", "TURNO", "BATTITO", "ESPERIMENTO", "DADO")
+    // I compiti la cui temperatura si può proporre: la scelta del motore resta a 0, è una classificazione; quella di
+    // Balthasar la sceglie il Ghost a ogni tocco, con l'intensità.
+    val COMPITI_REGOLABILI = listOf("ALLEGATI", "TURNO", "BATTITO", "ESPERIMENTO", "DADO", "CONSULENTE")
 
     val strumenti: List<Strumento> = listOf(
         Strumento("leggi_documento", Effetto.LETTURA, "Legge il testo completo di un documento salvato in un percorso.",
@@ -438,6 +439,10 @@ object Azioni {
                 "si annulla con un tocco. Con fatta=false toglie la spunta.",
             schema(listOf("appunto", "righe"), mapOf("appunto" to s("Titolo dell'appunto"), "righe" to lista("Le righe fatte, come sono scritte"),
                 "fatta" to e(listOf("true", "false"), "true se fatte (predefinito), false per togliere la spunta")))),
+        Strumento("chiedi_consulente", Effetto.INTERNO,
+            "In riunione, col consulente esterno nella stanza: mette UNA domanda nella sua cartella. Niente conferma e niente esce: " +
+                "le domande partono tutte insieme quando il Ghost tocca Manda. Il consulente vede solo la domanda, non Adam: scrivila completa, senza nomi né dati personali.",
+            schema(listOf("domanda"), mapOf("domanda" to s("Una domanda, al massimo ${Consulente.LUNGHEZZA_MAX} caratteri")))),
         Strumento("prendi_consegna", Effetto.SCRITTURA,
             "Propone una tua consegna: quando dici «lo preparo nei prossimi giorni», prendila qui. Dichiari ORA la forma che il programma verificherà: " +
                 "un documento con un titolo, in un percorso. Il giorno prima della scadenza parte da solo un tuo turno di lavoro; alla scadenza il programma " +
@@ -502,6 +507,11 @@ object Azioni {
         "spunta_appunto" -> {
             a.testo("appunto") ?: rifiuta("quale appunto: serve il titolo")
             if (elenco(a, "righe").isEmpty()) rifiuta("quali righe: servono come elenco")
+            Validazione.Interna(nome, a)
+        }
+        "chiedi_consulente" -> {
+            val d = a.testo("domanda") ?: rifiuta("domanda vuota")
+            if (d.length > Consulente.LUNGHEZZA_MAX) rifiuta("al massimo ${Consulente.LUNGHEZZA_MAX} caratteri: una domanda, non un documento")
             Validazione.Interna(nome, a)
         }
         else -> rifiuta("strumento interno non previsto: $nome")

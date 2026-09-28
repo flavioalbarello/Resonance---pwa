@@ -97,6 +97,24 @@ open class Impostazioni(context: Context) {
     var riunioneVerbale: String
         get() = p.getString("riunioneVerbale", "")!!
         set(v) = p.edit().putString("riunioneVerbale", v).apply()
+    // Il consulente esterno della riunione (logica/Consulente.kt): se è nella stanza, la cartella delle domande (JSON),
+    // quanti invii ha fatto e il tetto (lo alza il Ghost), e i suoi scambi di questa riunione per quando lo si riconvoca.
+    // Tutto si azzera alla chiusura della riunione.
+    var consulente: Boolean
+        get() = p.getBoolean("consulente", false)
+        set(v) = p.edit().putBoolean("consulente", v).apply()
+    var consulenteDomande: String
+        get() = p.getString("consulenteDomande", "")!!
+        set(v) = p.edit().putString("consulenteDomande", v).apply()
+    var consulenteInvii: Int
+        get() = p.getInt("consulenteInvii", 0)
+        set(v) = p.edit().putInt("consulenteInvii", v).apply()
+    var consulenteTetto: Int
+        get() = p.getInt("consulenteTetto", it.resonance.adam.logica.Consulente.TETTO_INVII)
+        set(v) = p.edit().putInt("consulenteTetto", v).apply()
+    var consulenteStoria: String
+        get() = p.getString("consulenteStoria", "")!!
+        set(v) = p.edit().putString("consulenteStoria", v).apply()
     // Quanti secondi di silenzio chiudono un messaggio a voce in modalità auto.
     var pausaInvio: Int
         get() = p.getInt("pausaInvio", 4)

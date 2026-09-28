@@ -23,6 +23,8 @@ object Capacita {
             listOf("scrivi_appunto", "modifica_appunto", "spunta_appunto")),
         Area("Mondo (con la conferma del Ghost)", "calendario del telefono; mail come bozza che invia il Ghost",
             listOf("leggi_calendario", "crea_evento", "sposta_evento", "togli_evento", "scrivi_mail")),
+        Area("Riunione a tre", "il consulente esterno (ricerca web), convocato dal Ghost: le domande di tutti in una cartella, partono insieme al suo Manda",
+            listOf("chiedi_consulente")),
     )
 
     // Ciò che il Ghost fa dall'app senza di te: saperlo evita di proporgli cose che ha già a portata di dito.
@@ -36,6 +38,7 @@ object Capacita {
         "riunione a tre (Adam → Lettere → Apri riunione): ogni scambio col Ghost va nel verbale, l'architetto legge e interviene; un suo intervento che comincia con «→ Shell» ti fa rispondere da solo, al massimo 3 giri senza il Ghost; «Ritira ora» nella fascia; alla chiusura scrivi tu il verbale (senza strumenti)",
         "gli interventi dell'architetto (riunione e lettere) si ascoltano con «🔊 Ascolta», e in auto si leggono da soli",
         "Adam → Consegne: le tue consegne aperte e chiuse; il Ghost può lasciarne una",
+        "in riunione, sotto la fascia: «Convoca consulente» (poi la cartella delle domande, Manda, Congeda; tetto di ${Consulente.TETTO_INVII} invii che il Ghost alza; l'architetto gli scrive con «→ Consulente») e «Perturba» (Balthasar: domanda sul tavolo e intensità leggera, media o profonda, poi una tua risposta senza strumenti a temperatura alta)",
         "documenti: il Ghost li toglie con la pressione lunga (o Togli dentro il documento); i tolti stanno in fondo al percorso e si rimettono; da lì solo il Ghost può eliminarli per sempre (tu no)",
         "Adam → Lavagna: spunta col tocco, pressione lunga per correggere o togliere una voce, campo «Aggiungi una voce» in fondo a ogni appunto, Copia (righe da fare, per una nota condivisa come Keep), Condividi, Fissa nelle notifiche, Tieni (diventa documento), + Appunto a mano",
         "Setup → Calendario e posta: il Ghost sceglie due calendari, uno per le cose di Adam e uno per i suoi impegni (crea_evento con per = adam o personale); senza scelta lì non si scrive. Il mittente delle mail non si può imporre: lo indica per controllarlo nella bozza",

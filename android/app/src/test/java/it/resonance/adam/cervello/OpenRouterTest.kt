@@ -117,4 +117,23 @@ class OpenRouterTest {
         assertEquals("eccomi", c.completa("k", "m", JsonArray(emptyList()), null, 5, rapida = true).testo)
         assertTrue(corpo, !corpo.contains("stream"))
     }
+
+    // Il consulente (27/09/2026): le fonti sono quelle del motore, in annotations o in citations, senza doppioni.
+    @Test fun laRicercaPortaLeFontiVereEIlTettoDelleRicerche() = runBlocking {
+        val risposta = """{"choices":[{"message":{"content":"1. · sì","annotations":[
+            {"type":"url_citation","url_citation":{"url":"https://www.meta.com/ai-glasses/","title":"Meta AI glasses"}},
+            {"type":"url_citation","url_citation":{"url":"https://www.meta.com/ai-glasses/","title":"doppione"}}]},"finish_reason":"stop"}],
+            "citations":["https://developers.meta.com/wearables/faq/"],"usage":{"cost":0.012}}"""
+        val (c, n) = cliente(cadute = 0, risposta = risposta)
+        val r = c.cerca("k", "m", JsonArray(emptyList()), 800, 0.2)
+        assertEquals("1. · sì", r.testo)
+        assertEquals(listOf("meta.com", "developers.meta.com"), r.fonti.map { it.dominio })
+        assertEquals("Meta AI glasses", r.fonti.first().titolo)
+        assertEquals(0.012, r.costo!!, 1e-9)
+        assertEquals(1, n())
+        assertTrue(corpo, corpo.contains("\"openrouter:web_search\"") && corpo.contains("\"max_tool_calls\":3") && !corpo.contains("\"stream\""))
+        // Il secondo invito non paga un'altra ricerca.
+        c.cerca("k", "m", JsonArray(emptyList()), 800, 0.2, web = false)
+        assertTrue(corpo, !corpo.contains("web_search"))
+    }
 }

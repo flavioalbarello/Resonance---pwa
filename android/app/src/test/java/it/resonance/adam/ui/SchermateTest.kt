@@ -129,6 +129,13 @@ class SchermateTest {
             proposta = it.resonance.adam.logica.Azioni.codifica(modifica)))
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.NOTA, testo = "Nessuna azione è stata eseguita in questo turno: le azioni vere compaiono come proposte da confermare e poi come ricevute.", istante = t + 5))
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.ARCHITETTO, testo = "→ Shell\nIl pilastro di un nodo dice dove altro atterra: **ADAM** solo per il sistema.", istante = t - 1))
+        // Le due voci della riunione (27/09/2026): il consulente con le fonti vere, Balthasar con la sua intensità.
+        db.messaggi().inserisci(Messaggio(ruolo = Ruolo.CONSULENTE, istante = t + 6, modello = "moonshotai/kimi-k2.6", costo = 0.012, temperatura = 0.2,
+            testo = it.resonance.adam.logica.Consulente.scheda(listOf(it.resonance.adam.logica.Consulente.Domanda("Ghost", "Il kit Meta supporta i Gen 3?")),
+                "1. · Non ancora nominati nella FAQ\n· Meta: «le nuove versioni si supportano quando escono»",
+                listOf(it.resonance.adam.logica.Consulente.Fonte("https://developers.meta.com/wearables/faq/", "Wearables FAQ", "developers.meta.com")), emptyList(), emptyList())))
+        db.messaggi().inserisci(Messaggio(ruolo = Ruolo.BALTHASAR, istante = t + 7, modello = "moonshotai/kimi-k2.6", temperatura = 0.85, motore = "intensità media",
+            testo = "· E se il primo paio fosse di prova, e il vero acquisto dopo un mese di kit?\n· Il reso diventa un esperimento, non una rete."))
         db.lavagna().inserisci(it.resonance.adam.dati.Appunto(titolo = "Spesa", creato = 1, scade = java.time.LocalDate.now().plusDays(5).toString(), fissato = true,
             righe = it.resonance.adam.logica.Lavagna.codifica(listOf("Latte", "Uova", "Fagioli cannellini", "Pane").mapIndexed { i, t -> it.resonance.adam.logica.Lavagna.Riga(t, i == 1) })))
         db.consegne().inserisci(it.resonance.adam.dati.Consegna(cosa = "Scheda del primo micro-asset", documento = "Scheda micro-asset", percorso = "Resonance",
@@ -145,7 +152,7 @@ class SchermateTest {
             Evento("Ferie", oggi.plusDays(1).atStartOfDay(), oggi.plusDays(2).atStartOfDay(), true),
         ))
         regola.setContent { TemaResonance { App(vm, sistema) { it() } } }
-        regola.waitUntil(10_000) { vm.istantanea.value.misure.size >= 90 && vm.istantanea.value.rituali.size == 2 && vm.messaggi.value.size == 7 }
+        regola.waitUntil(10_000) { vm.istantanea.value.misure.size >= 90 && vm.istantanea.value.rituali.size == 2 && vm.messaggi.value.size == 9 }
 
         scatta("1-specchio")
         regola.onNodeWithText("Stabilità mantenuta", substring = true, ignoreCase = true).assertExists()
@@ -177,6 +184,26 @@ class SchermateTest {
         regola.onNode(androidx.compose.ui.test.hasScrollToNodeAction()).performScrollToNode(androidx.compose.ui.test.hasText("Allo Shell:", substring = true))
         regola.onNodeWithText("Allo Shell:", substring = true).assertExists()
         scatta("3c-architetto")
+        // La riunione col consulente nella stanza: cartella, invii, Manda; e il dialogo di Perturba.
+        vm.riunione = "smartglasses"
+        vm.consulentePresente = true
+        vm.cartella = listOf(it.resonance.adam.logica.Consulente.Domanda("Ghost", "Prezzo della Fury in Italia?"),
+            it.resonance.adam.logica.Consulente.Domanda("architetto", "Data italiana degli Android XR?"))
+        vm.inviiConsulente = 1 to 10
+        regola.onNode(androidx.compose.ui.test.hasScrollToNodeAction()).performScrollToNode(androidx.compose.ui.test.hasText("BALTHASAR · INTENSITÀ MEDIA"))
+        regola.onNodeWithText("CONSULENTE ESTERNO · RICERCA WEB").assertExists()
+        regola.onNodeWithText("▸ Consulente · 2 in cartella · 1/10").assertExists()
+        scatta("3d-riunione-chiusa")
+        regola.onNodeWithTag("cartella").performClick()
+        regola.onNodeWithText("Manda (2)").assertExists()
+        scatta("3e-riunione-cartella")
+        regola.onNodeWithTag("cartella").performClick()
+        regola.onNodeWithTag("perturba").performClick()
+        regola.onNodeWithText("Perturba (media)").assertExists()
+        scatta("3f-perturba")
+        regola.onNodeWithText("Annulla").performClick()
+        vm.riunione = null
+        vm.consulentePresente = false
 
         vm.vai(Schermata.VIDYA)
         regola.onNodeWithText("Percorsi").performClick()

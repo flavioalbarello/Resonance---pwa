@@ -15,6 +15,8 @@ import it.resonance.adam.logica.Agenda
 import it.resonance.adam.logica.AgendaLetta
 import it.resonance.adam.logica.Allegati
 import it.resonance.adam.logica.Allegato
+import it.resonance.adam.logica.Balthasar
+import it.resonance.adam.logica.Consulente
 import it.resonance.adam.logica.Giorni
 import it.resonance.adam.logica.Proposta
 import it.resonance.adam.logica.Regole
@@ -118,6 +120,8 @@ class Shell(
             // Le note dicono perché una proposta è fallita: senza, il modello si inventava il motivo (visto il 24/09).
             Ruolo.NOTA -> "user" to "[Nota del programma, non del Ghost] ${m.testo}"
             Ruolo.ARCHITETTO -> "user" to dallArchitetto(m.testo)
+            Ruolo.CONSULENTE -> "user" to "[Il consulente esterno (un modello con la ricerca web), non il Ghost: materiale da verificare, non una decisione] ${m.testo}"
+            Ruolo.BALTHASAR -> "user" to "[Balthasar: la perturbazione chiesta dal Ghost, scritta da te a temperatura alta e senza strumenti. Materiale, non decisione] ${m.testo}"
         }
         buildJsonObject { put("role", ruolo); put("content", testo) }
     }
@@ -226,6 +230,107 @@ class Shell(
             }
         }
         return ""
+    }
+
+    // ── Il consulente esterno (27/09/2026, logica/Consulente.kt) ──
+    // Il Ghost tocca Manda: le domande della cartella partono in UNA chiamata con la ricerca web. Il consulente vede solo
+    // le domande (passate dal guardiano dei nomi e degli indirizzi) e, se riconvocato, i suoi scambi di questa riunione.
+    // La forma si dice prima e si controlla dopo; ai punti mancanti si torna una volta, senza pagare un'altra ricerca, e
+    // se mancano ancora la rinuncia resta scritta sotto. Le fonti mostrate sono quelle restituite dal motore.
+    suspend fun consulta(): Esito {
+        val tavolo = Tavolo(archivio, impostazioni, cassetta)
+        if (!tavolo.consulentePresente()) return Esito("Il consulente non è nella stanza.", emptyList())
+        val cartella = tavolo.domande()
+        if (cartella.isEmpty()) return Esito("La cartella è vuota: prima le domande.", emptyList())
+        if (impostazioni.consulenteInvii >= impostazioni.consulenteTetto)
+            return Esito("Tetto di invii raggiunto (${impostazioni.consulenteInvii} su ${impostazioni.consulenteTetto}): se serve, alzalo.", emptyList())
+        controllaSpesa()?.let { nota(it); return Esito(it, emptyList()) }
+        val protetti = Uscita.nomi(archivio.db.profilo().leggi()?.nomiProtetti.orEmpty())
+        val domande = cartella.map { Consulente.pulisci(it.testo, protetti) }
+        val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", Consulente.SISTEMA) })
+        Consulente.decodificaStoria(impostazioni.consulenteStoria).takeLast(Consulente.SCAMBI_RICORDATI).forEach { s ->
+            lavoro += buildJsonObject { put("role", "user"); put("content", Consulente.richiesta(s.domande)) }
+            lavoro += buildJsonObject { put("role", "assistant"); put("content", s.risposta) }
+        }
+        lavoro += buildJsonObject { put("role", "user"); put("content", Consulente.richiesta(domande)) }
+        val modello = impostazioni.modello
+        var t = temperaturaDi(Compito.CONSULENTE).takeIf { modello !in impostazioni.senzaTemperatura }
+        var costo = 0.0
+        // Come in chiama(): un modello che rifiuta la temperatura perde il parametro, non la risposta.
+        suspend fun cerca(web: Boolean): RispostaWeb = try {
+            client.cerca(impostazioni.chiave, modello, JsonArray(lavoro), MAX_TOKEN, t, web)
+        } catch (e: ErroreModello) {
+            if (t == null || !Temperatura.rifiutata(e.message)) throw e
+            impostazioni.senzaTemperatura = impostazioni.senzaTemperatura + modello
+            t = null
+            client.cerca(impostazioni.chiave, modello, JsonArray(lavoro), MAX_TOKEN, null, web)
+        }
+        val (testo, fonti, mancano) = try {
+            val r = cerca(web = true)
+            r.costo?.let { archivio.registraCosto(YearMonth.now().toString(), it); costo += it }
+            var testo = Testi.senzaFinteNote(r.testo)
+            var mancano = Consulente.mancano(testo, domande.size)
+            if (mancano.isNotEmpty()) {
+                lavoro += buildJsonObject { put("role", "assistant"); put("content", testo) }
+                lavoro += buildJsonObject { put("role", "user"); put("content", Consulente.sollecito(mancano)) }
+                val r2 = cerca(web = false)
+                r2.costo?.let { archivio.registraCosto(YearMonth.now().toString(), it); costo += it }
+                testo = testo.trimEnd() + "\n\n" + Testi.senzaFinteNote(r2.testo)
+                mancano = Consulente.mancano(testo, domande.size)
+            }
+            Triple(testo, r.fonti, mancano)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val m = "Il consulente non ha risposto: ${e.message ?: e.javaClass.simpleName}. Le domande restano in cartella."
+            nota(m)
+            registraTurno(Compito.CONSULENTE, modello, t, false, emptyList(), 0, false, false, errore = true, costo, listOf("ricerca web"))
+            return Esito(m, emptyList())
+        }
+        val sospette = Consulente.sospette(testo, fonti, domande)
+        val scheda = Consulente.scheda(cartella.map { it.copy(testo = Consulente.pulisci(it.testo, protetti)) }, testo, fonti, sospette, mancano)
+        archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.CONSULENTE, testo = scheda, istante = ora, modello = modello,
+            costo = costo.takeIf { it > 0 }, temperatura = t))
+        registraTurno(Compito.CONSULENTE, modello, t, false, emptyList(), 0, false, false, errore = false, costo,
+            listOf("ricerca web: ${fonti.size} fonti" + if (sospette.isNotEmpty()) ", ${sospette.size} nomi sospetti" else ""))
+        impostazioni.consulenteDomande = ""
+        impostazioni.consulenteInvii = impostazioni.consulenteInvii + 1
+        impostazioni.consulenteStoria = Consulente.codificaStoria(Consulente.decodificaStoria(impostazioni.consulenteStoria) + Consulente.Scambio(domande, testo))
+        runCatching { tavolo.registra("consulente", scheda) }.onFailure { nota("Risposta del consulente non copiata nel verbale: ${it.message ?: it.javaClass.simpleName}") }
+        return Esito(scheda, emptyList())
+    }
+
+    // ── Balthasar (27/09/2026, logica/Balthasar.kt) ──
+    // Il Ghost tocca Perturba: lo Shell, con la sua memoria e la storia della riunione, ma SENZA strumenti e alla
+    // temperatura dell'intensità scelta. Una chiamata sola; la forma si controlla e, se non regge, lo si scrive sotto.
+    suspend fun balthasar(domanda: String, intensita: Balthasar.Intensita): Esito {
+        if (domanda.isBlank()) return Esito("Serve la domanda sul tavolo.", emptyList())
+        controllaSpesa()?.let { nota(it); return Esito(it, emptyList()) }
+        val istantanea = fotografia(LocalDate.now(), 0)
+        val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", Contesto.sistema(istantanea)) })
+        lavoro += storia(archivio.db.messaggi().ultimi(24))
+        lavoro += buildJsonObject { put("role", "user"); put("content", Balthasar.richiesta(domanda, intensita)) }
+        val modello = impostazioni.modello
+        val (r, usata) = try {
+            chiama(modello, JsonArray(lavoro), null, MAX_TOKEN, intensita.temperatura)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val m = "Balthasar non ha risposto: ${e.message ?: e.javaClass.simpleName}"
+            nota(m)
+            registraTurno(Compito.BALTHASAR, modello, intensita.temperatura, true, emptyList(), 0, false, false, errore = true, 0.0, listOf("intensità ${intensita.etichetta}"))
+            return Esito(m, emptyList())
+        }
+        registraCosto(r)
+        val corpo = Testi.senzaFinteNote(r.testo).trim()
+        val testo = listOfNotNull(corpo.ifBlank { "(Balthasar non ha scritto niente.)" }, Balthasar.fuoriForma(corpo)).joinToString("\n\n")
+        archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.BALTHASAR, testo = testo, istante = ora, modello = modello,
+            costo = r.costo, motore = "intensità ${intensita.etichetta}", temperatura = usata))
+        registraTurno(Compito.BALTHASAR, modello, usata, true, emptyList(), 0, r.troncata, false, errore = false, r.costo ?: 0.0, listOf("intensità ${intensita.etichetta}"))
+        val tavolo = Tavolo(archivio, impostazioni, cassetta)
+        if (tavolo.aperta()) runCatching { tavolo.registra("balthasar", "Perturbazione (${intensita.etichetta}) su: «${domanda.trim()}»\n\n$testo") }
+            .onFailure { nota("Perturbazione non copiata nel verbale: ${it.message ?: it.javaClass.simpleName}") }
+        return Esito(testo, emptyList())
     }
 
     // Il turno di lavoro su una consegna: lo apre il programma, il giorno prima della scadenza, anche ad app chiusa.
@@ -376,6 +481,8 @@ class Shell(
                         risultato.startsWith("Non proposta") -> " fermato (${Testi.corto(risultato.substringAfter(": "), 70)})"
                         risultato.startsWith("Proposta mostrata") -> " proposto"
                         risultato.startsWith("Nel taccuino") -> " scritto nel taccuino"
+                        risultato.startsWith("Domanda in cartella") -> " in cartella"
+                        risultato.startsWith("Non in cartella") -> " fermato (${Testi.corto(risultato.substringAfter(": "), 70)})"
                         else -> " letto"
                     }
                     lavoro += buildJsonObject {
@@ -600,7 +707,8 @@ class Shell(
 
     private suspend fun fotografia(oggi: LocalDate, giorniAgenda: Int) =
         archivio.istantanea(oggi, mondo?.agenda(oggi, giorniAgenda) ?: AgendaLetta.NonLetta)
-            .copy(temperature = impostazioni.temperature, riunione = impostazioni.riunioneTema.takeIf { impostazioni.riunione.isNotBlank() }.orEmpty())
+            .copy(temperature = impostazioni.temperature, riunione = impostazioni.riunioneTema.takeIf { impostazioni.riunione.isNotBlank() }.orEmpty(),
+                consulente = Tavolo(archivio, impostazioni, cassetta).let { if (it.aperta()) it.statoConsulente() else "" })
 
     // La temperatura di un compito: quella confermata dal Ghost su proposta dello Shell, altrimenti la tabella.
     private fun temperaturaDi(c: Compito) = impostazioni.temperature[c.name] ?: c.temperatura
@@ -627,6 +735,12 @@ class Shell(
             val e = archivio.spunta(Azioni.stringa(v.argomenti, "appunto").orEmpty(), Azioni.elenco(v.argomenti, "righe"), fatta)
             archivio.db.messaggi().inserisci(Messaggio(ruolo = if (e.riuscita) Ruolo.RICEVUTA else Ruolo.NOTA, testo = e.ricevuta, istante = ora))
             if (e.riuscita) "Fatto davvero, senza conferma: ${e.ricevuta}." else "Non spuntato: ${e.ricevuta}."
+        }
+        // Una domanda per il consulente: in cartella senza conferma (non esce niente finché il Ghost non tocca Manda).
+        "chiedi_consulente" -> {
+            val d = Azioni.stringa(v.argomenti, "domanda").orEmpty()
+            Tavolo(archivio, impostazioni, cassetta).aggiungiDomanda("shell", d)?.let { "Non in cartella: $it." }
+                ?: "Domanda in cartella. Parte con le altre quando il Ghost tocca Manda: non dire che il consulente ha risposto."
         }
         else -> "Strumento interno non previsto."
     }
