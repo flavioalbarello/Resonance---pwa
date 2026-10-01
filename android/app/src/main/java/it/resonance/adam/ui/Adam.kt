@@ -285,6 +285,17 @@ class Adam(app: Application) : AndroidViewModel(app) {
         if (segui) { pensa = true; runCatching { shell.seguiDovute(inChat = true) }; pensa = false }
     }
 
+    // Il listino dei modelli (logica/Listino.kt): gli avvisi su ciò che si usa, e l'aggiornamento a mano da Setup.
+    var listinoVersione by mutableStateOf(0)
+        private set
+    fun avvisiModelli(): List<String> = it.resonance.adam.logica.Listino.avvisi(shell.modelliUsati(),
+        it.resonance.adam.logica.Listino.decodifica(impostazioni.listino), LocalDate.now())
+    fun aggiornaListino() = viewModelScope.launch {
+        shell.aggiornaListino(forza = true)
+        listinoVersione++
+        avviso = if (impostazioni.listinoLetto > 0) "Listino letto: ${it.resonance.adam.logica.Listino.decodifica(impostazioni.listino).size} modelli" else "Listino non raggiungibile: riprova con la rete"
+    }
+
     fun smettiDiSeguire(id: Long) = viewModelScope.launch { avviso = archivio.smettiDiSeguire(id) }
     fun resocontoVisto(id: Long) = viewModelScope.launch { archivio.resocontoVisto(id) }
     fun rifiuta(m: Messaggio) = viewModelScope.launch { shell.rifiuta(m.id) }

@@ -14,18 +14,18 @@ open class Impostazioni(context: Context) {
     private val p = context.getSharedPreferences("impostazioni", Context.MODE_PRIVATE)
 
     var modello: String
-        get() = p.getString("modello", MODELLO_PREDEFINITO)!!
+        get() = vivo(p.getString("modello", MODELLO_PREDEFINITO)!!)
         set(v) = p.edit().putString("modello", v.trim()).apply()
     // Il modello che guarda immagini e pagine, quando quello principale non vede.
     var modelloVista: String
-        get() = p.getString("modelloVista", MODELLO_VISTA)!!
+        get() = vivo(p.getString("modelloVista", MODELLO_VISTA)!!)
         set(v) = p.edit().putString("modelloVista", v.trim()).apply()
     // Scelta automatica del motore: una microchiamata decide fra il modello leggero e quello scelto sopra.
     var sceltaAutomatica: Boolean
         get() = p.getBoolean("sceltaAutomatica", false)
         set(v) = p.edit().putBoolean("sceltaAutomatica", v).apply()
     var modelloLeggero: String
-        get() = p.getString("modelloLeggero", MODELLO_LEGGERO)!!
+        get() = vivo(p.getString("modelloLeggero", MODELLO_LEGGERO)!!)
         set(v) = p.edit().putString("modelloLeggero", v.trim()).apply()
     // Ultima perturbazione proposta dal programma: non più di una ogni due settimane.
     var ultimaPerturbazione: String
@@ -132,6 +132,19 @@ open class Impostazioni(context: Context) {
         get() = p.getBoolean("leggiAuto", true)
         set(v) = p.edit().putBoolean("leggiAuto", v).apply()
 
+    // Il listino di OpenRouter, letto una volta al giorno (logica/Listino.kt), in un file di impostazioni suo: è grande.
+    private val l = context.getSharedPreferences("listino", Context.MODE_PRIVATE)
+    var listino: String
+        get() = l.getString("voci", "")!!
+        set(v) = l.edit().putString("voci", v).apply()
+    var listinoLetto: Long
+        get() = l.getLong("letto", 0)
+        set(v) = l.edit().putLong("letto", v).apply()
+    // Gli avvisi già notificati: uno stesso avviso non suona due volte.
+    var avvisiNotificati: Set<String>
+        get() = l.getStringSet("notificati", emptySet())!!
+        set(v) = l.edit().putStringSet("notificati", v).apply()
+
     open var chiave: String
         get() = p.getString("chiave", null)?.let { runCatching { Segreti.decifra(it) }.getOrNull() }.orEmpty()
         set(v) = p.edit().apply { if (v.isBlank()) remove("chiave") else putString("chiave", Segreti.cifra(v.trim())) }.apply()
@@ -140,30 +153,43 @@ open class Impostazioni(context: Context) {
         const val MODELLO_PREDEFINITO = "meta-llama/llama-3.3-70b-instruct"
         const val MODELLO_VISTA = "google/gemini-3.1-flash-lite"
         const val MODELLO_LEGGERO = "google/gemini-3.1-flash-lite"
-        // Verificati sul listino di OpenRouter il 23/09/2026: strumenti; prezzi $ per milione di token, entrata/uscita.
+        // Verificati sul listino vivo di OpenRouter il 02/10/2026 (/api/v1/models): strumenti, immagini, temperatura,
+        // scadenze. Prezzi in dollari per milione di token, ingresso/uscita. La lista non si aggiorna da sola: per questo
+        // il programma legge il listino ogni giorno e avvisa (logica/Listino.kt).
         val MODELLI_LEGGERI = listOf(
-            "google/gemini-3.1-flash-lite" to "Gemini 3.1 Flash Lite (0,25/1,5 $, vede)",
-            "deepseek/deepseek-v4-flash" to "DeepSeek V4 Flash (0,08/0,16 $, non vede)",
+            "deepseek/deepseek-v4.1-flash" to "DeepSeek V4.1 Flash (0,03/0,5 $, vede)",
             "qwen/qwen3.8-flash" to "Qwen 3.8 Flash (0,15/0,47 $, vede)",
+            "google/gemini-3.1-flash-lite" to "Gemini 3.1 Flash Lite (0,25/1,5 $, vede)",
+            "openai/gpt-6-luna" to "GPT-6 Luna (0,1/0,5 $, vede, temperatura sua)",
         )
-        // Verificati sul listino di OpenRouter il 23/09/2026: immagini in ingresso e strumenti.
         val MODELLI_VISTA = listOf(
-            "google/gemini-3.1-flash-lite" to "Gemini 3.1 Flash Lite (0,25/1,5 $ per milione)",
-            "qwen/qwen3-vl-32b-instruct" to "Qwen3 VL 32B (0,10/0,42 $, più economico)",
-            "google/gemini-2.5-flash" to "Gemini 2.5 Flash (0,30/2,5 $)",
+            "deepseek/deepseek-v4.1-flash" to "DeepSeek V4.1 Flash (0,03/0,5 $, il più economico)",
+            "qwen/qwen3.8-flash" to "Qwen 3.8 Flash (0,15/0,47 $)",
+            "google/gemini-3.1-flash-lite" to "Gemini 3.1 Flash Lite (0,25/1,5 $)",
         )
-        // Fra i modelli principali, quelli che vedono già da soli: con loro non si cambia modello.
-        val VEDONO = setOf("moonshotai/kimi-k2.6", "google/gemini-3.1-pro-preview", "anthropic/claude-sonnet-4.5", "anthropic/claude-sonnet-5",
-            "qwen/qwen3.8-flash", "google/gemini-3.5-flash") + MODELLI_VISTA.map { it.first }
+        // Fra i modelli principali, quelli che vedono già da soli: con loro non si cambia modello. Se il listino è
+        // stato letto, decide il listino (Shell.vede).
+        val VEDONO = setOf("moonshotai/kimi-k2.6", "moonshotai/kimi-k3", "google/gemini-3.1-pro-preview", "google/gemini-3.8-flash",
+            "anthropic/claude-sonnet-5.5", "anthropic/claude-sonnet-5", "anthropic/claude-sonnet-4.5", "openai/gpt-6-sol", "x-ai/grok-4.7",
+            "google/gemini-3.5-flash") + MODELLI_VISTA.map { it.first } + MODELLI_LEGGERI.map { it.first }
         val MODELLI = listOf(
-            "meta-llama/llama-3.3-70b-instruct" to "Llama 3.3 70B (economico)",
-            "deepseek/deepseek-v4-pro" to "DeepSeek V4 Pro",
-            "moonshotai/kimi-k2.6" to "Kimi K2.6",
-            "google/gemini-3.1-pro-preview" to "Gemini 3.1 Pro",
-            "google/gemini-3.5-flash" to "Gemini 3.5 Flash",
-            "anthropic/claude-sonnet-4.5" to "Claude Sonnet 4.5",
-            "anthropic/claude-sonnet-5" to "Claude Sonnet 5",
+            "meta-llama/llama-3.3-70b-instruct" to "Llama 3.3 70B (0,1/0,32 $, economico, non vede)",
+            "deepseek/deepseek-v4-pro" to "DeepSeek V4 Pro (0,21/0,42 $, non vede)",
+            "z-ai/glm-5.3" to "GLM-5.3 (0,22/3,39 $, non vede)",
+            "moonshotai/kimi-k2.6" to "Kimi K2.6 (0,43/1,83 $)",
+            "moonshotai/kimi-k3" to "Kimi K3 (0,68/10 $)",
+            "google/gemini-3.8-flash" to "Gemini 3.8 Flash (0,75/3,75 $)",
+            "google/gemini-3.1-pro-preview" to "Gemini 3.1 Pro (2/12 $)",
+            "anthropic/claude-sonnet-5.5" to "Claude Sonnet 5.5 (2/10 $)",
+            "openai/gpt-6-sol" to "GPT-6 Sol (2/10 $, temperatura sua)",
+            "x-ai/grok-4.7" to "Grok 4.7 (2/6 $)",
         )
+        // Modelli che OpenRouter ritira: chi li aveva scelti passa da solo al sostituto (verificato il 02/10/2026).
+        val RITIRATI = mapOf(
+            "qwen/qwen3-vl-32b-instruct" to "deepseek/deepseek-v4.1-flash",   // sparisce il 09/10/2026
+            "google/gemini-2.5-flash" to "deepseek/deepseek-v4.1-flash",       // sparisce il 20/10/2026
+        )
+        fun vivo(id: String) = RITIRATI[id] ?: id
     }
 }
 

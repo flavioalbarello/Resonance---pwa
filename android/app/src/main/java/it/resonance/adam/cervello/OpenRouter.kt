@@ -92,6 +92,14 @@ open class OpenRouter(
     open suspend fun cerca(chiave: String, modello: String, messaggi: JsonArray, maxToken: Int, temperatura: Double?, web: Boolean = true): RispostaWeb =
         ricerca(chiave, modello, messaggi, maxToken, temperatura, if (web) LEGGERA else null)
 
+    // Il listino pubblico dei modelli (logica/Listino.kt): senza chiave, una volta al giorno.
+    open suspend fun listino(): String = withContext(Dispatchers.IO) {
+        http.newCall(Request.Builder().url("https://openrouter.ai/api/v1/models").header("X-Title", "Resonance").build()).execute().use { r ->
+            if (!r.isSuccessful) throw ErroreModello("listino: HTTP ${r.code}")
+            r.body.string()
+        }
+    }
+
     // La ricerca dello Shell (02/10/2026, il Ghost: «una funzione potente e accurata, per qualcosa che si definisce
     // un'estensione cognitiva»). Exa al posto del motore predefinito, più risultati, più testo per risultato, più
     // ricerche per risposta. Costo verificato sulla documentazione di OpenRouter il 02/10: 0,7 centesimi di dollaro

@@ -174,7 +174,7 @@ class Shell(
         val motore = if (impostazioni.sceltaAutomatica) scegliMotore(testoGhost, allegati) { costoTurno += it } else null
         val base = if (motore == Motore.LEGGERO) impostazioni.modelloLeggero else impostazioni.modello
         // Un modello che non vede, per un turno con immagini, cede il posto a uno che vede.
-        val modello = if (Allegati.conImmagini(allegati) && base !in Impostazioni.VEDONO) impostazioni.modelloVista else base
+        val modello = if (Allegati.conImmagini(allegati) && !vede(base)) impostazioni.modelloVista else base
         val compito = if (allegati.isEmpty()) Compito.TURNO else Compito.ALLEGATI
         val esito = ciclo(lavoro, oggi, regole, modello, motore?.etichetta, costoTurno, compito = compito, forza = forza)
         // In riunione lo scambio va nel verbale da solo: il Ghost non spiega due volte. Gli allegati non escono.
@@ -327,6 +327,32 @@ class Shell(
         impostazioni.consulenteStoria = Consulente.codificaStoria(Consulente.decodificaStoria(impostazioni.consulenteStoria) + Consulente.Scambio(domande, testo))
         runCatching { tavolo.registra("consulente", scheda) }.onFailure { nota("Risposta del consulente non copiata nel verbale: ${it.message ?: it.javaClass.simpleName}") }
         return Esito(scheda, emptyList())
+    }
+
+    // ── Il listino dei modelli (02/10/2026, logica/Listino.kt) ──
+
+    private val listino by lazy { it.resonance.adam.logica.Listino.decodifica(impostazioni.listino) }
+
+    /** Se un modello vede le immagini: lo dice il listino, se è stato letto; altrimenti la lista scritta a mano. */
+    fun vede(id: String) = it.resonance.adam.logica.Listino.prezzi(listino, id)?.vede ?: (id in Impostazioni.VEDONO)
+
+    /** I modelli che l'app usa davvero, per ruolo: sono quelli da sorvegliare. */
+    fun modelliUsati(): Map<String, String> = mapOf("principale" to impostazioni.modello, "immagini" to impostazioni.modelloVista) +
+        (if (impostazioni.sceltaAutomatica) mapOf("leggero" to impostazioni.modelloLeggero) else emptyMap())
+
+    /**
+     * Rilegge il listino se ha più di un giorno (o se `forza`), e restituisce gli avvisi nuovi: quelli non ancora
+     * notificati. Senza rete resta il listino di prima, e nessun avviso inventato.
+     */
+    suspend fun aggiornaListino(forza: Boolean = false): List<String> {
+        if (forza || System.currentTimeMillis() - impostazioni.listinoLetto > 24 * 3_600_000L) runCatching {
+            val voci = it.resonance.adam.logica.Listino.leggi(client.listino())
+            if (voci.isNotEmpty()) { impostazioni.listino = it.resonance.adam.logica.Listino.codifica(voci); impostazioni.listinoLetto = System.currentTimeMillis() }
+        }
+        val avvisi = it.resonance.adam.logica.Listino.avvisi(modelliUsati(), it.resonance.adam.logica.Listino.decodifica(impostazioni.listino), LocalDate.now())
+        val nuovi = avvisi.filterNot { it in impostazioni.avvisiNotificati }
+        if (nuovi.isNotEmpty()) impostazioni.avvisiNotificati = impostazioni.avvisiNotificati + nuovi
+        return nuovi
     }
 
     // ── La ricerca web dello Shell e Segui (02/10/2026, logica/Ricerca.kt) ──

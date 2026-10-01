@@ -339,6 +339,10 @@ class SeguiWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         if (imp.chiave.isBlank()) return Result.success()
         val shell = Shell(archivio, imp, mondo = MondoAndroid(applicationContext))
         val oggi = LocalDate.now()
+        // Il listino dei modelli (logica/Listino.kt): una volta al giorno; un modello in scadenza o sparito si dice una volta.
+        runCatching { shell.aggiornaListino() }.getOrDefault(emptyList()).takeIf { it.isNotEmpty() }?.let { avvisi ->
+            Battiti.notifica(applicationContext, 120, "Un modello sta per sparire", avvisi.joinToString("\n"), "Setup → Motore", "SETUP")
+        }
         runCatching { shell.chiudiSeguite(oggi) }.getOrDefault(emptyList()).forEach { o ->
             Seguite.notifica(applicationContext, o.id, "Resoconto pronto: ${o.cosa}", o.resoconto, "SPECCHIO", imp)
         }

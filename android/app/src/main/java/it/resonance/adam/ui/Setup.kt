@@ -18,6 +18,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -69,6 +70,14 @@ fun Setup(vm: Adam, sistema: Sistema) {
         Scheda {
             Etichetta("Motore")
             Tenue(if (imp.chiave.isBlank()) "Nessuna chiave OpenRouter." else "Chiave presente, cifrata nel Keystore del telefono.")
+            // Il listino vivo (logica/Listino.kt): un modello in scadenza o sparito si vede qui, prima che smetta di funzionare.
+            val avvisi = remember(vm.listinoVersione, modello) { vm.avvisiModelli() }
+            avvisi.forEach { Riga("⚠ $it", Colori.allarme) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Tenue(if (imp.listinoLetto == 0L) "Listino di OpenRouter non ancora letto." else
+                    "Listino di OpenRouter letto il ${java.text.SimpleDateFormat("d/M HH:mm", java.util.Locale.ITALIAN).format(java.util.Date(imp.listinoLetto))}.")
+                TextButton({ vm.aggiornaListino() }) { Text("Aggiorna") }
+            }
             OutlinedTextField(chiave, { chiave = it }, label = { Text("Chiave OpenRouter") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
             Button({ imp.chiave = chiave; chiave = ""; vm.avviso = "Chiave salvata" }, enabled = chiave.isNotBlank()) { Text("Salva chiave") }
             Spazio(4)
