@@ -7,6 +7,7 @@ import it.resonance.adam.dati.RispostaLettera
 import it.resonance.adam.dati.StatoLettera
 import it.resonance.adam.logica.Fondo
 import it.resonance.adam.logica.Taccuino
+import it.resonance.adam.logica.Assenza
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -125,8 +126,9 @@ class Corrispondenza(private val archivio: Archivio, private val imp: Impostazio
         Fondo.righe(Fondo.stato(archivio.db.fondo().elenco(), LocalDate.now())).forEach { appendLine("- $it") }
         appendLine()
         appendLine("Taccuino (note vive):")
-        val vive = Taccuino.vive(archivio.db.taccuino().elenco(), ora)
-        if (vive.isEmpty()) appendLine("- vuoto") else vive.forEach { appendLine("- ${Taccuino.riga(it, ora)}") }
+        val pausa = Assenza.giorniDiPausa(Assenza.periodi(archivio.db.voci().elenco()), java.time.LocalDate.now())
+        val vive = Taccuino.vive(archivio.db.taccuino().elenco(), ora, pausa)
+        if (vive.isEmpty()) appendLine("- vuoto") else vive.forEach { appendLine("- ${Taccuino.riga(it, ora, pausa)}") }
         appendLine()
         appendLine("Regolazione (ultimi 100 turni):")
         val stati = archivio.db.messaggi().elenco().associate { it.id to it.stato }

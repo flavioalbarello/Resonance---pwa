@@ -46,4 +46,21 @@ class AssenzaTest {
         val r = Assenza.riepilogo(4, emptyList(), emptyList(), 2)
         assertTrue(r, r.contains("via 4 giorni") && r.contains("non contano come saltati") && r.contains("2 proposte"))
     }
+
+    // L'orologio del taccuino si ferma quando il Ghost è via (01/10/2026): tre settimane di malattia non devono far
+    // evaporare tutte le ipotesi dello Shell, che non ha potuto riprenderle.
+    @Test fun iGiorniDiPausaNonFannoEvaporareLeIpotesiDelloShell() {
+        val utc = java.time.ZoneOffset.UTC
+        val ms = { d: LocalDate -> d.atTime(12, 0).toInstant(utc).toEpochMilli() }
+        val nota = it.resonance.adam.dati.Nota(id = 1, testo = "[ipotesi] x", creata = ms(g(25)), ripresa = ms(g(25)))
+        val ora = ms(oggi)
+        // Senza pausa: 25 giorni, evaporata.
+        assertTrue(!Taccuino.viva(nota, ora))
+        // Dieci giorni di malattia in mezzo: ne contano 15, restano 6.
+        val pausa = (5L..14L).map { g(it) }.toSet()
+        assertEquals(15L * 86_400_000L, Taccuino.trascorso(nota, ora, pausa, utc))
+        assertTrue(Taccuino.viva(nota, ora, pausa))
+        // Un giorno di pausa prima della ripresa non conta: l'orologio partiva dopo.
+        assertEquals(25L * 86_400_000L, Taccuino.trascorso(nota, ora, setOf(g(30)), utc))
+    }
 }

@@ -48,13 +48,16 @@ private fun data(ms: Long) = SimpleDateFormat("d MMM HH:mm", Locale.ITALIAN).for
 @Composable
 fun TaccuinoUi(vm: Adam) {
     val note by vm.note.collectAsState()
+    val voci by vm.voci.collectAsState()
     val ora = System.currentTimeMillis()
+    // Lo stesso orologio delle istruzioni dello Shell: i giorni di «Sono via» non contano.
+    val pausa = remember(voci) { it.resonance.adam.logica.Assenza.giorniDiPausa(it.resonance.adam.logica.Assenza.periodi(voci), java.time.LocalDate.now()) }
     Tenue("Le note dello Shell: ipotesi sue, scritte senza chiederti conferma perché non toccano niente. Una nota non ripresa per ${Taccuino.GIORNI} giorni evapora: esce dalle sue istruzioni, ma resta qui.")
-    val (vive, spente) = note.partition { Taccuino.viva(it, ora) }
+    val (vive, spente) = note.partition { Taccuino.viva(it, ora, pausa) }
     if (note.isEmpty()) Tenue("Vuoto.")
     vive.forEach { n ->
         Scheda(Colori.ambra) {
-            Tenue("#${n.id} · evapora tra ${Taccuino.giorniRimasti(n, ora)} gg · scritta ${data(n.creata)}")
+            Tenue("#${n.id} · evapora tra ${Taccuino.giorniRimasti(n, ora, pausa)} gg · scritta ${data(n.creata)}")
             Riga(n.testo)
             TextButton({ vm.togliNota(n) }) { Text("Togli", color = Colori.tenue) }
         }

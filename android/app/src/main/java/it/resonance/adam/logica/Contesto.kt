@@ -188,8 +188,8 @@ object Contesto {
         appendLine()
         appendLine("TACCUINO DELLO SHELL (ipotesi tue, non fatti)")
         val ora = i.oggi.atTime(java.time.LocalTime.now()).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-        val vive = Taccuino.vive(i.note, ora)
-        if (vive.isEmpty()) appendLine("- vuoto") else vive.forEach { appendLine("- ${Taccuino.riga(it, ora)}") }
+        val vive = Taccuino.vive(i.note, ora, i.pausa)
+        if (vive.isEmpty()) appendLine("- vuoto") else vive.forEach { appendLine("- ${Taccuino.riga(it, ora, i.pausa)}") }
         appendLine()
         if (i.appunti.isNotEmpty()) {
             appendLine("LAVAGNA DEL GHOST (appunti usa e getta, vivi)")

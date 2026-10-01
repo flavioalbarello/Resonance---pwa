@@ -386,6 +386,9 @@ risultata mancata perché il documento aspettava un tocco del Ghost.
 - Al ritorno, in una transazione: le consegne aperte slittano dei giorni di assenza, gli esperimenti aperti si
   allungano, il periodo resta nel diario di Adam («In pausa dal … al …») e un riepilogo arriva in chat.
 - Ritirato lo stesso giorno conta come tocco sbagliato: non si sposta niente.
+- Anche l'orologio del taccuino si ferma: i giorni di pausa non contano per l'evaporazione delle ipotesi dello Shell
+  (`Taccuino.trascorso`). Prima tre settimane di malattia le facevano evaporare tutte, senza che lo Shell potesse
+  riprenderne una.
 
 **La domanda della domenica.** Il battito della settimana chiede UNA domanda sulla settimana che viene. La regola di
 costruzione del 01/10: le variabili non si modellano, si chiede quella giusta al momento giusto. La domanda entra in
@@ -541,6 +544,7 @@ il nome dello Shell e vengono spiegate queste cose»*. È il primo avvio guidato
 |---|---|---|
 | **Le consegne dello Shell** | il Ghost, 01/10/2026: *«attualmente non funziona, o così mi sembra»* | Capire prima cosa non va (la verifica alla scadenza? il turno di lavoro del giorno prima? il documento che aspetta la conferma?). Poi dove si vedono: probabilmente sullo Specchio quando ce n'è una aperta, non in una scheda |
 | **I nomi e il tour del primo avvio** | il Ghost, 01/10/2026 | Le righe sotto i pilastri sono una prima stesura: vanno viste sullo schermo e corrette. Il tour (sotto, «Il tour del primo avvio»): quanto lungo, chi lo conduce, cosa spiega |
+| **Una «decisione» nel taccuino evapora come un'ipotesi** | l'architetto, 01/10/2026 | Il taccuino è non confermato per definizione, quindi è coerente; ma una decisione vera annotata lì e non ripresa sparisce dalle istruzioni dello Shell dopo 21 giorni. Proposta da discutere: quando lo Shell scrive una nota «fatto» o «decisione», propone anche di metterla nel quaderno, dove la conferma il Ghost e non scade |
 | **Salvare un Adam se il telefono si rompe di punto in bianco** | il Ghost, 01/10/2026 | Oggi solo la copia a mano. Serve una copia che esca dal telefono da sola, ogni giorno, e da cui un telefono nuovo riparta. Da decidere: dove va (Drive, computer, la cassetta?), cosa contiene (la chiave OpenRouter no), chi la rilegge, come si prova che funziona davvero prima che serva |
 
 ## Carenze dichiarate
