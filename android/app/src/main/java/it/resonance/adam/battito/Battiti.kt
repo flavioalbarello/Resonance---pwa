@@ -251,7 +251,7 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             // La domanda della domenica resta in chat: la risposta del Ghost ha il suo contesto.
             if (b == Battito.SETTIMANA && voce != null && !prova) runCatching {
                 archivio.db.messaggi().inserisci(it.resonance.adam.dati.Messaggio(ruolo = it.resonance.adam.dati.Ruolo.SHELL, testo = voce,
-                    istante = System.currentTimeMillis(), modello = imp.modello))
+                    istante = System.currentTimeMillis(), modello = it.resonance.adam.cervello.ModelloPerCompito.scegli(it.resonance.adam.cervello.Compito.BATTITO, it.resonance.adam.cervello.ModelloPerCompito.decodifica(imp.modelliPerCompito), imp.modello, imp.modelloLeggero, imp.modelloVista)))
             }
             val titolo = when (b) { Battito.MATTINO -> "Oggi"; Battito.SERA -> "Stasera"; Battito.SETTIMANA -> "La settimana" }
             // I gesti dalla notifica (logica/Gesti.kt): rispondere allo Shell e, la sera, spuntare i rituali di oggi.

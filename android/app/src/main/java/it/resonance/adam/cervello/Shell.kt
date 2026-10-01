@@ -172,9 +172,9 @@ class Shell(
         }
         var costoTurno = 0.0
         val motore = if (impostazioni.sceltaAutomatica) scegliMotore(testoGhost, allegati) { costoTurno += it } else null
-        val base = if (motore == Motore.LEGGERO) impostazioni.modelloLeggero else impostazioni.modello
+        val base = if (motore == Motore.LEGGERO) impostazioni.modelloLeggero else modelloPer(Compito.TURNO)
         // Un modello che non vede, per un turno con immagini, cede il posto a uno che vede.
-        val modello = if (Allegati.conImmagini(allegati) && !vede(base)) impostazioni.modelloVista else base
+        val modello = if (Allegati.conImmagini(allegati) && !vede(base)) modelloPer(Compito.ALLEGATI) else base
         val compito = if (allegati.isEmpty()) Compito.TURNO else Compito.ALLEGATI
         val esito = ciclo(lavoro, oggi, regole, modello, motore?.etichetta, costoTurno, compito = compito, forza = forza)
         // In riunione lo scambio va nel verbale da solo: il Ghost non spiega due volte. Gli allegati non escono.
@@ -213,7 +213,7 @@ class Shell(
         val verbale = impostazioni.riunioneVerbale.ifBlank {
             scriviVerbale(tema).also { v ->
                 impostazioni.riunioneVerbale = v
-                archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.SHELL, testo = "Verbale della riunione «$tema»\n\n$v", istante = ora, modello = impostazioni.modello))
+                archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.SHELL, testo = "Verbale della riunione «$tema»\n\n$v", istante = ora, modello = modelloPer(Compito.TURNO)))
             }
         }
         tavolo.chiudi(verbale)
@@ -240,7 +240,7 @@ class Shell(
         }
         for (giro in 0..1) {
             val r = try {
-                chiama(impostazioni.modello, JsonArray(lavoro), null, MAX_TOKEN, temperaturaDi(Compito.TURNO)).first
+                chiama(modelloPer(Compito.TURNO), JsonArray(lavoro), null, MAX_TOKEN, temperaturaDi(Compito.TURNO)).first
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -282,7 +282,7 @@ class Shell(
             lavoro += buildJsonObject { put("role", "assistant"); put("content", s.risposta) }
         }
         lavoro += buildJsonObject { put("role", "user"); put("content", Consulente.richiesta(domande)) }
-        val modello = impostazioni.modello
+        val modello = modelloPer(Compito.CONSULENTE)
         var t = temperaturaDi(Compito.CONSULENTE).takeIf { modello !in impostazioni.senzaTemperatura }
         var costo = 0.0
         // Come in chiama(): un modello che rifiuta la temperatura perde il parametro, non la risposta.
@@ -329,6 +329,11 @@ class Shell(
         return Esito(scheda, emptyList())
     }
 
+    // ── Il modello per compito (02/10/2026, cervello/ModelloPerCompito.kt) ──
+
+    fun modelloPer(c: Compito): String = ModelloPerCompito.scegli(c, ModelloPerCompito.decodifica(impostazioni.modelliPerCompito),
+        impostazioni.modello, impostazioni.modelloLeggero, impostazioni.modelloVista)
+
     // ── Il listino dei modelli (02/10/2026, logica/Listino.kt) ──
 
     private val listino by lazy { it.resonance.adam.logica.Listino.decodifica(impostazioni.listino) }
@@ -338,7 +343,8 @@ class Shell(
 
     /** I modelli che l'app usa davvero, per ruolo: sono quelli da sorvegliare. */
     fun modelliUsati(): Map<String, String> = mapOf("principale" to impostazioni.modello, "immagini" to impostazioni.modelloVista) +
-        (if (impostazioni.sceltaAutomatica) mapOf("leggero" to impostazioni.modelloLeggero) else emptyMap())
+        (if (impostazioni.sceltaAutomatica) mapOf("leggero" to impostazioni.modelloLeggero) else emptyMap()) +
+        ModelloPerCompito.REGOLABILI.associate { it.etichetta to modelloPer(it) }
 
     /**
      * Rilegge il listino se ha più di un giorno (o se `forza`), e restituisce gli avvisi nuovi: quelli non ancora
@@ -374,7 +380,7 @@ class Shell(
         val protetti = Uscita.nomi(archivio.db.profilo().leggi()?.nomiProtetti.orEmpty())
         // Ciò che esce verso il motore passa dal guardiano, come per il consulente: nomi protetti e indirizzi no.
         val chiesto = Consulente.pulisci(domanda, protetti)
-        val modello = impostazioni.modello
+        val modello = modelloPer(Compito.RICERCA)
         val messaggi = JsonArray(listOf(
             buildJsonObject { put("role", "system"); put("content", Ricerca.SISTEMA + " Oggi è ${LocalDate.now()}.") },
             buildJsonObject { put("role", "user"); put("content", Ricerca.richiesta(chiesto)) },
@@ -412,7 +418,7 @@ class Shell(
             val l = Lettura(osservazioneId = o.id, giorno = oggi.toString(), testo = t.testo, fonti = Ricerca.codificaFonti(t.fonti),
                 problemi = t.problemi.joinToString("\n"), istante = ora)
             val id = archivio.db.segui().leggi(l)
-            if (inChat) archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, istante = ora, modello = impostazioni.modello,
+            if (inChat) archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, istante = ora, modello = modelloPer(Compito.RICERCA),
                 testo = "Segui · ${o.cosa} · ${Ricerca.giorno(o, oggi)}\n\n" + t.scheda, costo = t.costo.takeIf { it > 0 }))
             o to l.copy(id = id)
         }
@@ -432,7 +438,7 @@ class Shell(
                     buildJsonObject { put("role", "system"); put("content", Ricerca.SISTEMA_RESOCONTO) },
                     buildJsonObject { put("role", "user"); put("content", Ricerca.richiestaResoconto(o, letture)) },
                 ))
-                val (r, _) = chiama(impostazioni.modello, messaggi, null, MAX_TOKEN_BATTITO, temperaturaDi(Compito.RICERCA))
+                val (r, _) = chiama(modelloPer(Compito.RICERCA), messaggi, null, MAX_TOKEN_BATTITO, temperaturaDi(Compito.RICERCA))
                 registraCosto(r)
                 Testi.senzaFinteNote(r.testo).ifBlank { null }
             }.getOrNull() ?: "Resoconto non riuscito: le ${letture.size} letture restano nello Specchio."
@@ -449,7 +455,7 @@ class Shell(
         val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", Contesto.sistema(istantanea)) })
         lavoro += storia(archivio.db.messaggi().ultimi(24))
         lavoro += buildJsonObject { put("role", "user"); put("content", Balthasar.richiesta(domanda, intensita, daArchitetto)) }
-        val modello = impostazioni.modello
+        val modello = modelloPer(Compito.BALTHASAR)
         val (r, usata) = try {
             chiama(modello, JsonArray(lavoro), null, MAX_TOKEN, intensita.temperatura)
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -489,7 +495,7 @@ class Shell(
                 "contenuto completo. Poi scrivi al Ghost in tre righe cosa hai preparato e cosa deve confermare. Se non ci riesci, dillo e perché: " +
                 "una consegna mancata è una traccia legittima.")
         }
-        return ciclo(lavoro, oggi, regole(istantanea, ""), impostazioni.modello, null, 0.0, origine = "consegna")
+        return ciclo(lavoro, oggi, regole(istantanea, ""), modelloPer(Compito.TURNO), null, 0.0, origine = "consegna")
     }
 
     // La perturbazione: il programma ha visto un ristagno nei numeri e chiede allo Shell UN esperimento. Non è un
@@ -508,7 +514,7 @@ class Shell(
                 "Proponi UN esperimento con proponi_esperimento: una cosa concreta e diversa da ciò che è già stato provato (guarda gli esperimenti chiusi), " +
                 "audace ma sostenibile, legata a uno di questi numeri. Poi spiega al Ghost in tre righe perché proprio questa. Niente rimproveri, niente elenchi di consigli.")
         }
-        return ciclo(lavoro, oggi, regole(istantanea, ""), impostazioni.modello, null, 0.0, origine = "perturbazione", compito = Compito.ESPERIMENTO)
+        return ciclo(lavoro, oggi, regole(istantanea, ""), modelloPer(Compito.ESPERIMENTO), null, 0.0, origine = "perturbazione", compito = Compito.ESPERIMENTO)
     }
 
     private suspend fun ciclo(lavoro: MutableList<JsonObject>, oggi: LocalDate, regole: Regole, modello: String, motore: String?,
@@ -930,7 +936,7 @@ class Shell(
             put("content", "[Nota del programma, non del Ghost] Il dado della domenica ti porta $cosa. Non l'hai scelto tu. " +
                 "Scrivi al Ghost poche righe: cosa ti fa pensare, e una domanda o una proposta (anche con gli strumenti). Non spiegare il dado.")
         }
-        return ciclo(lavoro, oggi, regole(istantanea, ""), impostazioni.modello, null, 0.0, origine = "dado", compito = Compito.DADO)
+        return ciclo(lavoro, oggi, regole(istantanea, ""), modelloPer(Compito.DADO), null, 0.0, origine = "dado", compito = Compito.DADO)
     }
 
     // Il Ghost scrive «sì» e il modello rifà la stessa proposta: una sola in attesa basta.
@@ -1016,7 +1022,7 @@ class Shell(
             buildJsonObject { put("role", "user"); put("content", Tour.RICHIESTA_NOMI) },
         ))
         return runCatching {
-            val (r, _) = chiama(impostazioni.modello, messaggi, null, MAX_TOKEN_BATTITO, temperaturaDi(Compito.BATTITO))
+            val (r, _) = chiama(modelloPer(Compito.BATTITO), messaggi, null, MAX_TOKEN_BATTITO, temperaturaDi(Compito.BATTITO))
             registraCosto(r)
             Tour.nomiDa(r.testo)
         }.getOrDefault(emptyList())
@@ -1034,7 +1040,7 @@ class Shell(
             buildJsonObject { put("role", "user"); put("content", richiesta) },
         ))
         return runCatching {
-            val (r, _) = chiama(impostazioni.modello, messaggi, null, MAX_TOKEN_BATTITO, temperaturaDi(Compito.BATTITO))
+            val (r, _) = chiama(modelloPer(Compito.BATTITO), messaggi, null, MAX_TOKEN_BATTITO, temperaturaDi(Compito.BATTITO))
             registraCosto(r)
             r.testo.takeIf { it.isNotBlank() }
         }.getOrNull()

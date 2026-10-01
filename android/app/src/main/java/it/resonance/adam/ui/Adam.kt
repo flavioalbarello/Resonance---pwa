@@ -502,6 +502,19 @@ class Adam(app: Application) : AndroidViewModel(app) {
     fun salvaDocumento(d: Documento, testo: String) = viewModelScope.launch { archivio.salvaTestoDocumento(d, testo); avviso = "Documento salvato" }
     fun togliNodo(n: Nodo) = viewModelScope.launch { avviso = archivio.togliNodo(n) }
     fun pilastroNodo(n: Nodo, p: Pilastro?) = viewModelScope.launch { avviso = archivio.pilastroNodo(n, p) }
+    // Il modello per compito (cervello/ModelloPerCompito.kt): quello in uso, e la scelta del Ghost compito per compito.
+    var modelliVersione by mutableStateOf(0)
+        private set
+    fun modelloPer(c: it.resonance.adam.cervello.Compito) = shell.modelloPer(c)
+    fun sceltoPer(c: it.resonance.adam.cervello.Compito) = it.resonance.adam.cervello.ModelloPerCompito.decodifica(impostazioni.modelliPerCompito)[c.name]
+    fun scegliModello(c: it.resonance.adam.cervello.Compito, id: String?) {
+        val m = it.resonance.adam.cervello.ModelloPerCompito.decodifica(impostazioni.modelliPerCompito).toMutableMap()
+        if (id.isNullOrBlank()) m.remove(c.name) else m[c.name] = id
+        impostazioni.modelliPerCompito = it.resonance.adam.cervello.ModelloPerCompito.codifica(m)
+        modelliVersione++
+        avviso = "${c.etichetta.replaceFirstChar { ch -> ch.uppercase() }}: ${it.resonance.adam.cervello.Instradatore.etichetta(shell.modelloPer(c))}"
+    }
+
     fun senzaTemperatura() = impostazioni.senzaTemperatura
     fun temperatureConfermate() = impostazioni.temperature
     fun ripristinaTemperatura(c: it.resonance.adam.cervello.Compito) = viewModelScope.launch {

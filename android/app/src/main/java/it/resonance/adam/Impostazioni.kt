@@ -27,6 +27,10 @@ open class Impostazioni(context: Context) {
     var modelloLeggero: String
         get() = vivo(p.getString("modelloLeggero", MODELLO_LEGGERO)!!)
         set(v) = p.edit().putString("modelloLeggero", v.trim()).apply()
+    // Il modello per compito scelto dal Ghost (cervello/ModelloPerCompito.kt): «COMPITO=modello», uno per riga.
+    var modelliPerCompito: String
+        get() = p.getString("modelliPerCompito", "")!!
+        set(v) = p.edit().putString("modelliPerCompito", v).apply()
     // Ultima perturbazione proposta dal programma: non più di una ogni due settimane.
     var ultimaPerturbazione: String
         get() = p.getString("ultimaPerturbazione", "")!!

@@ -1,6 +1,18 @@
 package it.resonance.adam.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import it.resonance.adam.Impostazioni
+import it.resonance.adam.cervello.ModelloPerCompito
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -30,6 +42,35 @@ fun RegolazioneUi(vm: Adam) {
                 if (v != null) " (confermata da te; in tabella ${String.format(Locale.ITALIAN, "%.1f", c.temperatura)})" else "")
             Tenue(c.perche)
             if (v != null) TextButton({ vm.ripristinaTemperatura(c) }) { Text("Riporta alla tabella") }
+        }
+    }
+
+    // Il modello per compito (cervello/ModelloPerCompito.kt): lo sceglie il programma, lo cambi tu; i numeri sono sotto.
+    Scheda(Colori.air) {
+        Etichetta("Modello per compito", Colori.air)
+        Tenue("Lo sceglie il programma in base al compito: il leggero per le notifiche, quello per immagini per le foto, il principale per il resto. " +
+            "Si giudica coi numeri di «Com'è andata», qui sotto. Puoi cambiarlo compito per compito.")
+        val versione = vm.modelliVersione
+        ModelloPerCompito.REGOLABILI.forEach { c ->
+            val scelto = remember(versione, c) { vm.sceltoPer(c) }
+            var aperto by remember { mutableStateOf(false) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Riga("${c.etichetta.replaceFirstChar { it.uppercase() }}: ${Instradatore.etichetta(remember(versione, c) { vm.modelloPer(c) })}")
+                    Tenue(if (scelto != null) "scelto da te" else "predefinito: ${ModelloPerCompito.fascia(c).etichetta}")
+                }
+                Box {
+                    TextButton({ aperto = true }, modifier = Modifier.testTag("modello-${c.name}")) { Text("Cambia") }
+                    DropdownMenu(aperto, { aperto = false }) {
+                        DropdownMenuItem({ Text("Predefinito (${ModelloPerCompito.fascia(c).etichetta})") }, { vm.scegliModello(c, null); aperto = false })
+                        val scelte = if (c == Compito.ALLEGATI) Impostazioni.MODELLI_VISTA + Impostazioni.MODELLI.filter { it.first in Impostazioni.VEDONO }
+                            else Impostazioni.MODELLI + Impostazioni.MODELLI_LEGGERI
+                        scelte.distinctBy { it.first }.forEach { (id, nome) ->
+                            DropdownMenuItem({ Text(nome) }, { vm.scegliModello(c, id); aperto = false })
+                        }
+                    }
+                }
+            }
         }
     }
 
