@@ -81,7 +81,7 @@ fun ShellUi(vm: Adam, sistema: Sistema) {
         ) {
             if (messaggi.isEmpty()) item {
                 Scheda {
-                    Etichetta("Shell")
+                    Etichetta(it.resonance.adam.logica.Nomi.shell(vm.profilo.collectAsState().value))
                     Riga("Parlagli come parleresti a te stesso. Quando dici un numero o chiedi di salvare qualcosa, ti propone l'azione e la esegue solo quando confermi.")
                     Tenue("Il microfono è nell'ancora a destra: 🎤 detta nella casella, Auto è a mani libere e conferma a voce con «sì».")
                     Tenue("＋ allega foto, immagini, PDF e documenti: lo Shell li guarda e ne legge il testo. Anche da altre app: Condividi → Resonance.")

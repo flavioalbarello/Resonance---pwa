@@ -12,8 +12,9 @@ import it.resonance.adam.BuildConfig
 object Edizione {
     val sviluppatore: Boolean = BuildConfig.SVILUPPATORE
 
-    // Gli strumenti dello Shell che esistono solo con l'architetto.
-    val SOLO_SVILUPPATORE = setOf("scrivi_all_architetto", "chiedi_consulente", "punto_fermo")
+    // Gli strumenti dello Shell che esistono solo nell'app di sviluppo: quelli dell'architetto, e il fondo, che è un
+    // esperimento del Ghost («per adesso è un mio esperimento e tale resta; in futuro potrebbe essere la base di AIR»).
+    val SOLO_SVILUPPATORE = setOf("scrivi_all_architetto", "chiedi_consulente", "punto_fermo", "movimento_fondo")
 
     fun offerto(nome: String, sviluppatore: Boolean = this.sviluppatore) = sviluppatore || nome !in SOLO_SVILUPPATORE
 }

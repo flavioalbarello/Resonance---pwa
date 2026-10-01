@@ -491,6 +491,7 @@ class ShellTest {
     }
 
     @Test fun ilFondoNonSpendePiuDelSaldo() = runBlocking {
+        assumeTrue("solo nell'app di sviluppo", it.resonance.adam.logica.Edizione.sviluppatore)
         db.fondo().inserisci(it.resonance.adam.dati.Movimento(giorno = LocalDate.now().toString(), tipo = it.resonance.adam.dati.TipoMovimento.VERSAMENTO, importo = 100.0, motivo = "primo", creato = 1))
         val modello = FintoModello(
             chiama("movimento_fondo", """{"tipo":"uscita","importo":120,"motivo":"hosting"}"""),

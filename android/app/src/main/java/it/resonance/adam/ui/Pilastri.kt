@@ -4,6 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.width
 import it.resonance.adam.logica.Edizione
+import it.resonance.adam.logica.Nomi
+import it.resonance.adam.logica.Significati
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.material3.FilterChip
 import it.resonance.adam.logica.Nodi
 import it.resonance.adam.dati.Nodo
 import it.resonance.adam.dati.Documento
@@ -60,13 +64,18 @@ fun PilastroUi(vm: Adam, p: Pilastro) {
     vm.percorsoAperto?.let { return PercorsoUi(vm, it, colore) }
     var scheda by rememberSaveable(p) { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
+        val profilo by vm.profilo.collectAsState()
         Text(p.etichetta.uppercase(), color = colore, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
             modifier = Modifier.padding(start = 16.dp, top = 12.dp))
-        // Adam non ha numeri suoi: ha i percorsi che attraversano i pilastri e il modo in cui lo Shell si regola.
-        val schede = if (p == Pilastro.ADAM) listOf("Percorsi", "Lavagna", "Diario", "Quaderno", "Taccuino", "Consegne", "Fondo", "Lettere", "Regolazione")
-                // Nell'app base non c'è l'architetto: niente lettere e niente riunione (logica/Edizione.kt).
-                .filter { t -> t != "Lettere" || Edizione.sviluppatore }
-            else listOf("Numeri", "Diario", "Percorsi", "Quaderno")
+        // Il nome non si traduce: una riga ne apre il significato (logica/Significati.kt).
+        Text(Significati.riga(p, Nomi.shellNellaFrase(profilo)), color = Colori.tenue, fontSize = 13.sp, fontStyle = FontStyle.Italic,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 4.dp))
+        // Meno schede (01/10/2026): Diario, Quaderno e Taccuino erano tre nomi per «memoria» e confondevano. Ora
+        // Memoria (ciò che lo Shell sa di te, e sotto le sue ipotesi) e, in Adam, Storia (ciò che è successo). La
+        // Regolazione è in Setup. Fondo e Lettere solo nell'app di sviluppo (logica/Edizione.kt).
+        val schede = if (p == Pilastro.ADAM) listOf("Percorsi", "Lavagna", "Memoria", "Storia", "Fondo", "Lettere")
+                .filter { t -> (t != "Lettere" && t != "Fondo") || Edizione.sviluppatore }
+            else listOf("Numeri", "Percorsi", "Memoria")
         if (p == Pilastro.ADAM) androidx.compose.material3.PrimaryScrollableTabRow(scheda, containerColor = Colori.fondo, contentColor = colore, edgePadding = 8.dp) {
             schede.forEachIndexed { i, t -> Tab(scheda == i, { scheda = i }, text = { Text(t, maxLines = 1, softWrap = false, fontSize = 13.sp) }) }
         } else PrimaryTabRow(scheda, containerColor = Colori.fondo, contentColor = colore) {
@@ -75,15 +84,12 @@ fun PilastroUi(vm: Adam, p: Pilastro) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).imePadding()) {
             when (schede.getOrNull(scheda)) {
                 "Numeri" -> Numeri(vm, p)
-                "Diario" -> Diario(vm, p)
                 "Percorsi" -> Percorsi(vm, p)
-                "Regolazione" -> RegolazioneUi(vm)
-                "Taccuino" -> TaccuinoUi(vm)
-                "Consegne" -> ConsegneUi(vm)
+                "Storia" -> Storia(vm)
                 "Lavagna" -> LavagnaUi(vm)
                 "Fondo" -> FondoUi(vm)
                 "Lettere" -> LettereUi(vm)
-                else -> QuadernoUi(vm, p)
+                else -> Memoria(vm, p)
             }
             Spazio(120)
         }
@@ -359,6 +365,32 @@ private fun DocumentoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics
         }
         Spazio(120)
     }
+}
+
+// Ciò che lo Shell sa (il quaderno, confermato, letto a ogni turno) e, in Adam, ciò che suppone (il taccuino): due
+// sezioni diverse a vista, perché un'ipotesi non deve mai sembrare un fatto.
+@Composable
+private fun Memoria(vm: Adam, p: Pilastro) {
+    QuadernoUi(vm, p)
+    if (p == Pilastro.ADAM) {
+        Spazio(16)
+        Etichetta("Ipotesi dello Shell")
+        TaccuinoUi(vm)
+    }
+}
+
+// Ciò che è successo, per pilastro: il diario, e sopra le consegne dello Shell (argomento della prossima riunione).
+@Composable
+private fun Storia(vm: Adam) {
+    var p by rememberSaveable { mutableStateOf(Pilastro.ADAM) }
+    Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Pilastro.entries.forEach { q ->
+            FilterChip(p == q, { p = q }, label = { Text(q.etichetta) }, modifier = Modifier.testTag("storia-${q.name}"))
+        }
+    }
+    if (p == Pilastro.ADAM) { Etichetta("Consegne dello Shell"); ConsegneUi(vm); Spazio(12) }
+    Etichetta("Diario")
+    Diario(vm, p)
 }
 
 @Composable

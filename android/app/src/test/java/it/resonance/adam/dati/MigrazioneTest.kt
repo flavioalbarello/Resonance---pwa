@@ -40,6 +40,22 @@ class MigrazioneTest {
         db.close()
     }
 
+    @Test fun dalleTrediciAlleQuattordiciIlProfiloRestaEDLoShellSiChiamaShell() {
+        aiuto.createDatabase("quattordici.db", 13).apply {
+            execSQL("INSERT INTO profilo (id, nome, stile, motivazione, vincoli, nomiProtetti) VALUES (1, 'Flavio', 'Denso', '', '', 'X')")
+            close()
+        }
+        aiuto.runMigrationsAndValidate("quattordici.db", 14, true).close()
+        val db = Room.databaseBuilder(RuntimeEnvironment.getApplication(), Db::class.java, "quattordici.db").allowMainThreadQueries().build()
+        runBlocking {
+            val p = db.profilo().leggi()!!
+            assertEquals("Flavio", p.nome)
+            assertEquals("", p.nomeShell)
+            assertEquals("Shell", it.resonance.adam.logica.Nomi.shell(p))
+        }
+        db.close()
+    }
+
     @Test fun dalleDodiciAlleTrediciNasceIlTerrenoEIlDiarioResta() {
         aiuto.createDatabase("tredici.db", 12).apply {
             execSQL("INSERT INTO voci (pilastro, giorno, testo, fonte, creato, aggiornato) VALUES ('ADAM', '2026-10-01', 'In pausa («Sono via») dal 2026-09-27.', 'assenza', 0, 0)")

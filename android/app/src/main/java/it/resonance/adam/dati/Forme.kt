@@ -251,6 +251,8 @@ data class Profilo(
     val vincoli: String = "",
     // Nomi che identificano il Ghost e non escono dal telefono senza un suo gesto (es. il marchio professionale).
     @ColumnInfo(defaultValue = "") val nomiProtetti: String = "",
+    // Il nome che il Ghost ha dato al suo Shell (logica/Nomi.kt); vuoto = «Shell». Nel profilo, così entra nella copia.
+    @ColumnInfo(defaultValue = "") val nomeShell: String = "",
 )
 
 // ── Pacchetto Adam (25/09/2026) ──

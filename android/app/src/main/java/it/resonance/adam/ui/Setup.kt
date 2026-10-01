@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import it.resonance.adam.BuildConfig
 import it.resonance.adam.Impostazioni
+import it.resonance.adam.logica.Nomi
 import it.resonance.adam.dati.Pilastro
 import it.resonance.adam.dati.Profilo
 
@@ -234,6 +235,10 @@ fun Setup(vm: Adam, sistema: Sistema) {
             }
             Tenue("Aprire una copia salvata da questa app la ripristina e SOSTITUISCE i dati attuali. Aprire un backup della PWA invece aggiunge.")
         }
+        // Spostata qui da Adam (01/10/2026): è diagnostica dello Shell, non una cosa da vivere ogni giorno.
+        Spazio(12)
+        Text("Come si regola lo Shell", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        RegolazioneUi(vm)
         Tenue("Resonance ${BuildConfig.VERSION_NAME}")
         Spazio(120)
     }
@@ -246,15 +251,20 @@ private fun ProfiloUi(vm: Adam, p: Profilo) {
     var motivazione by remember(p) { mutableStateOf(p.motivazione) }
     var vincoli by remember(p) { mutableStateOf(p.vincoli) }
     var protetti by remember(p) { mutableStateOf(p.nomiProtetti) }
+    var nomeShell by remember(p) { mutableStateOf(p.nomeShell) }
     Scheda(Colori.air) {
-        Etichetta("Il Ghost", Colori.air)
+        // Nell'app base non sei «il Ghost»: sei tu (logica/Nomi.kt).
+        Etichetta(Nomi.ghost(), Colori.air)
         OutlinedTextField(nome, { nome = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
+        // Ognuno dà al suo Shell il nome che preferisce: compare nella scheda in basso, nelle notifiche, e lo Shell lo usa.
+        OutlinedTextField(nomeShell, { if (it.length <= Nomi.NOME_MAX && '\n' !in it) nomeShell = it },
+            label = { Text("Il nome del tuo Shell (vuoto: Shell)") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("nome-shell"))
         OutlinedTextField(stile, { stile = it }, label = { Text("Come vuoi che ti parli") }, minLines = 2, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(motivazione, { motivazione = it }, label = { Text("Chi stai diventando") }, minLines = 2, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(vincoli, { vincoli = it }, label = { Text("Vincoli, uno per riga: [BIO] …") }, minLines = 3, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(protetti, { protetti = it }, label = { Text("Nomi che non escono, separati da virgola") }, modifier = Modifier.fillMaxWidth())
         Tenue("Un nome che ti identifica (un marchio, uno studio) non entra in una mail preparata dallo Shell, se non l'hai scritto tu in quel messaggio. La professione sì.")
-        Button({ vm.salvaProfilo(p.copy(nome = nome, stile = stile, motivazione = motivazione, vincoli = vincoli, nomiProtetti = protetti)) },
+        Button({ vm.salvaProfilo(p.copy(nome = nome, stile = stile, motivazione = motivazione, vincoli = vincoli, nomiProtetti = protetti, nomeShell = nomeShell.trim())) },
             colors = ButtonDefaults.buttonColors(containerColor = Colori.air)) { Text("Salva profilo") }
     }
 }

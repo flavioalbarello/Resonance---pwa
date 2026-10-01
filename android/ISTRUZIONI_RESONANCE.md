@@ -46,10 +46,12 @@ Apri Resonance e tocca **Setup** in alto a destra. Dall'alto in basso:
 | **Battito** | Lascia **Attivo**. Se leggi «Notifiche: NO», tocca **Permetti le notifiche**. Tocca **Lascia lavorare in secondo piano**, cerca Resonance nell'elenco e scegli «Non ottimizzare» o «Consenti attività in background»: senza, il battito arriva in ritardo o non arriva |
 | **Sensori** | Tocca **Collega** e permetti la lettura. Se dice che Health Connect non c'è, installalo dal Play Store e torna qui. L'app legge ciò che orologio, bilancia o telefono scrivono in Health Connect |
 | **Calendario e posta** | Facoltativo. **Collega il calendario** se vuoi che lo Shell veda i tuoi impegni e te ne proponga |
-| **Il Ghost** | «Il Ghost» sei tu: scrivi il tuo nome e come preferisci che lo Shell ti parli |
+| **Tu** | Il tuo nome, **il nome che vuoi dare al tuo Shell** (se lo lasci vuoto si chiama Shell) e come preferisci che ti parli |
 
 ## 4. Come si usa
 
+- **Bio, Air, Vidya, Adam**: i pilastri. Sotto ogni nome c'è una riga che ne dice il senso; se vuoi saperne di più,
+    chiedilo allo Shell.
 - **Specchio**: i tuoi numeri, calcolati dai dati, e i rituali (piccole abitudini che vuoi tenere).
 - **Shell**: scrivigli o parlagli (il microfono è nel tasto rotondo a destra). Quando ti propone qualcosa, compare
   una scheda con **Conferma** e **Annulla**.

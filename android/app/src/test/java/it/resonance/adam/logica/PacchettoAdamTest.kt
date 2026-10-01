@@ -78,7 +78,8 @@ class PacchettoAdamTest {
             note = listOf(Nota(4, "provare un planner per musicisti", creata = ora, ripresa = ora)), versione = "2.x")
         val s = Contesto.sistema(i)
         assertTrue(s, s.contains("TACCUINO DELLO SHELL (ipotesi tue, non fatti)") && s.contains("#4 (evapora tra 21 gg): provare un planner"))
-        assertTrue(s, s.contains("FONDO DI ADAM") && s.contains("nessun fondo ancora"))
+        // Il fondo è un esperimento del Ghost: nell'app base non c'è (logica/Edizione.kt).
+        assertTrue(s, (s.contains("FONDO DI ADAM") && s.contains("nessun fondo ancora")) == Edizione.sviluppatore)
         assertTrue(s, s.contains("L'APP OGGI (versione 2.x)") && s.contains("scrivi_all_architetto") == Edizione.sviluppatore)
     }
 }

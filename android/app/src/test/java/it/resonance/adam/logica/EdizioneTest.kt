@@ -9,7 +9,7 @@ import org.junit.Test
 class EdizioneTest {
     @Test fun nellaBaseNienteArchitettoNeRiunione() {
         val base = Capacita.testo("2.x", sviluppatore = false)
-        listOf("scrivi_all_architetto", "chiedi_consulente", "punto_fermo", "Riunione a tre", "architetto", "Balthasar", "consulente").forEach {
+        listOf("scrivi_all_architetto", "chiedi_consulente", "punto_fermo", "Riunione a tre", "architetto", "Balthasar", "consulente", "movimento_fondo", "fondo di Adam").forEach {
             assertFalse("«$it» non deve esserci nella base:\n$base", base.contains(it, ignoreCase = true))
         }
         // Il resto c'è tutto: stesso DNA, stessi strumenti di vita.
@@ -18,7 +18,7 @@ class EdizioneTest {
 
     @Test fun nelloSviluppoTuttoComePrima() {
         val dev = Capacita.testo("2.x", sviluppatore = true)
-        assertTrue(dev.contains("scrivi_all_architetto") && dev.contains("Riunione a tre") && dev.contains("le lettere all'architetto"))
+        assertTrue(dev.contains("scrivi_all_architetto") && dev.contains("Riunione a tre") && dev.contains("le lettere all'architetto") && dev.contains("il fondo di Adam") && dev.contains("movimento_fondo"))
         assertEquals(Capacita.strumenti(), Capacita.aree(sviluppatore = true).flatMap { it.strumenti }.toSet())
     }
 }

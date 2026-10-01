@@ -19,6 +19,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +31,7 @@ import it.resonance.adam.dati.Pilastro
 @Composable
 fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
     val avvisi = remember { SnackbarHostState() }
+    val profilo by vm.profilo.collectAsState()
     LaunchedEffect(vm.avviso) {
         vm.avviso?.let { avvisi.showSnackbar(it); vm.avviso = null }
     }
@@ -62,7 +65,9 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
                             selected = vm.schermata == s,
                             onClick = { vm.vai(s) },
                             icon = { Text(if (vm.schermata == s) "●" else "○", color = colore) },
-                            label = { Text(s.etichetta, fontSize = 11.sp, maxLines = 1, softWrap = false) },
+                            // La scheda dello Shell porta il suo nome, se il Ghost gliene ha dato uno (logica/Nomi.kt).
+                            label = { Text(if (s == Schermata.SHELL) it.resonance.adam.logica.Nomi.shell(profilo) else s.etichetta,
+                                fontSize = 11.sp, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                             colors = NavigationBarItemDefaults.colors(indicatorColor = colore.copy(alpha = 0.12f), selectedTextColor = colore),
                         )
                     }

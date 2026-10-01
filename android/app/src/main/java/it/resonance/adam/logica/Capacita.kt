@@ -17,7 +17,7 @@ object Capacita {
             listOf("registra_misura", "leggi_misure")),
         Area("AIR", "entrate, divise fra legate al tempo e non (l'esito del pilastro sono le seconde)", listOf("registra_misura", "leggi_misure")),
         Area("VIDYA", "minuti di pratica, opere finite", listOf("registra_misura", "leggi_misure")),
-        Area("ADAM", "percorsi che attraversano i pilastri (il pilastro sta sui nodi di primo livello); il TUO taccuino; il fondo di Adam; la tua voce sulla temperatura; LETTERE; le TUE consegne (una promessa con una forma che il programma verifica, e un turno di lavoro tuo il giorno prima)",
+        Area("ADAM", "percorsi che attraversano i pilastri (il pilastro sta sui nodi di primo livello); il TUO taccuino; FONDO; la tua voce sulla temperatura; LETTERE; le TUE consegne (una promessa con una forma che il programma verifica, e un turno di lavoro tuo il giorno prima)",
             listOf("pilastro_nodo", "scrivi_taccuino", "riprendi_nota", "movimento_fondo", "regola_temperatura", "scrivi_all_architetto", "prendi_consegna")),
         Area("Lavagna del Ghost", "appunti usa e getta con righe spuntabili (la lista della spesa); finiti o scaduti escono dal tuo prompt; si allegano in PDF alle mail (scrivi_mail con allegato)",
             listOf("scrivi_appunto", "modifica_appunto", "spunta_appunto")),
@@ -32,12 +32,13 @@ object Capacita {
         "voce: dettatura e modalità auto a più frasi (il messaggio parte dopo una pausa o con «invia»; in auto lo schermo resta acceso); «🔊 Ascolta» sotto ogni tua risposta",
         "allegati: foto, immagini, PDF, docx, testo",
         "temperatura forzata per UN messaggio (＋ → più preciso / più libero); di norma la decide il compito",
-        "Adam → Regolazione: temperature per compito, modelli che la rifiutano, esiti dei turni, spesa del mese",
+        "Setup → Come si regola lo Shell (in fondo): temperature per compito, modelli che la rifiutano, esiti dei turni, spesa del mese",
+        "Memoria, in ogni pilastro: il quaderno, che il Ghost rilegge e corregge; in Adam, sotto, le tue ipotesi del taccuino. Storia, in Adam: il diario per pilastro, con le tue consegne in cima",
         "battito mattino, sera e domenica, con registro e «Prova ora» in Setup",
         "nodi: tocco per avanzare lo stato, pressione lunga per spostare, dare il pilastro, togliere",
         "riunione a tre (Adam → Lettere → Apri riunione): ogni scambio col Ghost va nel verbale, l'architetto legge e interviene; un suo intervento che comincia con «→ Shell» ti fa rispondere da solo, al massimo 3 giri senza il Ghost; «Ritira ora» nella fascia; alla chiusura scrivi tu il verbale (senza strumenti)",
         "gli interventi dell'architetto (riunione e lettere) si ascoltano con «🔊 Ascolta», e in auto si leggono da soli",
-        "Adam → Consegne: le tue consegne aperte e chiuse; il Ghost può lasciarne una",
+        "Adam → Storia: le tue consegne aperte e chiuse; il Ghost può lasciarne una",
         "in riunione, sotto la fascia: «Convoca consulente» (poi la cartella delle domande, Manda, Congeda; tetto di ${Consulente.TETTO_INVII} invii che il Ghost alza; l'architetto gli scrive con «→ Consulente») e «Perturba» (Balthasar: domanda sul tavolo e intensità leggera, media o profonda, poi una tua risposta senza strumenti a temperatura alta)",
         "documenti: il Ghost li toglie con la pressione lunga (o Togli dentro il documento); i tolti stanno in fondo al percorso e si rimettono; da lì solo il Ghost può eliminarli per sempre (tu no)",
         "Adam → Lavagna: spunta col tocco, pressione lunga per correggere o togliere una voce, campo «Aggiungi una voce» in fondo a ogni appunto, Copia (righe da fare, per una nota condivisa come Keep), Condividi, Fissa nelle notifiche, Tieni (diventa documento), + Appunto a mano",
@@ -51,11 +52,12 @@ object Capacita {
     fun strumenti(): Set<String> = AREE.flatMap { it.strumenti }.toSet()
 
     // Le righe del Ghost che esistono solo con l'architetto (logica/Edizione.kt): si riconoscono dal contenuto.
-    private val DELLO_SVILUPPO = Regex("riunione|architetto|consulente|Balthasar", RegexOption.IGNORE_CASE)
+    private val DELLO_SVILUPPO = Regex("riunione|architetto|consulente|Balthasar|Adam → Fondo", RegexOption.IGNORE_CASE)
 
     /** Le aree che lo Shell ha davvero in questa edizione: nell'app base mancano architetto e riunione. */
     fun aree(sviluppatore: Boolean = Edizione.sviluppatore): List<Area> = AREE.map { a ->
-        a.copy(cosa = a.cosa.replace("LETTERE; ", if (sviluppatore) "le lettere all'architetto; " else ""),
+        a.copy(cosa = a.cosa.replace("LETTERE; ", if (sviluppatore) "le lettere all'architetto; " else "")
+                .replace("FONDO; ", if (sviluppatore) "il fondo di Adam; " else ""),
             strumenti = a.strumenti.filter { Edizione.offerto(it, sviluppatore) })
     }.filter { it.strumenti.isNotEmpty() }
 

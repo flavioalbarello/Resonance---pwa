@@ -220,7 +220,7 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             if (!prova) it.resonance.adam.logica.Consegne.daLavorare(archivio.db.consegne().aperte(), oggi).forEach { c ->
                 archivio.db.consegne().aggiorna(c.copy(lavorata = true))
                 val e = runCatching { Shell(archivio, imp, mondo = mondo).lavoraConsegna(c) }.getOrNull()
-                Battiti.notifica(applicationContext, 115, "Lo Shell ha lavorato a una consegna", "«${c.cosa}»: " +
+                Battiti.notifica(applicationContext, 115, "${it.resonance.adam.logica.Nomi.soggetto(archivio.db.profilo().leggi())} ha lavorato a una consegna", "«${c.cosa}»: " +
                     if (e?.proposte?.isNotEmpty() == true) "c'è una proposta da confermare" else "guarda cosa ha scritto", "", "SHELL")
             }
             // La lavagna: ciò che è finito da 30 giorni si cancella davvero; le notifiche fissate seguono le scadenze.

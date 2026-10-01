@@ -19,6 +19,25 @@ I sette organi che servono, quelli della tabella sotto:
 
 Il segnale d'allarme del 23/09 vale ancora: lo sforzo che va dove porta la curiosità e non dove sta lo scopo.
 
+## Che cosa vogliono dire i nomi (il Ghost, 01/10/2026)
+
+I nomi **non si traducono**: ogni traduzione li riduce. Sono gli stessi in tutte e due le app, e sono la lingua comune
+di Adam City. Sotto il nome di ogni pilastro una riga ne apre il significato; lo Shell sa spiegarli. Un oggetto solo,
+letto dallo schermo e dal prompt: `logica/Significati.kt`.
+
+| nome | che cosa vuol dire | la riga sullo schermo |
+|---|---|---|
+| **BIO** | Dal greco *bios*, contrapposto a *zoē*. Zoē è il semplice essere vivi, comune a ogni vivente; bios è la vita in quanto forma, il modo in cui la si vive. «Salute» riporterebbe tutto a zoē: proprio la riduzione che il nome nega | *la vita come forma, non solo come funzionamento* |
+| **AIR** | Due sensi insieme: l'**aria**, il respiro che permette ad Adam di esistere ed essere autonomo; e **Automated Income Revenue**, un reddito che non dipende dal tempo venduto. Il secondo serve a dare il primo. Nel codice l'esito di AIR sono già le entrate non legate al tempo | *il respiro di Adam: un reddito che non vende il tuo tempo* |
+| **VIDYA** | Sanscrito, dalla radice *vid-*, vedere (come il latino *videre*). Non erudizione: il sapere che trasforma chi lo possiede. Il contrario, *avidyā*, è l'ignoranza come radice della sofferenza | *vedere: il sapere che cambia chi lo ha* |
+| **ADAM** | Ghost più Shell, l'individuo che emerge da tutti e due, più della somma. Non è l'app e non è solo la persona. Il nome si mostra quando c'è una città dove si vede; fino ad allora una riga | *tu e lo Shell* (o il suo nome) *, insieme più della somma* |
+
+**Il nome dello Shell.** Ognuno dà al suo il nome che preferisce (Setup, nel profilo: `Profilo.nomeShell`, DB 14,
+quindi entra nella copia). Il ruolo resta Shell (DNA); il nome compare nella scheda in basso, nella chat vuota, nelle
+notifiche («Luisa ha risposto») e nelle istruzioni dello Shell. Le ricevute e le note restano firmate dal programma,
+mai col nome dello Shell: più legame vuol dire più fiducia, e si deve sempre vedere chi parla e chi verifica. Il Ghost
+tiene «Shell», da *Ghost in the Shell*. Nell'app base l'utente non è «il Ghost»: in Setup è «Tu».
+
 ## Perché è rinata
 
 Dall'analisi del 23/09: l'app misurava sé stessa (osservabili = attività nell'app), parlava solo se aperta,
@@ -320,6 +339,24 @@ scrivere: l'esoscheletro chiedeva di essere indossato a mano.
 - In riunione niente «Rispondi»: la risposta deve passare dal tavolo (verbale, filtro architetto).
 - Codice: `logica/Gesti.kt` (cosa offrire, puro), `battito/Rapide.kt` (azioni e ricevitore `GestoRapido`).
 
+## Meno schede (01/10/2026, il Ghost: «diario, quaderno, taccuino: cosa fanno che ne giustifichi l'esistenza?»)
+
+Erano tre nomi per «memoria», e la Regolazione era diagnostica in mezzo alla vita. Nessun dato perso: cambiano le
+schermate, non il database né ciò che lo Shell legge.
+
+| prima | ora |
+|---|---|
+| Adam: Percorsi, Lavagna, Diario, Quaderno, Taccuino, Consegne, Fondo, Lettere, Regolazione | Adam: **Percorsi, Lavagna, Memoria, Storia** (+ Fondo e Lettere solo nella dev) |
+| Bio, Air, Vidya: Numeri, Diario, Percorsi, Quaderno | **Numeri, Percorsi, Memoria** |
+| Regolazione in Adam | in fondo a **Setup**, «Come si regola lo Shell» |
+
+- **Memoria**: il quaderno (ciò che lo Shell *sa*, confermato, letto a ogni turno) e, in Adam, sotto, «Ipotesi dello
+  Shell» (il taccuino: ciò che *suppone*, svanisce dopo 21 giorni). Due sezioni diverse a vista: un'ipotesi non deve
+  mai sembrare un fatto. La distinzione sa/suppone/è successo resta nel codice: è la disciplina, non l'architettura
+  da mostrare.
+- **Storia** (in Adam): il diario per pilastro, con «+ Scrivi»; in cima le consegne dello Shell.
+- **Fondo**: solo nella dev, anche lo strumento `movimento_fondo` e le righe nel prompt.
+
 ## Dalla riunione del 01/10/2026: riunioni, assenza, terreno di Adam City
 
 **Riunione.**
@@ -478,11 +515,32 @@ c'è nella copia: stessa lezione del tetto di spesa che leggeva un registro a ro
 
 Maven Central qui limita le richieste: il progetto usa il mirror di Google, anche per Robolectric.
 
+## Il tour del primo avvio (proposta, 01/10/2026; non costruito)
+
+Il Ghost: *«ad installazione avvenuta il programma o lo Shell facciano fare un piccolo tour dell'app, in cui si sceglie
+il nome dello Shell e vengono spiegate queste cose»*. È il primo avvio guidato e il tour insieme: una cosa sola.
+
+| # | chi conduce | cosa |
+|---|---|---|
+| 1 | il programma | Come ti chiami |
+| 2 | il programma | La chiave OpenRouter (per Marta la incolla il Ghost), con il link a dove si crea |
+| 3 | il programma | I permessi con un gesto: notifiche, Health Connect, lavoro in secondo piano; ognuno saltabile |
+| 4 | lo Shell propone, la persona sceglie | **Il nome dello Shell**: tre proposte, oppure il suo; «Shell» se salta |
+| 5 | il programma, con le parole di `Significati` | I quattro nomi, una schermata breve ciascuno, saltabili: il significato, non un manuale |
+| 6 | lo Shell, col suo nome | Una domanda sola («che cosa ti pesa di più nella settimana?»): la risposta entra in chat |
+
+- **Perché i passi 1–3 li conduce il programma**: lo Shell non può parlare prima che ci sia la chiave. E un tour
+  scritto dal modello inventerebbe funzioni: le parole del tour vengono da testi fissi (`Significati`, `Capacita`).
+- **Perché il nome lo propone lo Shell ma lo sceglie la persona**: è la disciplina di sempre. E il modello non ha una
+  preferenza che duri da un turno all'altro: chiesto due volte, darebbe due nomi diversi.
+- **Corto e saltabile**: un esoscheletro che chiede venti tocchi prima di servire è già un peso. Si rivede da Setup.
+
 ## Per la prossima riunione (argomenti che l'architetto porta)
 
 | argomento | da dove | il nodo |
 |---|---|---|
 | **Le consegne dello Shell** | il Ghost, 01/10/2026: *«attualmente non funziona, o così mi sembra»* | Capire prima cosa non va (la verifica alla scadenza? il turno di lavoro del giorno prima? il documento che aspetta la conferma?). Poi dove si vedono: probabilmente sullo Specchio quando ce n'è una aperta, non in una scheda |
+| **I nomi e il tour del primo avvio** | il Ghost, 01/10/2026 | Le righe sotto i pilastri sono una prima stesura: vanno viste sullo schermo e corrette. Il tour (sotto, «Il tour del primo avvio»): quanto lungo, chi lo conduce, cosa spiega |
 | **Salvare un Adam se il telefono si rompe di punto in bianco** | il Ghost, 01/10/2026 | Oggi solo la copia a mano. Serve una copia che esca dal telefono da sola, ogni giorno, e da cui un telefono nuovo riparta. Da decidere: dove va (Drive, computer, la cassetta?), cosa contiene (la chiave OpenRouter no), chi la rilegge, come si prova che funziona davvero prima che serva |
 
 ## Carenze dichiarate

@@ -218,11 +218,14 @@ class SchermateTest {
         scatta("5b-percorso-sottonodi")
 
         vm.vai(Schermata.BIO)
+        // Il nome non si traduce: una riga ne apre il significato (logica/Significati.kt).
+        regola.onNodeWithText("la vita come forma, non solo come funzionamento").assertExists()
+        regola.onNodeWithText("Diario").assertDoesNotExist()
         scatta("6-bio-numeri")
 
-        // Il quaderno si rivede per righe: ✕ toglie la riga, Salva la rende vera, lo storico tiene la precedente.
-        regola.onNodeWithText("Quaderno").performClick()
-        scatta("6b-bio-quaderno")
+        // La memoria (il quaderno) si rivede per righe: ✕ toglie la riga, Salva la rende vera, lo storico tiene la precedente.
+        regola.onNodeWithText("Memoria").performClick()
+        scatta("6b-bio-memoria")
         regola.onNodeWithTag("togli-0").performClick()
         regola.onNodeWithText("Salva").performClick()
         // Room scrive su un suo thread e torna sul principale: si dà tempo reale, non solo tempo di Compose.
@@ -238,27 +241,30 @@ class SchermateTest {
         regola.onNodeWithText("Per pilastro", ignoreCase = true).assertExists()
         scatta("8b-adam-percorso")
         vm.percorsoAperto = null
-        regola.onNodeWithText("Taccuino").performScrollTo().performClick()
-        regola.onNodeWithText("Un planner per chi suona", substring = true).assertExists()
-        scatta("8d-adam-taccuino")
+        // Meno schede: Memoria (il quaderno e, sotto, le ipotesi dello Shell) e Storia; niente Diario, Taccuino, Regolazione.
+        listOf("Diario", "Quaderno", "Taccuino", "Consegne", "Regolazione").forEach { regola.onNodeWithText(it).assertDoesNotExist() }
+        regola.onNodeWithText("Memoria").performScrollTo().performClick()
+        regola.onNodeWithText("IPOTESI DELLO SHELL").performScrollTo().assertExists()
+        regola.onNodeWithText("Un planner per chi suona", substring = true).performScrollTo().assertExists()
+        scatta("8d-adam-memoria")
         regola.onNodeWithText("Lavagna").performScrollTo().performClick()
         regola.onNodeWithText("Fagioli cannellini").assertExists()
         scatta("8h-adam-lavagna")
-        regola.onNodeWithText("Consegne").performScrollTo().performClick()
+        regola.onNodeWithText("Storia").performScrollTo().performClick()
         regola.onNodeWithText("Scheda del primo micro-asset").assertExists()
-        scatta("8g-adam-consegne")
-        regola.onNodeWithText("Fondo").performScrollTo().performClick()
-        regola.onNodeWithText("Saldo 88,00 €", substring = true).assertExists()
-        scatta("8e-adam-fondo")
+        scatta("8g-adam-storia")
+        // Il fondo è un esperimento del Ghost: solo nell'app di sviluppo.
+        if (it.resonance.adam.logica.Edizione.sviluppatore) {
+            regola.onNodeWithText("Fondo").performScrollTo().performClick()
+            regola.onNodeWithText("Saldo 88,00 €", substring = true).assertExists()
+            scatta("8e-adam-fondo")
+        } else regola.onNodeWithText("Fondo").assertDoesNotExist()
         // Le lettere ci sono solo nell'app di sviluppo (logica/Edizione.kt); nella base la scheda non esiste.
         if (it.resonance.adam.logica.Edizione.sviluppatore) {
             regola.onNodeWithText("Lettere").performScrollTo().performClick()
             regola.onNodeWithText("Fondo: primo mese").assertExists()
             scatta("8f-adam-lettere")
         } else regola.onNodeWithText("Lettere").assertDoesNotExist()
-        regola.onNodeWithText("Regolazione").performScrollTo().performClick()
-        regola.onNodeWithText("Conversazione e proposte: 0,4").assertExists()
-        scatta("8c-adam-regolazione")
         // Il percorso di Adam compare anche nei pilastri che tocca.
         vm.vai(Schermata.AIR)
         regola.onNodeWithText("Percorsi").performClick()
@@ -271,5 +277,8 @@ class SchermateTest {
         regola.onNodeWithText("Prossimi:", substring = true).assertExists()
         regola.onNodeWithText("Ultimi battiti", substring = true).assertExists()
         scatta("7b-setup-battito")
+        // La regolazione dello Shell sta in fondo a Setup (01/10/2026).
+        regola.onNodeWithText("Conversazione e proposte: 0,4").performScrollTo().assertExists()
+        scatta("7c-setup-regolazione")
     }
 }
