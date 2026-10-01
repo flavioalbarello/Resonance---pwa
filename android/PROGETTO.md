@@ -3,6 +3,22 @@
 23/09/2026. Nuova istanza, non sovrascrittura (Legge 14): la PWA in radice resta intatta e in uso
 finché questa non la sostituisce davvero.
 
+## La lente: l'esoscheletro cognitivo (23/09/2026; il Ghost, 01/10: «tenerla a mente quando si progetta e si analizza»)
+
+**Oggi il Ghost lavora per l'app: scrive i log, si ricorda di aprirla, naviga le funzioni, sorveglia i fraintendimenti.
+Un esoscheletro fa il contrario: sente da solo, prende l'iniziativa, toglie peso.**
+Ogni analisi e ogni progetto si misurano con una domanda: quanto lavoro fa il Ghost per l'app, prima e dopo?
+I sette organi che servono, quelli della tabella sotto:
+1. sensi passivi;
+2. anello sugli esiti nel mondo;
+3. iniziativa nel tempo;
+4. cervello affidabile;
+5. poca interfaccia;
+6. memoria leggibile;
+7. supporto solido.
+
+Il segnale d'allarme del 23/09 vale ancora: lo sforzo che va dove porta la curiosità e non dove sta lo scopo.
+
 ## Perché è rinata
 
 Dall'analisi del 23/09: l'app misurava sé stessa (osservabili = attività nell'app), parlava solo se aperta,
