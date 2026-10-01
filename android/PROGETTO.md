@@ -481,7 +481,7 @@ Maven Central qui limita le richieste: il progetto usa il mirror di Google, anch
 |---|---|
 | Mai girata su un telefono vero | Qui non c'è emulatore. Provate: logica, Room, rendering delle schermate. Non provate: voce, Health Connect, notifiche, chiamate reali al modello |
 | Occhiali Ray-Ban Meta | Non scrivono in Health Connect, per quanto so: non entrano. Tutto ciò che scrive in Health Connect sì |
-| Nessuna sincronizzazione fra dispositivi | Solo copia manuale (Setup → Salva una copia). Due telefoni = due Adam, come deve essere, ma senza backup automatico |
+| **Dati persi se si disinstalla o si cambia telefono — GRAVE** (il Ghost, 01/10/2026: *«carenza grave e rischiosa»*) | Oggi c'è solo la copia manuale (Setup → Salva una copia), un gesto che il giorno in cui costa fatica non si fa; e `allowBackup="false"` nel manifest, quindi nemmeno il backup di Android. Strade, da scegliere: (1) `hasFragileUserData`: alla disinstallazione Android chiede se tenere i dati — una riga, copre il tocco sbagliato, non il telefono nuovo; (2) copia automatica, ogni giorno, in una cartella scelta una volta (Drive o computer): sopravvive a tutto, e serve anche per il telefono nuovo; (3) backup di Android con regole che escludono la chiave cifrata (il Keystore non si trasferisce), che dipende dal backup Google attivo e non è provabile qui. Due telefoni = due Adam resta vero: si parla di salvare un Adam, non di sincronizzarne due |
 | Conferma a voce | Solo per l'ultima proposta in attesa |
 | Mail inviata o no | L'app apre la bozza, non può sapere se è partita: la ricevuta dice «bozza aperta» |
 | Rubrica | Non letta: «scrivi a Marta» senza indirizzo apre la bozza con il destinatario vuoto |
