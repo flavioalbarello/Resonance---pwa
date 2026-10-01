@@ -46,7 +46,11 @@ class TurnoWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         if (!Primopiano.visibile && (esito.testo.isNotBlank() || esito.proposte.isNotEmpty())) {
             creaCanali(applicationContext)
             val proposte = if (esito.proposte.isEmpty()) "" else "\n${esito.proposte.size} proposta da confermare"
-            Battiti.notifica(applicationContext, ID_RISPOSTA, "Lo Shell ha risposto", esito.testo.ifBlank { "Ha una proposta per te." } + proposte, "", "SHELL", CANALE_RISPOSTE)
+            val c = Rapide.Contenuto(ID_RISPOSTA, "Lo Shell ha risposto", esito.testo.ifBlank { "Ha una proposta per te." } + proposte, "", "SHELL", CANALE_RISPOSTE)
+            // Si risponde dalla notifica, e la conversazione va avanti senza aprire l'app (logica/Gesti.kt).
+            val imp = Impostazioni(applicationContext)
+            Battiti.notifica(applicationContext, c.id, c.titolo, c.testo, c.dettaglio, c.schermata, c.canale,
+                azioni = Rapide.azioni(applicationContext, c, it.resonance.adam.logica.Gesti.puoRispondere(imp.riunione), emptyList()))
         }
         return Result.success(workDataOf(TESTO to esito.testo.take(8000), PROPOSTE to esito.proposte.toLongArray()))
     }

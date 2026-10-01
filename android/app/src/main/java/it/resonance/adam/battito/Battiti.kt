@@ -142,7 +142,8 @@ object Battiti {
 
     // Restituisce false se la notifica non si vede: chi la manda deve poterlo dire.
     @android.annotation.SuppressLint("MissingPermission")
-    fun notifica(context: Context, id: Int, titolo: String, testo: String, dettaglio: String, schermata: String, canale: String = CANALE): Boolean {
+    fun notifica(context: Context, id: Int, titolo: String, testo: String, dettaglio: String, schermata: String, canale: String = CANALE,
+                 azioni: List<NotificationCompat.Action> = emptyList(), silenziosa: Boolean = false): Boolean {
         if (muto(context, canale) != null) return false
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -157,6 +158,9 @@ object Battiti {
             .setStyle(NotificationCompat.BigTextStyle().bigText(completo))
             .setContentIntent(pi)
             .setAutoCancel(true)
+            // Ridisegnata dopo un gesto (logica/Gesti.kt): non suona una seconda volta.
+            .setOnlyAlertOnce(silenziosa)
+            .apply { azioni.forEach { addAction(it) } }
             .build()
         // Il permesso l'ha già guardato muto(); se il Ghost lo toglie proprio adesso, la notifica non si vede e lo si dice.
         return try { NotificationManagerCompat.from(context).notify(id, n); true } catch (e: SecurityException) { false }
@@ -243,8 +247,12 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                     istante = System.currentTimeMillis(), modello = imp.modello))
             }
             val titolo = when (b) { Battito.MATTINO -> "Oggi"; Battito.SERA -> "Stasera"; Battito.SETTIMANA -> "La settimana" }
-            val arrivato = Battiti.notifica(applicationContext, 100 + b.ordinal, titolo, voce ?: riassunto, if (voce != null) riassunto else "",
-                if (b == Battito.SERA || (b == Battito.SETTIMANA && voce != null)) "SHELL" else "SPECCHIO")
+            // I gesti dalla notifica (logica/Gesti.kt): rispondere allo Shell e, la sera, spuntare i rituali di oggi.
+            val contenuto = Rapide.Contenuto(100 + b.ordinal, titolo, voce ?: riassunto, if (voce != null) riassunto else "",
+                if (b == Battito.SERA || (b == Battito.SETTIMANA && voce != null)) "SHELL" else "SPECCHIO", Battiti.CANALE)
+            val rituali = if (b == Battito.SERA) it.resonance.adam.logica.Gesti.daSpuntare(it.resonance.adam.logica.Contesto.statoRituali(i), i.via != null) else emptyList()
+            val arrivato = Battiti.notifica(applicationContext, contenuto.id, contenuto.titolo, contenuto.testo, contenuto.dettaglio, contenuto.schermata,
+                azioni = Rapide.azioni(applicationContext, contenuto, it.resonance.adam.logica.Gesti.puoRispondere(imp.riunione), rituali))
             // La domenica il programma guarda se qualcosa si è fermato; al massimo una perturbazione ogni due settimane.
             if (!prova && b == Battito.SETTIMANA && Perturbazione.dovuta(imp.ultimaPerturbazione, oggi)) {
                 val motivi = Ristagno.trova(i, archivio.db.esperimenti().elenco())

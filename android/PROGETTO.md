@@ -304,6 +304,19 @@ che l'architetto esiste.
 
 **Un gruppo «sviluppatori»**, un giorno, non è escluso: avrebbe la dev, scelta da chi costruisce, non da un tasto.
 
+## Gesti dalla notifica (01/10/2026, primo punto dell'ordine dell'esoscheletro)
+
+Il battito scriveva per primo, ma per rispondere o spuntare un rituale bisognava aprire l'app, trovare la chat e
+scrivere: l'esoscheletro chiedeva di essere indossato a mano.
+- **«Rispondi»** sulle notifiche del battito (mattino, sera, domenica) e su «Lo Shell ha risposto». Campo di testo
+  dalla notifica, anche dettato con la tastiera. La risposta entra in chat come messaggio del Ghost e parte il turno di
+  sempre (`TurnoWorker`): stessa strada, stesse proposte da confermare. La notifica dice «Mandato allo Shell: «…»».
+  Quando lo Shell risponde, la nuova notifica ha di nuovo «Rispondi»: la conversazione va avanti senza aprire l'app.
+- **«✓ rituale»** sulla notifica della sera: al massimo due (Android mostra tre azioni), solo rituali a mano non ancora
+  fatti oggi. Mentre il Ghost è via niente. Dopo il tocco la notifica si ridisegna, in silenzio, con quello che resta.
+- In riunione niente «Rispondi»: la risposta deve passare dal tavolo (verbale, filtro architetto).
+- Codice: `logica/Gesti.kt` (cosa offrire, puro), `battito/Rapide.kt` (azioni e ricevitore `GestoRapido`).
+
 ## Dalla riunione del 01/10/2026: riunioni, assenza, terreno di Adam City
 
 **Riunione.**
@@ -487,3 +500,5 @@ Maven Central qui limita le richieste: il progetto usa il mirror di Google, anch
 | Regola delle cene | Non costruita. La regola misurabile sulla carne aspetta i numeri da decidere con Marta, e nell'app non esiste ancora la forma di un piano dei pasti su cui controllarla. Codice senza numeri sarebbe un controllo finto |
 | Risposta a pezzi | Il modello scrive in streaming, ma la chat mostra la risposta solo alla fine (vedi l'analisi di fluidità, punto 1) |
 | «Sono via» sul telefono vero | Provati sul banco: pausa, serie, slittamento, ritiro lo stesso giorno. Non provato qui: il battito che tace davvero a schermo spento |
+| Gesti dalla notifica | Provati sul banco: cosa offrire, e la spunta dalla notifica fino al database con la notifica ridisegnata. Non provati qui: «Rispondi» fino al turno (serve WorkManager vero), la dettatura dalla tastiera, l'aspetto sul GT6 |
+| Due app | Provato il banco su tutte e due e che la base non nomini l'architetto. Il codice della riunione resta compilato nella base (irraggiungibile) finché R8 è spento |

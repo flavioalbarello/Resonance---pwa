@@ -41,6 +41,9 @@
         android:label="${nomeApp}"
         android:theme="@style/Tema">
 
+        <!-- Rispondere allo Shell e spuntare un rituale dalla notifica (battito/Rapide.kt). -->
+        <receiver android:name=".battito.GestoRapido" android:exported="false" />
+
         <receiver android:name=".battito.SvegliaBattito" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
