@@ -3,6 +3,7 @@ package it.resonance.adam.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.width
+import it.resonance.adam.logica.Edizione
 import it.resonance.adam.logica.Nodi
 import it.resonance.adam.dati.Nodo
 import it.resonance.adam.dati.Documento
@@ -63,6 +64,8 @@ fun PilastroUi(vm: Adam, p: Pilastro) {
             modifier = Modifier.padding(start = 16.dp, top = 12.dp))
         // Adam non ha numeri suoi: ha i percorsi che attraversano i pilastri e il modo in cui lo Shell si regola.
         val schede = if (p == Pilastro.ADAM) listOf("Percorsi", "Lavagna", "Diario", "Quaderno", "Taccuino", "Consegne", "Fondo", "Lettere", "Regolazione")
+                // Nell'app base non c'è l'architetto: niente lettere e niente riunione (logica/Edizione.kt).
+                .filter { t -> t != "Lettere" || Edizione.sviluppatore }
             else listOf("Numeri", "Diario", "Percorsi", "Quaderno")
         if (p == Pilastro.ADAM) androidx.compose.material3.PrimaryScrollableTabRow(scheda, containerColor = Colori.fondo, contentColor = colore, edgePadding = 8.dp) {
             schede.forEachIndexed { i, t -> Tab(scheda == i, { scheda = i }, text = { Text(t, maxLines = 1, softWrap = false, fontSize = 13.sp) }) }

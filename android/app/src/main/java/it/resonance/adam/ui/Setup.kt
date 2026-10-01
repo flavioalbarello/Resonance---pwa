@@ -194,7 +194,8 @@ fun Setup(vm: Adam, sistema: Sistema) {
         }
 
         // La cassetta delle lettere fra lo Shell e l'architetto: un repository GitHub privato e un token solo per le sue issue.
-        Scheda {
+        // Solo nell'app di sviluppo: nella base l'architetto non c'è.
+        if (it.resonance.adam.logica.Edizione.sviluppatore) Scheda {
             Etichetta("Cassetta delle lettere")
             Tenue("Lo Shell scrive all'architetto dell'app senza che tu faccia da passacarte: ogni lettera parte da un tuo tocco. Serve un repository GitHub PRIVATO (non quello dell'app, che è pubblico) e un token «fine-grained» con Issues in lettura e scrittura solo su quel repository. Il token si cifra e non va nelle copie.")
             var repo by remember { mutableStateOf(vm.cassetta()) }

@@ -463,8 +463,8 @@ object Azioni {
             schema(listOf("percorso", "nodo", "stato"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del nodo"), "stato" to e(STATI, "Nuovo stato")))),
     )
 
-    fun definizioni(): JsonArray = buildJsonArray {
-        strumenti.forEach { st ->
+    fun definizioni(sviluppatore: Boolean = Edizione.sviluppatore): JsonArray = buildJsonArray {
+        strumenti.filter { Edizione.offerto(it.nome, sviluppatore) }.forEach { st ->
             add(buildJsonObject {
                 put("type", "function")
                 putJsonObject("function") {
@@ -479,8 +479,8 @@ object Azioni {
         runCatching { el.jsonPrimitive.doubleOrNull ?: el.jsonPrimitive.content.replace(',', '.').toDoubleOrNull() }.getOrNull()
     }
 
-    fun valida(nome: String, argomenti: JsonObject, oggi: LocalDate, regole: Regole = Regole()): Validazione {
-        val st = strumenti.find { it.nome == nome } ?: return Validazione.Rifiutata("strumento sconosciuto: $nome")
+    fun valida(nome: String, argomenti: JsonObject, oggi: LocalDate, regole: Regole = Regole(), sviluppatore: Boolean = Edizione.sviluppatore): Validazione {
+        val st = strumenti.find { it.nome == nome && Edizione.offerto(nome, sviluppatore) } ?: return Validazione.Rifiutata("strumento sconosciuto: $nome")
         if (st.effetto == Effetto.LETTURA) return Validazione.Lettura(nome, argomenti)
         if (st.effetto == Effetto.INTERNO) return try { interna(nome, argomenti) } catch (e: Rifiuto) { Validazione.Rifiutata(e.message ?: "argomenti non validi") }
         return try { Validazione.Scrittura(scrittura(nome, argomenti, oggi, regole)) }

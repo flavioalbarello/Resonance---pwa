@@ -38,7 +38,7 @@
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
-        android:label="Resonance"
+        android:label="${nomeApp}"
         android:theme="@style/Tema">
 
         <receiver android:name=".battito.SvegliaBattito" android:exported="false">

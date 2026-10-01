@@ -266,6 +266,44 @@ nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo ch
 (proporre `crea_evento` come promemoria) e controllo del programma (`Testi.promette`), che aggiunge una nota se la
 risposta promette senza aver proposto niente.
 
+## Due app da un codice solo (decisione del Ghost, 01/10/2026)
+
+*«Permette a noi di andare avanti col lavoro e di fare errori, e poi passare agli altri qualcosa che funzioni per
+davvero, facendogli saltare tutte le fasi intermedie.»*
+
+| | **Resonance dev** (flavor `dev`) | **Resonance** (flavor `base`) |
+|---|---|---|
+| Per chi | il Ghost | Marta e gli altri |
+| Pacchetto | `it.resonance.adam` (lo stesso di sempre: si aggiorna sopra) | `it.resonance.adam.base` (sta accanto alla dev) |
+| Architetto | riunione, lettere, cassetta, consulente, Balthasar | **non c'è**: niente strumenti, niente righe nel prompt, niente schede, niente worker |
+| Costo | OpenRouter + l'abbonamento Claude del Ghost (l'architetto) | solo OpenRouter: per Marta paga il Ghost, gli altri pagano da soli |
+| Da quale versione | l'ultima | solo da una versione **promossa** |
+
+**Perché nessun interruttore.** La prima proposta era un tasto «sviluppatore» nell'app. Il Ghost l'ha scartato:
+*«troppo una tentazione, un incentivo a fare stronzate»*. Un tasto nell'app di un altro è un invito permanente a
+premerlo, e una porta da cui farsi convincere a premerlo. La scelta si fa quando si costruisce l'APK
+(`BuildConfig.SVILUPPATORE`, letto in un punto solo: `logica/Edizione.kt`). Chi ha la base non ha niente da accendere.
+Il codice della riunione resta compilato dentro la base ma irraggiungibile. Quando si accenderà R8 sparirà anche
+fisicamente.
+
+**Perché un codice solo e non due rami.** Con `main` e `stable` il codice stava in due posti e si univa a mano; una
+volta l'unione è andata nel verso sbagliato. Due copie divergono. Qui il **DNA è identico**: stesse forme dei dati,
+stesso database, stesse discipline; cambia solo quali geni si esprimono. Per questo tracce e plasmidi restano
+compatibili fra le due app. Un architetto per ogni Adam vorrebbe dire mutare il genoma di ciascuno prima che il genoma
+sia fermo: ne uscirebbero specie diverse, e fra specie diverse il trasferimento orizzontale non funziona. Le mutazioni
+nascono da una linea sola, quella del Ghost.
+
+**La promozione** (il ruolo che aveva `stable`):
+- una versione dev diventa base solo dopo qualche giorno sul telefono del Ghost senza problemi;
+- il commit promosso si segna con un tag `base-<versione>`, e la base si costruisce da lì;
+- chi ha la base salta le versioni intermedie.
+
+**Il banco** gira su tutte e due (`testDevDebugUnitTest testBaseDebugUnitTest`). Nella base i test della riunione si
+saltano con `assumeTrue(Edizione.sviluppatore)`. `EdizioneTest` controlla che nella base lo Shell non sappia nemmeno
+che l'architetto esiste.
+
+**Un gruppo «sviluppatori»**, un giorno, non è escluso: avrebbe la dev, scelta da chi costruisce, non da un tasto.
+
 ## Dalla riunione del 01/10/2026: riunioni, assenza, terreno di Adam City
 
 **Riunione.**
@@ -407,8 +445,9 @@ app/src/main/java/it/resonance/adam/
 
 ```
 cd android
-./gradlew testDebugUnitTest      # logica, archivio su Room vero, schermate disegnate in build/schermate/
-./gradlew assembleRelease        # firma solo se RESONANCE_KEYSTORE e RESONANCE_KEYSTORE_PASSWORD sono nell'ambiente
+./gradlew testDevDebugUnitTest testBaseDebugUnitTest   # le due app; schermate disegnate in build/schermate/
+./gradlew assembleDevRelease     # l'app del Ghost (firma solo se RESONANCE_KEYSTORE e RESONANCE_KEYSTORE_PASSWORD sono nell'ambiente)
+./gradlew assembleBaseRelease    # l'app per gli altri: SOLO da una versione promossa (vedi «Due app da un codice solo»)
 ```
 
 La chiave di firma **non è nel repository** (è pubblico). Per la CI: segreti `RESONANCE_KEYSTORE_B64`

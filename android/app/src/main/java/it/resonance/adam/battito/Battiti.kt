@@ -64,7 +64,8 @@ object Battiti {
             PeriodicWorkRequestBuilder<SensiWorker>(6, TimeUnit.HOURS).build(),
         )
         // La cassetta delle lettere con l'architetto: spedisce ciò che è rimasto indietro e ritira le risposte.
-        wm.enqueueUniquePeriodicWork(
+        // Solo nell'app di sviluppo (logica/Edizione.kt).
+        if (it.resonance.adam.logica.Edizione.sviluppatore) wm.enqueueUniquePeriodicWork(
             "lettere", ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<LettereWorker>(3, TimeUnit.HOURS)
                 .setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build()).build(),

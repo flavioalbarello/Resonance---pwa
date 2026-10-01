@@ -17,7 +17,7 @@ object Capacita {
             listOf("registra_misura", "leggi_misure")),
         Area("AIR", "entrate, divise fra legate al tempo e non (l'esito del pilastro sono le seconde)", listOf("registra_misura", "leggi_misure")),
         Area("VIDYA", "minuti di pratica, opere finite", listOf("registra_misura", "leggi_misure")),
-        Area("ADAM", "percorsi che attraversano i pilastri (il pilastro sta sui nodi di primo livello); il TUO taccuino; il fondo di Adam; la tua voce sulla temperatura; le lettere all'architetto; le TUE consegne (una promessa con una forma che il programma verifica, e un turno di lavoro tuo il giorno prima)",
+        Area("ADAM", "percorsi che attraversano i pilastri (il pilastro sta sui nodi di primo livello); il TUO taccuino; il fondo di Adam; la tua voce sulla temperatura; LETTERE; le TUE consegne (una promessa con una forma che il programma verifica, e un turno di lavoro tuo il giorno prima)",
             listOf("pilastro_nodo", "scrivi_taccuino", "riprendi_nota", "movimento_fondo", "regola_temperatura", "scrivi_all_architetto", "prendi_consegna")),
         Area("Lavagna del Ghost", "appunti usa e getta con righe spuntabili (la lista della spesa); finiti o scaduti escono dal tuo prompt; si allegano in PDF alle mail (scrivi_mail con allegato)",
             listOf("scrivi_appunto", "modifica_appunto", "spunta_appunto")),
@@ -49,10 +49,21 @@ object Capacita {
 
     fun strumenti(): Set<String> = AREE.flatMap { it.strumenti }.toSet()
 
-    fun testo(versione: String): String = buildString {
+    // Le righe del Ghost che esistono solo con l'architetto (logica/Edizione.kt): si riconoscono dal contenuto.
+    private val DELLO_SVILUPPO = Regex("riunione|architetto|consulente|Balthasar", RegexOption.IGNORE_CASE)
+
+    /** Le aree che lo Shell ha davvero in questa edizione: nell'app base mancano architetto e riunione. */
+    fun aree(sviluppatore: Boolean = Edizione.sviluppatore): List<Area> = AREE.map { a ->
+        a.copy(cosa = a.cosa.replace("LETTERE; ", if (sviluppatore) "le lettere all'architetto; " else ""),
+            strumenti = a.strumenti.filter { Edizione.offerto(it, sviluppatore) })
+    }.filter { it.strumenti.isNotEmpty() }
+
+    fun soloGhost(sviluppatore: Boolean = Edizione.sviluppatore) = if (sviluppatore) SOLO_GHOST else SOLO_GHOST.filterNot { DELLO_SVILUPPO.containsMatchIn(it) }
+
+    fun testo(versione: String, sviluppatore: Boolean = Edizione.sviluppatore): String = buildString {
         appendLine("L'APP OGGI (versione ${versione.ifBlank { "?" }}): cosa puoi fare, per area")
-        AREE.forEach { appendLine("- ${it.nome}: ${it.cosa}. Strumenti: ${it.strumenti.joinToString(", ")}") }
+        aree(sviluppatore).forEach { appendLine("- ${it.nome}: ${it.cosa}. Strumenti: ${it.strumenti.joinToString(", ")}") }
         appendLine("Il Ghost, da solo:")
-        SOLO_GHOST.forEach { appendLine("- $it") }
+        soloGhost(sviluppatore).forEach { appendLine("- $it") }
     }.trimEnd()
 }

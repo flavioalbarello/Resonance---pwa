@@ -18,6 +18,9 @@ intatta e in uso finché l'APK non la sostituisce. Tutto ciò che riguarda l'APK
 costruire, carenze — sta in `android/PROGETTO.md`. Le regole sotto su Preact/htm/`app.js` valgono per
 la PWA; le discipline (Legge 14, accettore/effettore, il programma verifica) valgono per entrambe.
 La chiave di firma dell'APK non va MAI nel repository: è pubblico.
+Dal 01/10/2026 l'APK esce in **due app da un codice solo** (flavor `dev` del Ghost, con l'architetto; `base` per gli
+altri, senza): nessun interruttore dentro l'app, e la base si costruisce solo da una versione promossa. Perché, e come,
+in `android/PROGETTO.md` → «Due app da un codice solo».
 
 ## Build step — una scelta, non un divieto (G.8, emendato il 12/08/2026)
 **Nessun bundler in uso oggi**: Preact + htm da file vendored, si modifica `app.js` e si ricarica.

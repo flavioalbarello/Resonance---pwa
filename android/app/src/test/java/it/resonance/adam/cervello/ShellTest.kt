@@ -30,6 +30,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -504,6 +505,7 @@ class ShellTest {
 
     // La cassetta: la lettera parte al tocco del Ghost con lo stato dell'app; torna solo ciò che porta il segno dell'architetto.
     @Test fun unaLetteraParteConLoStatoEUnaRispostaTorna() = runBlocking {
+        assumeTrue("solo nell'app di sviluppo", it.resonance.adam.logica.Edizione.sviluppatore)
         val cassetta = FintaCassetta()
         val modello = FintoModello(chiama("scrivi_all_architetto", """{"oggetto":"Fondo: primo mese","testo":"Contesto: 25/09. Domanda: A o B?"}"""), testo("Proposta."))
         val shell = Shell(archivio, imp, modello, FintoMondo(), cassetta)
@@ -528,6 +530,7 @@ class ShellTest {
     // La riunione a tre: lo scambio va nel verbale da solo (il nome protetto no), gli interventi dell'architetto tornano
     // in chat una volta sola, la chiusura lascia il verbale dello Shell.
     @Test fun laRiunioneScriveIlVerbaleERitiraLArchitetto() = runBlocking {
+        assumeTrue("solo nell'app di sviluppo", it.resonance.adam.logica.Edizione.sviluppatore)
         db.profilo().salva(it.resonance.adam.dati.Profilo(nomiProtetti = "PhysioAlba"))
         imp.cassetta = "flavio/adam-lettere"
         imp.tokenCassetta = "t"
@@ -863,6 +866,7 @@ class ShellTest {
         RispostaWeb(t, domini.map { d -> it.resonance.adam.logica.Consulente.Fonte("https://$d/p", "", d) }, 0.01, false)
 
     @Test fun leDomandeDiTuttiETrePartonoInUnaChiamataSolaSenzaAdam() = runBlocking {
+        assumeTrue("solo nell'app di sviluppo", it.resonance.adam.logica.Edizione.sviluppatore)
         val cassetta = FintaCassetta()
         val cartella = riunioneAperta(cassetta)
         db.profilo().salva(it.resonance.adam.dati.Profilo(nome = "Flavio", nomiProtetti = "PhysioAlba"))
@@ -988,6 +992,7 @@ class ShellTest {
     }
 
     @Test fun iPuntiFermiSiRegistranoSenzaConfermaERestanoDavanti() = runBlocking {
+        assumeTrue("solo nell'app di sviluppo", it.resonance.adam.logica.Edizione.sviluppatore)
         val cassetta = FintaCassetta()
         riunioneAperta(cassetta)
         val modello = FintoModello(chiama("punto_fermo", """{"testo":"La cena si decide sulla cottura: decide chi cucina"}"""), testo("Registrato."), testo("Ok."))

@@ -18,7 +18,10 @@ class AzioniTest {
 
     @Test fun ogniStrumentoHaUnoSchemaConRequired() {
         Azioni.strumenti.forEach { assertTrue(it.nome, it.parametri.containsKey("required")) }
-        assertEquals(Azioni.strumenti.size, Azioni.definizioni().size)
+        assertEquals(Azioni.strumenti.size, Azioni.definizioni(sviluppatore = true).size)
+        // Nell'app base lo Shell non riceve gli strumenti dell'architetto, e se li chiama lo stesso il programma li rifiuta.
+        assertEquals(Azioni.strumenti.size - Edizione.SOLO_SVILUPPATORE.size, Azioni.definizioni(sviluppatore = false).size)
+        assertTrue(Azioni.valida("punto_fermo", args("""{"testo":"x"}"""), oggi, sviluppatore = false) is Validazione.Rifiutata)
     }
 
     @Test fun letturaNonDiventaProposta() {

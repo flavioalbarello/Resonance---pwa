@@ -79,6 +79,6 @@ class PacchettoAdamTest {
         val s = Contesto.sistema(i)
         assertTrue(s, s.contains("TACCUINO DELLO SHELL (ipotesi tue, non fatti)") && s.contains("#4 (evapora tra 21 gg): provare un planner"))
         assertTrue(s, s.contains("FONDO DI ADAM") && s.contains("nessun fondo ancora"))
-        assertTrue(s, s.contains("L'APP OGGI (versione 2.x)") && s.contains("scrivi_all_architetto"))
+        assertTrue(s, s.contains("L'APP OGGI (versione 2.x)") && s.contains("scrivi_all_architetto") == Edizione.sviluppatore)
     }
 }

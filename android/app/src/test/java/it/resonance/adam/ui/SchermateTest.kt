@@ -250,9 +250,12 @@ class SchermateTest {
         regola.onNodeWithText("Fondo").performScrollTo().performClick()
         regola.onNodeWithText("Saldo 88,00 €", substring = true).assertExists()
         scatta("8e-adam-fondo")
-        regola.onNodeWithText("Lettere").performScrollTo().performClick()
-        regola.onNodeWithText("Fondo: primo mese").assertExists()
-        scatta("8f-adam-lettere")
+        // Le lettere ci sono solo nell'app di sviluppo (logica/Edizione.kt); nella base la scheda non esiste.
+        if (it.resonance.adam.logica.Edizione.sviluppatore) {
+            regola.onNodeWithText("Lettere").performScrollTo().performClick()
+            regola.onNodeWithText("Fondo: primo mese").assertExists()
+            scatta("8f-adam-lettere")
+        } else regola.onNodeWithText("Lettere").assertDoesNotExist()
         regola.onNodeWithText("Regolazione").performScrollTo().performClick()
         regola.onNodeWithText("Conversazione e proposte: 0,4").assertExists()
         scatta("8c-adam-regolazione")

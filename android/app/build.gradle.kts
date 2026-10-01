@@ -40,6 +40,25 @@ android {
         }
     }
 
+    // Due app da un codice solo (01/10/2026, logica/Edizione.kt). «dev» è quella del Ghost, con l'architetto; «base» è
+    // per gli altri, senza. Nessun interruttore nell'app: la scelta è qui. Nomi di pacchetto diversi, così stanno
+    // insieme sullo stesso telefono. La base si costruisce solo da una versione già vissuta sul telefono del Ghost.
+    flavorDimensions += "edizione"
+    productFlavors {
+        create("dev") {
+            dimension = "edizione"
+            // Lo stesso pacchetto di sempre: l'app del Ghost si aggiorna sopra quella installata, con i suoi dati.
+            buildConfigField("boolean", "SVILUPPATORE", "true")
+            manifestPlaceholders["nomeApp"] = "Resonance dev"
+        }
+        create("base") {
+            dimension = "edizione"
+            applicationIdSuffix = ".base"
+            buildConfigField("boolean", "SVILUPPATORE", "false")
+            manifestPlaceholders["nomeApp"] = "Resonance"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
