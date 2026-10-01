@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import it.resonance.adam.BuildConfig
 import it.resonance.adam.Impostazioni
 import it.resonance.adam.logica.Nomi
+import it.resonance.adam.logica.Edizione
 import it.resonance.adam.dati.Pilastro
 import it.resonance.adam.dati.Profilo
 
@@ -228,12 +229,16 @@ fun Setup(vm: Adam, sistema: Sistema) {
 
         Scheda {
             Etichetta("Dati")
-            Riga("Dalla PWA: in Setup della PWA scarica il backup completo, poi aprilo qui. Si può rifare: ciò che c'è già non si duplica.")
+            // Nella base niente PWA (01/10/2026): per chi arriva oggi è superflua. Il ripristino riconosce comunque un
+            // backup della PWA, se qualcuno lo apre (per esempio Marta, che viene da lì).
+            if (Edizione.sviluppatore) Riga("Dalla PWA: in Setup della PWA scarica il backup completo, poi aprilo qui. Si può rifare: ciò che c'è già non si duplica.")
+            else Riga("Una copia di tutto Adam, da tenere fuori dal telefono (Drive, computer): se il telefono si rompe, si riparte da lì.")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton({ sistema.apriFile() }) { Text("Apri un file") }
                 OutlinedButton({ sistema.salvaCopia() }) { Text("Salva una copia") }
+                OutlinedButton({ sistema.apriFile() }) { Text(if (Edizione.sviluppatore) "Apri un file" else "Apri una copia") }
             }
-            Tenue("Aprire una copia salvata da questa app la ripristina e SOSTITUISCE i dati attuali. Aprire un backup della PWA invece aggiunge.")
+            Tenue(if (Edizione.sviluppatore) "Aprire una copia salvata da questa app la ripristina e SOSTITUISCE i dati attuali. Aprire un backup della PWA invece aggiunge."
+                else "Aprire una copia la ripristina e SOSTITUISCE i dati attuali.")
         }
         // Spostata qui da Adam (01/10/2026): è diagnostica dello Shell, non una cosa da vivere ogni giorno.
         Spazio(12)
