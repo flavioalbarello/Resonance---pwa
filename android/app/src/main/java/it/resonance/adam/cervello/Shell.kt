@@ -16,6 +16,7 @@ import it.resonance.adam.dati.TipoMisura
 import it.resonance.adam.logica.Agenda
 import it.resonance.adam.logica.Tour
 import it.resonance.adam.logica.Ricerca
+import it.resonance.adam.logica.AFondo
 import it.resonance.adam.logica.AgendaLetta
 import it.resonance.adam.logica.Allegati
 import it.resonance.adam.logica.Allegato
@@ -406,6 +407,55 @@ class Shell(
         if (mostra && trovato.testo.isNotBlank()) archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, testo = "«${Testi.corto(chiesto, 140)}»\n\n" + trovato.scheda,
             istante = ora, modello = modello, costo = trovato.costo.takeIf { it > 0 }, temperatura = t))
         return trovato
+    }
+
+    /**
+     * La ricerca a fondo, autorizzata dal Ghost (logica/AFondo.kt). Le ricerche mirate per tipo di fonte, il livello delle
+     * fonti e l'incrocio li fa il programma; la sintesi con le affermazioni la scrive il modello, e il programma mette
+     * accanto a ognuna quante fonti indipendenti la sostengono e di che livello. In chat: risultato, fonti, dove non ha
+     * potuto guardare, e il costo reale accanto alla stima.
+     */
+    suspend fun ricercaAFondo(p: Proposta.RicercaAFondo): String {
+        val sotto = p.sotto.mapNotNull { AFondo.sotto(it) }
+        val trovati = sotto.map { s -> s to cercaNelWeb(AFondo.domandaSotto(s, p.domanda), mostra = false) }
+        val fonti = AFondo.fonti(trovati.map { it.second.fonti })
+        var costo = trovati.sumOf { it.second.costo }
+        val perTipo = AFondo.Tipo.entries.filter { t -> sotto.any { it.tipo == t } }.associateWith { t -> trovati.filter { it.first.tipo == t }.sumOf { it.second.fonti.size } }
+        val materiale = buildString {
+            appendLine("Domanda del Ghost: ${p.domanda}")
+            trovati.forEach { (s, t) -> appendLine(); appendLine("— Ricerca «${s.tipo.etichetta}»: ${s.domanda}"); appendLine(t.testo.ifBlank { "(nessun risultato: ${t.problemi.joinToString("; ")})" }) }
+            appendLine(); appendLine("FONTI (numero, livello deciso dal programma, sito):")
+            fonti.forEach { appendLine("[${it.n}] ${it.livello.sigla} · ${it.dominio} · ${it.titolo}") }
+        }
+        val testo = if (fonti.isEmpty()) "Nessuna fonte trovata in nessuna delle ${sotto.size} ricerche: non c'è niente da incrociare."
+        else runCatching {
+            val messaggi = JsonArray(listOf(
+                buildJsonObject { put("role", "system"); put("content", Ricerca.SISTEMA + " Ora incroci le ricerche fatte: " + AFondo.FORMA) },
+                buildJsonObject { put("role", "user"); put("content", materiale) },
+            ))
+            val (r, _) = chiama(modelloPer(Compito.RICERCA), messaggi, null, MAX_TOKEN_BATTITO, temperaturaDi(Compito.RICERCA))
+            r.costo?.let { archivio.registraCosto(YearMonth.now().toString(), it); costo += it }
+            Testi.senzaFinteNote(r.testo)
+        }.getOrElse { "La sintesi non è riuscita (${it.message ?: it.javaClass.simpleName}): restano le ricerche, qui sotto le fonti." }
+        val affermazioni = AFondo.affermazioni(testo, fonti)
+        val scheda = buildString {
+            appendLine("Ricerca a fondo · «${Testi.corto(p.domanda, 140)}»")
+            appendLine()
+            if (affermazioni.isEmpty()) appendLine(testo) else {
+                affermazioni.forEach { a -> appendLine("- ${a.testo}"); appendLine("   ${AFondo.etichetta(a)}") }
+                testo.substringAfter(AFondo.SINTESI, "").trim().takeIf { it.isNotEmpty() }?.let { appendLine(); appendLine("${AFondo.SINTESI} $it") }
+            }
+            appendLine()
+            appendLine("Fonti (livello deciso dal programma: A ufficiale/scientifica, B giornalismo, C forum e recensioni, D commerciale, ? non classificata):")
+            fonti.take(25).forEach { appendLine("[${it.n}] ${it.livello.sigla} · ${it.titolo.ifBlank { it.dominio }} — ${it.url}") }
+            appendLine()
+            appendLine(AFondo.doveNo(perTipo))
+            append("Costo: stimato ${p.stima}, reale ${AFondo.centesimi(costo)} centesimi di dollaro.")
+        }
+        archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, testo = scheda, istante = ora, modello = modelloPer(Compito.RICERCA), costo = costo.takeIf { it > 0 }))
+        registraTurno(Compito.RICERCA, modelloPer(Compito.RICERCA), temperaturaDi(Compito.RICERCA), false, emptyList(), 0, false, false, errore = fonti.isEmpty(), costo,
+            listOf("ricerca a fondo: ${sotto.size} ricerche, ${fonti.size} fonti, ${affermazioni.size} affermazioni; stimato ${p.stima}"))
+        return scheda
     }
 
     /** Le letture di oggi per le cose seguite che ancora non l'hanno. `inChat`: la lettura compare anche in chat. */
@@ -962,7 +1012,9 @@ class Shell(
             archivio.db.profilo().leggi()?.let { appendLine(it.vincoli); appendLine(it.motivazione) }
         }
         val seguite = archivio.db.segui().elenco().count { it.chiusa == null }
-        return Regole(Uscita.nomi(nomiProtetti), Uscita.indirizzi(scritti), testoGhost, it.resonance.adam.logica.Esperimenti.aperti(i.esperimenti), i.consegne, i.appunti, seguite)
+        val inAttesa = archivio.db.messaggi().ultimi(60).count { it.stato == StatoProposta.IN_ATTESA && it.proposta?.contains("\"ricerca_a_fondo\"") == true }
+        return Regole(Uscita.nomi(nomiProtetti), Uscita.indirizzi(scritti), testoGhost, it.resonance.adam.logica.Esperimenti.aperti(i.esperimenti), i.consegne, i.appunti, seguite,
+            it.resonance.adam.logica.Listino.prezzi(listino, modelloPer(Compito.RICERCA)), inAttesa)
     }
 
     private suspend fun lettura(v: Validazione.Lettura): String = when (v.nome) {
@@ -994,6 +1046,8 @@ class Shell(
         val e = when {
             p is Proposta.RegolaTemperatura -> regolaTemperatura(p)
             p is Proposta.LetteraArchitetto -> spedisciLettera(p)
+            // La ricerca a fondo: il gesto del Ghost la autorizza; la fa ricercaAFondo, chiamata subito dopo (ui/Adam.kt).
+            p is Proposta.RicercaAFondo -> Esecuzione(true, "Ricerca a fondo autorizzata (stima: ${p.stima}): parte ora, il risultato arriva qui in chat")
             versoIlMondo(p) -> mondo?.esegui(p) ?: Esecuzione(false, "Non eseguito: calendario e posta si usano dall'app aperta")
             else -> archivio.esegui(p)
         }

@@ -170,10 +170,21 @@ sealed class Proposta {
 
     // Segui (02/10/2026, logica/Ricerca.kt): una cosa del mondo letta ogni giorno per N giorni, con un resoconto alla fine.
     @Serializable @SerialName("segui")
-    data class Segui(val cosa: String, val domanda: String, val giorni: Int, val prima: String = "") : Proposta() {
+    data class Segui(val cosa: String, val domanda: String, val giorni: Int, val prima: String = "", val stima: String = "") : Proposta() {
         override fun descrizione() = "Seguire «$cosa» per $giorni " + (if (giorni == 1) "giorno" else "giorni") +
-            ": ogni giorno una ricerca web con le fonti, una notifica e la riga sullo Specchio; alla fine il resoconto"
+            ": ogni giorno una ricerca web con le fonti, una notifica e la riga sullo Specchio; alla fine il resoconto" +
+            if (stima.isNotBlank()) ". Costo stimato dal programma: $stima in tutto" else ""
         override fun dettaglio() = "Ogni giorno: $domanda" + if (prima.isNotBlank()) "\nLa prima volta anche: $prima" else ""
+    }
+
+    // La ricerca a fondo (02/10/2026, logica/AFondo.kt): la propone lo Shell, la autorizza il Ghost, con la stima del
+    // programma davanti. Le sotto-domande sono «tipo: domanda».
+    @Serializable @SerialName("ricerca_a_fondo")
+    data class RicercaAFondo(val domanda: String, val sotto: List<String>, val stima: String = "") : Proposta() {
+        override fun descrizione() = "Ricerca a fondo: «${Testi.corto(domanda, 120)}», ${sotto.size} ricerche mirate (" +
+            sotto.mapNotNull { AFondo.sotto(it)?.tipo?.etichetta }.distinct().joinToString(", ") + ")" +
+            if (stima.isNotBlank()) ". Costo stimato dal programma: $stima" else ""
+        override fun dettaglio() = sotto.joinToString("\n") { "· $it" }
     }
 
     @Serializable @SerialName("lettera_architetto")
@@ -277,6 +288,10 @@ data class Regole(
     val appuntiVivi: List<it.resonance.adam.dati.Appunto> = emptyList(),
     // Quante cose lo Shell sta già seguendo (Segui): il tetto lo controlla il programma.
     val seguiteAttive: Int = 0,
+    // Per le stime di costo (logica/AFondo.kt): i prezzi del modello che fa le ricerche, dal listino; e quante ricerche
+    // a fondo aspettano già il Ghost (una per volta).
+    val prezzoRicerca: Listino.Voce? = null,
+    val ricercheInAttesa: Int = 0,
 )
 
 sealed class Validazione {
@@ -471,6 +486,13 @@ object Azioni {
             schema(listOf("cosa", "documento", "giorni"), mapOf("cosa" to s("Cosa consegni, in una riga"),
                 "documento" to s("Titolo esatto del documento che consegnerai"), "percorso" to s("Titolo del percorso dove starà (consigliato)"),
                 "giorni" to n("Fra quanti giorni la scadenza, ${Consegne.GIORNI_MIN}–${Consegne.GIORNI_MAX}")))),
+        Strumento("ricerca_a_fondo", Effetto.SCRITTURA,
+            "Propone una ricerca a fondo, a strati, quando la domanda chiede di incrociare più fonti (dati ufficiali, notizie, forum, recensioni, annunci) " +
+                "e cerca_nel_web non basta. Costa di più: il programma mostra la stima al Ghost, che deve approvarla. Una per volta. " +
+                "Tu scomponi la domanda in ${AFondo.SOTTO_MIN}–${AFondo.SOTTO_MAX} sotto-domande, ciascuna col tipo di fonte davanti " +
+                "(${AFondo.Tipo.entries.joinToString(", ") { it.name.lowercase() }}), per esempio «forum: avvistamenti di trichechi a Crystal River nel 2025».",
+            schema(listOf("domanda", "sotto"), mapOf("domanda" to s("La domanda del Ghost, intera"),
+                "sotto" to lista("Le sotto-domande, ognuna «tipo: domanda»")))),
         Strumento("segui", Effetto.SCRITTURA,
             "Propone di seguire una cosa del mondo per alcuni giorni (un titolo in borsa, una notizia, un prezzo): ogni giorno il programma fa la ricerca web, " +
                 "la notifica e la riga sullo Specchio; alla fine tu scrivi il resoconto, che si presenta da solo. La prima lettura parte appena il Ghost conferma. " +
@@ -607,7 +629,14 @@ object Azioni {
             val domanda = a.testo("domanda").orEmpty()
             val giorni = intero(a, "giorni", 0)
             Ricerca.difetti(cosa, domanda, giorni, regole.seguiteAttive).takeIf { it.isNotEmpty() }?.let { rifiuta(it.joinToString("; ")) }
-            Proposta.Segui(cosa, domanda, giorni, a.testo("prima").orEmpty())
+            val una = AFondo.stimaRicerca(regole.prezzoRicerca?.ingresso ?: 1.0, regole.prezzoRicerca?.uscita ?: 5.0)
+            Proposta.Segui(cosa, domanda, giorni, a.testo("prima").orEmpty(), AFondo.testo(AFondo.Forbice(una.min * giorni, una.max * giorni)))
+        }
+        "ricerca_a_fondo" -> {
+            val domanda = a.testo("domanda").orEmpty()
+            val sotto = elenco(a, "sotto").map { it.trim() }.filter { it.isNotEmpty() }
+            AFondo.difetti(domanda, sotto, regole.ricercheInAttesa).takeIf { it.isNotEmpty() }?.let { rifiuta(it.joinToString("; ")) }
+            Proposta.RicercaAFondo(domanda, sotto, AFondo.testo(AFondo.stima(sotto.size, regole.prezzoRicerca, regole.prezzoRicerca)))
         }
         "scrivi_all_architetto" -> {
             val oggetto = a.testo("oggetto")?.takeIf { it.length <= 120 } ?: rifiuta("oggetto mancante o più lungo di 120 caratteri")

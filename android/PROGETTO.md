@@ -387,6 +387,43 @@ consulente in riunione.
 - Il limite, detto: il programma garantisce la provenienza e la data di un numero, non che sia giusto. Per le
   quotazioni la strada solida resta un servizio di dati vero.
 
+## Modelli e costi (02/10/2026)
+
+Il Ghost: *«ce ne saranno di più specifici e performanti in relazione a un determinato compito: dovremmo rivedere anche
+come l'app sceglie quale modello utilizzare»*; e: *«la ricerca a fondo è giusto che la proponga anche lo Shell, ma
+deve essere esplicitamente autorizzata dal Ghost»*.
+
+**Due regimi.** Le decisioni quotidiane (quale modello per una notifica, per una foto) le prende il programma da solo:
+lo scarto è di frazioni di centesimo, e chiedere un'approvazione a ogni messaggio è un peso, cioè l'esoscheletro al
+contrario. Quelle costose (la ricerca a fondo) le propone lo Shell e le autorizza il Ghost, con la stima davanti.
+
+**Il listino vivo** (`logica/Listino.kt`). La lista dei modelli era scritta a mano il 23/09 e due modelli per le
+immagini sparivano da OpenRouter (9 e 20 ottobre) senza che nessuno lo vedesse. Ora il listino pubblico si legge una
+volta al giorno: un modello usato che scade entro 30 giorni o sparisce si dice una volta con una notifica, e resta
+visibile in Setup → Motore; chi aveva scelto un modello ritirato passa da solo al sostituto (`Impostazioni.RITIRATI`).
+Il listino dà anche i prezzi veri alle stime.
+
+**Un modello per compito** (`cervello/ModelloPerCompito.kt`). Ogni chiamata passa da `modelloPer(compito)`. Predefiniti:
+il leggero per le notifiche del battito, quello per immagini per gli allegati, il principale per il resto. Il Ghost lo
+cambia compito per compito in «Come si regola lo Shell»; i numeri per compito e modello stanno lì sotto.
+
+**La ricerca a fondo, a strati** (`logica/AFondo.kt`, strumento `ricerca_a_fondo`, proposta).
+| passo | chi |
+|---|---|
+| Scomporre la domanda in 2–6 sotto-domande, ognuna col tipo di fonte (ufficiale, notizie, forum, recensioni, annunci) | il modello, nella proposta |
+| La stima del costo, coi prezzi del listino: ricerche × prezzo per ricerca + token del modello | il programma, prima |
+| L'autorizzazione | il Ghost, con Conferma |
+| Una ricerca per sotto-domanda, mirata a quel tipo di fonte | il programma |
+| Il livello di ogni fonte: A ufficiale/scientifica, B giornalismo, C forum e recensioni, D commerciale, ? non classificata | il programma, con regole fisse |
+| Le affermazioni, ognuna coi numeri delle fonti che la sostengono | il modello |
+| L'incrocio: quante fonti indipendenti (domini diversi) per affermazione, il livello migliore, i rimandi a fonti che non esistono | il programma |
+| «Dove non ho potuto guardare»: i tipi senza fonti, e i gruppi chiusi, i forum dietro login, gli annunci solo nelle app | il programma |
+| Il costo reale accanto alla stima | il programma, dopo |
+
+Una sola ricerca a fondo in attesa per volta. Anche Segui ora dice il costo stimato del totale prima della conferma.
+La soglia sotto la quale non serve approvazione, discussa il 02/10, non c'è: il Ghost ha chiesto che la ricerca a fondo
+sia sempre autorizzata.
+
 ## Dalla riunione del 01/10/2026: riunioni, assenza, terreno di Adam City
 
 **Riunione.**
@@ -616,3 +653,5 @@ il nome dello Shell e vengono spiegate queste cose»*. È il primo avvio guidato
 | Gesti dalla notifica | Provati sul banco: cosa offrire, e la spunta dalla notifica fino al database con la notifica ridisegnata. Non provati qui: «Rispondi» fino al turno (serve WorkManager vero), la dettatura dalla tastiera, l'aspetto sul GT6 |
 | Due app | Provato il banco su tutte e due e che la base non nomini l'architetto. Il codice della riunione resta compilato nella base (irraggiungibile) finché R8 è spento |
 | Ricerca web e Segui dal vivo | Provati sul banco con un motore finto: forma, avvisi, guardiano, letture, resoconto, Specchio. Non provati qui: le risposte vere di Exa, il worker vero alle 17, il costo reale per lettura |
+| Ricerca a fondo dal vivo | Provata sul banco con un motore finto (sotto-domande, livelli, incrocio, stima, costo reale). Non provati: la qualità vera delle ricerche mirate per tipo di fonte, i tempi (qualche minuto), e lo stesso lavoro se l'app viene chiusa a metà (oggi gira nell'app aperta, non in un worker) |
+| Le stime di costo | Sono forbici grossolane (token medi per ricerca). Il costo reale accanto alla stima serve proprio a correggerle coi numeri |

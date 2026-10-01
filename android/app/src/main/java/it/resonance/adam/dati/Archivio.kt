@@ -324,7 +324,7 @@ class Archivio(val db: Db) {
                     p.aggiungi.takeIf { it.isNotEmpty() }?.let { "aggiunte ${it.size} righe" }, via.takeIf { it.isNotEmpty() }?.let { "tolte ${it.size}" }).joinToString(", "))
             }
         }
-        is Proposta.RegolaTemperatura, is Proposta.LetteraArchitetto -> Esecuzione(false, "Non eseguito: la esegue lo Shell, non l'archivio")
+        is Proposta.RegolaTemperatura, is Proposta.LetteraArchitetto, is Proposta.RicercaAFondo -> Esecuzione(false, "Non eseguito: la esegue lo Shell, non l'archivio")
         is Proposta.CreaEvento, is Proposta.SpostaEvento, is Proposta.TogliEvento, is Proposta.ScriviMail ->
             Esecuzione(false, "Non eseguito: calendario e posta non sono nell'archivio")
     }

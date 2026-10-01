@@ -279,10 +279,12 @@ class Adam(app: Application) : AndroidViewModel(app) {
     }
 
     fun conferma(m: Messaggio) = viewModelScope.launch {
-        val segui = archivio.proposta(m) is it.resonance.adam.logica.Proposta.Segui
+        val p = archivio.proposta(m)
         avviso = shell.conferma(m.id); leggiAgenda()
         // Segui (logica/Ricerca.kt): la prima lettura parte subito e compare in chat, con lo sguardo indietro se chiesto.
-        if (segui) { pensa = true; runCatching { shell.seguiDovute(inChat = true) }; pensa = false }
+        if (p is it.resonance.adam.logica.Proposta.Segui) { pensa = true; runCatching { shell.seguiDovute(inChat = true) }; pensa = false }
+        // La ricerca a fondo (logica/AFondo.kt), appena autorizzata: qualche minuto, poi il risultato in chat.
+        if (p is it.resonance.adam.logica.Proposta.RicercaAFondo) { pensa = true; runCatching { shell.ricercaAFondo(p) }; pensa = false }
     }
 
     // Il listino dei modelli (logica/Listino.kt): gli avvisi su ciò che si usa, e l'aggiornamento a mano da Setup.

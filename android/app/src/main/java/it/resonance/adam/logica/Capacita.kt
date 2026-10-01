@@ -21,8 +21,8 @@ object Capacita {
             listOf("pilastro_nodo", "scrivi_taccuino", "riprendi_nota", "movimento_fondo", "regola_temperatura", "scrivi_all_architetto", "prendi_consegna")),
         Area("Lavagna del Ghost", "appunti usa e getta con righe spuntabili (la lista della spesa); finiti o scaduti escono dal tuo prompt; si allegano in PDF alle mail (scrivi_mail con allegato)",
             listOf("scrivi_appunto", "modifica_appunto", "spunta_appunto")),
-        Area("Mondo (con la conferma del Ghost)", "calendario del telefono; mail come bozza che invia il Ghost; la ricerca web con le fonti vere (subito, senza conferma); Segui: una cosa del mondo letta ogni giorno per N giorni, con notifica, riga sullo Specchio e il tuo resoconto alla fine",
-            listOf("cerca_nel_web", "segui", "leggi_calendario", "crea_evento", "sposta_evento", "togli_evento", "scrivi_mail")),
+        Area("Mondo (con la conferma del Ghost)", "calendario del telefono; mail come bozza che invia il Ghost; la ricerca web con le fonti vere (subito, senza conferma); la ricerca a fondo a strati (fonti per tipo, livello di attendibilità e incrocio fatti dal programma; la autorizza il Ghost con la stima del costo); Segui: una cosa del mondo letta ogni giorno per N giorni, con notifica, riga sullo Specchio e il tuo resoconto alla fine",
+            listOf("cerca_nel_web", "ricerca_a_fondo", "segui", "leggi_calendario", "crea_evento", "sposta_evento", "togli_evento", "scrivi_mail")),
         Area("Riunione a tre", "il consulente esterno (ricerca web), convocato dal Ghost: le domande di tutti in una cartella, partono insieme al suo Manda",
             listOf("chiedi_consulente", "punto_fermo")),
     )

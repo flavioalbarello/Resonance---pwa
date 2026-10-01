@@ -1121,4 +1121,36 @@ class ShellTest {
         archivio.resocontoVisto(chiusa.id)
         assertTrue(!Contesto.sistema(archivio.istantanea(oggi.plusDays(3))).contains("RESOCONTO NON ANCORA VISTO"))
     }
+
+    // La ricerca a fondo (02/10/2026): la propone lo Shell con la stima del programma; autorizzata, il programma cerca per
+    // tipo di fonte, classifica, incrocia; il modello scrive le affermazioni; in chat il costo reale accanto alla stima.
+    @Test fun laRicercaAFondoSiProponeSiAutorizzaESiIncrocia() = runBlocking {
+        val m = FintoModello(chiama("ricerca_a_fondo", """{"domanda":"Quanti trichechi a Crystal River quest'anno?","sotto":["ufficiale: censimento dei lamantini a Crystal River 2026","forum: avvistamenti di lamantini a Crystal River nel 2026"]}"""),
+            testo("Proposta la ricerca a fondo."))
+        val s = shell(m, FintaCassetta())
+        s.turno("quanti trichechi ci sono a Crystal River?")
+        val proposta = db.messaggi().elenco().single { it.ruolo == Ruolo.PROPOSTA }
+        assertTrue(proposta.testo, proposta.testo.contains("Ricerca a fondo") && proposta.testo.contains("Costo stimato dal programma") && proposta.testo.contains("centesimi"))
+        // Una per volta: una seconda proposta uguale non passa finché la prima aspetta.
+        assertTrue(s.conferma(proposta.id).contains("autorizzata"))
+        m.ricerche += web("Dati al: marzo 2026\nCensimento: 1.100 lamantini a Crystal River.", "fws.gov", "myfwc.com")
+        m.ricerche += web("Dati al: settembre 2026\nSu Reddit molti avvistamenti a gennaio.", "reddit.com")
+        val sintesi = FintoModello(testo("- Il censimento conta 1.100 lamantini nel 2026 [1, 2]\n- Molti avvistamenti a gennaio [3]\n- Una cosa inventata [8]\nSintesi: dato ufficiale solido, testimonianze coerenti."))
+        sintesi.ricerche.addAll(m.ricerche)
+        val scheda = shell(sintesi, FintaCassetta()).ricercaAFondo(archivio.proposta(proposta) as Proposta.RicercaAFondo)
+        // Due ricerche mirate, ciascuna col suo tipo di fonte.
+        assertEquals(2, sintesi.aFondo.size)
+        assertTrue(sintesi.aFondo[1].toString().contains("forum"))
+        // Il modello della sintesi riceve le fonti col livello deciso dal programma.
+        assertTrue(sintesi.ricevuti.single().toString().contains("[1] A · fws.gov"))
+        assertTrue(scheda, scheda.contains("2 fonti indipendenti · migliore A") && scheda.contains("1 sola fonte · C") && scheda.contains("⚠ nessuna fonte"))
+        assertTrue(scheda, scheda.contains("Dove non ho potuto guardare") && scheda.contains("Costo: stimato") && scheda.contains("reale"))
+        assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.RICERCA && it.testo.startsWith("Ricerca a fondo") })
+    }
+
+    @Test fun seguireDiceQuantoCosta() = runBlocking {
+        val m = FintoModello(chiama("segui", """{"cosa":"Mustang usate","domanda":"annunci di Ford Mustang usate in Italia","giorni":7}"""), testo("Proposto."))
+        shell(m, FintaCassetta()).turno("seguimi le Mustang per una settimana")
+        assertTrue(db.messaggi().elenco().single { it.ruolo == Ruolo.PROPOSTA }.testo.contains("Costo stimato dal programma"))
+    }
 }
