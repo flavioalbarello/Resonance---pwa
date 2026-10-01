@@ -6,6 +6,8 @@ import it.resonance.adam.dati.Esecuzione
 import it.resonance.adam.dati.Messaggio
 import it.resonance.adam.dati.Nodo
 import it.resonance.adam.dati.Nota
+import it.resonance.adam.dati.Osservazione
+import it.resonance.adam.dati.Lettura
 import it.resonance.adam.dati.Pilastro
 import it.resonance.adam.dati.Voce
 import it.resonance.adam.dati.Ruolo
@@ -13,6 +15,7 @@ import it.resonance.adam.dati.StatoProposta
 import it.resonance.adam.dati.TipoMisura
 import it.resonance.adam.logica.Agenda
 import it.resonance.adam.logica.Tour
+import it.resonance.adam.logica.Ricerca
 import it.resonance.adam.logica.AgendaLetta
 import it.resonance.adam.logica.Allegati
 import it.resonance.adam.logica.Allegato
@@ -64,7 +67,8 @@ suspend fun Archivio.istantanea(oggi: LocalDate = LocalDate.now(), agenda: Agend
     val voci = db.voci().elenco()
     i.copy(pausa = it.resonance.adam.logica.Assenza.giorniDiPausa(it.resonance.adam.logica.Assenza.periodi(voci), oggi),
         via = it.resonance.adam.logica.Assenza.inCorso(voci)?.second?.da,
-        tracce = it.resonance.adam.logica.Tracce.perLoShell(db.tracce().elenco(), db.tracce().stanze(), oggi))
+        tracce = it.resonance.adam.logica.Tracce.perLoShell(db.tracce().elenco(), db.tracce().stanze(), oggi),
+        seguite = Ricerca.perLoShell(db.segui().elenco(), db.segui().letture(), oggi))
 }
 
 class Shell(
@@ -127,6 +131,7 @@ class Shell(
             Ruolo.NOTA -> "user" to "[Nota del programma, non del Ghost] ${m.testo}"
             Ruolo.ARCHITETTO -> "user" to dallArchitetto(m.testo)
             Ruolo.CONSULENTE -> "user" to "[Il consulente esterno (un modello con la ricerca web), non il Ghost: materiale da verificare, non una decisione] ${m.testo}"
+            Ruolo.RICERCA -> "user" to "[Ricerca web fatta dal programma per te, con le fonti del motore: sono fatti da citare con la loro data, non da gonfiare] ${m.testo}"
             Ruolo.BALTHASAR -> "user" to "[Balthasar: la perturbazione chiesta dal Ghost, scritta da te a temperatura alta e senza strumenti. Materiale, non decisione] ${m.testo}"
         }
         buildJsonObject { put("role", ruolo); put("content", testo) }
@@ -323,6 +328,90 @@ class Shell(
         runCatching { tavolo.registra("consulente", scheda) }.onFailure { nota("Risposta del consulente non copiata nel verbale: ${it.message ?: it.javaClass.simpleName}") }
         return Esito(scheda, emptyList())
     }
+
+    // ── La ricerca web dello Shell e Segui (02/10/2026, logica/Ricerca.kt) ──
+
+    data class Trovato(val testo: String, val fonti: List<Consulente.Fonte>, val problemi: List<String>, val costo: Double) {
+        val scheda get() = Ricerca.scheda(testo, fonti, problemi)
+        // Al modello va la scheda intera, avvisi compresi: deve sapere cosa non ha provenienza.
+        val perIlModello get() = if (testo.isBlank()) "Ricerca non riuscita: ${problemi.joinToString("; ")}" else scheda
+    }
+
+    /**
+     * Una ricerca a fondo (OpenRouter.cercaAFondo): la forma si dice prima (Ricerca.FORMA) e si controlla dopo
+     * (Ricerca.problemi), le fonti sono quelle del motore. Con `mostra` la scheda compare in chat: il Ghost vede da dove
+     * viene ciò che lo Shell dirà.
+     */
+    suspend fun cercaNelWeb(domanda: String, mostra: Boolean = true): Trovato {
+        if (domanda.isBlank()) return Trovato("", emptyList(), listOf("domanda vuota"), 0.0)
+        controllaSpesa()?.let { return Trovato("", emptyList(), listOf(it), 0.0) }
+        val protetti = Uscita.nomi(archivio.db.profilo().leggi()?.nomiProtetti.orEmpty())
+        // Ciò che esce verso il motore passa dal guardiano, come per il consulente: nomi protetti e indirizzi no.
+        val chiesto = Consulente.pulisci(domanda, protetti)
+        val modello = impostazioni.modello
+        val messaggi = JsonArray(listOf(
+            buildJsonObject { put("role", "system"); put("content", Ricerca.SISTEMA + " Oggi è ${LocalDate.now()}.") },
+            buildJsonObject { put("role", "user"); put("content", Ricerca.richiesta(chiesto)) },
+        ))
+        var t = temperaturaDi(Compito.RICERCA).takeIf { modello !in impostazioni.senzaTemperatura }
+        val trovato = try {
+            val r = try { client.cercaAFondo(impostazioni.chiave, modello, messaggi, MAX_TOKEN_BATTITO, t) } catch (e: ErroreModello) {
+                if (t == null || !Temperatura.rifiutata(e.message)) throw e
+                impostazioni.senzaTemperatura = impostazioni.senzaTemperatura + modello
+                t = null
+                client.cercaAFondo(impostazioni.chiave, modello, messaggi, MAX_TOKEN_BATTITO, null)
+            }
+            r.costo?.let { archivio.registraCosto(YearMonth.now().toString(), it) }
+            val testo = Testi.senzaFinteNote(r.testo)
+            Trovato(testo, r.fonti, Ricerca.problemi(testo, r.fonti, chiesto), r.costo ?: 0.0)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Trovato("", emptyList(), listOf("la ricerca non è riuscita: ${e.message ?: e.javaClass.simpleName}"), 0.0)
+        }
+        registraTurno(Compito.RICERCA, modello, t, false, emptyList(), 0, false, false, errore = trovato.testo.isBlank(), trovato.costo,
+            listOf("ricerca web: ${trovato.fonti.size} fonti" + if (trovato.problemi.isNotEmpty()) ", ${trovato.problemi.size} avvisi" else ""))
+        if (mostra && trovato.testo.isNotBlank()) archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, testo = "«${Testi.corto(chiesto, 140)}»\n\n" + trovato.scheda,
+            istante = ora, modello = modello, costo = trovato.costo.takeIf { it > 0 }, temperatura = t))
+        return trovato
+    }
+
+    /** Le letture di oggi per le cose seguite che ancora non l'hanno. `inChat`: la lettura compare anche in chat. */
+    suspend fun seguiDovute(oggi: LocalDate = LocalDate.now(), inChat: Boolean = false): List<Pair<Osservazione, Lettura>> {
+        val letture = archivio.db.segui().letture()
+        return archivio.db.segui().elenco().filter { Ricerca.dovuta(it, letture, oggi) }.mapNotNull { o ->
+            val prima = letture.none { it.osservazioneId == o.id }
+            val t = cercaNelWeb(Ricerca.domandaDelGiorno(o, prima), mostra = false)
+            if (t.testo.isBlank()) return@mapNotNull null
+            val l = Lettura(osservazioneId = o.id, giorno = oggi.toString(), testo = t.testo, fonti = Ricerca.codificaFonti(t.fonti),
+                problemi = t.problemi.joinToString("\n"), istante = ora)
+            val id = archivio.db.segui().leggi(l)
+            if (inChat) archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, istante = ora, modello = impostazioni.modello,
+                testo = "Segui · ${o.cosa} · ${Ricerca.giorno(o, oggi)}\n\n" + t.scheda, costo = t.costo.takeIf { it > 0 }))
+            o to l.copy(id = id)
+        }
+    }
+
+    /**
+     * Le cose seguite il cui periodo è finito: lo Shell scrive il resoconto dalle sole letture (senza ricerca), il
+     * programma lo mette nel diario e in chat, e lo Specchio lo mostra finché il Ghost non l'ha visto.
+     */
+    suspend fun chiudiSeguite(oggi: LocalDate = LocalDate.now()): List<Osservazione> =
+        archivio.db.segui().elenco().filter { Ricerca.daChiudere(it, oggi) }.map { o ->
+            val letture = archivio.db.segui().lettureDi(o.id)
+            val resoconto = if (letture.isEmpty()) "Nessuna lettura riuscita in questi giorni: non c'è niente da riassumere."
+            else if (controllaSpesa() != null) "Resoconto non scritto: tetto di spesa del mese raggiunto. Le letture restano nello Specchio."
+            else runCatching {
+                val messaggi = JsonArray(listOf(
+                    buildJsonObject { put("role", "system"); put("content", Ricerca.SISTEMA_RESOCONTO) },
+                    buildJsonObject { put("role", "user"); put("content", Ricerca.richiestaResoconto(o, letture)) },
+                ))
+                val (r, _) = chiama(impostazioni.modello, messaggi, null, MAX_TOKEN_BATTITO, temperaturaDi(Compito.RICERCA))
+                registraCosto(r)
+                Testi.senzaFinteNote(r.testo).ifBlank { null }
+            }.getOrNull() ?: "Resoconto non riuscito: le ${letture.size} letture restano nello Specchio."
+            archivio.chiudiSegui(o, resoconto, oggi)
+        }
 
     // ── Balthasar (27/09/2026, logica/Balthasar.kt) ──
     // Il Ghost tocca Perturba: lo Shell, con la sua memoria e la storia della riunione, ma SENZA strumenti e alla
@@ -840,12 +929,14 @@ class Shell(
             archivio.db.quaderni().elenco().forEach { appendLine(it.testo) }
             archivio.db.profilo().leggi()?.let { appendLine(it.vincoli); appendLine(it.motivazione) }
         }
-        return Regole(Uscita.nomi(nomiProtetti), Uscita.indirizzi(scritti), testoGhost, it.resonance.adam.logica.Esperimenti.aperti(i.esperimenti), i.consegne, i.appunti)
+        val seguite = archivio.db.segui().elenco().count { it.chiusa == null }
+        return Regole(Uscita.nomi(nomiProtetti), Uscita.indirizzi(scritti), testoGhost, it.resonance.adam.logica.Esperimenti.aperti(i.esperimenti), i.consegne, i.appunti, seguite)
     }
 
     private suspend fun lettura(v: Validazione.Lettura): String = when (v.nome) {
         "leggi_documento" -> archivio.leggiDocumento(Azioni.stringa(v.argomenti, "titolo").orEmpty())
         "cerca" -> archivio.cerca(Azioni.stringa(v.argomenti, "testo").orEmpty())
+        "cerca_nel_web" -> cercaNelWeb(Azioni.stringa(v.argomenti, "domanda").orEmpty()).perIlModello
         "leggi_misure" -> {
             val tipo = Azioni.stringa(v.argomenti, "tipo")?.uppercase()?.let { t -> TipoMisura.entries.find { it.name == t } }
             if (tipo == null) "Tipo di misura sconosciuto." else archivio.leggiMisure(tipo, Azioni.intero(v.argomenti, "giorni", 30))

@@ -103,6 +103,8 @@ class Adam(app: Application) : AndroidViewModel(app) {
     val risposte = db.lettere().tutteLeRisposte().stato()
     val consegne = db.consegne().tutte().stato()
     val appunti = db.lavagna().tutti().stato()
+    val osservazioni = db.segui().tutte().stato()
+    val letture = db.segui().tutteLeLetture().stato()
     val profilo: StateFlow<Profilo?> = db.profilo().osserva().stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val spesaMese = db.spesa().osserva(YearMonth.now().toString()).stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -276,7 +278,15 @@ class Adam(app: Application) : AndroidViewModel(app) {
             fine.outputData.getString(TurnoWorker.TESTO).orEmpty(), fine.outputData.getLongArray(TurnoWorker.PROPOSTE)?.toList().orEmpty()))
     }
 
-    fun conferma(m: Messaggio) = viewModelScope.launch { avviso = shell.conferma(m.id); leggiAgenda() }
+    fun conferma(m: Messaggio) = viewModelScope.launch {
+        val segui = archivio.proposta(m) is it.resonance.adam.logica.Proposta.Segui
+        avviso = shell.conferma(m.id); leggiAgenda()
+        // Segui (logica/Ricerca.kt): la prima lettura parte subito e compare in chat, con lo sguardo indietro se chiesto.
+        if (segui) { pensa = true; runCatching { shell.seguiDovute(inChat = true) }; pensa = false }
+    }
+
+    fun smettiDiSeguire(id: Long) = viewModelScope.launch { avviso = archivio.smettiDiSeguire(id) }
+    fun resocontoVisto(id: Long) = viewModelScope.launch { archivio.resocontoVisto(id) }
     fun rifiuta(m: Messaggio) = viewModelScope.launch { shell.rifiuta(m.id) }
 
     // ── Voce: dettatura (come Gemini: testo nella casella) e auto (mani libere) ──

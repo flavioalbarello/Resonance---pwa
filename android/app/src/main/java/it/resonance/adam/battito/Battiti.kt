@@ -63,6 +63,13 @@ object Battiti {
             "sensi", ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<SensiWorker>(6, TimeUnit.HOURS).build(),
         )
+        // Segui (logica/Ricerca.kt): ogni 3 ore guarda se c'è una lettura da fare (dalle 17) o un resoconto da scrivere.
+        // Indipendente dal battito: chi lo spegne non perde ciò che ha chiesto di seguire.
+        wm.enqueueUniquePeriodicWork(
+            "segui", ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<SeguiWorker>(3, TimeUnit.HOURS)
+                .setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build()).build(),
+        )
         // La cassetta delle lettere con l'architetto: spedisce ciò che è rimasto indietro e ritira le risposte.
         // Solo nell'app di sviluppo (logica/Edizione.kt).
         if (it.resonance.adam.logica.Edizione.sviluppatore) wm.enqueueUniquePeriodicWork(
@@ -321,3 +328,36 @@ class LettereWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         return Result.success()
     }
 }
+
+// Segui (02/10/2026, logica/Ricerca.kt): la lettura del giorno si fa dalla sera (dopo le 17, quando i mercati hanno chiuso e
+// le notizie del giorno ci sono), una notifica per ciascuna; finito il periodo, il resoconto. Mentre il Ghost è via, fermo.
+class SeguiWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val archivio = Archivio(Db.di(applicationContext))
+        if (runCatching { archivio.assenzaInCorso() }.getOrNull() != null) return Result.success()
+        val imp = Impostazioni(applicationContext)
+        if (imp.chiave.isBlank()) return Result.success()
+        val shell = Shell(archivio, imp, mondo = MondoAndroid(applicationContext))
+        val oggi = LocalDate.now()
+        runCatching { shell.chiudiSeguite(oggi) }.getOrDefault(emptyList()).forEach { o ->
+            Seguite.notifica(applicationContext, o.id, "Resoconto pronto: ${o.cosa}", o.resoconto, "SPECCHIO", imp)
+        }
+        if (LocalDateTime.now().hour < Seguite.ORA_LETTURA) return Result.success()
+        runCatching { shell.seguiDovute(oggi) }.getOrDefault(emptyList()).forEach { (o, l) ->
+            Seguite.notifica(applicationContext, o.id, "${o.cosa} · ${it.resonance.adam.logica.Ricerca.giorno(o, oggi)}",
+                l.testo + if (l.problemi.isNotBlank()) "\n⚠ " + l.problemi.replace("\n", "\n⚠ ") else "", "SPECCHIO", imp)
+        }
+        return Result.success()
+    }
+}
+
+object Seguite {
+    const val ORA_LETTURA = 17
+    // Un id di notifica per cosa seguita, fuori dai numeri del battito (100–115) e del turno (301–302).
+    fun notifica(context: Context, idOsservazione: Long, titolo: String, testo: String, schermata: String, imp: Impostazioni) {
+        val c = Rapide.Contenuto((500 + idOsservazione % 400).toInt(), titolo, testo, "", schermata, Battiti.CANALE)
+        Battiti.notifica(context, c.id, c.titolo, c.testo, c.dettaglio, c.schermata,
+            azioni = Rapide.azioni(context, c, it.resonance.adam.logica.Gesti.puoRispondere(imp.riunione), emptyList()))
+    }
+}
+

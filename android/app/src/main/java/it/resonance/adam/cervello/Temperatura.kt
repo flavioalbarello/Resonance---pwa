@@ -15,6 +15,8 @@ enum class Compito(val etichetta: String, val temperatura: Double, val perche: S
     // Riunione, 27/09/2026. Il consulente riporta ciò che ha trovato; Balthasar prende la dose dall'intensità scelta dal
     // Ghost (logica/Balthasar.kt), e questa è solo la media.
     CONSULENTE("consulente esterno", 0.2, "riporta ciò che la ricerca ha trovato, non inventa"),
+    // La ricerca web dello Shell e Segui (02/10/2026): riporta ciò che le fonti dicono.
+    RICERCA("ricerca web e Segui", 0.2, "riporta ciò che le fonti dicono, non inventa"),
     BALTHASAR("Balthasar in riunione", 0.85, "la perturbazione: la dose la sceglie il Ghost con l'intensità (0,7 · 0,85 · 1)"),
 }
 

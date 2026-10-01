@@ -43,6 +43,8 @@ data class Istantanea(
     // «Sono via» (logica/Assenza.kt): i giorni di pausa, che i rituali saltano, e l'assenza in corso se c'è.
     val pausa: Set<LocalDate> = emptySet(),
     val via: LocalDate? = null,
+    // Segui (logica/Ricerca.kt): le cose in corso e i resoconti che il Ghost non ha ancora visto, già in righe.
+    val seguite: String = "",
     // Le tracce vive nelle stanze in cui il Ghost è entrato (logica/Tracce.kt), già in righe; vuoto se non ce ne sono.
     val tracce: String = "",
     // Le consegne aperte dello Shell (logica/Consegne.kt).
@@ -136,6 +138,9 @@ object Contesto {
         appendLine("- Il TACCUINO è tuo: scrivi_taccuino per un'ipotesi, un'idea, una cosa da ripensare (niente conferma, non tocca niente). Una nota non ripresa per ${Taccuino.GIORNI} giorni evapora: riprendi_nota per tenerla viva. Per agire, riscrivila come proposta normale e cita la nota.")
         if (Edizione.sviluppatore) appendLine("- Il FONDO di Adam è denaro vero del Ghost, a fondo perduto: decidi tu come usarlo, lui esegue e paga. Ogni entrata o uscita proponila con movimento_fondo, col motivo. Rispetta il modo del fondo scritto sotto. Mai il nome professionale del Ghost; ogni contenuto generato con l'AI si dichiara.")
         appendLine("- Per cambiare la temperatura di un compito proponi regola_temperatura, con un perché: vale dal turno dopo, se il Ghost conferma.")
+        // La ricerca web e Segui (02/10/2026): non si dice più «non ho internet».
+        appendLine("- Per un fatto del mondo di oggi (prezzi, quotazioni, notizie, orari, dati pubblici) usa cerca_nel_web: la ricerca la fa il programma, con le fonti vere del motore, e il Ghost la vede in chat. Cita i numeri con la loro data; se la ricerca segnala un avviso (⚠), dillo. Non dire mai che non hai accesso a internet.")
+        appendLine("- Se il Ghost vuole che una cosa del mondo sia seguita per più giorni («seguilo per una settimana», «aggiornami ogni giorno»), proponi segui: ogni giorno la lettura la fa il programma, con notifica e riga sullo Specchio; alla fine scrivi tu il resoconto. Non promettere di tornare da solo senza segui.")
         if (Edizione.sviluppatore) appendLine("- Per consultare l'architetto dell'app (Claude Code) usa scrivi_all_architetto: una richiesta per lettera, con contesto e domande chiuse. Risponde entro un giorno; non modifica l'app senza il sì del Ghost.")
         appendLine("- Una proposta si conferma SOLO col pulsante Conferma sotto di essa. Se il Ghost scrive «sì» o «confermo» e una proposta è in attesa, digli di premere Conferma: non rifarla uguale e non dire che l'hai «inviata al programma».")
         appendLine("- Se una proposta è «fallita», il motivo è nella nota del programma che la segue: riferisci quello, non indovinarne un altro.")
@@ -194,6 +199,11 @@ object Contesto {
         if (i.appunti.isNotEmpty()) {
             appendLine("LAVAGNA DEL GHOST (appunti usa e getta, vivi)")
             Lavagna.perPrompt(i.appunti, i.oggi).forEach { appendLine("- $it") }
+            appendLine()
+        }
+        if (i.seguite.isNotBlank()) {
+            appendLine("SEGUI (le cose del mondo che stai seguendo, lette dal programma ogni giorno)")
+            appendLine(i.seguite)
             appendLine()
         }
         if (i.tracce.isNotBlank()) {

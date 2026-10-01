@@ -168,6 +168,14 @@ sealed class Proposta {
             ", entro ${Giorni.leggibile(scadenza)}. Il giorno prima ci lavora da solo; alla scadenza il programma guarda se il documento c'è"
     }
 
+    // Segui (02/10/2026, logica/Ricerca.kt): una cosa del mondo letta ogni giorno per N giorni, con un resoconto alla fine.
+    @Serializable @SerialName("segui")
+    data class Segui(val cosa: String, val domanda: String, val giorni: Int, val prima: String = "") : Proposta() {
+        override fun descrizione() = "Seguire «$cosa» per $giorni " + (if (giorni == 1) "giorno" else "giorni") +
+            ": ogni giorno una ricerca web con le fonti, una notifica e la riga sullo Specchio; alla fine il resoconto"
+        override fun dettaglio() = "Ogni giorno: $domanda" + if (prima.isNotBlank()) "\nLa prima volta anche: $prima" else ""
+    }
+
     @Serializable @SerialName("lettera_architetto")
     data class LetteraArchitetto(val oggetto: String, val testo: String) : Proposta() {
         override fun descrizione() = "Spedire all'architetto la lettera «$oggetto» (con lo stato dell'app allegato)"
@@ -267,6 +275,8 @@ data class Regole(
     val esperimentiAperti: List<Esperimento> = emptyList(),
     val consegneAperte: List<it.resonance.adam.dati.Consegna> = emptyList(),
     val appuntiVivi: List<it.resonance.adam.dati.Appunto> = emptyList(),
+    // Quante cose lo Shell sta già seguendo (Segui): il tetto lo controlla il programma.
+    val seguiteAttive: Int = 0,
 )
 
 sealed class Validazione {
@@ -304,11 +314,17 @@ object Azioni {
 
     // I compiti la cui temperatura si può proporre: la scelta del motore resta a 0, è una classificazione; quella di
     // Balthasar la sceglie il Ghost a ogni tocco, con l'intensità.
-    val COMPITI_REGOLABILI = listOf("ALLEGATI", "TURNO", "BATTITO", "ESPERIMENTO", "DADO", "CONSULENTE")
+    val COMPITI_REGOLABILI = listOf("ALLEGATI", "TURNO", "BATTITO", "ESPERIMENTO", "DADO", "CONSULENTE", "RICERCA")
 
     val strumenti: List<Strumento> = listOf(
         Strumento("leggi_documento", Effetto.LETTURA, "Legge il testo completo di un documento salvato in un percorso.",
             schema(listOf("titolo"), mapOf("titolo" to s("Titolo o parte del titolo del documento")))),
+        // La ricerca web (02/10/2026): eseguita subito, senza conferma, perché non scrive niente. La risposta, con le
+        // fonti del motore e gli avvisi del programma, compare anche in chat: il Ghost vede da dove viene ciò che dici.
+        Strumento("cerca_nel_web", Effetto.LETTURA, "Cerca nel web un fatto del mondo di oggi (prezzi, notizie, orari, dati pubblici). " +
+            "Risponde con la data dei dati e le fonti vere del motore di ricerca; il Ghost la vede in chat. Usala invece di dire che non hai internet; " +
+            "non usarla per ciò che sta già in Adam (per quello c'è cerca). Costa qualche centesimo: una domanda precisa vale più di tre vaghe.",
+            schema(listOf("domanda"), mapOf("domanda" to s("La domanda per la ricerca, precisa: cosa, dove, per quale periodo")))),
         Strumento("cerca", Effetto.LETTURA, "Cerca un testo nel diario, nei documenti e nei quaderni. Usalo prima di dire che una cosa non esiste.",
             schema(listOf("testo"), mapOf("testo" to s("Parole da cercare")))),
         Strumento("leggi_misure", Effetto.LETTURA, "Serie giornaliera di una misura, per quando la sintesi non basta.",
@@ -455,6 +471,14 @@ object Azioni {
             schema(listOf("cosa", "documento", "giorni"), mapOf("cosa" to s("Cosa consegni, in una riga"),
                 "documento" to s("Titolo esatto del documento che consegnerai"), "percorso" to s("Titolo del percorso dove starà (consigliato)"),
                 "giorni" to n("Fra quanti giorni la scadenza, ${Consegne.GIORNI_MIN}–${Consegne.GIORNI_MAX}")))),
+        Strumento("segui", Effetto.SCRITTURA,
+            "Propone di seguire una cosa del mondo per alcuni giorni (un titolo in borsa, una notizia, un prezzo): ogni giorno il programma fa la ricerca web, " +
+                "la notifica e la riga sullo Specchio; alla fine tu scrivi il resoconto, che si presenta da solo. La prima lettura parte appena il Ghost conferma. " +
+                "Al massimo ${Ricerca.SEGUITE_MAX} cose insieme, da 1 a ${Ricerca.GIORNI_MAX} giorni.",
+            schema(listOf("cosa", "domanda", "giorni"), mapOf("cosa" to s("Che cosa si segue, un nome corto (es. Gazprom in borsa)"),
+                "domanda" to s("La domanda da fare ogni giorno, precisa (es. prezzo di chiusura più recente di Gazprom alla borsa di Mosca e variazione sul giorno prima)"),
+                "giorni" to n("Per quanti giorni, 1–${Ricerca.GIORNI_MAX}"),
+                "prima" to s("Facoltativo: ciò che si chiede solo alla prima lettura (es. andamento dell'ultimo anno, mese e settimana)")))),
         Strumento("scrivi_all_architetto", Effetto.SCRITTURA,
             "Propone una lettera all'architetto dell'app (Claude Code). Parte dopo la conferma del Ghost, con lo stato dell'app allegato; la risposta arriva entro un giorno.",
             schema(listOf("oggetto", "testo"), mapOf("oggetto" to s("Una riga"),
@@ -577,6 +601,13 @@ object Azioni {
                 rifiuta("c'è già una consegna aperta sul documento «${it.documento}» («${it.cosa}»)")
             }
             Proposta.PrendiConsegna(cosa, documento, a.testo("percorso"), oggi.plusDays(giorni.toLong()).toString())
+        }
+        "segui" -> {
+            val cosa = a.testo("cosa").orEmpty()
+            val domanda = a.testo("domanda").orEmpty()
+            val giorni = intero(a, "giorni", 0)
+            Ricerca.difetti(cosa, domanda, giorni, regole.seguiteAttive).takeIf { it.isNotEmpty() }?.let { rifiuta(it.joinToString("; ")) }
+            Proposta.Segui(cosa, domanda, giorni, a.testo("prima").orEmpty())
         }
         "scrivi_all_architetto" -> {
             val oggetto = a.testo("oggetto")?.takeIf { it.length <= 120 } ?: rifiuta("oggetto mancante o più lungo di 120 caratteri")

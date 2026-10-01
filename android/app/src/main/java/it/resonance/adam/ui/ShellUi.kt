@@ -233,6 +233,8 @@ private fun Messaggio(vm: Adam, m: Messaggio) {
         Ruolo.NOTA -> Text(m.testo, color = Colori.tenue, fontSize = 13.sp, fontStyle = FontStyle.Italic, modifier = Modifier.padding(horizontal = 4.dp))
         // Le due voci nuove della riunione: ognuna col suo nome, perché non si confondano con lo Shell.
         Ruolo.CONSULENTE -> Voce(vm, m, "Consulente esterno · ricerca web", Colori.linea)
+        // La ricerca dello Shell e le letture di Segui: fatte dal programma, con le fonti del motore (logica/Ricerca.kt).
+        Ruolo.RICERCA -> Voce(vm, m, "Ricerca web · fonti dal motore", Colori.linea)
         Ruolo.BALTHASAR -> Voce(vm, m, "Balthasar · ${m.motore ?: "perturbazione"}", Colori.allarme.copy(alpha = 0.5f))
     }
 }

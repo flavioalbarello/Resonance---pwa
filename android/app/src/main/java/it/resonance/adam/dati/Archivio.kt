@@ -39,6 +39,8 @@ data class Copia(
     val appunti: List<Appunto> = emptyList(),
     val stanze: List<Stanza> = emptyList(),
     val tracce: List<Traccia> = emptyList(),
+    val osservazioni: List<Osservazione> = emptyList(),
+    val letture: List<Lettura> = emptyList(),
 )
 
 class Ambiguo(m: String) : Exception(m)
@@ -274,6 +276,17 @@ class Archivio(val db: Db) {
                 }
             }
         }
+        // Segui (logica/Ricerca.kt): il tetto si ricontrolla qui, dove la proposta diventa un fatto.
+        is Proposta.Segui -> {
+            val attive = db.segui().elenco().count { it.chiusa == null }
+            val difetti = it.resonance.adam.logica.Ricerca.difetti(p.cosa, p.domanda, p.giorni, attive)
+            if (difetti.isNotEmpty()) Esecuzione(false, "Non avviato: ${difetti.joinToString("; ")}")
+            else {
+                val fine = oggi.plusDays(p.giorni.toLong() - 1)
+                db.segui().inserisci(Osservazione(cosa = p.cosa, domanda = p.domanda, prima = p.prima, inizio = oggi.toString(), fine = fine.toString(), creata = ora))
+                Esecuzione(true, "Segui «${p.cosa}» fino al ${Giorni.leggibile(fine.toString())}: una lettura al giorno con le fonti, sullo Specchio e in una notifica; la prima arriva ora in chat")
+            }
+        }
         is Proposta.MovimentoFondo -> {
             val prima = Fondo.stato(db.fondo().elenco(), oggi)
             when {
@@ -415,6 +428,30 @@ class Archivio(val db: Db) {
             db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = oggi.toString(), testo = Consegne.traccia(c), fonte = "consegna", creato = ora, aggiornato = ora))
         }
     }
+
+    // ── Segui (02/10/2026, logica/Ricerca.kt) ──
+
+    /** Fine del periodo: il resoconto entra nel diario di Adam e in chat, e resta sullo Specchio finché non è visto. */
+    suspend fun chiudiSegui(o: Osservazione, resoconto: String, oggi: LocalDate = LocalDate.now()): Osservazione {
+        val chiusa = o.copy(chiusa = oggi.toString(), resoconto = resoconto)
+        db.segui().aggiorna(chiusa)
+        db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = oggi.toString(), testo = "Seguito «${o.cosa}» dal ${o.inizio} al ${o.fine}. Resoconto: $resoconto",
+            fonte = "segui", creato = ora, aggiornato = ora))
+        db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, istante = ora, testo = "Resoconto · ${o.cosa} (dal ${o.inizio} al ${o.fine})\n\n$resoconto"))
+        return chiusa
+    }
+
+    /** Il Ghost smette di seguire una cosa prima della fine: niente resoconto, la traccia resta. */
+    suspend fun smettiDiSeguire(id: Long, oggi: LocalDate = LocalDate.now()): String {
+        val o = db.segui().per(id) ?: return "Non trovata"
+        if (o.chiusa != null) return "Già finita"
+        val letture = db.segui().lettureDi(id).size
+        db.segui().aggiorna(o.copy(chiusa = oggi.toString(), resoconto = "Smessa dal Ghost il $oggi, dopo $letture letture.", visto = true))
+        db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = oggi.toString(), testo = "Smesso di seguire «${o.cosa}» il $oggi, dopo $letture letture.", fonte = "segui", creato = ora, aggiornato = ora))
+        return "Smesso di seguire «${o.cosa}»"
+    }
+
+    suspend fun resocontoVisto(id: Long) { db.segui().per(id)?.let { db.segui().aggiorna(it.copy(visto = true)) } }
 
     // ── «Sono via» / «Sono tornato» (01/10/2026, logica/Assenza.kt) ──
 
@@ -617,6 +654,7 @@ class Archivio(val db: Db) {
         taccuino = db.taccuino().elenco(), movimenti = db.fondo().elenco(), lettere = db.lettere().elenco(), risposte = db.lettere().risposte(),
         consegne = db.consegne().elenco(), appunti = db.lavagna().elenco(),
         stanze = db.tracce().stanze(), tracce = db.tracce().elenco(),
+        osservazioni = db.segui().elenco(), letture = db.segui().letture(),
     ))
 
     fun eUnaCopia(testo: String) = testo.contains("\"_formato\":\"resonance-apk\"") || testo.contains("\"_formato\": \"resonance-apk\"")
@@ -626,7 +664,7 @@ class Archivio(val db: Db) {
         val c = json.decodeFromString(Copia.serializer(), testo)
         db.withTransaction {
             listOf("misure", "voci", "versioni", "rituali", "spunte", "percorsi", "nodi", "documenti", "quaderni", "messaggi", "spesa", "profilo", "esperimenti",
-                "taccuino", "movimenti", "lettere", "risposte", "consegne", "appunti", "stanze", "tracce")
+                "taccuino", "movimenti", "lettere", "risposte", "consegne", "appunti", "stanze", "tracce", "osservazioni", "letture")
                 .forEach { db.openHelper.writableDatabase.execSQL("DELETE FROM $it") }
             c.misure.forEach { db.misure().sostituisci(it) }
             c.voci.forEach { db.voci().inserisci(it) }
@@ -649,6 +687,8 @@ class Archivio(val db: Db) {
             c.appunti.forEach { db.lavagna().inserisci(it) }
             c.stanze.forEach { db.tracce().entra(it) }
             c.tracce.forEach { db.tracce().deposita(it) }
+            c.osservazioni.forEach { db.segui().inserisci(it) }
+            c.letture.forEach { db.segui().leggi(it) }
         }
         return c.misure.size + c.voci.size + c.documenti.size
     }

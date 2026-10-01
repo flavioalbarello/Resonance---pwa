@@ -41,7 +41,7 @@ enum class StatoNodo(val etichetta: String) {
 // del tavolo con la ricerca web; Balthasar è lo Shell a temperatura alta, senza strumenti, quando il Ghost tocca
 // «Perturba». Ognuno con la sua etichetta: nel verbale e nel prompt non si mescolano con la voce normale dello Shell.
 // Un valore nuovo di un enum salvato per nome non cambia lo schema: nessuna migrazione.
-enum class Ruolo { GHOST, SHELL, PROPOSTA, RICEVUTA, NOTA, ARCHITETTO, CONSULENTE, BALTHASAR }
+enum class Ruolo { GHOST, SHELL, PROPOSTA, RICEVUTA, NOTA, ARCHITETTO, CONSULENTE, BALTHASAR, RICERCA }
 
 // L'anello (Anochin): un esperimento dichiara PRIMA il numero che dovrebbe muoversi e in che verso; il punto di
 // partenza si congela all'apertura; alla scadenza il programma confronta. Nessun modello nel confronto.
@@ -384,4 +384,38 @@ data class Traccia(
     val prove: String = "",
     val deposta: Long,
     val svanita: String? = null,
+)
+
+// ── Segui (02/10/2026; logica/Ricerca.kt) ──
+
+// Una cosa del mondo che lo Shell segue per qualche giorno, su proposta confermata dal Ghost: ogni giorno una lettura
+// con le fonti del motore di ricerca, alla fine un resoconto che si presenta da solo (Specchio e chat) finché il Ghost
+// non l'ha visto. Smessa o finita, resta qui (Legge 14).
+@Serializable
+@Entity(tableName = "osservazioni")
+data class Osservazione(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val cosa: String,
+    val domanda: String,
+    // Ciò che si chiede solo alla prima lettura (es. «l'andamento dell'ultimo anno, mese e settimana»).
+    val prima: String = "",
+    val inizio: String,
+    val fine: String,
+    val creata: Long,
+    val chiusa: String? = null,
+    val resoconto: String = "",
+    val visto: Boolean = false,
+)
+
+// Una lettura: il testo della ricerca, le fonti restituite dal motore («url\ttitolo» una per riga), ciò che non tornava.
+@Serializable
+@Entity(tableName = "letture", indices = [Index("osservazioneId")])
+data class Lettura(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val osservazioneId: Long,
+    val giorno: String,
+    val testo: String,
+    val fonti: String = "",
+    val problemi: String = "",
+    val istante: Long,
 )

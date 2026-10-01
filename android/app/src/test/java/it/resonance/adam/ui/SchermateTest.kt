@@ -137,6 +137,12 @@ class SchermateTest {
                 listOf(it.resonance.adam.logica.Consulente.Fonte("https://developers.meta.com/wearables/faq/", "Wearables FAQ", "developers.meta.com")), emptyList(), emptyList())))
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.BALTHASAR, istante = t + 7, modello = "moonshotai/kimi-k2.6", temperatura = 0.85, motore = "intensità media",
             testo = "· E se il primo paio fosse di prova, e il vero acquisto dopo un mese di kit?\n· Il reso diventa un esperimento, non una rete."))
+        // Segui (02/10/2026): una cosa seguita, con la lettura di oggi e le sue fonti.
+        val seguita = db.segui().inserisci(it.resonance.adam.dati.Osservazione(cosa = "Gazprom in borsa", domanda = "prezzo di chiusura",
+            inizio = java.time.LocalDate.now().minusDays(2).toString(), fine = java.time.LocalDate.now().plusDays(4).toString(), creata = 1))
+        db.segui().leggi(it.resonance.adam.dati.Lettura(osservazioneId = seguita, giorno = java.time.LocalDate.now().toString(), istante = 2,
+            testo = "Dati al: 1 ottobre 2026, chiusura\nGazprom: 128,4 RUB (−1,2%)\nLettura: in calo da tre giorni.",
+            fonti = "https://www.moex.com/x\tMOEX\nhttps://www.investing.com/y\tInvesting"))
         db.lavagna().inserisci(it.resonance.adam.dati.Appunto(titolo = "Spesa", creato = 1, scade = java.time.LocalDate.now().plusDays(5).toString(), fissato = true,
             righe = it.resonance.adam.logica.Lavagna.codifica(listOf("Latte", "Uova", "Fagioli cannellini", "Pane").mapIndexed { i, t -> it.resonance.adam.logica.Lavagna.Riga(t, i == 1) })))
         db.consegne().inserisci(it.resonance.adam.dati.Consegna(cosa = "Scheda del primo micro-asset", documento = "Scheda micro-asset", percorso = "Resonance",
@@ -170,6 +176,8 @@ class SchermateTest {
         regola.onNodeWithTag("salta-tour").performClick()
         regola.waitForIdle()
         assertTrue(!vm.tour)
+        regola.onNodeWithText("SEGUI · GAZPROM IN BORSA").assertExists()
+        regola.onNodeWithText("giorno 3 di 7", substring = true).assertExists()
         scatta("1-specchio")
         regola.onNodeWithText("Stabilità mantenuta", substring = true, ignoreCase = true).assertExists()
         regola.onNodeWithText("Entrate che non vendono tempo", substring = true).assertExists()

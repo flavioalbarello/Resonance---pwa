@@ -357,6 +357,36 @@ schermate, non il database né ciò che lo Shell legge.
 - **Storia** (in Adam): il diario per pilastro, con «+ Scrivi»; in cima le consegne dello Shell.
 - **Fondo**: solo nella dev, anche lo strumento `movimento_fondo` e le righe nel prompt.
 
+## La ricerca web dello Shell e «Segui» (02/10/2026, tutte e due le app)
+
+Il Ghost: *«la funzione della ricerca deve essere potente ed accurata, per qualcosa che si definisce un'estensione
+cognitiva e digitale del Ghost»*. Lo Shell rispondeva «non ho accesso a internet»: la ricerca c'era, ma solo per il
+consulente in riunione.
+
+**`cerca_nel_web`** (strumento di lettura: subito, senza conferma, perché non scrive niente).
+- Motore Exa, 10 risultati, contesto «high», fino a 4 ricerche per risposta (`OpenRouter.cercaAFondo`; parametri e
+  prezzo verificati sulla documentazione di OpenRouter il 02/10: 0,7 centesimi di dollaro a ricerca più i token).
+- Al motore va solo la domanda, passata dal guardiano (nomi protetti e indirizzi no), con la forma di `Ricerca.FORMA`:
+  prima riga «Dati al: …», ogni numero con data e unità, «non trovato» invece di stimare, la lettura separata dai fatti.
+- Il programma controlla con la stessa costante (`Ricerca.problemi`): fonti restituite dal motore (i link scritti dal
+  modello non contano), la riga della data, nomi e siti citati senza essere fra le fonti. Ciò che non torna diventa un
+  ⚠ visibile, non una correzione nascosta.
+- La scheda (risposta, fonti vere, avvisi) compare in chat come «Ricerca web · fonti dal motore»: il Ghost vede da dove
+  viene ciò che lo Shell dirà. Compito `RICERCA`, temperatura 0,2, regolabile.
+
+**`segui`** (proposta: la conferma il Ghost). Una cosa del mondo per 1–30 giorni, al massimo 5 insieme. DB 15:
+`osservazioni` e `letture`.
+- Alla conferma, la prima lettura parte subito e compare in chat, con lo sguardo indietro se chiesto («ultimo anno,
+  mese e settimana»).
+- Poi una lettura al giorno, dalle 17 (`SeguiWorker`, ogni 3 ore, indipendente dal battito; fermo se il Ghost è via):
+  notifica con «Rispondi», e la scheda sullo Specchio (giorno N di M, ultima lettura, fonti, avvisi, tutte le letture,
+  Smetti).
+- Finito il periodo, lo Shell scrive il resoconto dalle sole letture, senza nuove ricerche. Il resoconto va nel diario
+  di Adam, in chat e in cima allo Specchio, finché il Ghost non tocca «Visto». Finché non l'ha visto, lo Shell ha
+  l'istruzione di dirglielo alla prima occasione e di indicare lo Specchio.
+- Il limite, detto: il programma garantisce la provenienza e la data di un numero, non che sia giusto. Per le
+  quotazioni la strada solida resta un servizio di dati vero.
+
 ## Dalla riunione del 01/10/2026: riunioni, assenza, terreno di Adam City
 
 **Riunione.**
@@ -585,3 +615,4 @@ il nome dello Shell e vengono spiegate queste cose»*. È il primo avvio guidato
 | «Sono via» sul telefono vero | Provati sul banco: pausa, serie, slittamento, ritiro lo stesso giorno. Non provato qui: il battito che tace davvero a schermo spento |
 | Gesti dalla notifica | Provati sul banco: cosa offrire, e la spunta dalla notifica fino al database con la notifica ridisegnata. Non provati qui: «Rispondi» fino al turno (serve WorkManager vero), la dettatura dalla tastiera, l'aspetto sul GT6 |
 | Due app | Provato il banco su tutte e due e che la base non nomini l'architetto. Il codice della riunione resta compilato nella base (irraggiungibile) finché R8 è spento |
+| Ricerca web e Segui dal vivo | Provati sul banco con un motore finto: forma, avvisi, guardiano, letture, resoconto, Specchio. Non provati qui: le risposte vere di Exa, il worker vero alle 17, il costo reale per lettura |

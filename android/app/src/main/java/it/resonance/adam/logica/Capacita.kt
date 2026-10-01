@@ -21,8 +21,8 @@ object Capacita {
             listOf("pilastro_nodo", "scrivi_taccuino", "riprendi_nota", "movimento_fondo", "regola_temperatura", "scrivi_all_architetto", "prendi_consegna")),
         Area("Lavagna del Ghost", "appunti usa e getta con righe spuntabili (la lista della spesa); finiti o scaduti escono dal tuo prompt; si allegano in PDF alle mail (scrivi_mail con allegato)",
             listOf("scrivi_appunto", "modifica_appunto", "spunta_appunto")),
-        Area("Mondo (con la conferma del Ghost)", "calendario del telefono; mail come bozza che invia il Ghost",
-            listOf("leggi_calendario", "crea_evento", "sposta_evento", "togli_evento", "scrivi_mail")),
+        Area("Mondo (con la conferma del Ghost)", "calendario del telefono; mail come bozza che invia il Ghost; la ricerca web con le fonti vere (subito, senza conferma); Segui: una cosa del mondo letta ogni giorno per N giorni, con notifica, riga sullo Specchio e il tuo resoconto alla fine",
+            listOf("cerca_nel_web", "segui", "leggi_calendario", "crea_evento", "sposta_evento", "togli_evento", "scrivi_mail")),
         Area("Riunione a tre", "il consulente esterno (ricerca web), convocato dal Ghost: le domande di tutti in una cartella, partono insieme al suo Manda",
             listOf("chiedi_consulente", "punto_fermo")),
     )
@@ -44,6 +44,7 @@ object Capacita {
         "Adam → Lavagna: spunta col tocco, pressione lunga per correggere o togliere una voce, campo «Aggiungi una voce» in fondo a ogni appunto, Copia (righe da fare, per una nota condivisa come Keep), Condividi, Fissa nelle notifiche, Tieni (diventa documento), + Appunto a mano",
         "dalle notifiche, senza aprire l'app: «Rispondi» (scritto o dettato) sul battito e sulle tue risposte, e la sera «✓» sui rituali a mano non ancora fatti; ciò che scrive da lì ti arriva come un suo messaggio normale",
         "il tour del primo avvio (Setup → Rivedi il tour): nome, chiave, permessi, il tuo nome (tre proposte tue, sceglie lui), i quattro nomi dei pilastri, una prima domanda",
+        "Specchio → Segui: le cose che stai seguendo, col giorno e l'ultima lettura (Tutte le letture, Smetti); finito il periodo, il tuo resoconto resta lì in cima finché non tocca Visto",
         "Specchio → «Sono via» / «Sono tornato»: mentre il Ghost è via il battito tace, i rituali sono in pausa (non contano come saltati), consegne ed esperimenti slittano al ritorno dei giorni di assenza; al ritorno un riepilogo in chat",
         "in riunione: «↩ Rispondi» sotto un intervento dell'architetto (e i messaggi che cominciano con «architetto» senza nominarti) vanno nel verbale senza chiamarti; l'architetto può interrogare Balthasar con «→ Balthasar»",
         "chat: si vedono gli ultimi ${it.resonance.adam.ui.FINESTRA} messaggi; «Mostra i messaggi precedenti» in cima",

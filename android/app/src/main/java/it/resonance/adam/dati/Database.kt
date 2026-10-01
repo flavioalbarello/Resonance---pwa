@@ -188,10 +188,24 @@ interface TracceDao {
     @Update suspend fun aggiorna(t: Traccia)
 }
 
+// Segui: le cose del mondo che lo Shell segue, e le loro letture (logica/Ricerca.kt).
+@Dao
+interface SeguiDao {
+    @Query("SELECT * FROM osservazioni ORDER BY creata DESC") fun tutte(): Flow<List<Osservazione>>
+    @Query("SELECT * FROM osservazioni") suspend fun elenco(): List<Osservazione>
+    @Query("SELECT * FROM osservazioni WHERE id = :id") suspend fun per(id: Long): Osservazione?
+    @Insert suspend fun inserisci(o: Osservazione): Long
+    @Update suspend fun aggiorna(o: Osservazione)
+    @Query("SELECT * FROM letture ORDER BY istante DESC") fun tutteLeLetture(): Flow<List<Lettura>>
+    @Query("SELECT * FROM letture ORDER BY istante") suspend fun letture(): List<Lettura>
+    @Query("SELECT * FROM letture WHERE osservazioneId = :id ORDER BY istante") suspend fun lettureDi(id: Long): List<Lettura>
+    @Insert suspend fun leggi(l: Lettura): Long
+}
+
 @Database(
     entities = [Misura::class, Voce::class, Versione::class, Rituale::class, Spunta::class, Percorso::class,
-        Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class, Esperimento::class, Turno::class, Nota::class, Movimento::class, Lettera::class, RispostaLettera::class, Consegna::class, Appunto::class, Stanza::class, Traccia::class],
-    version = 14,
+        Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class, Esperimento::class, Turno::class, Nota::class, Movimento::class, Lettera::class, RispostaLettera::class, Consegna::class, Appunto::class, Stanza::class, Traccia::class, Osservazione::class, Lettura::class],
+    version = 15,
     exportSchema = true,
     // 2: Profilo.nomiProtetti (calendario e posta, 23/09/2026).
     // 3: Messaggio.allegati (immagini e documenti nella chat, 23/09/2026).
@@ -203,7 +217,8 @@ interface TracceDao {
     // 12: Turno.strumenti (cosa ha fatto lo Shell in ogni turno: per capire perché un pulsante non c'è).
     // 13: stanze e tracce, il terreno di Adam City (riunione del 01/10/2026).
     // 14: Profilo.nomeShell, il nome che ognuno dà al suo Shell (01/10/2026).
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9), AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11), AutoMigration(from = 11, to = 12), AutoMigration(from = 12, to = 13), AutoMigration(from = 13, to = 14)],
+    // 15: osservazioni e letture, «Segui» (02/10/2026).
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9), AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11), AutoMigration(from = 11, to = 12), AutoMigration(from = 12, to = 13), AutoMigration(from = 13, to = 14), AutoMigration(from = 14, to = 15)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun misure(): MisureDao
@@ -223,6 +238,7 @@ abstract class Db : RoomDatabase() {
     abstract fun profilo(): ProfiloDao
     abstract fun esperimenti(): EsperimentiDao
     abstract fun tracce(): TracceDao
+    abstract fun segui(): SeguiDao
 
     companion object {
         @Volatile private var istanza: Db? = null

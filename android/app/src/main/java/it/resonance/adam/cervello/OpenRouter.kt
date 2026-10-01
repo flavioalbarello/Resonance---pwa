@@ -90,19 +90,35 @@ open class OpenRouter(
     // nel messaggio (annotations): per questo il silenzio ammesso è lungo, la ricerca non manda segnali di vita.
     // `web` = false serve al secondo invito, quello che chiede solo i punti mancanti: non si paga un'altra ricerca.
     open suspend fun cerca(chiave: String, modello: String, messaggi: JsonArray, maxToken: Int, temperatura: Double?, web: Boolean = true): RispostaWeb =
+        ricerca(chiave, modello, messaggi, maxToken, temperatura, if (web) LEGGERA else null)
+
+    // La ricerca dello Shell (02/10/2026, il Ghost: «una funzione potente e accurata, per qualcosa che si definisce
+    // un'estensione cognitiva»). Exa al posto del motore predefinito, più risultati, più testo per risultato, più
+    // ricerche per risposta. Costo verificato sulla documentazione di OpenRouter il 02/10: 0,7 centesimi di dollaro
+    // a ricerca, più i token del modello che legge.
+    open suspend fun cercaAFondo(chiave: String, modello: String, messaggi: JsonArray, maxToken: Int, temperatura: Double?): RispostaWeb =
+        ricerca(chiave, modello, messaggi, maxToken, temperatura, A_FONDO)
+
+    private data class Profilo(val parametri: kotlinx.serialization.json.JsonObject, val chiamate: Int)
+    private val LEGGERA = Profilo(buildJsonObject { put("max_results", 5); put("max_total_results", 10); put("search_context_size", "low") }, 3)
+    private val A_FONDO = Profilo(buildJsonObject {
+        put("engine", "exa"); put("max_results", 10); put("max_total_results", 25); put("search_context_size", "high")
+    }, 4)
+
+    private suspend fun ricerca(chiave: String, modello: String, messaggi: JsonArray, maxToken: Int, temperatura: Double?, profilo: Profilo?): RispostaWeb =
         withContext(Dispatchers.IO) {
             val corpo = buildJsonObject {
                 put("model", modello)
                 put("messages", messaggi)
-                if (web) {
+                if (profilo != null) {
                     put("tools", buildJsonArray {
                         add(buildJsonObject {
                             put("type", "openrouter:web_search")
-                            putJsonObject("parameters") { put("max_results", 5); put("max_total_results", 10); put("search_context_size", "low") }
+                            put("parameters", profilo.parametri)
                         })
                     })
                     put("tool_choice", "required")
-                    put("max_tool_calls", 3)
+                    put("max_tool_calls", profilo.chiamate)
                 }
                 put("max_tokens", maxToken)
                 if (temperatura != null) put("temperature", temperatura)
@@ -126,7 +142,7 @@ open class OpenRouter(
                 }
             } catch (e: java.io.IOException) {
                 ensureActive()
-                throw ErroreModello("connessione caduta (${e.message ?: e.javaClass.simpleName}). Le domande restano in cartella: riprova Manda")
+                throw ErroreModello("connessione caduta (${e.message ?: e.javaClass.simpleName}). Riprova: ciò che avevi chiesto è salvato")
             } finally { legame?.dispose() }
         }
 

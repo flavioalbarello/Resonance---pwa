@@ -114,6 +114,12 @@ class ShellTest {
             cercati += JsonArray(messaggi.toList()) to web
             return ricerche.removeFirst()
         }
+        // La ricerca a fondo dello Shell e di Segui.
+        val aFondo = mutableListOf<JsonArray>()
+        override suspend fun cercaAFondo(chiave: String, modello: String, messaggi: JsonArray, maxToken: Int, temperatura: Double?): RispostaWeb {
+            aFondo += JsonArray(messaggi.toList())
+            return ricerche.removeFirst()
+        }
     }
 
     private fun testo(t: String) = Risposta(t, emptyList(), null, JsonObject(emptyMap()), false)
@@ -1053,5 +1059,66 @@ class ShellTest {
         val modello = FintoModello(chiama("scrivi_taccuino", """{"testo":"cifratura DZ 25x","tipo":"esempio"}"""), testo("Annotato."))
         Shell(archivio, imp, modello, FintoMondo()).turno("ricordalo come esempio")
         assertEquals("[esempio] cifratura DZ 25x", db.taccuino().elenco().single().testo)
+    }
+
+    // La ricerca web (02/10/2026): lo Shell la usa nel turno, il programma pretende fonti e data, il Ghost la vede in chat.
+    @Test fun loShellCercaNelWebConLeFontiDelMotoreEIlGhostLeVede() = runBlocking {
+        db.profilo().salva(it.resonance.adam.dati.Profilo(nome = "Flavio", nomiProtetti = "PhysioAlba"))
+        val m = FintoModello(chiama("cerca_nel_web", """{"domanda":"Quotazione Gazprom oggi, per PhysioAlba"}"""), testo("Gazprom ha chiuso a 128,4 rubli il 1 ottobre."))
+        m.ricerche += web("Dati al: 1 ottobre 2026, chiusura\nGazprom: 128,4 RUB (−1,2%)\nLettura: in calo da tre giorni.", "moex.com", "investing.com")
+        shell(m, FintaCassetta()).turno("com'è andata oggi Gazprom?")
+        // Al motore va la domanda con la forma, non il prompt di Adam né il nome protetto.
+        val inviati = m.aFondo.single().toString()
+        assertTrue(inviati, inviati.contains(it.resonance.adam.logica.Ricerca.DATA) && !inviati.contains("PhysioAlba") && !inviati.contains("Sei lo Shell di Resonance"))
+        // Il Ghost vede la ricerca con le fonti vere, senza avvisi.
+        val r = db.messaggi().elenco().single { it.ruolo == Ruolo.RICERCA }.testo
+        assertTrue(r, r.contains("Fonti (dal motore di ricerca)") && r.contains("moex.com") && !r.contains("⚠"))
+        // Il modello riceve la stessa scheda come risultato dello strumento.
+        assertTrue(m.ricevuti[1].last().toString().contains("128,4 RUB"))
+    }
+
+    @Test fun unaRicercaSenzaFontiNeDataSiSegnalaNonSiNasconde() = runBlocking {
+        val m = FintoModello()
+        m.ricerche += web("Gazprom è a circa 130 rubli.")
+        val t = shell(m, FintaCassetta()).cercaNelWeb("quotazione Gazprom")
+        assertTrue(t.problemi.toString(), t.problemi.any { it.contains("non ha restituito fonti") } && t.problemi.any { it.contains("data") })
+        assertTrue(db.messaggi().elenco().single { it.ruolo == Ruolo.RICERCA }.testo.contains("⚠"))
+    }
+
+    // Segui: la proposta, la prima lettura in chat, una al giorno, il resoconto che si presenta da solo.
+    @Test fun seguireUnaCosaPerQualcheGiorno() = runBlocking {
+        val oggi = LocalDate.now()
+        val m = FintoModello(chiama("segui", """{"cosa":"Gazprom in borsa","domanda":"prezzo di chiusura di Gazprom","giorni":3,"prima":"andamento ultimo anno, mese e settimana"}"""), testo("Proposto."))
+        val s = shell(m, FintaCassetta())
+        s.turno("seguimi Gazprom per tre giorni")
+        val proposta = db.messaggi().elenco().single { it.ruolo == Ruolo.PROPOSTA }
+        assertTrue(proposta.testo.contains("Seguire «Gazprom in borsa» per 3 giorni"))
+        assertTrue(s.conferma(proposta.id).contains("Segui «Gazprom in borsa»"))
+        val o = db.segui().elenco().single()
+        assertEquals(oggi.plusDays(2).toString(), o.fine)
+        // La prima lettura chiede anche lo sguardo indietro, e compare in chat.
+        m.ricerche += web("Dati al: oggi\nGazprom 128 RUB; un anno fa 160.", "moex.com")
+        assertEquals(1, s.seguiDovute(oggi, inChat = true).size)
+        assertTrue(m.aFondo.last().toString().contains("andamento ultimo anno"))
+        assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.RICERCA && it.testo.startsWith("Segui · Gazprom in borsa · giorno 1 di 3") })
+        // Lo stesso giorno non si rilegge; il giorno dopo sì, senza lo sguardo indietro.
+        assertTrue(s.seguiDovute(oggi).isEmpty())
+        m.ricerche += web("Dati al: domani\nGazprom 127 RUB.", "moex.com")
+        assertEquals(1, s.seguiDovute(oggi.plusDays(1)).size)
+        assertTrue(!m.aFondo.last().toString().contains("andamento ultimo anno"))
+        // Lo Shell lo vede nel prompt.
+        assertTrue(Contesto.sistema(archivio.istantanea(oggi.plusDays(1))).contains("Gazprom in borsa (giorno 2 di 3"))
+        // Finito il periodo: resoconto dalle sole letture, nel diario, in chat, e da vedere sullo Specchio.
+        val r = FintoModello(testo("Dal 128 al 127: in lieve calo."))
+        assertEquals(1, shell(r, FintaCassetta()).chiudiSeguite(oggi.plusDays(3)).size)
+        assertTrue(r.ricevuti.single().toString().contains("Gazprom 127 RUB"))
+        val chiusa = db.segui().elenco().single()
+        assertTrue(chiusa.chiusa != null && !chiusa.visto && chiusa.resoconto.contains("lieve calo"))
+        assertTrue(db.voci().elenco().any { it.fonte == "segui" && it.testo.contains("lieve calo") })
+        assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.RICERCA && it.testo.startsWith("Resoconto · Gazprom in borsa") })
+        // Finché non è visto, lo Shell sa che deve dirlo; dopo no.
+        assertTrue(Contesto.sistema(archivio.istantanea(oggi.plusDays(3))).contains("RESOCONTO NON ANCORA VISTO"))
+        archivio.resocontoVisto(chiusa.id)
+        assertTrue(!Contesto.sistema(archivio.istantanea(oggi.plusDays(3))).contains("RESOCONTO NON ANCORA VISTO"))
     }
 }

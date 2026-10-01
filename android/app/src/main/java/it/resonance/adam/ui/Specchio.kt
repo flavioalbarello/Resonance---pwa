@@ -74,6 +74,8 @@ fun Specchio(vm: Adam) {
             if (i.via == null) TextButton({ vm.vaVia() }, modifier = Modifier.testTag("via")) { Text("Sono via") }
         }
         if (vm.statoSensi.isNotBlank()) Tenue(vm.statoSensi)
+        // Segui: ciò che lo Shell sta seguendo nel mondo, e i resoconti non ancora visti (ui/SeguiUi.kt).
+        SeguiUi(vm)
 
         (vm.agenda as? AgendaLetta.Letta)?.let { a ->
             Scheda(Colori.air) {

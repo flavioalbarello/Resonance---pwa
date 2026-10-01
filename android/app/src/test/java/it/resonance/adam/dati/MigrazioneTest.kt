@@ -40,6 +40,14 @@ class MigrazioneTest {
         db.close()
     }
 
+    @Test fun dalleQuattordiciAlleQuindiciNasceSegui() {
+        aiuto.createDatabase("quindici.db", 14).close()
+        aiuto.runMigrationsAndValidate("quindici.db", 15, true).close()
+        val db = Room.databaseBuilder(RuntimeEnvironment.getApplication(), Db::class.java, "quindici.db").allowMainThreadQueries().build()
+        runBlocking { assertTrue(db.segui().elenco().isEmpty() && db.segui().letture().isEmpty()) }
+        db.close()
+    }
+
     @Test fun dalleTrediciAlleQuattordiciIlProfiloRestaEDLoShellSiChiamaShell() {
         aiuto.createDatabase("quattordici.db", 13).apply {
             execSQL("INSERT INTO profilo (id, nome, stile, motivazione, vincoli, nomiProtetti) VALUES (1, 'Flavio', 'Denso', '', '', 'X')")
