@@ -302,6 +302,9 @@ nascono da una linea sola, quella del Ghost.
 saltano con `assumeTrue(Edizione.sviluppatore)`. `EdizioneTest` controlla che nella base lo Shell non sappia nemmeno
 che l'architetto esiste.
 
+**Il fondo di Adam** (01/10/2026): resta nella dev, esce dalla base. *«Per adesso è un mio esperimento e tale resta; in
+futuro potrebbe essere la base di AIR.»*
+
 **Un gruppo «sviluppatori»**, un giorno, non è escluso: avrebbe la dev, scelta da chi costruisce, non da un tasto.
 
 ## Gesti dalla notifica (01/10/2026, primo punto dell'ordine dell'esoscheletro)
@@ -479,6 +482,7 @@ Maven Central qui limita le richieste: il progetto usa il mirror di Google, anch
 
 | argomento | da dove | il nodo |
 |---|---|---|
+| **Le consegne dello Shell** | il Ghost, 01/10/2026: *«attualmente non funziona, o così mi sembra»* | Capire prima cosa non va (la verifica alla scadenza? il turno di lavoro del giorno prima? il documento che aspetta la conferma?). Poi dove si vedono: probabilmente sullo Specchio quando ce n'è una aperta, non in una scheda |
 | **Salvare un Adam se il telefono si rompe di punto in bianco** | il Ghost, 01/10/2026 | Oggi solo la copia a mano. Serve una copia che esca dal telefono da sola, ogni giorno, e da cui un telefono nuovo riparta. Da decidere: dove va (Drive, computer, la cassetta?), cosa contiene (la chiave OpenRouter no), chi la rilegge, come si prova che funziona davvero prima che serva |
 
 ## Carenze dichiarate
