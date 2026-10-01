@@ -475,13 +475,19 @@ c'è nella copia: stessa lezione del tetto di spesa che leggeva un registro a ro
 
 Maven Central qui limita le richieste: il progetto usa il mirror di Google, anche per Robolectric.
 
+## Per la prossima riunione (argomenti che l'architetto porta)
+
+| argomento | da dove | il nodo |
+|---|---|---|
+| **Salvare un Adam se il telefono si rompe di punto in bianco** | il Ghost, 01/10/2026 | Oggi solo la copia a mano. Serve una copia che esca dal telefono da sola, ogni giorno, e da cui un telefono nuovo riparta. Da decidere: dove va (Drive, computer, la cassetta?), cosa contiene (la chiave OpenRouter no), chi la rilegge, come si prova che funziona davvero prima che serva |
+
 ## Carenze dichiarate
 
 | carenza | stato |
 |---|---|
 | Mai girata su un telefono vero | Qui non c'è emulatore. Provate: logica, Room, rendering delle schermate. Non provate: voce, Health Connect, notifiche, chiamate reali al modello |
 | Occhiali Ray-Ban Meta | Non scrivono in Health Connect, per quanto so: non entrano. Tutto ciò che scrive in Health Connect sì |
-| **Dati persi se si disinstalla o si cambia telefono — GRAVE** (il Ghost, 01/10/2026: *«carenza grave e rischiosa»*) | Oggi c'è solo la copia manuale (Setup → Salva una copia), un gesto che il giorno in cui costa fatica non si fa; e `allowBackup="false"` nel manifest, quindi nemmeno il backup di Android. Strade, da scegliere: (1) `hasFragileUserData`: alla disinstallazione Android chiede se tenere i dati — una riga, copre il tocco sbagliato, non il telefono nuovo; (2) copia automatica, ogni giorno, in una cartella scelta una volta (Drive o computer): sopravvive a tutto, e serve anche per il telefono nuovo; (3) backup di Android con regole che escludono la chiave cifrata (il Keystore non si trasferisce), che dipende dal backup Google attivo e non è provabile qui. Due telefoni = due Adam resta vero: si parla di salvare un Adam, non di sincronizzarne due |
+| **Dati persi se si disinstalla o si cambia telefono — GRAVE** (il Ghost, 01/10/2026: *«carenza grave e rischiosa»*) | Oggi c'è solo la copia manuale (Setup → Salva una copia), un gesto che il giorno in cui costa fatica non si fa; e `allowBackup="false"` nel manifest, quindi nemmeno il backup di Android. Strade, da scegliere: (1) `hasFragileUserData`: alla disinstallazione Android chiede se tenere i dati — una riga, copre il tocco sbagliato, non il telefono nuovo; (2) copia automatica, ogni giorno, in una cartella scelta una volta (Drive o computer): sopravvive a tutto, e serve anche per il telefono nuovo; (3) backup di Android con regole che escludono la chiave cifrata (il Keystore non si trasferisce), che dipende dal backup Google attivo e non è provabile qui. Due telefoni = due Adam resta vero: si parla di salvare un Adam, non di sincronizzarne due. Il Ghost: la (1) serve a poco, il vero rischio è **il telefono che si rompe di punto in bianco**. Tenuta da parte: argomento per la prossima riunione |
 | Conferma a voce | Solo per l'ultima proposta in attesa |
 | Mail inviata o no | L'app apre la bozza, non può sapere se è partita: la ricevuta dice «bozza aperta» |
 | Rubrica | Non letta: «scrivi a Marta» senza indirizzo apre la bozza con il destinatario vuoto |
