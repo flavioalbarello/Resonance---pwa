@@ -34,6 +34,11 @@ open class Impostazioni(context: Context) {
     var tettoMensile: Double
         get() = p.getFloat("tetto", 5f).toDouble()
         set(v) = p.edit().putFloat("tetto", v.toFloat()).apply()
+    // Il tour del primo avvio (logica/Tour.kt): visto o saltato, non riparte da solo.
+    var tourVisto: Boolean
+        get() = p.getBoolean("tourVisto", false)
+        set(v) = p.edit().putBoolean("tourVisto", v).apply()
+
     var battitoAttivo: Boolean
         get() = p.getBoolean("battito", true)
         set(v) = p.edit().putBoolean("battito", v).apply()

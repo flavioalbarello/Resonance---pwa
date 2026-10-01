@@ -52,13 +52,14 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
             modifier = Modifier.systemBarsPadding(),
             snackbarHost = { SnackbarHost(avvisi) },
             topBar = {
-                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Durante il tour (ui/Tour.kt) niente barre: una cosa per volta.
+                if (!vm.tour) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("RESONANCE", fontWeight = FontWeight.Bold, letterSpacing = 3.sp, fontSize = 15.sp, modifier = Modifier.weight(1f))
                     TextButton({ vm.vai(Schermata.SETUP) }) { Text("Setup", color = Colori.tenue) }
                 }
             },
             bottomBar = {
-                NavigationBar(containerColor = Colori.superficie) {
+                if (!vm.tour) NavigationBar(containerColor = Colori.superficie) {
                     listOf(Schermata.SPECCHIO, Schermata.SHELL, Schermata.ADAM, Schermata.BIO, Schermata.AIR, Schermata.VIDYA).forEach { s ->
                         val colore = when (s) { Schermata.BIO -> Colori.bio; Schermata.AIR -> Colori.air; Schermata.VIDYA -> Colori.vidya; else -> Colori.ambraInchiostro }
                         NavigationBarItem(
@@ -75,7 +76,7 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
             },
         ) { interno ->
             Column(Modifier.padding(interno).fillMaxSize()) {
-                when (vm.schermata) {
+                if (vm.tour) TourUi(vm, sistema) else when (vm.schermata) {
                     Schermata.SPECCHIO -> Specchio(vm)
                     Schermata.SHELL -> ShellUi(vm, sistema)
                     Schermata.ADAM -> PilastroUi(vm, Pilastro.ADAM)
@@ -86,6 +87,6 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
                 }
             }
         }
-        Box(Modifier.fillMaxSize().systemBarsPadding().padding(bottom = 80.dp)) { Ancora(vm, conMicrofono) }
+        if (!vm.tour) Box(Modifier.fillMaxSize().systemBarsPadding().padding(bottom = 80.dp)) { Ancora(vm, conMicrofono) }
     }
 }

@@ -239,6 +239,8 @@ fun Setup(vm: Adam, sistema: Sistema) {
         Spazio(12)
         Text("Come si regola lo Shell", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         RegolazioneUi(vm)
+        // Il tour del primo avvio (ui/Tour.kt) si rivede da qui.
+        OutlinedButton({ vm.apriTour() }, modifier = Modifier.testTag("rivedi-tour")) { Text("Rivedi il tour") }
         Tenue("Resonance ${BuildConfig.VERSION_NAME}")
         Spazio(120)
     }

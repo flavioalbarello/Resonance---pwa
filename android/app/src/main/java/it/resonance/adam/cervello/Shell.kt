@@ -12,6 +12,7 @@ import it.resonance.adam.dati.Ruolo
 import it.resonance.adam.dati.StatoProposta
 import it.resonance.adam.dati.TipoMisura
 import it.resonance.adam.logica.Agenda
+import it.resonance.adam.logica.Tour
 import it.resonance.adam.logica.AgendaLetta
 import it.resonance.adam.logica.Allegati
 import it.resonance.adam.logica.Allegato
@@ -886,6 +887,24 @@ class Shell(
     }
 
     // Adam parla per primo: una chiamata corta, senza strumenti. Se non si può, il battito usa il testo del programma.
+    /**
+     * Il tour del primo avvio (logica/Tour.kt): lo Shell propone tre nomi per sé, la persona sceglie. Una chiamata
+     * sola, senza strumenti, alla temperatura del battito (devono essere vari, non esatti). Il programma tiene solo ciò
+     * che è un nome; se non ne resta nessuno, la lista è vuota e la persona scrive il suo.
+     */
+    suspend fun proponiNomi(): List<String> {
+        if (controllaSpesa() != null) return emptyList()
+        val messaggi = JsonArray(listOf(
+            buildJsonObject { put("role", "system"); put("content", "Sei lo Shell di Resonance: la parte digitale di una persona. Non decidi al posto suo: ricordi, noti, proponi.") },
+            buildJsonObject { put("role", "user"); put("content", Tour.RICHIESTA_NOMI) },
+        ))
+        return runCatching {
+            val (r, _) = chiama(impostazioni.modello, messaggi, null, MAX_TOKEN_BATTITO, temperaturaDi(Compito.BATTITO))
+            registraCosto(r)
+            Tour.nomiDa(r.testo)
+        }.getOrDefault(emptyList())
+    }
+
     suspend fun parlaPerPrimo(momento: String, riassunto: String): String? {
         if (controllaSpesa() != null) return null
         val oggi = LocalDate.now()

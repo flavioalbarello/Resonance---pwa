@@ -41,6 +41,8 @@ import it.resonance.adam.mondo.Allegatore
 import java.io.File
 import it.resonance.adam.logica.ImportPwa
 import it.resonance.adam.logica.Istantanea
+import it.resonance.adam.logica.Tour
+import it.resonance.adam.logica.Nomi
 import it.resonance.adam.logica.Stabilita
 import it.resonance.adam.mondo.MondoAndroid
 import it.resonance.adam.sensi.Sensi
@@ -190,6 +192,42 @@ class Adam(app: Application) : AndroidViewModel(app) {
                 wm.getWorkInfosForUniqueWorkFlow(TurnoWorker.NOME).collect { infos -> pensa = infos.any { !it.state.isFinished } }
             }
         }
+    }
+
+    // ── Il tour del primo avvio (logica/Tour.kt, ui/Tour.kt) ──
+    var tour by mutableStateOf(Tour.daMostrare(impostazioni.tourVisto, impostazioni.chiave, ""))
+    var passoTour by mutableStateOf(Tour.Passo.NOME)
+    var nomiProposti by mutableStateOf(listOf<String>())
+    var proponendo by mutableStateOf(false)
+
+    init {
+        // Un profilo con un nome (per esempio da un ripristino) vuol dire che l'app non è nuova: niente tour da solo.
+        if (tour) viewModelScope.launch { if (db.profilo().leggi()?.nome?.isNotBlank() == true) tour = false }
+    }
+
+    fun apriTour() { passoTour = Tour.Passo.NOME; nomiProposti = emptyList(); tour = true }
+
+    fun chiudiTour() {
+        impostazioni.tourVisto = true
+        tour = false
+    }
+
+    fun salvaNomi(tuo: String? = null, shell: String? = null) = viewModelScope.launch {
+        val p = db.profilo().leggi() ?: Profilo()
+        db.profilo().salva(p.copy(nome = tuo?.trim() ?: p.nome, nomeShell = shell?.trim()?.takeIf { Nomi.valido(it) } ?: if (shell != null) "" else p.nomeShell))
+    }
+
+    fun proponiNomi() = viewModelScope.launch {
+        proponendo = true
+        nomiProposti = shell.proponiNomi()
+        proponendo = false
+        if (nomiProposti.isEmpty()) avviso = if (impostazioni.chiave.isBlank()) "Senza chiave lo Shell non può proporre: scrivi tu un nome" else "Nessuna proposta arrivata: scrivi tu un nome"
+    }
+
+    /** L'ultimo passo: la risposta alla prima domanda entra in chat come un tuo messaggio, e lo Shell risponde. */
+    fun fineTour(risposta: String) {
+        chiudiTour()
+        if (risposta.isNotBlank() && impostazioni.chiave.isNotBlank()) { vai(Schermata.SHELL); invia(risposta) } else vai(Schermata.SPECCHIO)
     }
 
     fun invia(testo: String = input) {

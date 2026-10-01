@@ -45,6 +45,6 @@ class RapideTest {
         val n = shadowOf(app.getSystemService(NotificationManager::class.java)).getNotification(101)
         assertNotNull("la notifica va ridisegnata", n)
         assertEquals(listOf("Rispondi", "✓ Diario"), n.actions.map { it.title.toString() })
-        db.close()
+        // Db.di è l'istanza unica dell'app: non si chiude, altri test la usano.
     }
 }

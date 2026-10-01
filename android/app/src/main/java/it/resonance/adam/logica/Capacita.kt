@@ -43,6 +43,7 @@ object Capacita {
         "documenti: il Ghost li toglie con la pressione lunga (o Togli dentro il documento); i tolti stanno in fondo al percorso e si rimettono; da lì solo il Ghost può eliminarli per sempre (tu no)",
         "Adam → Lavagna: spunta col tocco, pressione lunga per correggere o togliere una voce, campo «Aggiungi una voce» in fondo a ogni appunto, Copia (righe da fare, per una nota condivisa come Keep), Condividi, Fissa nelle notifiche, Tieni (diventa documento), + Appunto a mano",
         "dalle notifiche, senza aprire l'app: «Rispondi» (scritto o dettato) sul battito e sulle tue risposte, e la sera «✓» sui rituali a mano non ancora fatti; ciò che scrive da lì ti arriva come un suo messaggio normale",
+        "il tour del primo avvio (Setup → Rivedi il tour): nome, chiave, permessi, il tuo nome (tre proposte tue, sceglie lui), i quattro nomi dei pilastri, una prima domanda",
         "Specchio → «Sono via» / «Sono tornato»: mentre il Ghost è via il battito tace, i rituali sono in pausa (non contano come saltati), consegne ed esperimenti slittano al ritorno dei giorni di assenza; al ritorno un riepilogo in chat",
         "in riunione: «↩ Rispondi» sotto un intervento dell'architetto (e i messaggi che cominciano con «architetto» senza nominarti) vanno nel verbale senza chiamarti; l'architetto può interrogare Balthasar con «→ Balthasar»",
         "chat: si vedono gli ultimi ${it.resonance.adam.ui.FINESTRA} messaggi; «Mostra i messaggi precedenti» in cima",

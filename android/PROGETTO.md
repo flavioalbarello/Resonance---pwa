@@ -518,7 +518,7 @@ c'è nella copia: stessa lezione del tetto di spesa che leggeva un registro a ro
 
 Maven Central qui limita le richieste: il progetto usa il mirror di Google, anche per Robolectric.
 
-## Il tour del primo avvio (proposta, 01/10/2026; non costruito)
+## Il tour del primo avvio (01/10/2026; costruito: `logica/Tour.kt`, `ui/Tour.kt`)
 
 Il Ghost: *«ad installazione avvenuta il programma o lo Shell facciano fare un piccolo tour dell'app, in cui si sceglie
 il nome dello Shell e vengono spiegate queste cose»*. È il primo avvio guidato e il tour insieme: una cosa sola.
@@ -537,6 +537,16 @@ il nome dello Shell e vengono spiegate queste cose»*. È il primo avvio guidato
 - **Perché il nome lo propone lo Shell ma lo sceglie la persona**: è la disciplina di sempre. E il modello non ha una
   preferenza che duri da un turno all'altro: chiesto due volte, darebbe due nomi diversi.
 - **Corto e saltabile**: un esoscheletro che chiede venti tocchi prima di servire è già un peso. Si rivede da Setup.
+- **Quando parte da solo**: solo su un'app nuova (nessuna chiave, nessun nome, mai visto). L'app del Ghost no.
+- **Al passo del nome** il tour dice che cos'è lo Shell, una volta, in parole concrete (`Tour.cheCosE`): *«Luisa è il
+  tuo Shell: la parte digitale di te. Non è un'altra persona e non decide al posto tuo: ricorda, nota, propone. Tu
+  confermi. Come un esoscheletro: toglie fatica, non cammina al posto tuo.»* Il nome crea legame; questa frase gli dà
+  la misura giusta di fiducia.
+- **Le proposte di nome**: una chiamata sola, senza strumenti, alla temperatura del battito. La richiesta e il controllo
+  stanno nello stesso oggetto (`Tour.RICHIESTA_NOMI` / `Tour.nomiDa`): una riga ciascuno, un nome valido, niente frasi.
+- **L'ultimo passo** non finge che parli lo Shell: la domanda la fa il programma, la risposta entra in chat come
+  messaggio della persona, e lo Shell risponde davvero.
+- Non provati qui: i permessi veri sul telefono, la chiamata vera dei nomi.
 
 ## Per la prossima riunione (argomenti che l'architetto porta)
 

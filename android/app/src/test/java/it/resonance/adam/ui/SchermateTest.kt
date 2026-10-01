@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -154,6 +155,21 @@ class SchermateTest {
         regola.setContent { TemaResonance { App(vm, sistema) { it() } } }
         regola.waitUntil(10_000) { vm.istantanea.value.misure.size >= 90 && vm.istantanea.value.rituali.size == 2 && vm.chat.value.size == 9 }
 
+        // Il tour del primo avvio (ui/Tour.kt). Se parte da solo lo dice TourTest sulla logica pura: qui il database è
+        // condiviso con altri test e l'esito dipenderebbe dall'ordine. Lo si apre come da Setup → Rivedi il tour.
+        vm.apriTour()
+        regola.onNodeWithText("Benvenuto in Resonance").assertExists()
+        scatta("0a-tour-benvenuto")
+        vm.passoTour = it.resonance.adam.logica.Tour.Passo.SHELL
+        regola.onNodeWithText("Lo Shell è la parte digitale di te", substring = true).assertExists()
+        regola.onNodeWithTag("proponi-nomi").assertIsNotEnabled()
+        scatta("0b-tour-shell")
+        vm.passoTour = it.resonance.adam.logica.Tour.Passo.NOMI
+        regola.onNodeWithText("vedere: il sapere che cambia chi lo ha").assertExists()
+        scatta("0c-tour-nomi")
+        regola.onNodeWithTag("salta-tour").performClick()
+        regola.waitForIdle()
+        assertTrue(!vm.tour)
         scatta("1-specchio")
         regola.onNodeWithText("Stabilità mantenuta", substring = true, ignoreCase = true).assertExists()
         regola.onNodeWithText("Entrate che non vendono tempo", substring = true).assertExists()
