@@ -167,4 +167,53 @@ class ArchivioTest {
         val r = a.leggiDocumento("Atto IV")
         assertTrue(r, r.contains("ATTO I: Origine"))
     }
+
+    // «Sono via» (01/10/2026): al ritorno le consegne slittano dei giorni di assenza, gli esperimenti si allungano, il
+    // diario tiene il periodo, e niente risulta mancato per colpa dell'assenza.
+    @Test fun alRitornoConsegneEdEsperimentiSlittanoDeiGiorniDiAssenza() = runBlocking {
+        val oggi = java.time.LocalDate.of(2026, 10, 1)
+        val via = oggi.minusDays(4)
+        a.vaVia(via)
+        assertEquals("Sei già via", a.vaVia(via))
+        db.consegne().inserisci(Consegna(cosa = "Scheda", documento = "Scheda", presa = via.minusDays(1).toString(), scadenza = via.plusDays(1).toString(), creata = 1))
+        db.esperimenti().inserisci(Esperimento(titolo = "A letto alle 23", tipo = TipoMisura.SONNO, direzione = Direzione.SU, soglia = 15.0, giorni = 14,
+            inizio = via.minusDays(5).toString(), fine = via.plusDays(9).toString(), base = 400.0, origine = "shell", creato = 1))
+        val r = a.torna(oggi)!!
+        assertTrue(r, r.contains("via 4 giorni"))
+        assertEquals(via.plusDays(5).toString(), db.consegne().aperte().single().scadenza)
+        assertEquals(via.plusDays(13).toString(), db.esperimenti().elenco().single().fine)
+        assertTrue(db.voci().elenco().single().testo.startsWith("In pausa («Sono via») dal $via al ${oggi.minusDays(1)}: 4 giorni."))
+        assertEquals(null, a.torna(oggi))
+    }
+
+    @Test fun unSonoViaRitiratoLoStessoGiornoNonSpostaNiente() = runBlocking {
+        val oggi = java.time.LocalDate.of(2026, 10, 1)
+        a.vaVia(oggi)
+        db.consegne().inserisci(Consegna(cosa = "Scheda", documento = "Scheda", presa = oggi.toString(), scadenza = oggi.plusDays(2).toString(), creata = 1))
+        assertTrue(a.torna(oggi)!!.contains("ritirato"))
+        assertEquals(oggi.plusDays(2).toString(), db.consegne().aperte().single().scadenza)
+        assertEquals(null, a.assenzaInCorso())
+        val voci = db.voci().elenco()
+        assertTrue(it.resonance.adam.logica.Assenza.giorniDiPausa(it.resonance.adam.logica.Assenza.periodi(voci), oggi).isEmpty())
+    }
+
+    // Il terreno di Adam City: si entra con un gesto, il rinforzo vuole un fatto che esista davvero, la copia lo porta.
+    @Test fun unaTracciaSiRinforzaSoloDaUnFattoDellArchivio() = runBlocking {
+        val oggi = java.time.LocalDate.of(2026, 10, 1)
+        val casa = a.entraInStanza("casa", oggi)
+        assertEquals(casa.id, a.entraInStanza("Casa", oggi).id)
+        val t = a.depositaTraccia(casa.id, "Ghost", "cena", "Stasera brace, 20:30", 3, oggi).getOrThrow()
+        assertTrue(a.depositaTraccia(casa.id, "Ghost", "cena", "Vieni?", 3, oggi).isFailure)
+        assertTrue(a.rinforzaTraccia(t.id, "voce", 999, oggi).exceptionOrNull()!!.message!!.contains("non c'è"))
+        val v = db.voci().inserisci(Voce(pilastro = Pilastro.BIO, giorno = oggi.toString(), testo = "Cena alla brace con Marta", fonte = "ghost", creato = 1, aggiornato = 1))
+        assertEquals(2.0, a.rinforzaTraccia(t.id, "voce", v, oggi).getOrThrow().forza, 1e-9)
+        assertEquals(2.0, db.tracce().per(t.id)!!.forza, 1e-9)
+        val copia = a.copia()
+        a.esciDaStanza(casa.id, oggi)
+        assertTrue(a.depositaTraccia(casa.id, "Ghost", "cena", "x", 3, oggi).isFailure)
+        assertEquals(1, a.svanisciTracce(oggi.plusDays(10)))
+        a.ripristina(copia)
+        assertEquals(null, db.tracce().stanza(casa.id)!!.uscita)
+        assertEquals(null, db.tracce().per(t.id)!!.svanita)
+    }
 }

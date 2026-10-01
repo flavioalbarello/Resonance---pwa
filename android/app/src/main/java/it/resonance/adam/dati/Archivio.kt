@@ -37,6 +37,8 @@ data class Copia(
     val risposte: List<RispostaLettera> = emptyList(),
     val consegne: List<Consegna> = emptyList(),
     val appunti: List<Appunto> = emptyList(),
+    val stanze: List<Stanza> = emptyList(),
+    val tracce: List<Traccia> = emptyList(),
 )
 
 class Ambiguo(m: String) : Exception(m)
@@ -414,6 +416,84 @@ class Archivio(val db: Db) {
         }
     }
 
+    // ── «Sono via» / «Sono tornato» (01/10/2026, logica/Assenza.kt) ──
+
+    suspend fun assenzaInCorso() = it.resonance.adam.logica.Assenza.inCorso(db.voci().elenco())
+
+    suspend fun vaVia(oggi: LocalDate = LocalDate.now()): String {
+        if (assenzaInCorso() != null) return "Sei già via"
+        db.voci().inserisci(it.resonance.adam.logica.Assenza.voceApertura(oggi, ora))
+        return "Sei via da oggi: il battito tace, rituali, consegne ed esperimenti sono fermi finché non torni"
+    }
+
+    /**
+     * Il ritorno: le consegne aperte slittano dei giorni di assenza, gli esperimenti aperti si allungano, il periodo si
+     * chiude nel diario. Restituisce il riepilogo per la chat. Tutto in una transazione: o tutto o niente.
+     */
+    suspend fun torna(oggi: LocalDate = LocalDate.now()): String? = db.withTransaction {
+        val (voce, p) = assenzaInCorso() ?: return@withTransaction null
+        // Toccato e ritirato lo stesso giorno: un tocco sbagliato, non un'assenza. Niente slitta, nessun giorno di pausa;
+        // la voce resta, con un testo che non è più un periodo (Legge 14).
+        if (oggi == p.da) {
+            db.voci().aggiorna(voce.copy(testo = it.resonance.adam.logica.Assenza.testoRitirato(p.da), aggiornato = ora))
+            return@withTransaction "«Sono via» ritirato: niente è stato spostato."
+        }
+        // Il giorno del ritorno conta come presente: via fino a ieri (almeno un giorno, se si torna lo stesso giorno).
+        val fine = maxOf(p.da, oggi.minusDays(1))
+        val n = it.resonance.adam.logica.Assenza.giorni(p.da, fine)
+        val consegne = db.consegne().aperte().map { c -> it.resonance.adam.logica.Assenza.slitta(c, n).also { db.consegne().aggiorna(it) } }
+        val esperimenti = db.esperimenti().elenco().filter { it.stato == StatoEsperimento.APERTO }
+            .map { e -> it.resonance.adam.logica.Assenza.allunga(e, n).also { db.esperimenti().aggiorna(it) } }
+        val attesa = db.messaggi().ultimi(200).count { it.ruolo == Ruolo.PROPOSTA && it.stato == StatoProposta.IN_ATTESA }
+        val dettagli = listOfNotNull(
+            consegne.takeIf { it.isNotEmpty() }?.let { "Consegne spostate: ${it.size}." },
+            esperimenti.takeIf { it.isNotEmpty() }?.let { "Esperimenti allungati: ${it.size}." },
+        ).joinToString(" ")
+        db.voci().aggiorna(voce.copy(testo = it.resonance.adam.logica.Assenza.testoChiusura(p.da, fine, dettagli), aggiornato = ora))
+        it.resonance.adam.logica.Assenza.riepilogo(n, consegne, esperimenti, attesa)
+    }
+
+    // ── Il terreno di Adam City (logica/Tracce.kt). Si entra in una stanza solo col gesto del Ghost. ──
+
+    suspend fun entraInStanza(nome: String, oggi: LocalDate = LocalDate.now(), scade: LocalDate? = null): Stanza {
+        val n = nome.trim()
+        require(n.isNotEmpty()) { "una stanza ha un nome" }
+        db.tracce().stanze().firstOrNull { Testi.normalizza(it.nome) == Testi.normalizza(n) && it.uscita == null }?.let { return it }
+        val s = Stanza(nome = n, entrata = oggi.toString(), scade = scade?.toString())
+        return s.copy(id = db.tracce().entra(s))
+    }
+
+    suspend fun esciDaStanza(id: Long, oggi: LocalDate = LocalDate.now()) {
+        val s = db.tracce().stanza(id) ?: return
+        if (s.uscita == null) db.tracce().aggiornaStanza(s.copy(uscita = oggi.toString()))
+    }
+
+    suspend fun depositaTraccia(stanzaId: Long, chi: String, ambito: String, cosa: String, durata: Int, oggi: LocalDate = LocalDate.now(), quando: LocalDate = oggi): Result<Traccia> {
+        val s = db.tracce().stanza(stanzaId)
+        val difetti = it.resonance.adam.logica.Tracce.difetti(s, ambito, cosa, durata, oggi)
+        if (difetti.isNotEmpty()) return Result.failure(IllegalArgumentException(difetti.joinToString("; ")))
+        val t = it.resonance.adam.logica.Tracce.deposita(s!!, chi, ambito, cosa, quando, durata, ora)
+        return Result.success(t.copy(id = db.tracce().deposita(t)))
+    }
+
+    /** Il programma va a vedere che il fatto esista davvero, e di che giorno è: una frase non rinforza niente. */
+    suspend fun rinforzaTraccia(id: Long, fonte: String, idFatto: Long, oggi: LocalDate = LocalDate.now()): Result<Traccia> {
+        val t = db.tracce().per(id) ?: return Result.failure(IllegalArgumentException("nessuna traccia $id"))
+        val giorno = when (fonte) {
+            "voce" -> db.voci().per(idFatto)?.giorno
+            "misura" -> db.misure().elenco().firstOrNull { it.id == idFatto }?.giorno
+            "documento" -> db.percorsi().elencoDocumenti().firstOrNull { it.id == idFatto }?.let { java.time.Instant.ofEpochMilli(it.creato).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString() }
+            // Una spunta non ha un id suo: si indica col rituale, e vale la spunta del giorno stesso.
+            "spunta" -> db.rituali().elencoSpunte().firstOrNull { it.ritualeId == idFatto && it.giorno == oggi.toString() }?.giorno
+            else -> null
+        } ?: return Result.failure(IllegalArgumentException("il fatto $fonte:$idFatto non c'è nell'archivio"))
+        return it.resonance.adam.logica.Tracce.rinforza(t, it.resonance.adam.logica.Tracce.Prova(fonte, idFatto, LocalDate.parse(giorno)), oggi)
+            .onSuccess { db.tracce().aggiorna(it) }
+    }
+
+    suspend fun svanisciTracce(oggi: LocalDate = LocalDate.now()): Int =
+        it.resonance.adam.logica.Tracce.daSvanire(db.tracce().elenco(), oggi).onEach { db.tracce().aggiorna(it) }.size
+
     suspend fun lasciaConsegna(c: Consegna, oggi: LocalDate = LocalDate.now()): String {
         if (c.stato != StatoConsegna.APERTA) return "La consegna non è più aperta"
         val chiusa = c.copy(stato = StatoConsegna.LASCIATA, chiusa = oggi.toString(), esito = "lasciata dal Ghost prima della scadenza")
@@ -536,6 +616,7 @@ class Archivio(val db: Db) {
         esperimenti = db.esperimenti().elenco(),
         taccuino = db.taccuino().elenco(), movimenti = db.fondo().elenco(), lettere = db.lettere().elenco(), risposte = db.lettere().risposte(),
         consegne = db.consegne().elenco(), appunti = db.lavagna().elenco(),
+        stanze = db.tracce().stanze(), tracce = db.tracce().elenco(),
     ))
 
     fun eUnaCopia(testo: String) = testo.contains("\"_formato\":\"resonance-apk\"") || testo.contains("\"_formato\": \"resonance-apk\"")
@@ -545,7 +626,7 @@ class Archivio(val db: Db) {
         val c = json.decodeFromString(Copia.serializer(), testo)
         db.withTransaction {
             listOf("misure", "voci", "versioni", "rituali", "spunte", "percorsi", "nodi", "documenti", "quaderni", "messaggi", "spesa", "profilo", "esperimenti",
-                "taccuino", "movimenti", "lettere", "risposte", "consegne", "appunti")
+                "taccuino", "movimenti", "lettere", "risposte", "consegne", "appunti", "stanze", "tracce")
                 .forEach { db.openHelper.writableDatabase.execSQL("DELETE FROM $it") }
             c.misure.forEach { db.misure().sostituisci(it) }
             c.voci.forEach { db.voci().inserisci(it) }
@@ -566,6 +647,8 @@ class Archivio(val db: Db) {
             c.risposte.forEach { db.lettere().inserisciRisposta(it) }
             c.consegne.forEach { db.consegne().inserisci(it) }
             c.appunti.forEach { db.lavagna().inserisci(it) }
+            c.stanze.forEach { db.tracce().entra(it) }
+            c.tracce.forEach { db.tracce().deposita(it) }
         }
         return c.misure.size + c.voci.size + c.documenti.size
     }

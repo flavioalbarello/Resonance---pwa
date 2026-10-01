@@ -56,8 +56,39 @@ class Tavolo(private val archivio: Archivio, private val imp: Impostazioni, priv
         return senzaIndirizzi(nomi.fold(t) { acc, n -> acc.replace(n, "[nome protetto]", ignoreCase = true) })
     }
 
-    /** Cosa ha portato un ritiro: i messaggi nuovi dell'architetto, e quello a cui lo Shell deve rispondere (se c'è). */
-    data class Ritiro(val nuovi: List<Messaggio>, val allaShell: Long?)
+    /**
+     * Cosa ha portato un ritiro: i messaggi nuovi dell'architetto, quello a cui lo Shell deve rispondere (se c'è), e la
+     * domanda per Balthasar (se l'architetto l'ha interrogato con «→ Balthasar», 01/10/2026).
+     */
+    data class Ritiro(val nuovi: List<Messaggio>, val allaShell: Long?, val perBalthasar: String? = null)
+
+    // ── I punti fermi (riunione del 01/10/2026) ──
+    // Lo Shell vede gli ultimi 24 messaggi: in una riunione lunga l'inizio esce dalla finestra, e lo Shell riproponeva
+    // punti già chiusi. Le decisioni prese entrano qui, e il prompt le ha sempre davanti finché la riunione è aperta.
+    fun puntiFermi(): List<String> = imp.riunionePunti.lines().map { it.trim() }.filter { it.isNotEmpty() }
+
+    /** Un punto fermo in più. Null se entra; altrimenti il perché no. */
+    fun aggiungiPunto(testo: String): String? {
+        val t = testo.trim().replace(Regex("\\s+"), " ")
+        return when {
+            !aperta() -> "nessuna riunione aperta"
+            t.isEmpty() -> "punto vuoto"
+            t.length > PUNTO_MAX -> "al massimo $PUNTO_MAX caratteri: una decisione, non un riassunto"
+            puntiFermi().size >= PUNTI_MAX -> "ci sono già $PUNTI_MAX punti fermi: basta così, il resto è nel verbale"
+            puntiFermi().any { Testi.normalizza(it) == Testi.normalizza(t) } -> "è già fra i punti fermi"
+            else -> { imp.riunionePunti = (puntiFermi() + t).joinToString("\n"); null }
+        }
+    }
+
+    // ── Il verbale dai file (01/10/2026) ──
+    // Alla chiusura lo Shell scriveva il verbale dagli ultimi 60 messaggi della chat: in una riunione di dieci ore ne
+    // perdeva tutta la mattina. La fonte giusta è la cassetta, dove ogni intervento è un file: tutti, in ordine.
+    suspend fun trascrizione(): String {
+        if (!aperta() || !posta.pronta()) return ""
+        val file = cassetta.elenca(imp.cassetta, imp.tokenCassetta, cartella()).filter { it.endsWith(".md") }.sorted()
+            .filterNot { it.endsWith("-chiusura.md") || it.endsWith("-verbale.md") || it.contains("-verbale-") }
+        return Tavolo.trascrivi(file.map { f -> f to runCatching { cassetta.leggi(imp.cassetta, imp.tokenCassetta, "${cartella()}/$f") }.getOrDefault("") })
+    }
 
     // ── Il consulente esterno (27/09/2026, logica/Consulente.kt) ──
     // Lo stato sta nelle impostazioni come quello della riunione: se è nella stanza, la cartella, gli invii.
@@ -138,10 +169,15 @@ class Tavolo(private val archivio: Archivio, private val imp: Impostazioni, priv
                 runCatching { registra("programma", t) }
             }
         }
-        val rivolti = nuovi.filter { rivolto(it.testo) }
+        val rivolti = nuovi.filter { rivolto(it.testo) || perBalthasar(it.testo) }
         if (rivolti.isEmpty()) return@withLock Ritiro(nuovi, null)
         val giri = giri(archivio.db.messaggi().ultimi(60))
-        if (giri <= GIRI_SENZA_GHOST) return@withLock Ritiro(nuovi, rivolti.last().id)
+        if (giri <= GIRI_SENZA_GHOST) {
+            // Allo Shell l'ultimo intervento rivolto a lui; a Balthasar la domanda dell'ultimo rivolto a lui.
+            val shell = rivolti.lastOrNull { rivolto(it.testo) }?.id
+            val balthasar = rivolti.lastOrNull { perBalthasar(it.testo) }?.let { domandaPerBalthasar(it.testo) }?.takeIf { it.isNotBlank() }
+            return@withLock Ritiro(nuovi, shell, balthasar)
+        }
         // Il tetto si è appena superato: si dice una volta, in chat e nel verbale.
         if (giri - rivolti.size <= GIRI_SENZA_GHOST) {
             archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.NOTA, istante = ora,
@@ -165,6 +201,7 @@ class Tavolo(private val archivio: Archivio, private val imp: Impostazioni, priv
         imp.consulenteInvii = 0
         imp.consulenteTetto = Consulente.TETTO_INVII
         imp.consulenteStoria = ""
+        imp.riunionePunti = ""
     }
 
     // Nomi che si ordinano nel tempo e non si scontrano: due autori non scrivono mai lo stesso file.
@@ -180,17 +217,56 @@ class Tavolo(private val archivio: Archivio, private val imp: Impostazioni, priv
         val SEZIONI = listOf("Decisioni", "Questioni aperte", "Chi fa cosa")
         fun mancano(verbale: String) = SEZIONI.filterNot { s -> Regex("(?im)^[\\s*#_>-]*" + Regex.escape(s)).containsMatchIn(verbale) }
 
+        const val PUNTI_MAX = 15
+        const val PUNTO_MAX = 200
+        // Oltre questa lunghezza la trascrizione tiene l'apertura e la parte finale, e dice quanto ha tolto.
+        const val TRASCRIZIONE_MAX = 120_000
+
         /** Un intervento dell'architetto rivolto allo Shell: la PRIMA riga è «→ Shell» (o «-> Shell»). */
         fun rivolto(t: String) = Regex("^\\s*(→|->)\\s*shell\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)
 
-        /** Quanti interventi rivolti allo Shell dall'ultimo messaggio del Ghost. */
+        /** Un intervento dell'architetto che interroga Balthasar: la PRIMA riga è «→ Balthasar». */
+        fun perBalthasar(t: String) = FRECCIA_B.containsMatchIn(t)
+        private val FRECCIA_B = Regex("^\\s*(→|->)[ \\t]*balthasar\\b[ \\t]*[:,.—-]?[ \\t]*", RegexOption.IGNORE_CASE)
+        fun domandaPerBalthasar(t: String) = t.replaceFirst(FRECCIA_B, "").trim()
+
+        /** Quanti interventi rivolti allo Shell (o a Balthasar) dall'ultimo messaggio del Ghost. */
         fun giri(messaggi: List<Messaggio>): Int {
             val ultimoGhost = messaggi.indexOfLast { it.ruolo == Ruolo.GHOST }
-            return messaggi.drop(ultimoGhost + 1).count { it.ruolo == Ruolo.ARCHITETTO && rivolto(it.testo) }
+            return messaggi.drop(ultimoGhost + 1).count { it.ruolo == Ruolo.ARCHITETTO && (rivolto(it.testo) || perBalthasar(it.testo)) }
         }
 
         /** Per la voce e lo schermo: la freccia si dice a parole. */
-        fun leggibile(t: String) = Consulente.leggibile(t.replaceFirst(Regex("^\\s*(→|->)\\s*shell\\b[:,.\\s—-]*", RegexOption.IGNORE_CASE), "Allo Shell: "))
+        fun leggibile(t: String) = Consulente.leggibile(t.replaceFirst(Regex("^\\s*(→|->)\\s*shell\\b[:,.\\s—-]*", RegexOption.IGNORE_CASE), "Allo Shell: ")
+            .replaceFirst(FRECCIA_B, "A Balthasar: "))
+
+        // ── Chi risponde a un messaggio del Ghost in riunione (01/10/2026) ──
+        // «Parli all'architetto, io taccio»: lo Shell l'aveva promesso, e una promessa la dimentica fra ventiquattro
+        // messaggi. Lo decide il programma sulla riga. Il tasto Rispondi sceglie il destinatario; il nome nel testo aggiunge.
+        private val ALL_ARCHITETTO = Regex("^\\W*(architetto|code)\\b", RegexOption.IGNORE_CASE)
+        private val NOMINA_SHELL = Regex("\\b(shell|entrambi|tutti e due|tutt[ie] e due|voi due)\\b", RegexOption.IGNORE_CASE)
+
+        /** Se lo Shell deve rispondere: no quando il messaggio è per l'architetto e non nomina anche lui. */
+        fun chiamaShell(t: String, rispostaAllArchitetto: Boolean = false): Boolean {
+            val perArchitetto = rispostaAllArchitetto || ALL_ARCHITETTO.containsMatchIn(t)
+            return !perArchitetto || NOMINA_SHELL.containsMatchIn(t)
+        }
+
+        /** La trascrizione della riunione dai suoi file, in ordine, con l'autore preso dal nome del file. */
+        fun trascrivi(file: List<Pair<String, String>>): String {
+            val righe = file.filter { it.second.isNotBlank() }.map { (nome, testo) ->
+                val autore = nome.substringBeforeLast(".md").substringAfterLast("-").let { a ->
+                    when (a) { "ghost" -> "Ghost"; "shell" -> "Shell"; "architetto" -> "Architetto"; "balthasar" -> "Balthasar"
+                        "consulente" -> "Consulente"; "programma" -> "Programma"; "apertura" -> "Apertura"; else -> a } }
+                val ora = Regex("\\d{8}-(\\d{2})(\\d{2})").find(nome)?.let { "${it.groupValues[1]}.${it.groupValues[2]}" } ?: ""
+                "[$ora $autore] ${testo.trim()}"
+            }
+            val tutto = righe.joinToString("\n\n")
+            if (tutto.length <= TRASCRIZIONE_MAX) return tutto
+            val testa = righe.first()
+            val coda = tutto.takeLast(TRASCRIZIONE_MAX - testa.length - 200)
+            return "$testa\n\n[… la parte centrale della riunione, ${tutto.length - testa.length - coda.length} caratteri, non entra: è nei file della cassetta …]\n\n$coda"
+        }
 
         fun slug(t: String) = Normalizer.normalize(t.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
             .replace(Regex("[^a-z0-9]+"), "-").trim('-').take(40).ifEmpty { "riunione" }

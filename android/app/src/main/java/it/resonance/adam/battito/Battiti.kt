@@ -191,6 +191,16 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             runCatching { Sensi(applicationContext).sincronizza(archivio, 14) }
             val mondo = MondoAndroid(applicationContext)
             val oggi = LocalDate.now()
+            // «Sono via» (01/10/2026): il battito tace. Si leggono i sensi e si tiene pulita la lavagna, e basta: niente
+            // notifiche, niente esperimenti chiusi, niente consegne verificate o lavorate, niente dado. Riprende al ritorno.
+            // Le tracce svaniscono col tempo anche se il Ghost è via: il tempo passa per tutta la stanza.
+            runCatching { archivio.svanisciTracce(oggi) }
+            val via = runCatching { archivio.assenzaInCorso() }.getOrNull()
+            if (via != null && !prova) {
+                runCatching { archivio.pulisciLavagna(oggi) }
+                Battiti.annota(applicationContext, Ritmo.riga(b, LocalDateTime.now(), "in pausa: il Ghost è via dal ${via.second.da}", prova))
+                return Result.success()
+            }
             // L'anello si chiude anche ad app chiusa: un esperimento scaduto si confronta e si dice.
             val chiusi = runCatching { archivio.chiudiScaduti(oggi) }.getOrDefault(emptyList())
             if (chiusi.isNotEmpty()) Battiti.notifica(applicationContext, 110, if (chiusi.size == 1) "Esperimento finito" else "Esperimenti finiti",
@@ -221,12 +231,19 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             val momento = when (b) {
                 Battito.MATTINO -> "mattino, inizio della giornata"
                 Battito.SERA -> "sera, chiusura della giornata"
-                Battito.SETTIMANA -> "fine settimana, lo specchio dei sette giorni"
+                // La domanda della domenica (01/10/2026): le variabili della settimana non si modellano, si chiedono.
+                Battito.SETTIMANA -> "fine settimana, lo specchio dei sette giorni. Dopo il fatto, chiudi con UNA domanda al Ghost sulla settimana che arriva " +
+                    "(sere in cui finisce tardi, serate fuori, impegni che cambiano), perché i piani si adattino a quella vera"
             }
             val voce = if (imp.mattinoDalModello) runCatching { Shell(archivio, imp, mondo = mondo).parlaPerPrimo(momento, riassunto) }.getOrNull() else null
+            // La domanda della domenica resta in chat: la risposta del Ghost ha il suo contesto.
+            if (b == Battito.SETTIMANA && voce != null && !prova) runCatching {
+                archivio.db.messaggi().inserisci(it.resonance.adam.dati.Messaggio(ruolo = it.resonance.adam.dati.Ruolo.SHELL, testo = voce,
+                    istante = System.currentTimeMillis(), modello = imp.modello))
+            }
             val titolo = when (b) { Battito.MATTINO -> "Oggi"; Battito.SERA -> "Stasera"; Battito.SETTIMANA -> "La settimana" }
             val arrivato = Battiti.notifica(applicationContext, 100 + b.ordinal, titolo, voce ?: riassunto, if (voce != null) riassunto else "",
-                if (b == Battito.SERA) "SHELL" else "SPECCHIO")
+                if (b == Battito.SERA || (b == Battito.SETTIMANA && voce != null)) "SHELL" else "SPECCHIO")
             // La domenica il programma guarda se qualcosa si è fermato; al massimo una perturbazione ogni due settimane.
             if (!prova && b == Battito.SETTIMANA && Perturbazione.dovuta(imp.ultimaPerturbazione, oggi)) {
                 val motivi = Ristagno.trova(i, archivio.db.esperimenti().elenco())
@@ -280,8 +297,10 @@ class LettereWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         runCatching { posta.spedisciInSospeso() }
         val nuove = runCatching { posta.ritira() }.getOrDefault(emptyList())
         // Un intervento rivolto allo Shell («→ Shell») fa partire il suo turno, in coda come quelli del Ghost.
-        runCatching { it.resonance.adam.cervello.Tavolo(archivio, Impostazioni(applicationContext)).ritira() }.getOrNull()
-            ?.allaShell?.let { TurnoWorker.accoda(applicationContext, it) }
+        val ritiro = runCatching { it.resonance.adam.cervello.Tavolo(archivio, Impostazioni(applicationContext)).ritira() }.getOrNull()
+        ritiro?.allaShell?.let { TurnoWorker.accoda(applicationContext, it) }
+        // «→ Balthasar»: l'architetto lo interroga, e lui risponde nel verbale anche ad app chiusa, alla media.
+        ritiro?.perBalthasar?.let { d -> runCatching { it.resonance.adam.cervello.Shell(archivio, Impostazioni(applicationContext)).balthasar(d, it.resonance.adam.logica.Balthasar.Intensita.MEDIA, daArchitetto = true) } }
         nuove.forEach { (l, r) ->
             archivio.db.messaggi().inserisci(it.resonance.adam.dati.Messaggio(ruolo = it.resonance.adam.dati.Ruolo.ARCHITETTO,
                 testo = "Risposta dell'architetto alla lettera «${l.oggetto}»:\n${r.testo}", istante = System.currentTimeMillis()))

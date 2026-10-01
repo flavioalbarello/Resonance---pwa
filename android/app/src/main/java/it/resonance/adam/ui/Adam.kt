@@ -8,6 +8,7 @@ import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import it.resonance.adam.Impostazioni
@@ -52,6 +53,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -60,6 +62,9 @@ import java.time.YearMonth
 enum class Schermata(val etichetta: String) { SPECCHIO("Specchio"), SHELL("Shell"), ADAM("Adam"), BIO("Bio"), AIR("Air"), VIDYA("Vidya"), SETUP("Setup") }
 
 enum class Ascolta { SPENTO, DETTATURA, AUTO }
+
+// Quanti messaggi la chat mostra alla volta; «Mostra i precedenti» ne aggiunge altrettanti.
+const val FINESTRA = 200
 
 class Adam(app: Application) : AndroidViewModel(app) {
     val db = Db.di(app)
@@ -82,7 +87,13 @@ class Adam(app: Application) : AndroidViewModel(app) {
     val documentiTolti = db.percorsi().documentiTolti().stato()
     val quaderni = db.quaderni().tutti().stato()
     val esperimenti = db.esperimenti().tutti().stato()
-    val messaggi = db.messaggi().tutti().stato()
+    // Tutti i messaggi solo per chi li guarda (la Regolazione); la chat legge una finestra degli ultimi (fluidità, 01/10/2026).
+    val messaggi = db.messaggi().tutti().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    var finestra by mutableStateOf(FINESTRA)
+        private set
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val chat = snapshotFlow { finestra }.flatMapLatest { db.messaggi().osservaUltimi(it) }.stato()
+    fun mostraPrecedenti() { finestra += FINESTRA }
     val turni = db.turni().osserva(300).stato()
     val note = db.taccuino().tutte().stato()
     val movimenti = db.fondo().tutti().stato()
@@ -93,10 +104,13 @@ class Adam(app: Application) : AndroidViewModel(app) {
     val profilo: StateFlow<Profilo?> = db.profilo().osserva().stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val spesaMese = db.spesa().osserva(YearMonth.now().toString()).stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    // Il giorno si rilegge al ritorno nell'app: lasciata aperta oltre mezzanotte, lo Specchio restava a ieri.
+    private val giorno = kotlinx.coroutines.flow.MutableStateFlow(LocalDate.now())
     val istantanea: StateFlow<Istantanea> = combine(
         combine(misure, rituali, spunte, profilo) { m, r, s, p -> Quattro(m, r, s, p) },
         combine(percorsi, nodi, documenti, quaderni) { p, n, d, q -> Quattro(p, n, d, q) },
-    ) { a, b -> Istantanea(LocalDate.now(), a.d, a.a, a.b, a.c, b.a, b.b, b.c, b.d) }
+        giorno,
+    ) { a, b, g -> Istantanea(g, a.d, a.a, a.b, a.c, b.a, b.b, b.c, b.d) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, Istantanea(LocalDate.now(), null, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList()))
 
     private data class Quattro<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
@@ -188,8 +202,23 @@ class Adam(app: Application) : AndroidViewModel(app) {
         // La forzatura vale per questo messaggio e basta: poi la temperatura torna quella del compito.
         val f = forza
         forza = null
+        // In riunione, un messaggio per l'architetto non chiama lo Shell (01/10/2026): va nel verbale e basta. Il tasto
+        // Rispondi sceglie il destinatario; nominare lo Shell (o «entrambi») lo aggiunge.
+        val perArchitetto = rispondiArchitetto
+        rispondiArchitetto = false
+        if (riunione != null && !it.resonance.adam.cervello.Tavolo.chiamaShell(t, perArchitetto)) {
+            viewModelScope.launch {
+                val id = shell.registra(t, allegati)
+                runCatching { shell.soloAlVerbale(id) }.onFailure { e -> avviso = "Non copiato nel verbale: ${e.message ?: e.javaClass.simpleName}" }
+                pensa = false
+            }
+            return
+        }
         viewModelScope.launch { turnoSu(shell.registra(t, allegati), f) }
     }
+
+    // Il tasto Rispondi sotto un intervento dell'architetto: il prossimo messaggio va a lui.
+    var rispondiArchitetto by mutableStateOf(false)
 
     // Il turno dello Shell su un messaggio già salvato: del Ghost, o dell'architetto che gli si rivolge in riunione.
     private suspend fun turnoSu(id: Long, f: it.resonance.adam.cervello.Forzatura? = null) {
@@ -451,7 +480,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
 
     var chiudendo by mutableStateOf(false)
 
-    // A riunione aperta e app viva, ogni 20 secondi: gli interventi dell'architetto entrano in chat. Riparte da capo
+    // A riunione aperta e app viva, ogni 10 secondi (erano 20 fino al 01/10/2026): gli interventi dell'architetto entrano in chat. Riparte da capo
     // (ritirando subito) quando il Ghost torna nell'app: fuori, Android la congela e il giro si ferma (visto il 26/09).
     private fun seguiRiunione() {
         ascoltaRiunione?.cancel()
@@ -459,12 +488,15 @@ class Adam(app: Application) : AndroidViewModel(app) {
         ascoltaRiunione = viewModelScope.launch {
             while (riunione != null) {
                 ritiraOra(false)
-                kotlinx.coroutines.delay(20_000)
+                kotlinx.coroutines.delay(10_000)
             }
         }
     }
 
-    fun alRitorno() { if (riunione != null) seguiRiunione() }
+    fun alRitorno() {
+        giorno.value = LocalDate.now()
+        if (riunione != null) seguiRiunione()
+    }
     fun ritiraRiunione() = viewModelScope.launch { ritiraOra(true) }
 
     private suspend fun ritiraOra(aMano: Boolean) {
@@ -476,6 +508,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
         if (aMano && r.nuovi.isEmpty()) avviso = "Niente di nuovo dall'architetto"
         r.nuovi.forEach { m -> parla("L'architetto. " + it.resonance.adam.cervello.Tavolo.leggibile(m.testo)) }
         r.allaShell?.let { id -> pensa = true; viewModelScope.launch { turnoSu(id) } }
+        r.perBalthasar?.let { d -> perturba(d, it.resonance.adam.logica.Balthasar.Intensita.MEDIA, daArchitetto = true) }
     }
 
     // Dopo le dichiarazioni di sopra: un init più in alto le troverebbe ancora vuote.
@@ -534,16 +567,25 @@ class Adam(app: Application) : AndroidViewModel(app) {
     }
 
     // La domanda sul tavolo, per partire: l'ultimo messaggio del Ghost. Il Ghost la corregge prima di toccare Perturba.
-    fun domandaSulTavolo(): String = messaggi.value.lastOrNull { it.ruolo == Ruolo.GHOST }?.testo.orEmpty()
+    fun domandaSulTavolo(): String = chat.value.lastOrNull { it.ruolo == Ruolo.GHOST }?.testo.orEmpty()
 
-    fun perturba(domanda: String, intensita: it.resonance.adam.logica.Balthasar.Intensita) {
+    fun perturba(domanda: String, intensita: it.resonance.adam.logica.Balthasar.Intensita, daArchitetto: Boolean = false) {
         if (perturbando || domanda.isBlank()) return
         perturbando = true
         viewModelScope.launch {
-            val esito = runCatching { shell.balthasar(domanda, intensita) }
+            val esito = runCatching { shell.balthasar(domanda, intensita, daArchitetto) }
             perturbando = false
             esito.onSuccess { parla("Balthasar. " + it.testo) }.onFailure { avviso = "Perturba: ${it.message ?: it.javaClass.simpleName}" }
         }
+    }
+
+    // «Sono via» / «Sono tornato» (01/10/2026, logica/Assenza.kt): il ritorno lascia il riepilogo in chat.
+    fun vaVia() = viewModelScope.launch { avviso = archivio.vaVia() }
+    fun torna() = viewModelScope.launch {
+        val r = archivio.torna() ?: run { avviso = "Non risultavi via"; return@launch }
+        if (r.startsWith("«Sono via» ritirato")) { avviso = r; return@launch }
+        db.messaggi().inserisci(Messaggio(ruolo = Ruolo.NOTA, testo = r, istante = System.currentTimeMillis()))
+        avviso = "Bentornato: il riepilogo è in chat"
     }
 
     fun lasciaConsegna(c: it.resonance.adam.dati.Consegna) = viewModelScope.launch { avviso = archivio.lasciaConsegna(c) }

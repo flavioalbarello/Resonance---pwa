@@ -412,8 +412,13 @@ object Azioni {
         Strumento("togli_nodo", Effetto.SCRITTURA, "Propone di togliere un nodo da un percorso (doppione, tappa che non serve più). Resta una traccia nel diario.",
             schema(listOf("percorso", "nodo"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del nodo")))),
         Strumento("scrivi_taccuino", Effetto.INTERNO,
-            "Scrive una nota nel TUO taccuino: un'ipotesi, un'idea, una cosa da ripensare. Niente conferma, non tocca niente. Evapora dopo ${Taccuino.GIORNI} giorni se non la riprendi.",
-            schema(listOf("testo"), mapOf("testo" to s("Al massimo ${Taccuino.LUNGHEZZA} caratteri")))),
+            "Scrive una nota nel TUO taccuino: un'ipotesi, un'idea, una cosa da ripensare. Niente conferma, non tocca niente. Evapora dopo ${Taccuino.GIORNI} giorni se non la riprendi. " +
+                "Il tipo dice che cosa è, e resta: un esempio del Ghost non diventa mai un dato.",
+            schema(listOf("testo", "tipo"), mapOf("testo" to s("Al massimo ${Taccuino.LUNGHEZZA} caratteri"),
+                "tipo" to e(Taccuino.TIPI, "ipotesi tua, fatto verificato, decisione del Ghost, o esempio fatto per spiegare")))),
+        Strumento("punto_fermo", Effetto.INTERNO,
+            "Solo in riunione: registra una decisione appena presa dal tavolo, in una riga. Niente conferma. I punti fermi ti restano davanti finché la riunione è aperta.",
+            schema(listOf("testo"), mapOf("testo" to s("La decisione, in una riga")))),
         Strumento("riprendi_nota", Effetto.INTERNO, "Riprende una nota del taccuino: la tiene viva altri ${Taccuino.GIORNI} giorni.",
             schema(listOf("id"), mapOf("id" to n("Il numero della nota, quello dopo #")))),
         Strumento("regola_temperatura", Effetto.SCRITTURA,
@@ -498,6 +503,12 @@ object Azioni {
         "scrivi_taccuino" -> {
             val t = a.testo("testo") ?: rifiuta("testo vuoto")
             if (t.length > Taccuino.LUNGHEZZA) rifiuta("al massimo ${Taccuino.LUNGHEZZA} caratteri: una nota è un'idea, non un documento (per quello salva_documento)")
+            if (a.testo("tipo")?.lowercase() !in Taccuino.TIPI) rifiuta("serve il tipo: ${Taccuino.TIPI.joinToString(", ")}")
+            Validazione.Interna(nome, a)
+        }
+        "punto_fermo" -> {
+            val t = a.testo("testo") ?: rifiuta("punto vuoto")
+            if (t.length > 200) rifiuta("al massimo 200 caratteri: una decisione, non un riassunto")
             Validazione.Interna(nome, a)
         }
         "riprendi_nota" -> {

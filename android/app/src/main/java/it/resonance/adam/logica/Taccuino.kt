@@ -11,7 +11,13 @@ object Taccuino {
     const val NEL_PROMPT = 30
     private const val GIORNO_MS = 86_400_000L
 
-    fun viva(n: Nota, ora: Long) = !n.tolta && ora - n.ripresa < GIORNI * GIORNO_MS
+    // Il tipo di una nota (01/10/2026): un esempio inventato dal Ghost per spiegare era tornato, settimane dopo, come
+    // «cifratura del paziente» vera. Ciò che si ricorda porta con sé che cosa è, e non lo cambia strada facendo. Sta
+    // davanti al testo, fra parentesi quadre: nessuna colonna nuova, e le note di prima restano leggibili.
+    val TIPI = listOf("ipotesi", "fatto", "decisione", "esempio")
+    fun conTipo(tipo: String, testo: String) = "[${tipo.lowercase().takeIf { it in TIPI } ?: "ipotesi"}] ${testo.trim()}"
+
+    fun viva(n: Nota, ora: Long) =!n.tolta && ora - n.ripresa < GIORNI * GIORNO_MS
 
     fun vive(note: List<Nota>, ora: Long): List<Nota> = note.filter { viva(it, ora) }.sortedByDescending { it.ripresa }.take(NEL_PROMPT)
 

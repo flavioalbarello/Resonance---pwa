@@ -63,9 +63,16 @@ import it.resonance.adam.dati.StatoProposta
 
 @Composable
 fun ShellUi(vm: Adam, sistema: Sistema) {
-    val messaggi by vm.messaggi.collectAsState()
-    val lista = rememberLazyListState()
-    LaunchedEffect(messaggi.size) { if (messaggi.isNotEmpty()) lista.animateScrollToItem(messaggi.size - 1) }
+    val messaggi by vm.chat.collectAsState()
+    // Si apre già in fondo, senza scorrere tutta la storia; si scorre animato solo per un messaggio nuovo vicino.
+    // La chiave è l'ultimo messaggio, non il numero: caricare i precedenti non deve riportare in fondo.
+    val lista = rememberLazyListState(initialFirstVisibleItemIndex = (messaggi.size).coerceAtLeast(0))
+    LaunchedEffect(messaggi.lastOrNull()?.id) {
+        if (messaggi.isEmpty()) return@LaunchedEffect
+        val fondo = messaggi.size
+        val vicino = fondo - (lista.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) <= 3
+        if (vicino) lista.animateScrollToItem(fondo) else lista.scrollToItem(fondo)
+    }
     Column(Modifier.fillMaxSize().imePadding()) {
         LazyColumn(
             state = lista,
@@ -79,6 +86,9 @@ fun ShellUi(vm: Adam, sistema: Sistema) {
                     Tenue("Il microfono è nell'ancora a destra: 🎤 detta nella casella, Auto è a mani libere e conferma a voce con «sì».")
                     Tenue("＋ allega foto, immagini, PDF e documenti: lo Shell li guarda e ne legge il testo. Anche da altre app: Condividi → Resonance.")
                 }
+            }
+            if (messaggi.size >= vm.finestra) item {
+                TextButton({ vm.mostraPrecedenti() }, Modifier.fillMaxWidth().testTag("precedenti")) { Text("Mostra i messaggi precedenti", color = Colori.tenue) }
             }
             items(messaggi, key = { it.id }) { m -> Messaggio(vm, m) }
             item { Spazio(8) }
@@ -99,6 +109,8 @@ fun ShellUi(vm: Adam, sistema: Sistema) {
             Text("Modalità auto: parla anche con pause. Parte dopo ${vm.pausaInvio()} secondi di silenzio, o subito se dici «invia»; «annulla messaggio» lo cancella. Tocca l'ancora rossa per fermare.",
                 color = Colori.allarme, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
         }
+        if (vm.rispondiArchitetto) InputChip(true, { vm.rispondiArchitetto = false }, label = { Text("↩ All'architetto · lo Shell non risponde, a meno che lo nomini") },
+            trailingIcon = { Text("✕") }, modifier = Modifier.padding(horizontal = 12.dp).testTag("rispondi-architetto"))
         vm.forza?.let { f ->
             InputChip(true, { vm.forza = null }, label = { Text("🌡 ${f.etichetta} · solo il prossimo messaggio") }, trailingIcon = { Text("✕") },
                 modifier = Modifier.padding(horizontal = 12.dp).testTag("forza"))
@@ -208,8 +220,14 @@ private fun Messaggio(vm: Adam, m: Messaggio) {
                     Text(Formato.annota(it.resonance.adam.cervello.Tavolo.leggibile(m.testo)), color = Colori.inchiostro, fontSize = 15.sp, lineHeight = 21.sp)
                 }
             }
-            TextButton({ vm.leggi(m) }, modifier = Modifier.testTag("leggi-${m.id}")) {
-                Text(if (vm.inLettura == m.id) "⏹ Ferma" else "🔊 Ascolta", fontSize = 12.sp, color = Colori.ambraInchiostro)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton({ vm.leggi(m) }, modifier = Modifier.testTag("leggi-${m.id}")) {
+                    Text(if (vm.inLettura == m.id) "⏹ Ferma" else "🔊 Ascolta", fontSize = 12.sp, color = Colori.ambraInchiostro)
+                }
+                // In riunione: il prossimo messaggio va all'architetto, e lo Shell non viene chiamato (a meno che lo nomini).
+                if (vm.riunione != null) TextButton({ vm.rispondiArchitetto = true }, modifier = Modifier.testTag("rispondi-${m.id}")) {
+                    Text("↩ Rispondi", fontSize = 12.sp, color = Colori.ambraInchiostro)
+                }
             }
         }
         Ruolo.NOTA -> Text(m.testo, color = Colori.tenue, fontSize = 13.sp, fontStyle = FontStyle.Italic, modifier = Modifier.padding(horizontal = 4.dp))

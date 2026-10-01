@@ -467,14 +467,14 @@ class ShellTest {
     // ── Pacchetto Adam (25/09/2026) ──
 
     @Test fun ilTaccuinoSiScriveSenzaPropostaEDalTurnoDopoESottoGliOcchi() = runBlocking {
-        val modello = FintoModello(chiama("scrivi_taccuino", """{"testo":"Un planner per musicisti di tributi: nicchia scoperta?"}"""), testo("Annotato."), testo("Ricordo."))
+        val modello = FintoModello(chiama("scrivi_taccuino", """{"testo":"Un planner per musicisti di tributi: nicchia scoperta?","tipo":"ipotesi"}"""), testo("Annotato."), testo("Ricordo."))
         val shell = Shell(archivio, imp, modello, FintoMondo())
         val esito = shell.turno("pensaci")
         assertTrue(esito.proposte.isEmpty())
         val nota = db.taccuino().elenco().single()
         assertTrue(modello.ricevuti[1].last().jsonObject["content"]!!.jsonPrimitive.content.startsWith("Nel taccuino: nota #${nota.id}"))
         shell.turno("e allora?")
-        assertTrue(contenuto(modello.ricevuti[2], 0).contains("#${nota.id} (evapora tra 21 gg): Un planner"))
+        assertTrue(contenuto(modello.ricevuti[2], 0).contains("#${nota.id} (evapora tra 21 gg): [ipotesi] Un planner"))
     }
 
     // La voce dello Shell sulla propria regolazione: proposta, conferma del Ghost, traccia nel diario, effetto dal turno dopo.
@@ -971,5 +971,81 @@ class ShellTest {
         val dopo = FintoModello(testo("Ci penso."))
         shell(dopo, cassetta).turno("e allora?")
         assertTrue(dopo.ricevuti.single().toString().contains("[Balthasar: la perturbazione chiesta dal Ghost"))
+    }
+
+    // ── Riunione del 01/10/2026: verbale dai file, punti fermi, chi risponde, Balthasar interrogato ──
+
+    @Test fun ilVerbaleSiScriveDaTuttiIFileNonDagliUltimiMessaggi() = runBlocking {
+        val cassetta = FintaCassetta()
+        val cartella = riunioneAperta(cassetta)
+        cassetta.file["$cartella/20990101-083000-000-ghost.md"] = "Primo punto della mattina: l'assenza."
+        cassetta.file["$cartella/20990101-083100-000-architetto.md"] = "Il tasto Sono via."
+        cassetta.file["$cartella/20990101-180000-000-shell.md"] = "Ultimo punto della sera."
+        val modello = FintoModello(testo("Decisioni\n- a\nQuestioni aperte\n- b\nChi fa cosa\n- c"))
+        shell(modello, cassetta).chiudiRiunione()
+        val inviato = modello.ricevuti.single().toString()
+        assertTrue(inviato, inviato.contains("Trascrizione completa") && inviato.contains("[08.30 Ghost] Primo punto della mattina") && inviato.contains("[08.31 Architetto] Il tasto Sono via"))
+    }
+
+    @Test fun iPuntiFermiSiRegistranoSenzaConfermaERestanoDavanti() = runBlocking {
+        val cassetta = FintaCassetta()
+        riunioneAperta(cassetta)
+        val modello = FintoModello(chiama("punto_fermo", """{"testo":"La cena si decide sulla cottura: decide chi cucina"}"""), testo("Registrato."), testo("Ok."))
+        val sh = shell(modello, cassetta)
+        assertTrue(sh.turno("deciso").proposte.isEmpty())
+        assertEquals(listOf("La cena si decide sulla cottura: decide chi cucina"), Tavolo(archivio, imp, cassetta).puntiFermi())
+        assertTrue(cassetta.file.values.any { it == "Punto fermo: La cena si decide sulla cottura: decide chi cucina" })
+        sh.turno("e allora?")
+        assertTrue(contenuto(modello.ricevuti[2], 0).contains("1. La cena si decide sulla cottura"))
+        // Un doppione no; alla chiusura si azzerano.
+        assertTrue(Tavolo(archivio, imp, cassetta).aggiungiPunto("la cena si decide sulla cottura: decide chi cucina")!!.contains("già"))
+        shell(FintoModello(testo("Decisioni\n- a\nQuestioni aperte\n- b\nChi fa cosa\n- c")), cassetta).chiudiRiunione()
+        assertEquals("", imp.riunionePunti)
+    }
+
+    @Test fun unMessaggioPerLArchitettoVaNelVerbaleSenzaChiamareLoShell() = runBlocking {
+        val cassetta = FintaCassetta()
+        riunioneAperta(cassetta)
+        val modello = FintoModello()
+        val sh = shell(modello, cassetta)
+        sh.soloAlVerbale(sh.registra("architetto, spiegami le stanze"))
+        assertTrue(modello.ricevuti.isEmpty())
+        assertTrue(cassetta.file.entries.any { it.key.endsWith("-ghost.md") && it.value == "architetto, spiegami le stanze" })
+        assertTrue(Tavolo.chiamaShell("Ciao a tutti"))
+        assertTrue(!Tavolo.chiamaShell("Architetto, cosa ne pensi?"))
+        assertTrue(!Tavolo.chiamaShell("code spiegami meglio"))
+        assertTrue(Tavolo.chiamaShell("Architetto e Shell, cosa ne pensate?"))
+        assertTrue(Tavolo.chiamaShell("architetto, rispondete entrambi"))
+        assertTrue(!Tavolo.chiamaShell("mi sta bene", rispostaAllArchitetto = true))
+        assertTrue(Tavolo.chiamaShell("mi sta bene, ma sentiamo anche lo Shell", rispostaAllArchitetto = true))
+        // «codice» non è «code».
+        assertTrue(Tavolo.chiamaShell("codice nuovo per la lavagna?"))
+    }
+
+    @Test fun lArchitettoInterrogaBalthasarConLaFrecciaEIGiriContano() = runBlocking {
+        val cassetta = FintaCassetta()
+        val cartella = riunioneAperta(cassetta)
+        val tavolo = Tavolo(archivio, imp, cassetta)
+        cassetta.file["$cartella/20990101-000001-000-architetto.md"] = "→ Balthasar: come rendere Adam City reale con due Adam?"
+        val r = tavolo.ritira()
+        assertEquals("come rendere Adam City reale con due Adam?", r.perBalthasar)
+        assertEquals(null, r.allaShell)
+        assertEquals("A Balthasar: come rendere Adam City reale con due Adam?", Tavolo.leggibile(r.nuovi.single().testo))
+        val m = FintoModello(testo("· Partire dalla cena del martedì."))
+        shell(m, cassetta).balthasar(r.perBalthasar!!, it.resonance.adam.logica.Balthasar.Intensita.MEDIA, daArchitetto = true)
+        assertTrue(m.ricevuti.single().last().toString().contains("L'architetto ti interroga come Balthasar"))
+        assertTrue(cassetta.file.values.any { it.startsWith("Risposta all'architetto (media)") })
+        // Tre giri senza il Ghost, contando anche quelli a Balthasar: il quarto non parte.
+        (2..4).forEach { n -> cassetta.file["$cartella/20990101-00000$n-000-architetto.md"] = "→ Balthasar\nAncora $n?" ; tavolo.ritira() }
+        cassetta.file["$cartella/20990101-000009-000-architetto.md"] = "→ Balthasar\nUltima?"
+        assertEquals(null, tavolo.ritira().perBalthasar)
+    }
+
+    @Test fun ilTaccuinoVuoleIlTipoEloScriveDavanti() = runBlocking {
+        val v = Azioni.valida("scrivi_taccuino", Json.parseToJsonElement("""{"testo":"cifratura DZ 25x"}""").jsonObject, LocalDate.now())
+        assertTrue(v is Validazione.Rifiutata)
+        val modello = FintoModello(chiama("scrivi_taccuino", """{"testo":"cifratura DZ 25x","tipo":"esempio"}"""), testo("Annotato."))
+        Shell(archivio, imp, modello, FintoMondo()).turno("ricordalo come esempio")
+        assertEquals("[esempio] cifratura DZ 25x", db.taccuino().elenco().single().testo)
     }
 }

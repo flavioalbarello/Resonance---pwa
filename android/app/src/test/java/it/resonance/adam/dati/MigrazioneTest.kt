@@ -40,6 +40,21 @@ class MigrazioneTest {
         db.close()
     }
 
+    @Test fun dalleDodiciAlleTrediciNasceIlTerrenoEIlDiarioResta() {
+        aiuto.createDatabase("tredici.db", 12).apply {
+            execSQL("INSERT INTO voci (pilastro, giorno, testo, fonte, creato, aggiornato) VALUES ('ADAM', '2026-10-01', 'In pausa («Sono via») dal 2026-09-27.', 'assenza', 0, 0)")
+            close()
+        }
+        aiuto.runMigrationsAndValidate("tredici.db", 13, true).close()
+        val db = Room.databaseBuilder(RuntimeEnvironment.getApplication(), Db::class.java, "tredici.db").allowMainThreadQueries().build()
+        runBlocking {
+            assertTrue(db.tracce().stanze().isEmpty())
+            assertTrue(db.tracce().elenco().isEmpty())
+            assertEquals("assenza", db.voci().elenco().single().fonte)
+        }
+        db.close()
+    }
+
     @Test fun dallUndiciAlleDodiciITurniVecchiRestanoSenzaStrumenti() {
         aiuto.createDatabase("dodici.db", 11).apply {
             execSQL("INSERT INTO turni (istante, compito, modello, forzata, proposte, rifiutate, troncata, esauriti, errore) VALUES (1, 'TURNO', 'm', 0, '', 0, 0, 0, 0)")

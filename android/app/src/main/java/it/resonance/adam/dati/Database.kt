@@ -150,6 +150,8 @@ interface QuaderniDao {
 interface MessaggiDao {
     @Query("SELECT * FROM messaggi ORDER BY istante, id") fun tutti(): Flow<List<Messaggio>>
     @Query("SELECT * FROM (SELECT * FROM messaggi ORDER BY istante DESC, id DESC LIMIT :n) ORDER BY istante, id") suspend fun ultimi(n: Int): List<Messaggio>
+    // La chat ne mostra una finestra: con mesi di storia, rileggerli tutti a ogni messaggio rallentava l'apertura.
+    @Query("SELECT * FROM (SELECT * FROM messaggi ORDER BY istante DESC, id DESC LIMIT :n) ORDER BY istante, id") fun osservaUltimi(n: Int): Flow<List<Messaggio>>
     @Query("SELECT * FROM messaggi WHERE id = :id") suspend fun per(id: Long): Messaggio?
     @Query("SELECT * FROM messaggi WHERE stato = 'IN_ATTESA' ORDER BY istante DESC LIMIT 1") suspend fun ultimaInAttesa(): Messaggio?
     @Insert suspend fun inserisci(m: Messaggio): Long
@@ -173,10 +175,23 @@ interface ProfiloDao {
     @Upsert suspend fun salva(p: Profilo)
 }
 
+// Il terreno di Adam City: stanze e tracce (logica/Tracce.kt). Senza interfaccia finché non c'è un secondo Adam.
+@Dao
+interface TracceDao {
+    @Query("SELECT * FROM stanze ORDER BY entrata") suspend fun stanze(): List<Stanza>
+    @Query("SELECT * FROM stanze WHERE id = :id") suspend fun stanza(id: Long): Stanza?
+    @Insert suspend fun entra(s: Stanza): Long
+    @Update suspend fun aggiornaStanza(s: Stanza)
+    @Query("SELECT * FROM tracce ORDER BY deposta") suspend fun elenco(): List<Traccia>
+    @Query("SELECT * FROM tracce WHERE id = :id") suspend fun per(id: Long): Traccia?
+    @Insert suspend fun deposita(t: Traccia): Long
+    @Update suspend fun aggiorna(t: Traccia)
+}
+
 @Database(
     entities = [Misura::class, Voce::class, Versione::class, Rituale::class, Spunta::class, Percorso::class,
-        Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class, Esperimento::class, Turno::class, Nota::class, Movimento::class, Lettera::class, RispostaLettera::class, Consegna::class, Appunto::class],
-    version = 12,
+        Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class, Esperimento::class, Turno::class, Nota::class, Movimento::class, Lettera::class, RispostaLettera::class, Consegna::class, Appunto::class, Stanza::class, Traccia::class],
+    version = 13,
     exportSchema = true,
     // 2: Profilo.nomiProtetti (calendario e posta, 23/09/2026).
     // 3: Messaggio.allegati (immagini e documenti nella chat, 23/09/2026).
@@ -186,7 +201,8 @@ interface ProfiloDao {
     // 10: la lavagna del Ghost (seconda riunione del 26/09/2026).
     // 11: Documento.tolto (togliere documenti vecchi o sbagliati, recuperabili).
     // 12: Turno.strumenti (cosa ha fatto lo Shell in ogni turno: per capire perché un pulsante non c'è).
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9), AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11), AutoMigration(from = 11, to = 12)],
+    // 13: stanze e tracce, il terreno di Adam City (riunione del 01/10/2026).
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9), AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11), AutoMigration(from = 11, to = 12), AutoMigration(from = 12, to = 13)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun misure(): MisureDao
@@ -205,6 +221,7 @@ abstract class Db : RoomDatabase() {
     abstract fun spesa(): SpesaDao
     abstract fun profilo(): ProfiloDao
     abstract fun esperimenti(): EsperimentiDao
+    abstract fun tracce(): TracceDao
 
     companion object {
         @Volatile private var istanza: Db? = null

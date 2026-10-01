@@ -250,6 +250,62 @@ nuovo `pilastro_nodo`. Se il pilastro di una parte non è chiaro, lo Shell lo ch
 (proporre `crea_evento` come promemoria) e controllo del programma (`Testi.promette`), che aggiunge una nota se la
 risposta promette senza aver proposto niente.
 
+## Dalla riunione del 01/10/2026: riunioni, assenza, terreno di Adam City
+
+**Riunione.**
+- *Verbale dai file*: lo Shell scrive il verbale leggendo tutti i file della cartella della cassetta
+  (`Tavolo.trascrizione`, tetto 120 000 caratteri, testa più coda), non più i suoi ultimi 24 messaggi.
+  Se la cassetta non risponde, usa gli ultimi 60.
+- *Punti fermi*: lo strumento interno `punto_fermo`, senza conferma, una riga di massimo 200 caratteri, al massimo 15.
+  Il prompt li mostra sempre, così una decisione presa all'inizio di una riunione lunga non si perde.
+  Si azzerano alla chiusura.
+- *L'agenda la porta il Ghost*: una regola nel prompt. Lo Shell non chiude punti e non propone «passiamo a…?».
+- *Filtro architetto*: un messaggio che comincia con «architetto» o «code» e non nomina lo Shell («shell», «entrambi»,
+  «voi due»…) va nel verbale senza chiamare lo Shell (`Tavolo.chiamaShell`).
+  Sotto ogni intervento dell'architetto, «↩ Rispondi» fa lo stesso per il messaggio successivo.
+- *Ritiro ogni 10 s* (prima 30).
+- *«→ Balthasar»*: un file dell'architetto che comincia così fa partire Perturba (media) con quella domanda.
+  La risposta va nel verbale come «Risposta all'architetto».
+- *Balthasar concreto*: niente metafore, niente teatro. Parla come lo Shell, mai a nome di altri.
+  La versione profonda dice in concreto che cosa cambierebbe.
+- *Memoria con l'etichetta*: `scrivi_taccuino` vuole un `tipo` fra ipotesi, fatto, decisione ed esempio, e la nota
+  comincia con «[tipo]». Prima l'esempio del Ghost («DZ 25x») era diventato un fatto.
+
+**«Sono via» / «Sono tornato»** (`logica/Assenza.kt`). Quattro giorni di febbre, e una consegna dello Shell sarebbe
+risultata mancata perché il documento aspettava un tocco del Ghost.
+- L'assenza la dichiara il Ghost dallo Specchio, mai il programma dal silenzio.
+- Mentre è via il battito tace: legge i sensi, pulisce la lavagna e basta.
+- I giorni di pausa non rompono le serie e non abbassano il 14: si saltano (`Stabilita.tenuta`).
+- Al ritorno, in una transazione: le consegne aperte slittano dei giorni di assenza, gli esperimenti aperti si
+  allungano, il periodo resta nel diario di Adam («In pausa dal … al …») e un riepilogo arriva in chat.
+- Ritirato lo stesso giorno conta come tocco sbagliato: non si sposta niente.
+
+**La domanda della domenica.** Il battito della settimana chiede UNA domanda sulla settimana che viene. La regola di
+costruzione del 01/10: le variabili non si modellano, si chiede quella giusta al momento giusto. La domanda entra in
+chat come messaggio dello Shell e la notifica apre la chat.
+
+**Il terreno di Adam City** (`logica/Tracce.kt`, DB 13: tabelle `stanze` e `tracce`). Senza interfaccia e senza
+strumento dello Shell: è la forma, pronta per quando ci sarà un secondo Adam.
+- *Stanza*: nasce dal gesto di chi entra (`entraInStanza`), si esce con un gesto. Un ospite ha una scadenza ed esce
+  da solo. Non si deduce da calendari o posizioni.
+- *Traccia*: sei cose — chi, ambito (una parola), cosa (una riga, al massimo 120 caratteri), quando, durata
+  (1–60 giorni), forza. Nessun destinatario.
+  Il programma rifiuta una traccia che fa una domanda: se aspetta una risposta è un impegno a due.
+- *Quattro gesti*:
+  - deposita;
+  - fa leggere: nel prompt, solo le stanze aperte, le più forti prima, con la regola «i conflitti non si risolvono,
+    si mostrano»;
+  - rinforza: +1, tetto 5, solo da un fatto che il programma trova nell'archivio (voce, spunta, misura, documento),
+    nella finestra in cui la traccia è viva, e mai due volte dallo stesso fatto;
+  - fa svanire: la forza cala in linea retta fino a zero in `durata` giorni dall'ultimo rinforzo. Il battito segna le
+    svanite, anche quando il Ghost è via. Restano nell'archivio.
+- Entrano nella copia di sicurezza.
+
+**Fluidità** (rapporto completo in `ANALISI_FLUIDITA_2026-10-01.md`):
+- la chat legge gli ultimi 200 messaggi e si apre già in fondo;
+- lo Specchio cambia giorno a mezzanotte;
+- il resto è elencato lì, con le prove.
+
 ## Il consulente esterno e Balthasar (riunione del 27/09/2026)
 
 Il Ghost: *«un consulente esterno che entra, tutti e tre lo interroghiamo, una volta che ci ha chiarito i dubbi esce e
@@ -367,8 +423,12 @@ Maven Central qui limita le richieste: il progetto usa il mirror di Google, anch
 | Allegati: sul telefono vero | Provati: riduzione immagine (strada BitmapFactory), testo, docx, messaggio al modello, cambio di modello. Non provati qui: ImageDecoder (foto ruotate), PdfRenderer, fotocamera, condivisione da altre app |
 | Turno in secondo piano | Provato: registra/rispondi e il non rispondere due volte. Non provati qui: il lavoro vero a schermo spento, la notifica, il servizio in primo piano sui telefoni prima di Android 12 |
 | Calendario scelto | Il principale dell'account Google, se no il primo scrivibile. La ricevuta ne dice il nome; non si sceglie ancora in Setup |
-| Database | Versione 2 (`nomiProtetti`), migrazione automatica provata in `MigrazioneTest` sopra la 1 della 2.0.144 |
-| R8 spento | APK da 30 MB. La minificazione va accesa solo dopo una prova su telefono vero |
+| Database | Versione 13 (stanze e tracce). Migrazioni automatiche dalla 1, provate passo per passo in `MigrazioneTest` |
+| R8 spento | APK da circa 11,5 MB (`useLegacyPackaging`). La minificazione va accesa solo dopo una prova su telefono vero |
 | Modello predefinito | Llama 3.3 70B, lo stesso della PWA. Da scegliere con un numero, non col prezzario |
 | Consulente dal vivo | Provati sul banco la cartella, il guardiano, la forma, le fonti lette dalla risposta (`annotations` e `citations`) con un modello finto. Non provata una chiamata vera: la forma delle fonti del motore web di OpenRouter è quella che la PWA legge dal 31/08, non verificata da qui |
 | Agorà Magi | Non portata nell'APK: ne vive il ruolo di Balthasar in riunione. Melchior e Caspar sono persone (architetto, Ghost) e il programma |
+| Tracce e stanze | Solo la forma e i quattro gesti, provati sul banco. Nessuna interfaccia, nessuno strumento dello Shell, nessun luogo comune fra due telefoni: con un Adam solo una traccia non ha nessuno che la legga |
+| Regola delle cene | Non costruita. La regola misurabile sulla carne aspetta i numeri da decidere con Marta, e nell'app non esiste ancora la forma di un piano dei pasti su cui controllarla. Codice senza numeri sarebbe un controllo finto |
+| Risposta a pezzi | Il modello scrive in streaming, ma la chat mostra la risposta solo alla fine (vedi l'analisi di fluidità, punto 1) |
+| «Sono via» sul telefono vero | Provati sul banco: pausa, serie, slittamento, ritiro lo stesso giorno. Non provato qui: il battito che tace davvero a schermo spento |

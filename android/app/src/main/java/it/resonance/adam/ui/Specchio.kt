@@ -14,7 +14,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.platform.testTag
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -57,10 +59,19 @@ fun Specchio(vm: Adam) {
         Spazio(12)
         Text(i.oggi.format(GIORNO).replaceFirstChar { it.uppercase() }, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Colori.inchiostro)
         Tenue("Quello che è cambiato davvero: numeri calcolati sui dati, non stime.")
+        // «Sono via» (01/10/2026): lo dichiara il Ghost. Mentre è via, la fascia lo ricorda e porta al ritorno.
+        i.via?.let { da ->
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Sei via dal ${da.format(GIORNO)}: battito zitto, rituali in pausa, consegne ed esperimenti fermi.",
+                    color = Colori.ambraInchiostro, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Button({ vm.torna() }, modifier = Modifier.testTag("torna")) { Text("Sono tornato") }
+            }
+        }
         Spazio()
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton({ numero = true }) { Text("+ Un numero") }
             OutlinedButton({ vm.leggiSensi() }) { Text("Leggi i sensori") }
+            if (i.via == null) TextButton({ vm.vaVia() }, modifier = Modifier.testTag("via")) { Text("Sono via") }
         }
         if (vm.statoSensi.isNotBlank()) Tenue(vm.statoSensi)
 

@@ -36,11 +36,15 @@ object Stabilita {
 
     // La serie in corso si conta da oggi, o da ieri se oggi non è ancora spuntato:
     // la giornata non è finita, non è ancora una rottura.
-    fun tenuta(giorni: Set<LocalDate>, oggi: LocalDate): Tenuta {
-        var g = if (oggi in giorni) oggi else oggi.minusDays(1)
+    // I giorni di pausa («Sono via», logica/Assenza.kt) non rompono la serie e non la allungano: si saltano. E i 14 giorni
+    // sono gli ultimi 14 in cui il Ghost c'era: quattro giorni di febbre non sembrano un crollo.
+    fun tenuta(giorni: Set<LocalDate>, oggi: LocalDate, pausa: Set<LocalDate> = emptySet()): Tenuta {
+        var g = if (oggi in giorni || oggi in pausa) oggi else oggi.minusDays(1)
         var serie = 0
-        while (g in giorni) { serie++; g = g.minusDays(1) }
-        val su14 = (0L..13L).count { oggi.minusDays(it) in giorni }
+        var passi = 0
+        while (passi < 3660 && (g in giorni || g in pausa)) { if (g in giorni && g !in pausa) serie++; g = g.minusDays(1); passi++ }
+        val presenti = generateSequence(oggi) { it.minusDays(1) }.filter { it !in pausa }.take(14).toList()
+        val su14 = presenti.count { it in giorni }
         return Tenuta(serie, su14, oggi in giorni)
     }
 }

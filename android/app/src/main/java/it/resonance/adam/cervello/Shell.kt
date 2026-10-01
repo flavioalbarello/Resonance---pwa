@@ -59,7 +59,12 @@ suspend fun Archivio.istantanea(oggi: LocalDate = LocalDate.now(), agenda: Agend
     consegne = db.consegne().aperte(),
     appunti = db.lavagna().elenco().filter { Lavagna.vivo(it, oggi) },
     versione = it.resonance.adam.BuildConfig.VERSION_NAME,
-)
+).let { i ->
+    val voci = db.voci().elenco()
+    i.copy(pausa = it.resonance.adam.logica.Assenza.giorniDiPausa(it.resonance.adam.logica.Assenza.periodi(voci), oggi),
+        via = it.resonance.adam.logica.Assenza.inCorso(voci)?.second?.da,
+        tracce = it.resonance.adam.logica.Tracce.perLoShell(db.tracce().elenco(), db.tracce().stanze(), oggi))
+}
 
 class Shell(
     private val archivio: Archivio,
@@ -179,6 +184,17 @@ class Shell(
         return esito
     }
 
+    // Un messaggio del Ghost per l'architetto, in riunione: nel verbale sì, allo Shell no (01/10/2026). Niente modello,
+    // niente spesa. Il messaggio resta in chat: lo Shell lo vede al turno dopo, come ogni altro.
+    suspend fun soloAlVerbale(idGhost: Long) {
+        val m = archivio.db.messaggi().per(idGhost) ?: return
+        val tavolo = Tavolo(archivio, impostazioni, cassetta)
+        if (!tavolo.aperta()) return
+        val allegati = Allegati.decodifica(m.allegati)
+        tavolo.registra("ghost", m.testo + if (allegati.isNotEmpty()) "\n[${allegati.size} allegati: non copiati nel verbale]" else "")
+        nota("Per l'architetto: lo Shell non risponde. Nominalo nel messaggio se vuoi anche lui.")
+    }
+
     // La riunione si chiude con il verbale dello Shell: decisioni, questioni aperte, chi fa cosa. Il 26/09 il verbale
     // poteva proporre azioni, e ne è uscito «Tutto proposto. Conferma quello che vuoi…» al posto del verbale: ora è
     // una chiamata SENZA strumenti, con la forma dichiarata prima e controllata dopo (Tavolo.SEZIONI, detta e
@@ -202,10 +218,17 @@ class Shell(
         controllaSpesa()?.let { return "(Verbale non scritto: $it)" }
         val istantanea = fotografia(LocalDate.now(), 0)
         val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", Contesto.sistema(istantanea)) })
-        lavoro += storia(archivio.db.messaggi().ultimi(60))
+        // La fonte è la riunione intera, dai file della cassetta (01/10/2026: dagli ultimi 60 messaggi si perdeva la
+        // mattina). Se la cassetta non risponde, si ripiega sulla chat, e lo si dice nel verbale stesso.
+        val trascrizione = runCatching { Tavolo(archivio, impostazioni, cassetta).trascrizione() }.getOrDefault("")
+        val fonte = if (trascrizione.isNotBlank()) "la trascrizione qui sopra" else "la chat (la cassetta non ha risposto: il verbale può non coprire l'inizio)"
+        if (trascrizione.isNotBlank()) lavoro += buildJsonObject {
+            put("role", "user")
+            put("content", "[Nota del programma, non del Ghost] Trascrizione completa della riunione «$tema», dai file della cassetta, in ordine:\n\n$trascrizione")
+        } else lavoro += storia(archivio.db.messaggi().ultimi(60))
         lavoro += buildJsonObject {
             put("role", "user")
-            put("content", "[Nota del programma, non del Ghost] Il Ghost chiude la riunione «$tema». Scrivi il verbale, denso, con queste " +
+            put("content", "[Nota del programma, non del Ghost] Il Ghost chiude la riunione «$tema». Scrivi il verbale da $fonte, dall'inizio alla fine, denso, con queste " +
                 "sezioni, ognuna su una riga sua seguita da elenchi «- »: ${Tavolo.SEZIONI.joinToString(", ") { "«$it»" }}. Solo ciò che è stato " +
                 "detto in riunione. Non proporre azioni adesso: ciò che va fatto sta sotto «Chi fa cosa», e il Ghost lo chiederà in chat.")
         }
@@ -303,13 +326,13 @@ class Shell(
     // ── Balthasar (27/09/2026, logica/Balthasar.kt) ──
     // Il Ghost tocca Perturba: lo Shell, con la sua memoria e la storia della riunione, ma SENZA strumenti e alla
     // temperatura dell'intensità scelta. Una chiamata sola; la forma si controlla e, se non regge, lo si scrive sotto.
-    suspend fun balthasar(domanda: String, intensita: Balthasar.Intensita): Esito {
+    suspend fun balthasar(domanda: String, intensita: Balthasar.Intensita, daArchitetto: Boolean = false): Esito {
         if (domanda.isBlank()) return Esito("Serve la domanda sul tavolo.", emptyList())
         controllaSpesa()?.let { nota(it); return Esito(it, emptyList()) }
         val istantanea = fotografia(LocalDate.now(), 0)
         val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", Contesto.sistema(istantanea)) })
         lavoro += storia(archivio.db.messaggi().ultimi(24))
-        lavoro += buildJsonObject { put("role", "user"); put("content", Balthasar.richiesta(domanda, intensita)) }
+        lavoro += buildJsonObject { put("role", "user"); put("content", Balthasar.richiesta(domanda, intensita, daArchitetto)) }
         val modello = impostazioni.modello
         val (r, usata) = try {
             chiama(modello, JsonArray(lavoro), null, MAX_TOKEN, intensita.temperatura)
@@ -328,7 +351,7 @@ class Shell(
             costo = r.costo, motore = "intensità ${intensita.etichetta}", temperatura = usata))
         registraTurno(Compito.BALTHASAR, modello, usata, true, emptyList(), 0, r.troncata, false, errore = false, r.costo ?: 0.0, listOf("intensità ${intensita.etichetta}"))
         val tavolo = Tavolo(archivio, impostazioni, cassetta)
-        if (tavolo.aperta()) runCatching { tavolo.registra("balthasar", "Perturbazione (${intensita.etichetta}) su: «${domanda.trim()}»\n\n$testo") }
+        if (tavolo.aperta()) runCatching { tavolo.registra("balthasar", (if (daArchitetto) "Risposta all'architetto" else "Perturbazione") + " (${intensita.etichetta}) su: «${domanda.trim()}»\n\n$testo") }
             .onFailure { nota("Perturbazione non copiata nel verbale: ${it.message ?: it.javaClass.simpleName}") }
         return Esito(testo, emptyList())
     }
@@ -482,6 +505,8 @@ class Shell(
                         risultato.startsWith("Proposta mostrata") -> " proposto"
                         risultato.startsWith("Nel taccuino") -> " scritto nel taccuino"
                         risultato.startsWith("Domanda in cartella") -> " in cartella"
+                        risultato.startsWith("Punto fermo registrato") -> " registrato"
+                        risultato.startsWith("Non registrato") -> " fermato (${Testi.corto(risultato.substringAfter(": "), 70)})"
                         risultato.startsWith("Non in cartella") -> " fermato (${Testi.corto(risultato.substringAfter(": "), 70)})"
                         else -> " letto"
                     }
@@ -708,7 +733,8 @@ class Shell(
     private suspend fun fotografia(oggi: LocalDate, giorniAgenda: Int) =
         archivio.istantanea(oggi, mondo?.agenda(oggi, giorniAgenda) ?: AgendaLetta.NonLetta)
             .copy(temperature = impostazioni.temperature, riunione = impostazioni.riunioneTema.takeIf { impostazioni.riunione.isNotBlank() }.orEmpty(),
-                consulente = Tavolo(archivio, impostazioni, cassetta).let { if (it.aperta()) it.statoConsulente() else "" })
+                consulente = Tavolo(archivio, impostazioni, cassetta).let { if (it.aperta()) it.statoConsulente() else "" },
+                puntiFermi = Tavolo(archivio, impostazioni, cassetta).let { if (it.aperta()) it.puntiFermi() else emptyList() })
 
     // La temperatura di un compito: quella confermata dal Ghost su proposta dello Shell, altrimenti la tabella.
     private fun temperaturaDi(c: Compito) = impostazioni.temperature[c.name] ?: c.temperatura
@@ -716,8 +742,17 @@ class Shell(
     // Il taccuino: lo Shell scrive e riprende senza conferma, perché non tocca niente. Il risultato torna al modello.
     private suspend fun interna(v: Validazione.Interna): String = when (v.nome) {
         "scrivi_taccuino" -> {
-            val id = archivio.db.taccuino().inserisci(Nota(testo = Azioni.stringa(v.argomenti, "testo").orEmpty().trim(), creata = ora, ripresa = ora))
-            "Nel taccuino: nota #$id. Evapora tra ${Taccuino.GIORNI} giorni se non la riprendi."
+            val tipo = Azioni.stringa(v.argomenti, "tipo")?.lowercase() ?: "ipotesi"
+            val id = archivio.db.taccuino().inserisci(Nota(testo = Taccuino.conTipo(tipo, Azioni.stringa(v.argomenti, "testo").orEmpty()), creata = ora, ripresa = ora))
+            "Nel taccuino: nota #$id ($tipo). Evapora tra ${Taccuino.GIORNI} giorni se non la riprendi."
+        }
+        "punto_fermo" -> {
+            val t = Azioni.stringa(v.argomenti, "testo").orEmpty()
+            val tavolo = Tavolo(archivio, impostazioni, cassetta)
+            tavolo.aggiungiPunto(t)?.let { "Non registrato: $it." } ?: run {
+                runCatching { tavolo.registra("programma", "Punto fermo: ${t.trim()}") }
+                "Punto fermo registrato: resta davanti a te fino alla chiusura."
+            }
         }
         "riprendi_nota" -> {
             val id = Azioni.intero(v.argomenti, "id", -1).toLong()

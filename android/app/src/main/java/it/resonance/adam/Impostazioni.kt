@@ -97,6 +97,10 @@ open class Impostazioni(context: Context) {
     var riunioneVerbale: String
         get() = p.getString("riunioneVerbale", "")!!
         set(v) = p.edit().putString("riunioneVerbale", v).apply()
+    // I punti fermi della riunione in corso, uno per riga (cervello/Tavolo.kt): il prompt li ha sempre davanti.
+    var riunionePunti: String
+        get() = p.getString("riunionePunti", "")!!
+        set(v) = p.edit().putString("riunionePunti", v).apply()
     // Il consulente esterno della riunione (logica/Consulente.kt): se è nella stanza, la cartella delle domande (JSON),
     // quanti invii ha fatto e il tetto (lo alza il Ghost), e i suoi scambi di questa riunione per quando lo si riconvoca.
     // Tutto si azzera alla chiusura della riunione.

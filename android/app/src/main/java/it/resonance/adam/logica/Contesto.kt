@@ -38,6 +38,13 @@ data class Istantanea(
     val riunione: String = "",
     // Il consulente esterno della riunione, in una riga (logica/Consulente.kt); vuoto fuori riunione.
     val consulente: String = "",
+    // I punti fermi della riunione in corso (cervello/Tavolo.kt): le decisioni già prese, sempre davanti.
+    val puntiFermi: List<String> = emptyList(),
+    // «Sono via» (logica/Assenza.kt): i giorni di pausa, che i rituali saltano, e l'assenza in corso se c'è.
+    val pausa: Set<LocalDate> = emptySet(),
+    val via: LocalDate? = null,
+    // Le tracce vive nelle stanze in cui il Ghost è entrato (logica/Tracce.kt), già in righe; vuoto se non ce ne sono.
+    val tracce: String = "",
     // Le consegne aperte dello Shell (logica/Consegne.kt).
     val consegne: List<it.resonance.adam.dati.Consegna> = emptyList(),
     // Gli appunti vivi della lavagna del Ghost.
@@ -55,7 +62,7 @@ object Contesto {
         val manuali = i.spunte.filter { it.ritualeId == r.id }.map { LocalDate.parse(it.giorno) }.toSet()
         val automatici = Stabilita.leggiCriterio(r.criterio)?.let { Stabilita.giorniSoddisfatti(it, i.misure) }.orEmpty()
         val giorni = manuali + automatici
-        StatoRituale(r, Stabilita.tenuta(giorni, i.oggi), giorni)
+        StatoRituale(r, Stabilita.tenuta(giorni, i.oggi, i.pausa), giorni)
     }
 
     fun righeEsiti(i: Istantanea, pilastro: Pilastro): List<String> {
@@ -80,11 +87,17 @@ object Contesto {
         val nome = i.profilo?.nome?.takeIf { it.isNotBlank() } ?: "il Ghost"
         appendLine("Sei lo Shell di Resonance: la parte digitale di Adam, l'individuo fatto dal Ghost ($nome) e da te.")
         appendLine("Oggi è ${i.oggi.format(DATA)} (${i.oggi}).")
+        i.via?.let { appendLine("IL GHOST È VIA (ha toccato «Sono via») dal $it. Rispondi a ciò che scrive e basta: niente rituali, niente numeri da registrare, niente consegne o esperimenti da ricordare, niente domande che non servono. Sono congelati e riprendono quando torna.") }
         if (i.riunione.isNotBlank()) {
             appendLine()
             appendLine("RIUNIONE A TRE IN CORSO: «${i.riunione}»")
             appendLine("- Ci siete tu, il Ghost e l'architetto dell'app (Claude Code). Ogni scambio va da solo nel verbale; l'architetto lo legge e interviene: i suoi interventi ti arrivano come messaggi «[L'architetto …]».")
             appendLine("- Modera il Ghost: rispondi a lui. Se vuoi il parere dell'architetto, scrivilo esplicitamente («architetto, …»).")
+            appendLine("- L'agenda la porta il Ghost: non proporre di chiudere un punto né di passare al successivo, e non chiudere le risposte con «passiamo a…?», a meno che te lo chieda lui.")
+            appendLine("- Se il Ghost scrive all'architetto e non nomina te, il programma non ti chiama: non è un silenzio da spiegare.")
+            appendLine("- PUNTI FERMI: quando il tavolo prende una decisione, registrala con punto_fermo (una riga, niente conferma). Vedi solo gli ultimi messaggi: ciò che non è fra i punti fermi, di una riunione lunga, l'hai perso. Prima di riproporre una questione, guarda se è già decisa qui sotto.")
+            if (i.puntiFermi.isEmpty()) appendLine("  (nessun punto fermo ancora)")
+            else i.puntiFermi.forEachIndexed { n, p -> appendLine("  ${n + 1}. $p") }
             appendLine("- Un intervento dell'architetto che comincia con «→ Shell» è rivolto a te: rispondi all'architetto, il Ghost legge. Dopo 3 giri di fila senza il Ghost il programma ti ferma e si aspetta lui.")
             appendLine("- Solo progettazione: niente dati sanitari del Ghost o di altri. Le decisioni diventano azioni solo come proposte confermate dal Ghost.")
             appendLine("- Aperta o chiusa lo decide il programma, quando il Ghost preme Apri o Chiudi (Adam → Lettere): non scrivere mai che la riunione è chiusa.")
@@ -113,6 +126,7 @@ object Contesto {
         appendLine("- Un esperimento chiuso è un dato sulla PROPOSTA, mai sul Ghost. Se non si è mosso niente, la proposta era troppo prudente o troppo ovvia: la prossima sia più audace. Mai rimproveri. Di' «è cambiato mentre lo facevi», mai «grazie a».")
         appendLine("- Ciò che si studia o si prepara a tappe (i brani di una scaletta, i capitoli, gli esercizi) sono i NODI di un percorso: si aggiungono con aggiungi_nodi e il loro stato (non iniziato, introdotto, praticato, consolidato) si cambia con stato_nodo. Più elementi dello stesso tipo (i brani di una scaletta) stanno sotto un nodo che li raccoglie: aggiungi_nodi con «sotto», o sposta_nodi per quelli che ci sono già. Due livelli al massimo; lo stato di un nodo con sotto-nodi lo calcola il programma, non cambiarlo. Mai nel quaderno o in un documento: il quaderno è per ciò che vale per tutto il pilastro, il documento per i testi lunghi.")
         appendLine("- Un percorso che attraversa più pilastri (per esempio Resonance stessa) è di ADAM: crea_percorso con pilastro ADAM, poi ogni nodo di primo livello riceve il suo pilastro (aggiungi_nodi con «pilastro», o pilastro_nodo). I sotto-nodi lo ereditano. Il pilastro di un nodo dice DOVE ALTRO atterra; ADAM solo per ciò che riguarda Adam stesso (il sistema, il canale). Se il pilastro di una parte non è chiaro, chiedilo al Ghost: non sceglierlo tu.")
+        appendLine("- Ciò che ricordi ha un TIPO, e non lo cambi strada facendo: un fatto, una decisione del Ghost, un esempio fatto per spiegare, una tua ipotesi. Un esempio del Ghost non torna mai come dato o protocollo (il 01/10 un suo esempio inventato era riapparso come «cifratura» vera). Nel taccuino il tipo si dichiara; nel quaderno scrivilo nella riga («esempio del Ghost: …»).")
         appendLine("- Il TACCUINO è tuo: scrivi_taccuino per un'ipotesi, un'idea, una cosa da ripensare (niente conferma, non tocca niente). Una nota non ripresa per ${Taccuino.GIORNI} giorni evapora: riprendi_nota per tenerla viva. Per agire, riscrivila come proposta normale e cita la nota.")
         appendLine("- Il FONDO di Adam è denaro vero del Ghost, a fondo perduto: decidi tu come usarlo, lui esegue e paga. Ogni entrata o uscita proponila con movimento_fondo, col motivo. Rispetta il modo del fondo scritto sotto. Mai il nome professionale del Ghost; ogni contenuto generato con l'AI si dichiara.")
         appendLine("- Per cambiare la temperatura di un compito proponi regola_temperatura, con un perché: vale dal turno dopo, se il Ghost conferma.")
@@ -174,6 +188,12 @@ object Contesto {
         if (i.appunti.isNotEmpty()) {
             appendLine("LAVAGNA DEL GHOST (appunti usa e getta, vivi)")
             Lavagna.perPrompt(i.appunti, i.oggi).forEach { appendLine("- $it") }
+            appendLine()
+        }
+        if (i.tracce.isNotBlank()) {
+            appendLine("TRACCE NELLE STANZE (lasciate da chi agisce; nessuno le conferma, il programma le rinforza dai fatti e le fa svanire)")
+            appendLine("Leggile per adattarti, non per decidere per altri. Se due si contraddicono, non risolverle: dillo al Ghost com'è.")
+            appendLine(i.tracce)
             appendLine()
         }
         if (i.consegne.isNotEmpty()) {

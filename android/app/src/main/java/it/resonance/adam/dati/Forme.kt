@@ -348,3 +348,38 @@ data class RispostaLettera(
     val testo: String,
     val istante: Long,
 )
+
+// ── Il terreno di Adam City (riunione del 01/10/2026; logica/Tracce.kt) ──
+
+// Una stanza: un territorio esplicito, nato dal gesto di chi ci entra (la casa, la famiglia larga). Non si deduce da
+// calendari o posizioni: sarebbe sorvegliare. Ogni Adam tiene la propria appartenenza; si esce con un gesto, e chi è
+// invitato a tempo esce da solo alla scadenza. Uscire non cancella niente (Legge 14).
+@Serializable
+@Entity(tableName = "stanze")
+data class Stanza(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val nome: String,
+    val entrata: String,
+    val uscita: String? = null,
+    val scade: String? = null,
+)
+
+// Una traccia: sei cose, uguali per qualunque ambito — chi, ambito, cosa, quando, durata, forza. Nessun destinatario e
+// nessuna risposta attesa: un'urgenza o un impegno a due non sono tracce. La forza cresce solo da un fatto registrato
+// (le `prove`, «fonte:id» una per riga), mai da una dichiarazione; senza fatti cala fino a svanire. Svanita resta qui.
+@Serializable
+@Entity(tableName = "tracce", indices = [Index("stanzaId")])
+data class Traccia(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val stanzaId: Long,
+    val chi: String,
+    val ambito: String,
+    val cosa: String,
+    val quando: String,
+    val durata: Int,
+    val forza: Double = 1.0,
+    val rinforzata: String? = null,
+    val prove: String = "",
+    val deposta: Long,
+    val svanita: String? = null,
+)

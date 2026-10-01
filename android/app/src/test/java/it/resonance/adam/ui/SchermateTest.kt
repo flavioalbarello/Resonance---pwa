@@ -152,7 +152,7 @@ class SchermateTest {
             Evento("Ferie", oggi.plusDays(1).atStartOfDay(), oggi.plusDays(2).atStartOfDay(), true),
         ))
         regola.setContent { TemaResonance { App(vm, sistema) { it() } } }
-        regola.waitUntil(10_000) { vm.istantanea.value.misure.size >= 90 && vm.istantanea.value.rituali.size == 2 && vm.messaggi.value.size == 9 }
+        regola.waitUntil(10_000) { vm.istantanea.value.misure.size >= 90 && vm.istantanea.value.rituali.size == 2 && vm.chat.value.size == 9 }
 
         scatta("1-specchio")
         regola.onNodeWithText("Stabilità mantenuta", substring = true, ignoreCase = true).assertExists()
