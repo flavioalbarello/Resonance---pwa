@@ -125,7 +125,8 @@ class Shell(
     private fun storia(messaggi: List<Messaggio>): List<JsonObject> = messaggi.mapNotNull { m ->
         val (ruolo, testo) = when (m.ruolo) {
             Ruolo.GHOST -> "user" to m.testo + Allegati.notaPassata(Allegati.decodifica(m.allegati))
-            Ruolo.SHELL -> "assistant" to m.testo
+            // Le vecchie risposte «non ho internet» (di quando la ricerca non c'era) portano l'avviso: altrimenti lo Shell le ripete.
+            Ruolo.SHELL -> "assistant" to if (Testi.negaInternet(m.testo)) "[Risposta superata: ora hai cerca_nel_web e ricerca_a_fondo] ${m.testo}" else m.testo
             Ruolo.PROPOSTA -> "user" to "[Nota del programma, non del Ghost] Proposta mostrata: ${m.testo} — stato: ${m.stato?.name?.lowercase() ?: "?"}"
             Ruolo.RICEVUTA -> "user" to "[Nota del programma, non del Ghost] Eseguito davvero: ${m.testo}"
             // Le note dicono perché una proposta è fallita: senza, il modello si inventava il motivo (visto il 24/09).
@@ -583,6 +584,8 @@ class Shell(
         var corretto = false
         // L'ultima proposta fermata dal programma, col motivo: se lo Shell dice che c'è, il Ghost sa perché non c'è.
         var ultimoFermo: String? = null
+        // Se in questo turno lo Shell ha già cercato nel web: allora «non ho internet» non è nemmeno in discussione.
+        var cercato = false
 
         try {
             for (giro in 0 until GIRI_MASSIMI) {
@@ -604,6 +607,20 @@ class Shell(
                             put("content", "[Nota del programma, non del Ghost] Hai scritto che c'è una proposta da confermare, ma in questo turno non " +
                                 "ne hai creata nessuna: il pulsante non c'è." + (ultimoFermo?.let { " L'ultima è stata fermata: $it." } ?: "") +
                                 " Falla con lo strumento; se non si può, di' al Ghost cosa manca, senza dire che c'è un pulsante.")
+                        }
+                        continue
+                    }
+                    // «Non ho accesso a internet» quando la ricerca c'è: si rimanda al modello una volta, con la domanda di adesso.
+                    if (scritte.isEmpty() && !cercato && Testi.negaInternet(r.testo) && !corretto && giro < GIRI_MASSIMI - 1) {
+                        corretto = true
+                        traccia += "ha detto di non avere internet"
+                        lavoro += buildJsonObject { put("role", "assistant"); put("content", r.testo) }
+                        lavoro += buildJsonObject {
+                            put("role", "user")
+                            put("content", "[Nota del programma, non del Ghost] Hai scritto di non avere accesso a internet: non è vero. Hai cerca_nel_web " +
+                                "(la ricerca la fa il programma, con le fonti vere) e, per incrociare più fonti, ricerca_a_fondo, che il Ghost autorizza. " +
+                                "Le tue risposte vecchie che dicevano il contrario sono di quando non c'era. Rispondi SOLO all'ultimo messaggio del Ghost, " +
+                                "non a richieste di messaggi precedenti: usa lo strumento adatto, poi rispondi.")
                         }
                         continue
                     }
@@ -647,6 +664,7 @@ class Shell(
                     })
                 }
                 for (c in r.chiamate) {
+                    if (c.nome == "cerca_nel_web" || c.nome == "ricerca_a_fondo") cercato = true
                     val args = runCatching { Json.parseToJsonElement(c.argomenti).jsonObject }.getOrNull()
                     // Una chiamata tagliata a metà non si indovina: si dice al modello perché, e come farla più piccola.
                     val risultato = if (args == null) "Chiamata non eseguita: " + (if (r.troncata) "è stata tagliata dal limite di lunghezza, il testo era troppo lungo. " else "argomenti illeggibili. ") +

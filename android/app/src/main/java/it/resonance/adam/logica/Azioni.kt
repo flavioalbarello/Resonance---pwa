@@ -924,6 +924,11 @@ object Testi {
     private val DICHIARA_CONSEGNA = Regex("""consegna\s+(presa|accettata)|prendo\s+(in\s+carico\s+)?(la|una|questa)\s+consegna|ho\s+preso\s+(la|una)\s+consegna""", RegexOption.IGNORE_CASE)
     fun dichiaraConsegna(t: String) = DICHIARA_CONSEGNA.containsMatchIn(t)
 
+    // «Non ho accesso a internet» quando cerca_nel_web c'è (02/10/2026): lo Shell ripeteva la risposta di quando la ricerca
+    // non c'era, letta nella sua stessa cronologia. Una regola scritta nel prompt non bastava: il programma se ne accorge.
+    private val NEGA_INTERNET = Regex("""non\s+ho\s+(accesso\s+(a|ad)\s+)?internet|non\s+ho\s+accesso\s+(al\s+web|alla\s+rete|a\s+dati)|non\s+posso\s+(navigare|accedere\s+(a|ad|al)\s+(internet|web|rete))|non\s+posso\s+cercare\s+(in|sul|nel)\s+(web|internet|rete)|ricerche\s+web\s+(è|sono)\s+attiv[oa]\s+solo""", RegexOption.IGNORE_CASE)
+    fun negaInternet(t: String) = NEGA_INTERNET.containsMatchIn(t)
+
     fun chiamateScritte(t: String, nomi: Collection<String>): List<String> =
         nomi.filter { n -> Regex("""(?<![\w])""" + Regex.escape(n) + """\s*\(""").containsMatchIn(t) }
 }

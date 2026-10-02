@@ -1153,4 +1153,22 @@ class ShellTest {
         shell(m, FintaCassetta()).turno("seguimi le Mustang per una settimana")
         assertTrue(db.messaggi().elenco().single { it.ruolo == Ruolo.PROPOSTA }.testo.contains("Costo stimato dal programma"))
     }
+
+    // «Non ho accesso a internet» quando la ricerca c'è (02/10/2026): il programma lo rimanda al modello una volta, con la
+    // domanda di adesso; e le vecchie risposte che lo dicevano portano l'avviso nella cronologia.
+    @Test fun loShellNonPuoDireDiNonAvereInternet() = runBlocking {
+        db.messaggi().inserisci(it.resonance.adam.dati.Messaggio(ruolo = Ruolo.SHELL, testo = "Non ho accesso a internet né a dati di borsa.", istante = 1))
+        val m = FintoModello(testo("Non posso. Non ho accesso a internet."),
+            chiama("cerca_nel_web", """{"domanda":"andamento demografico della lince in Italia"}"""),
+            testo("Secondo ISPRA la lince in Italia è rarissima."))
+        m.ricerche += web("Dati al: 2025\nLince: poche decine di individui sulle Alpi orientali.", "isprambiente.gov.it")
+        val e = shell(m, FintaCassetta()).turno("controlla l'andamento demografico della lince in Italia")
+        assertEquals("Secondo ISPRA la lince in Italia è rarissima.", e.testo)
+        val nota = m.ricevuti[1].last().toString()
+        assertTrue(nota, nota.contains("non è vero") && nota.contains("cerca_nel_web") && nota.contains("SOLO all'ultimo messaggio"))
+        // La vecchia risposta, nella cronologia, porta l'avviso.
+        assertTrue(m.ricevuti[0].toString().contains("[Risposta superata"))
+        assertTrue(it.resonance.adam.logica.Testi.negaInternet("Non ho accesso a internet né a dati di borsa"))
+        assertTrue(!it.resonance.adam.logica.Testi.negaInternet("Ho cercato su internet: ecco i dati"))
+    }
 }
