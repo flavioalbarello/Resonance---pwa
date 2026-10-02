@@ -101,12 +101,15 @@ class ShellTest {
             if (rapida) { modelli += "router:$modello"; return instradatore!!() }
             if (rifiutaTemperatura && temperatura != null) throw ErroreModello("HTTP 400: {\"error\":{\"message\":\"temperature is not supported for this model\"}}")
             temperature += temperatura
+            nomiStrumenti += strumenti?.map { it.jsonObject["function"]!!.jsonObject["name"]!!.jsonPrimitive.content }.orEmpty()
             ricevuti += JsonArray(messaggi.toList())
             modelli += modello
             conStrumenti += strumenti != null
             return coda.removeFirst()
         }
         val conStrumenti = mutableListOf<Boolean>()
+        // Gli strumenti offerti a ogni chiamata (i reparti del turno, logica/Reparti.kt).
+        val nomiStrumenti = mutableListOf<List<String>>()
         // Il consulente: risposte con le fonti del motore, e se la chiamata portava la ricerca web.
         val ricerche = ArrayDeque<RispostaWeb>()
         val cercati = mutableListOf<Pair<JsonArray, Boolean>>()
@@ -784,7 +787,7 @@ class ShellTest {
         val t = db.turni().ultimi(1).single().strumenti
         assertTrue(t, t.startsWith("modifica_documento fermato (") && t.contains("proposta annunciata senza crearla"))
         shell(FintoModello(testo("Ciao.")), FintaCassetta()).turno("ciao")
-        assertEquals("nessuno strumento", db.turni().ultimi(1).single().strumenti)
+        assertTrue(db.turni().ultimi(1).single().strumenti.startsWith("nessuno strumento; prompt "))
     }
 
     @Test fun unaConsegnaDettaMaNonPropostaTornaAlModelloEPoiSiSegnala() = runBlocking {
@@ -1191,6 +1194,25 @@ class ShellTest {
         assertEquals("3 ricerche · 3 fonti", it.resonance.adam.logica.Ricerca.riassunto(r))
         val alModello = m.ricevuti[1].last().toString()
         assertTrue(alModello, alModello.contains("La Lestra") && alModello.contains("Il Pozzo") && alModello.contains("Da Peppe"))
+    }
+
+    // Lo Shell più leggero (02/10/2026): un turno semplice ha il nucleo; un reparto si apre su richiesta o usandone uno strumento.
+    @Test fun iRepartiSiApronoQuandoServono() = runBlocking {
+        val m = FintoModello(
+            chiama(it.resonance.adam.logica.Reparto.APRI, """{"reparto":"lavagna"}"""),
+            chiama("crea_evento", """{"titolo":"Dentista","inizio":"${LocalDate.now().plusDays(1)}T10:00","per":"personale"}"""),
+            testo("Proposti."))
+        shell(m, FintaCassetta()).turno("oggi peso 82")
+        // Al primo giro: il nucleo e l'indice, niente lavagna né calendario.
+        assertTrue(m.nomiStrumenti[0].toString(), "registra_misura" in m.nomiStrumenti[0] && "scrivi_appunto" !in m.nomiStrumenti[0] && "crea_evento" !in m.nomiStrumenti[0])
+        assertTrue(contenuto(m.ricevuti[0], 0).contains("REPARTI CHIUSI"))
+        // Aperta la lavagna: i suoi strumenti e la sua regola.
+        assertTrue("scrivi_appunto" in m.nomiStrumenti[1] && contenuto(m.ricevuti[1], 0).contains("Le cose usa e getta del Ghost"))
+        // Uno strumento dell'indice chiamato senza aprire: il programma lo accetta e apre il suo reparto.
+        assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.PROPOSTA && it.testo.contains("Dentista") })
+        assertTrue("crea_evento" in m.nomiStrumenti[2])
+        val t = db.turni().ultimi(1).single().strumenti
+        assertTrue(t, t.contains("aperto il reparto lavagna") && t.contains("prompt ") && t.contains("strumenti (nucleo"))
     }
 
     @Test fun seguireDiceQuantoCosta() = runBlocking {

@@ -652,6 +652,48 @@ ha: le distanze vere, i voti, gli orari, in forma di dati. Il motore legge le lo
 un **sensore di luoghi**: le API di Google Places (chiave Google Cloud del Ghost, a consumo) o OpenStreetMap (gratis,
 senza voti). È una decisione del Ghost: chiave, costo, cosa esce dal telefono (la posizione).
 
+## Lo Shell più leggero: i reparti (02/10/2026, notte; `logica/Reparti.kt`)
+
+Il Ghost: *«sì, procedi con lo snellimento, ma temo che stiamo girando intorno al problema: credo che il tipo di
+architettura che gli stiamo chiedendo sia fallace»*.
+
+Un **nucleo** sempre aperto (misure, diario, quaderno, taccuino, consegne, cerca, ricerca rapida) e sette **reparti**
+(percorsi, rituali, agenda, lavagna, ricerca a fondo e Segui, l'app e Adam, riunione). Il programma li apre dalle parole
+del messaggio, dell'ultimo del Ghost e dell'inizio dell'ultima risposta; a riunione aperta c'è la riunione. I reparti
+chiusi stanno in un indice di una riga ciascuno, coi nomi degli strumenti: lo Shell ne apre uno con `apri_reparto`, o
+chiama direttamente uno strumento dell'indice e il programma lo accetta e apre il reparto. Un reparto aperto a metà
+turno riscrive il prompt: regole e strumenti arrivano insieme. Dopo una ricerca rapida si apre da solo il reparto della
+ricerca a fondo.
+
+| messaggio | ciò che lo Shell ha davanti (caratteri, prompt + strumenti, senza i dati) | strumenti |
+|---|---|---|
+| prima, sempre | 38.639 | 39 |
+| «oggi peso 82» | 12.071 (−69%) | 11 |
+| «trovami ristoranti a Bracciano» | 14.642 (−62%) | 13 |
+| «spostami il dentista a domani» | 16.008 (−59%) | 16 |
+
+Ogni turno scrive nel registro (Setup → Come si regola lo Shell) quanto pesava e quali reparti aveva: si misura sul
+telefono, non solo sul banco. Il verbale, il battito e il turno di lavoro restano col prompt intero.
+
+## L'architettura: dove il Ghost ha ragione (02/10/2026, notte)
+
+Oggi a un modello solo, a ogni turno, si chiede tutto: capire, decidere cosa fare, scegliere fra 39 strumenti,
+scomporre il compito (le domande per paese), leggere i risultati, scrivere la risposta, rispettando cento regole. Le
+discipline del progetto mettono il programma a **verificare** dopo; ma **pianificare** resta tutto al modello. È lì che
+cede: la sera del 02/10 non è mancato il motore, è mancato il piano.
+
+| strato | oggi | proposta |
+|---|---|---|
+| Capire che compito è | il modello del turno | un modello piccolo e veloce (c'è già: l'Instradatore) e i reparti |
+| Il piano dei compiti che tornano (trova posti in una zona, segui un prezzo, organizza una settimana) | il modello, ogni volta da capo | una **ricetta** del programma: passi fissi, provati sul banco; il modello riempie i buchi (cosa, dove, quali filtri) |
+| I dati del mondo | il motore web | un **sensore** dove esiste (luoghi: OpenStreetMap o Google Places; calendario; Health Connect), il web dove no |
+| La risposta | il modello | il modello, su un materiale già ordinato dal programma |
+| Il modello | uno medio per tutto | quello più forte solo dove si pianifica, il medio dove si conversa |
+
+È la stessa frase da cui è nata l'APK: *il modello dice a parole, il programma va a cercarlo davvero*. Applicata anche al
+piano, non solo alla verifica. Proposta di prima prova, sul caso fallito: la ricetta «posti in una zona» (paesi entro N
+minuti da OpenStreetMap, una ricerca per paese, unione e ordine fatti dal programma, una riga per posto).
+
 ## Per la prossima riunione (argomenti che l'architetto porta)
 
 | argomento | da dove | il nodo |
@@ -692,5 +734,5 @@ senza voti). È una decisione del Ghost: chiave, costo, cosa esce dal telefono (
 | Due app | Provato il banco su tutte e due e che la base non nomini l'architetto. Il codice della riunione resta compilato nella base (irraggiungibile) finché R8 è spento |
 | Ricerca web e Segui dal vivo | Provati sul banco con un motore finto: forma, avvisi, guardiano, letture, resoconto, Specchio. Non provati qui: le risposte vere di Exa, il worker vero alle 17, il costo reale per lettura |
 | Ricerca a fondo dal vivo | Provata sul banco con un motore finto (sotto-domande, livelli, incrocio, stima, costo reale; dal 02/10 sera anche strati in parallelo, ritentativo, motivo dei fallimenti). Il primo tentativo vero (02/10) è fallito in tutti gli strati, e il motivo non si è saputo perché non veniva mostrato: ora si vedrà. Non provati qui: una chiamata vera a Perplexity attraverso OpenRouter (forma presa dal listino e dalla documentazione, non da una risposta vera), il `RicercaWorker` sul telefono |
-| **Il prompt dello Shell cresce a ogni abilità** (il Ghost, 02/10/2026: *«lo Shell sta rincretinendo man mano che gli diamo abilità?»*) | Misurato sul codice: dal 23/09 al 02/10 le regole fisse sono passate da 46 a 107 righe (da 4,4 a 14,8 mila caratteri) e gli strumenti da 20 a 39 (da 9 a 20 mila caratteri di descrizioni). Ogni turno li porta tutti, qualunque cosa chieda il Ghost: circa 9–10 mila token prima ancora dei dati. Un modello medio (Kimi K2.6) con 39 strumenti e cento regole sbaglia di più a scegliere. Cura proposta, come nella PWA dal 12/09 (−72%): un nucleo fisso più le aree che il turno nomina (`Capacita` ha già le aree), e il numero dei token per turno nel registro, per misurare prima e dopo |
+| **Il prompt dello Shell cresceva a ogni abilità** (curato il 02/10 notte coi reparti: −59/−69% sul fisso; resta da misurare sul telefono quanto cambia la qualità) (il Ghost, 02/10/2026: *«lo Shell sta rincretinendo man mano che gli diamo abilità?»*) | Misurato sul codice: dal 23/09 al 02/10 le regole fisse sono passate da 46 a 107 righe (da 4,4 a 14,8 mila caratteri) e gli strumenti da 20 a 39 (da 9 a 20 mila caratteri di descrizioni). Ogni turno li porta tutti, qualunque cosa chieda il Ghost: circa 9–10 mila token prima ancora dei dati. Un modello medio (Kimi K2.6) con 39 strumenti e cento regole sbaglia di più a scegliere. Cura proposta, come nella PWA dal 12/09 (−72%): un nucleo fisso più le aree che il turno nomina (`Capacita` ha già le aree), e il numero dei token per turno nel registro, per misurare prima e dopo |
 | Le stime di costo | Sono forbici grossolane (token medi per ricerca). Il costo reale accanto alla stima serve proprio a correggerle coi numeri |

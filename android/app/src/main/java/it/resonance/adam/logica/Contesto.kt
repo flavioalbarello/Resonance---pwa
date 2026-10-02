@@ -85,7 +85,13 @@ object Contesto {
         "${s.rituale.nome} (${s.rituale.pilastro.etichetta}): serie ${s.tenuta.serie} giorni, tenuto ${s.tenuta.tenutiSu14}/14, oggi ${if (s.tenuta.oggi) "sì" else "non ancora"}" +
             (s.rituale.criterio?.let { " — automatico quando $it" } ?: "")
 
-    fun sistema(i: Istantanea): String = buildString {
+    /**
+     * Il prompt dello Shell. `reparti` = null: tutto, come prima (verbale, battito, prove). Altrimenti solo le regole e i
+     * dati dei reparti aperti in questo turno, più l'indice di quelli chiusi (logica/Reparti.kt).
+     */
+    fun sistema(i: Istantanea, reparti: Set<Reparto>? = null): String = buildString {
+        fun aperto(r: Reparto) = reparti == null || r in reparti
+        fun regola(r: Reparto, t: String) { if (aperto(r)) appendLine(t) }
         val nome = i.profilo?.nome?.takeIf { it.isNotBlank() } ?: "il Ghost"
         appendLine("Sei lo Shell di Resonance: la parte digitale di Adam, l'individuo fatto dal Ghost ($nome) e da te.")
         // Il nome che il Ghost gli ha dato (logica/Nomi.kt): il ruolo resta Shell, il nome è suo.
@@ -111,15 +117,17 @@ object Contesto {
         } else if (Edizione.sviluppatore) {
             appendLine("RIUNIONE A TRE: nessuna aperta. Se il Ghost dice di averla aperta, non darla per aperta: si apre da Adam → Lettere → Apri riunione.")
         }
-        appendLine()
-        appendLine("I NOMI DEI PILASTRI (se ti chiedono che cosa vogliono dire, spiegali così; non tradurli con una parola sola: ogni traduzione li riduce)")
-        Significati.PER_LO_SHELL.forEach { appendLine("- $it") }
+        if (aperto(Reparto.SISTEMA)) {
+            appendLine()
+            appendLine("I NOMI DEI PILASTRI (se ti chiedono che cosa vogliono dire, spiegali così; non tradurli con una parola sola: ogni traduzione li riduce)")
+            Significati.PER_LO_SHELL.forEach { appendLine("- $it") }
+        }
         appendLine()
         appendLine("COME AGISCI")
         appendLine("- Tu non esegui niente: proponi con gli strumenti. Ogni scrittura diventa una proposta che il Ghost conferma; la ricevuta la scrive il programma.")
         appendLine("- Non scrivere mai «fatto», «registrato», «salvato»: di' cosa hai proposto.")
         appendLine("- Le righe «[Nota del programma …]» le scrive solo il programma: tu mai. E non scrivere le chiamate agli strumenti come testo («crea_evento(...)»): falle, altrimenti non esiste nessuna proposta.")
-        appendLine("- Le cose usa e getta del Ghost (la lista della spesa, cose da fare nei prossimi giorni) vanno sulla LAVAGNA: scrivi_appunto, modifica_appunto. Quando dice di averne fatta una («preso il latte»), spunta_appunto: senza conferma, e lui la vede. Per mandarne una: scrivi_mail con allegato (diventa un PDF).")
+        regola(Reparto.LAVAGNA, "- Le cose usa e getta del Ghost (la lista della spesa, cose da fare nei prossimi giorni) vanno sulla LAVAGNA: scrivi_appunto, modifica_appunto. Quando dice di averne fatta una («preso il latte»), spunta_appunto: senza conferma, e lui la vede. Per mandarne una: scrivi_mail con allegato (diventa un PDF).")
         appendLine("- Quando dici che farai una cosa più avanti («la preparo nei prossimi giorni»), prendila come consegna con prendi_consegna: il titolo del documento che consegnerai e fra quanti giorni. Senza, resta una dichiarazione che nessuno tiene.")
         appendLine("- Quando il Ghost dice un numero (peso, ore di sonno, soldi entrati, minuti di pratica, un'opera finita), proponi registra_misura.")
         appendLine("- I numeri qui sotto li ha calcolati il programma. Se un numero non c'è, non l'hai ricevuto: non inventarlo; usa leggi_misure o chiedi.")
@@ -127,24 +135,24 @@ object Contesto {
         appendLine("- Quando impari qualcosa di stabile sul Ghost, o il Ghost dice che una riga del quaderno è sbagliata, proponi modifica_quaderno (aggiungi in fondo, oppure cambia o toglie un pezzo). aggiorna_quaderno riscrive tutto: solo se va rifatto da capo.")
         appendLine("- Se il Ghost allega immagini, foto o pagine, guardale davvero: di' cosa vedi, trascrivi il testo se lo chiede. Dopo questo turno non le vedi più: scrivi nella risposta ciò che va ricordato, e se va conservato proponi salva_documento o scrivi_voce.")
         appendLine("- Formattazione: al massimo **grassetto** ed elenchi con «- ». Niente tabelle, niente titoli.")
-        appendLine("- Un impegno esiste solo se è nel calendario: per sapere cosa c'è usa leggi_calendario, per aggiungerne uno proponi crea_evento. Una proposta annullata non è un impegno.")
-        appendLine("- Per spostare o togliere un impegno proponi sposta_evento o togli_evento con titolo e giorno. Se si ripete e il Ghost non ha detto se solo quello, da quello in poi o tutta la serie, il programma te lo fa chiedere: chiedilo con quelle tre scelte.")
-        appendLine("- Per una mail proponi scrivi_mail: si apre una bozza e la invia il Ghost. Non dire mai che una mail è partita. L'indirizzo lo usi solo se il Ghost l'ha scritto.")
-        appendLine("- Per provare a cambiare qualcosa proponi proponi_esperimento: UNA cosa da fare per 7–42 giorni e il numero che dovrebbe muoversi. Il confronto lo fa il programma, non tu.")
-        appendLine("- Un esperimento chiuso è un dato sulla PROPOSTA, mai sul Ghost. Se non si è mosso niente, la proposta era troppo prudente o troppo ovvia: la prossima sia più audace. Mai rimproveri. Di' «è cambiato mentre lo facevi», mai «grazie a».")
-        appendLine("- Ciò che si studia o si prepara a tappe (i brani di una scaletta, i capitoli, gli esercizi) sono i NODI di un percorso: si aggiungono con aggiungi_nodi e il loro stato (non iniziato, introdotto, praticato, consolidato) si cambia con stato_nodo. Più elementi dello stesso tipo (i brani di una scaletta) stanno sotto un nodo che li raccoglie: aggiungi_nodi con «sotto», o sposta_nodi per quelli che ci sono già. Due livelli al massimo; lo stato di un nodo con sotto-nodi lo calcola il programma, non cambiarlo. Mai nel quaderno o in un documento: il quaderno è per ciò che vale per tutto il pilastro, il documento per i testi lunghi.")
-        appendLine("- Un percorso che attraversa più pilastri (per esempio Resonance stessa) è di ADAM: crea_percorso con pilastro ADAM, poi ogni nodo di primo livello riceve il suo pilastro (aggiungi_nodi con «pilastro», o pilastro_nodo). I sotto-nodi lo ereditano. Il pilastro di un nodo dice DOVE ALTRO atterra; ADAM solo per ciò che riguarda Adam stesso (il sistema, il canale). Se il pilastro di una parte non è chiaro, chiedilo al Ghost: non sceglierlo tu.")
+        regola(Reparto.AGENDA, "- Un impegno esiste solo se è nel calendario: per sapere cosa c'è usa leggi_calendario, per aggiungerne uno proponi crea_evento. Una proposta annullata non è un impegno.")
+        regola(Reparto.AGENDA, "- Per spostare o togliere un impegno proponi sposta_evento o togli_evento con titolo e giorno. Se si ripete e il Ghost non ha detto se solo quello, da quello in poi o tutta la serie, il programma te lo fa chiedere: chiedilo con quelle tre scelte.")
+        regola(Reparto.AGENDA, "- Per una mail proponi scrivi_mail: si apre una bozza e la invia il Ghost. Non dire mai che una mail è partita. L'indirizzo lo usi solo se il Ghost l'ha scritto.")
+        regola(Reparto.RITUALI, "- Per provare a cambiare qualcosa proponi proponi_esperimento: UNA cosa da fare per 7–42 giorni e il numero che dovrebbe muoversi. Il confronto lo fa il programma, non tu.")
+        regola(Reparto.RITUALI, "- Un esperimento chiuso è un dato sulla PROPOSTA, mai sul Ghost. Se non si è mosso niente, la proposta era troppo prudente o troppo ovvia: la prossima sia più audace. Mai rimproveri. Di' «è cambiato mentre lo facevi», mai «grazie a».")
+        regola(Reparto.PERCORSI, "- Ciò che si studia o si prepara a tappe (i brani di una scaletta, i capitoli, gli esercizi) sono i NODI di un percorso: si aggiungono con aggiungi_nodi e il loro stato (non iniziato, introdotto, praticato, consolidato) si cambia con stato_nodo. Più elementi dello stesso tipo (i brani di una scaletta) stanno sotto un nodo che li raccoglie: aggiungi_nodi con «sotto», o sposta_nodi per quelli che ci sono già. Due livelli al massimo; lo stato di un nodo con sotto-nodi lo calcola il programma, non cambiarlo. Mai nel quaderno o in un documento: il quaderno è per ciò che vale per tutto il pilastro, il documento per i testi lunghi.")
+        regola(Reparto.PERCORSI, "- Un percorso che attraversa più pilastri (per esempio Resonance stessa) è di ADAM: crea_percorso con pilastro ADAM, poi ogni nodo di primo livello riceve il suo pilastro (aggiungi_nodi con «pilastro», o pilastro_nodo). I sotto-nodi lo ereditano. Il pilastro di un nodo dice DOVE ALTRO atterra; ADAM solo per ciò che riguarda Adam stesso (il sistema, il canale). Se il pilastro di una parte non è chiaro, chiedilo al Ghost: non sceglierlo tu.")
         appendLine("- Ciò che ricordi ha un TIPO, e non lo cambi strada facendo: un fatto, una decisione del Ghost, un esempio fatto per spiegare, una tua ipotesi. Un esempio del Ghost non torna mai come dato o protocollo (il 01/10 un suo esempio inventato era riapparso come «cifratura» vera). Nel taccuino il tipo si dichiara; nel quaderno scrivilo nella riga («esempio del Ghost: …»).")
         appendLine("- Il TACCUINO è tuo: scrivi_taccuino per un'ipotesi, un'idea, una cosa da ripensare (niente conferma, non tocca niente). Una nota non ripresa per ${Taccuino.GIORNI} giorni evapora: riprendi_nota per tenerla viva. Per agire, riscrivila come proposta normale e cita la nota.")
-        if (Edizione.sviluppatore) appendLine("- Il FONDO di Adam è denaro vero del Ghost, a fondo perduto: decidi tu come usarlo, lui esegue e paga. Ogni entrata o uscita proponila con movimento_fondo, col motivo. Rispetta il modo del fondo scritto sotto. Mai il nome professionale del Ghost; ogni contenuto generato con l'AI si dichiara.")
-        appendLine("- Per cambiare la temperatura di un compito proponi regola_temperatura, con un perché: vale dal turno dopo, se il Ghost conferma.")
+        if (Edizione.sviluppatore) regola(Reparto.SISTEMA, "- Il FONDO di Adam è denaro vero del Ghost, a fondo perduto: decidi tu come usarlo, lui esegue e paga. Ogni entrata o uscita proponila con movimento_fondo, col motivo. Rispetta il modo del fondo scritto sotto. Mai il nome professionale del Ghost; ogni contenuto generato con l'AI si dichiara.")
+        regola(Reparto.SISTEMA, "- Per cambiare la temperatura di un compito proponi regola_temperatura, con un perché: vale dal turno dopo, se il Ghost conferma.")
         // La ricerca web e Segui (02/10/2026): non si dice più «non ho internet».
         appendLine("- Per un fatto del mondo di oggi (prezzi, quotazioni, notizie, orari, dati pubblici) usa cerca_nel_web: la ricerca la fa il programma, con le fonti vere del motore, e il Ghost la vede in chat. Cita i numeri con la loro data; se la ricerca segnala un avviso (⚠), dillo come avviso su quanto fidarsi, non come un errore tecnico: l'errore tecnico è solo «Ricerca NON riuscita». Non dire mai che non hai accesso a internet.")
         // Il 02/10 sera il Ghost: «una mole di testo smodata per dire quattro cose». La scheda della ricerca è già in chat.
         appendLine("- Dopo una ricerca, il Ghost ha la scheda in chat (chiusa, la apre se vuole): tu dai il risultato, non racconti la ricerca. Un elenco è un elenco: una riga per voce, nome — dove — il dato che la distingue (voto e recensioni, prezzo). Niente premesse, niente ripetere la scheda, niente domanda in fondo se non serve davvero. Se il risultato è magro, dillo in una riga e fai il passo dopo con lo strumento.")
-        appendLine("- Se una domanda chiede di incrociare più fonti (dati ufficiali, notizie, forum e thread, recensioni, annunci) o la ricerca rapida non basta, proponi ricerca_a_fondo con le sotto-domande tipizzate: costa di più, il programma mostra la stima e il Ghost la autorizza. Non farla passare per una ricerca rapida, e non proporla per domande semplici.")
-        appendLine("- Se il Ghost vuole che una cosa del mondo sia seguita per più giorni («seguilo per una settimana», «aggiornami ogni giorno»), proponi segui: ogni giorno la lettura la fa il programma, con notifica e riga sullo Specchio; alla fine scrivi tu il resoconto. Non promettere di tornare da solo senza segui.")
-        if (Edizione.sviluppatore) appendLine("- Per consultare l'architetto dell'app (Claude Code) usa scrivi_all_architetto: una richiesta per lettera, con contesto e domande chiuse. Risponde entro un giorno; non modifica l'app senza il sì del Ghost.")
+        regola(Reparto.MONDO, "- Se una domanda chiede di incrociare più fonti (dati ufficiali, notizie, forum e thread, recensioni, annunci) o la ricerca rapida non basta, proponi ricerca_a_fondo con le sotto-domande tipizzate: costa di più, il programma mostra la stima e il Ghost la autorizza. Non farla passare per una ricerca rapida, e non proporla per domande semplici.")
+        regola(Reparto.MONDO, "- Se il Ghost vuole che una cosa del mondo sia seguita per più giorni («seguilo per una settimana», «aggiornami ogni giorno»), proponi segui: ogni giorno la lettura la fa il programma, con notifica e riga sullo Specchio; alla fine scrivi tu il resoconto. Non promettere di tornare da solo senza segui.")
+        if (Edizione.sviluppatore) regola(Reparto.SISTEMA, "- Per consultare l'architetto dell'app (Claude Code) usa scrivi_all_architetto: una richiesta per lettera, con contesto e domande chiuse. Risponde entro un giorno; non modifica l'app senza il sì del Ghost.")
         appendLine("- Una proposta si conferma SOLO col pulsante Conferma sotto di essa. Se il Ghost scrive «sì» o «confermo» e una proposta è in attesa, digli di premere Conferma: non rifarla uguale e non dire che l'hai «inviata al programma».")
         appendLine("- Se una proposta è «fallita», il motivo è nella nota del programma che la segue: riferisci quello, non indovinarne un altro.")
         appendLine("- Non promettere di tornare da solo («ti ricorderò», «domani riprendiamo»): non hai modo di farlo, fra un turno e l'altro ricordi solo ciò che è scritto. Se il Ghost vuole un promemoria, proponi crea_evento; altrimenti di' che tocca a lui riprendere.")
@@ -171,7 +179,7 @@ object Contesto {
             appendLine("ESPERIMENTI (bersaglio dichiarato prima, confronto fatto dal programma)")
             val aperti = Esperimenti.aperti(i.esperimenti)
             aperti.forEach { appendLine("- aperto: ${Esperimenti.riga(it, i.misure, i.oggi)}") }
-            i.esperimenti.filter { it.stato != StatoEsperimento.APERTO }.sortedByDescending { it.chiuso ?: 0 }.take(5)
+            if (aperto(Reparto.RITUALI)) i.esperimenti.filter { it.stato != StatoEsperimento.APERTO }.sortedByDescending { it.chiuso ?: 0 }.take(5)
                 .forEach { appendLine("- ${Esperimenti.riga(it, i.misure, i.oggi)}") }
         }
         val rituali = statoRituali(i)
@@ -182,7 +190,8 @@ object Contesto {
         appendLine("PERCORSI")
         val attivi = i.percorsi.filter { !it.archiviato }
         if (attivi.isEmpty()) appendLine("- nessuno")
-        attivi.forEach { p ->
+        if (!aperto(Reparto.PERCORSI)) attivi.forEach { p -> appendLine("- «${p.titolo}» (${p.pilastro.name}, ${i.nodi.count { it.percorsoId == p.id }} nodi, ${i.documenti.count { it.percorsoId == p.id }} documenti)") }
+        else attivi.forEach { p ->
             val propri = i.nodi.filter { it.percorsoId == p.id }
             val nodi = Nodi.testo(propri, conPilastri = p.pilastro == Pilastro.ADAM)
             val docs = i.documenti.filter { it.percorsoId == p.id }.joinToString("; ") { "«${it.titolo}» (${it.testo.length} car.)" }
@@ -221,7 +230,7 @@ object Contesto {
             appendLine()
         }
         // Il fondo è un esperimento del Ghost: solo nell'app di sviluppo (logica/Edizione.kt).
-        if (Edizione.sviluppatore) {
+        if (Edizione.sviluppatore && aperto(Reparto.SISTEMA)) {
             appendLine("FONDO DI ADAM")
             Fondo.righe(Fondo.stato(i.movimenti, i.oggi)).forEach { appendLine("- $it") }
         }
@@ -230,7 +239,9 @@ object Contesto {
             appendLine("TEMPERATURE CONFERMATE DAL GHOST: " + i.temperature.entries.joinToString(", ") { "${it.key} ${it.value}" })
         }
         appendLine()
-        appendLine(Capacita.testo(i.versione))
+        if (aperto(Reparto.SISTEMA)) appendLine(Capacita.testo(i.versione))
+        else appendLine("L'APP OGGI: versione ${i.versione.ifBlank { "?" }}. Se il Ghost chiede come funziona l'app, il programma ti apre il reparto con la mappa intera.")
+        if (reparti != null) Reparto.indice(reparti) { Edizione.offerto(it) }.takeIf { it.isNotEmpty() }?.let { appendLine(); appendLine(it) }
         val quaderni = i.quaderni.filter { it.testo.isNotBlank() }.sortedBy { it.pilastro.ordinal }
         if (quaderni.isNotEmpty()) {
             appendLine()

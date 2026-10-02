@@ -36,7 +36,9 @@ import it.resonance.adam.logica.Testi
 import it.resonance.adam.logica.Lavagna
 import it.resonance.adam.dati.Ambiguo
 import it.resonance.adam.logica.Taccuino
+import it.resonance.adam.logica.Reparto
 import it.resonance.adam.logica.Validazione
+import it.resonance.adam.logica.Edizione
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.serialization.json.Json
@@ -45,6 +47,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import java.time.LocalDate
 import java.time.YearMonth
@@ -163,11 +167,16 @@ class Shell(
 
         val oggi = LocalDate.now()
         val istantanea = fotografia(oggi, 2)
-        val sistema = Contesto.sistema(istantanea)
+        val recenti = archivio.db.messaggi().ultimi(24).filter { it.id != idGhost }
+        // I reparti del turno (logica/Reparti.kt): dal messaggio di adesso, dall'ultimo del Ghost e dall'inizio dell'ultima risposta.
+        val reparti = Reparto.scegli(testoGhost,
+            listOfNotNull(recenti.lastOrNull { it.ruolo == Ruolo.GHOST }?.testo, recenti.lastOrNull { it.ruolo == Ruolo.SHELL }?.testo?.take(400)),
+            riunione = istantanea.riunione.isNotBlank(), allegati = allegati.isNotEmpty()).toMutableSet()
+        val sistema = Contesto.sistema(istantanea, reparti)
         // I nomi che il Ghost ha detto possono uscire; quelli scritti dall'architetto no.
         val regole = regole(istantanea, if (architetto) "" else testoGhost)
         val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", sistema) })
-        lavoro += storia(archivio.db.messaggi().ultimi(24).filter { it.id != idGhost })
+        lavoro += storia(recenti)
         // Il messaggio di adesso porta i suoi allegati; i precedenti solo la nota che c'erano.
         lavoro += buildJsonObject {
             put("role", "user")
@@ -180,7 +189,8 @@ class Shell(
         // Un modello che non vede, per un turno con immagini, cede il posto a uno che vede.
         val modello = if (Allegati.conImmagini(allegati) && !vede(base)) modelloPer(Compito.ALLEGATI) else base
         val compito = if (allegati.isEmpty()) Compito.TURNO else Compito.ALLEGATI
-        val esito = ciclo(lavoro, oggi, regole, modello, motore?.etichetta, costoTurno, compito = compito, forza = forza)
+        val esito = ciclo(lavoro, oggi, regole, modello, motore?.etichetta, costoTurno, compito = compito, forza = forza,
+            reparti = reparti, sistema = { Contesto.sistema(istantanea, it) })
         // In riunione lo scambio va nel verbale da solo: il Ghost non spiega due volte. Gli allegati non escono.
         val tavolo = Tavolo(archivio, impostazioni, cassetta)
         if (tavolo.aperta()) try {
@@ -616,7 +626,8 @@ class Shell(
     }
 
     private suspend fun ciclo(lavoro: MutableList<JsonObject>, oggi: LocalDate, regole: Regole, modello: String, motore: String?,
-                              costoIniziale: Double, origine: String = "shell", compito: Compito = Compito.TURNO, forza: Forzatura? = null): Esito {
+                              costoIniziale: Double, origine: String = "shell", compito: Compito = Compito.TURNO, forza: Forzatura? = null,
+                              reparti: MutableSet<Reparto>? = null, sistema: ((Set<Reparto>) -> String)? = null): Esito {
         var costoTurno = costoIniziale
         val temperatura = forza?.temperatura ?: temperaturaDi(compito)
         var usata: Double? = null
@@ -633,10 +644,15 @@ class Shell(
         var ultimoFermo: String? = null
         // Se in questo turno lo Shell ha già cercato nel web: allora «non ho internet» non è nemmeno in discussione.
         var cercato = false
+        // Quanto pesa ciò che lo Shell ha davanti (prompt di sistema e strumenti), misurato al primo giro: va nel registro.
+        var misura: String? = null
 
         try {
             for (giro in 0 until GIRI_MASSIMI) {
-                val (r, t) = chiama(modello, JsonArray(lavoro), Azioni.definizioni(), MAX_TOKEN, temperatura)
+                val definizioni = Azioni.definizioni(reparti = reparti)
+                if (misura == null) misura = "prompt ${(lavoro.first()["content"]?.jsonPrimitive?.contentOrNull.orEmpty().length + definizioni.toString().length) / 1000}k car., " +
+                    "${definizioni.size} strumenti" + (reparti?.let { r -> " (" + r.joinToString(", ") { it.etichetta } + ")" } ?: "")
+                val (r, t) = chiama(modello, JsonArray(lavoro), definizioni, MAX_TOKEN, temperatura)
                 usata = t
                 registraCosto(r)
                 costoTurno += r.costo ?: 0.0
@@ -710,8 +726,24 @@ class Shell(
                         }
                     })
                 }
+                var allargati = false
                 for (c in r.chiamate) {
                     if (c.nome == "cerca_nel_web" || c.nome == "ricerca_a_fondo") cercato = true
+                    // Un reparto si apre su richiesta, o perché lo Shell ne ha usato uno strumento; dopo una ricerca rapida,
+                    // la ricerca a fondo è il passo dopo possibile.
+                    if (reparti != null) {
+                        val nuovi = listOfNotNull(Reparto.di(c.nome), if (c.nome == "cerca_nel_web") Reparto.MONDO else null).filter { it !in reparti }
+                        if (nuovi.isNotEmpty()) { reparti += nuovi; allargati = true }
+                    }
+                    if (c.nome == Reparto.APRI) {
+                        val voluto = runCatching { Json.parseToJsonElement(c.argomenti).jsonObject["reparto"]?.jsonPrimitive?.contentOrNull }.getOrNull()
+                        val rep = Reparto.entries.firstOrNull { it.etichetta.equals(voluto?.trim(), ignoreCase = true) || it.name.equals(voluto?.trim(), ignoreCase = true) }
+                        val risposta = if (rep == null || reparti == null) "Reparto sconosciuto: «$voluto». Sono: ${Reparto.entries.drop(1).joinToString(", ") { it.etichetta }}."
+                            else { if (reparti.add(rep)) allargati = true; "Reparto «${rep.etichetta}» aperto: dal prossimo giro hai ${rep.strumenti.filter { Edizione.offerto(it) }.joinToString(", ")} e le sue regole." }
+                        traccia += "aperto il reparto ${rep?.etichetta ?: voluto}"
+                        lavoro += buildJsonObject { put("role", "tool"); put("tool_call_id", c.id); put("name", c.nome); put("content", risposta) }
+                        continue
+                    }
                     val args = runCatching { Json.parseToJsonElement(c.argomenti).jsonObject }.getOrNull()
                     // Una chiamata tagliata a metà non si indovina: si dice al modello perché, e come farla più piccola.
                     val risultato = if (args == null) "Chiamata non eseguita: " + (if (r.troncata) "è stata tagliata dal limite di lunghezza, il testo era troppo lungo. " else "argomenti illeggibili. ") +
@@ -751,6 +783,8 @@ class Shell(
                         put("role", "tool"); put("tool_call_id", c.id); put("name", c.nome); put("content", risultato)
                     }
                 }
+                // Con un reparto in più, il prompt si riscrive: le sue regole arrivano insieme ai suoi strumenti.
+                if (allargati && sistema != null && reparti != null) lavoro[0] = buildJsonObject { put("role", "system"); put("content", sistema(reparti)) }
             }
             // Finiti i giri con uno strumento ancora in mano, il Ghost restava senza risposta (visto il 24/09):
             // un'ultima chiamata SENZA strumenti lo obbliga a rispondere con ciò che ha.
@@ -771,14 +805,14 @@ class Shell(
         } catch (e: Exception) {
             val t = "Il modello non ha risposto: ${e.message ?: e.javaClass.simpleName}"
             nota(t)
-            registraTurno(compito, modello, usata ?: temperatura, forza != null, proposte, rifiutate, troncata, esauriti, errore = true, costoTurno, traccia)
+            registraTurno(compito, modello, usata ?: temperatura, forza != null, proposte, rifiutate, troncata, esauriti, errore = true, costoTurno, traccia.ifEmpty { listOf("nessuno strumento") } + listOfNotNull(misura))
             return Esito(t, proposte)
         }
         val finta = Testi.fintaNota(testo)
         if (finta) testo = Testi.senzaFinteNote(testo)
         if (testo.isNotBlank()) archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.SHELL, testo = testo, istante = ora,
             modello = modello, costo = costoTurno.takeIf { it > 0 }, motore = motore, temperatura = usata, forzata = forza != null))
-        registraTurno(compito, modello, usata, forza != null, proposte, rifiutate, troncata, esauriti, errore = false, costoTurno, traccia)
+        registraTurno(compito, modello, usata, forza != null, proposte, rifiutate, troncata, esauriti, errore = false, costoTurno, traccia.ifEmpty { listOf("nessuno strumento") } + listOfNotNull(misura))
         if (proposte.isEmpty() && Testi.affermaAzione(testo))
             nota("Nessuna azione è stata eseguita in questo turno: le azioni vere compaiono come proposte da confermare e poi come ricevute.")
         if (finta) nota("Lo Shell aveva scritto un'etichetta che non è sua («[Nota del programma …]» o «[L'architetto …]»): tolta. Le etichette le mette solo il programma.")

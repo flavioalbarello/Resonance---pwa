@@ -518,8 +518,15 @@ object Azioni {
             schema(listOf("percorso", "nodo", "stato"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del nodo"), "stato" to e(STATI, "Nuovo stato")))),
     )
 
-    fun definizioni(sviluppatore: Boolean = Edizione.sviluppatore): JsonArray = buildJsonArray {
-        strumenti.filter { Edizione.offerto(it.nome, sviluppatore) }.forEach { st ->
+    // Lo strumento che apre un reparto chiuso (logica/Reparti.kt): non fa niente nel mondo, cambia solo cosa lo Shell ha davanti.
+    val APRI_REPARTO = Strumento(Reparto.APRI, Effetto.INTERNO, "Apre un reparto di strumenti chiuso in questo turno: dal giro dopo hai i suoi strumenti e le sue regole.",
+        schema(listOf("reparto"), mapOf("reparto" to e(Reparto.entries.filter { it != Reparto.NUCLEO }.map { it.etichetta }, "Il reparto da aprire"))))
+
+    /** Gli strumenti del turno. `reparti` = null: tutti, come prima; altrimenti quelli dei reparti aperti più apri_reparto. */
+    fun definizioni(sviluppatore: Boolean = Edizione.sviluppatore, reparti: Set<Reparto>? = null): JsonArray = buildJsonArray {
+        val scelti = strumenti.filter { Edizione.offerto(it.nome, sviluppatore) && (reparti == null || Reparto.di(it.nome) in reparti) } +
+            (if (reparti != null && reparti.size < Reparto.entries.size) listOf(APRI_REPARTO) else emptyList())
+        scelti.forEach { st ->
             add(buildJsonObject {
                 put("type", "function")
                 putJsonObject("function") {
