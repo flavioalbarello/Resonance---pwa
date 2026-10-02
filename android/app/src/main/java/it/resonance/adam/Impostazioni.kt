@@ -157,6 +157,16 @@ open class Impostazioni(context: Context) {
         const val MODELLO_PREDEFINITO = "meta-llama/llama-3.3-70b-instruct"
         const val MODELLO_VISTA = "google/gemini-3.1-flash-lite"
         const val MODELLO_LEGGERO = "google/gemini-3.1-flash-lite"
+        // La ricerca (02/10/2026): Perplexity cerca da sé, sul suo indice, più volte per risposta; la ricerca di OpenRouter
+        // (Exa) data a un modello qualunque trovava una fonte sola, a volte una pagina sbagliata. Il veloce per la ricerca
+        // dello Shell e per Segui; il Pro per gli strati della ricerca a fondo, che il Ghost autorizza con la stima davanti.
+        const val MODELLO_RICERCA = "perplexity/sonar"
+        const val MODELLO_A_FONDO = "perplexity/sonar-pro"
+        val MODELLI_RICERCA = listOf(
+            "perplexity/sonar" to "Perplexity Sonar (1/1 $ + 0,5 cent a ricerca, cerca da sé)",
+            "perplexity/sonar-pro" to "Perplexity Sonar Pro (3/15 $ + 0,5 cent a ricerca, più fonti)",
+            "perplexity/sonar-reasoning-pro" to "Perplexity Sonar Reasoning Pro (2/8 $ + 0,5 cent, ragiona sulle fonti)",
+        )
         // Verificati sul listino vivo di OpenRouter il 02/10/2026 (/api/v1/models): strumenti, immagini, temperatura,
         // scadenze. Prezzi in dollari per milione di token, ingresso/uscita. La lista non si aggiorna da sola: per questo
         // il programma legge il listino ogni giorno e avvisa (logica/Listino.kt).

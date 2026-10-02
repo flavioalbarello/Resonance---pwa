@@ -19,8 +19,11 @@ object Ricerca {
     val SISTEMA = "Sei la ricerca web di uno Shell, l'estensione digitale di una persona. Hai la ricerca web: usala sempre, " +
         "anche se pensi di sapere la risposta. Riporti ciò che le fonti dicono, non ciò che ricordi."
 
+    // Niente esempio con un contenuto: il 02/10 «1 ottobre 2026, chiusura» (borsa) è finito nella risposta su un ristorante.
+    const val SENZA_DATA = "non indicata"
     val FORMA = "Rispondi in italiano, al massimo $PAROLE_MAX parole. La prima riga è «$DATA» seguita dalla data più recente dei dati " +
-        "che riporti (per esempio «$DATA 1 ottobre 2026, chiusura»). Ogni numero porta la sua data e la sua unità (valuta, percentuale). " +
+        "che riporti, presa dalle fonti (giorno, mese e anno); se le fonti non la dicono, «$DATA $SENZA_DATA». " +
+        "Ogni numero porta la sua data e la sua unità (valuta, percentuale). " +
         "Se un dato non lo trovi, scrivi «non trovato»: non stimarlo mai. Se le fonti non sono d'accordo, dillo con i due numeri. " +
         "Tieni separati i fatti dalla tua lettura, che va in fondo, in una riga che comincia con «Lettura:»."
 
@@ -29,9 +32,26 @@ object Ricerca {
     /** Ciò che non torna in una risposta: va mostrato, non nascosto. Vuoto = niente da segnalare. */
     fun problemi(testo: String, fonti: List<Consulente.Fonte>, domanda: String): List<String> = buildList {
         if (fonti.isEmpty()) add("il motore non ha restituito fonti: questi numeri non hanno provenienza, non usarli")
-        if (!testo.lineSequence().any { it.trim().trimStart('*', '_', '#', ' ').startsWith(DATA, ignoreCase = true) }) add("manca la data dei dati")
+        val data = testo.lineSequence().map { it.trim().trimStart('*', '_', '#', ' ') }.firstOrNull { it.startsWith(DATA, ignoreCase = true) }
+        if (data == null) add("la risposta non dice di quando sono i dati")
+        else if (data.contains(SENZA_DATA, ignoreCase = true)) add("le fonti non dicono di quando sono i dati")
         Consulente.sospette(testo, fonti, listOf(domanda)).takeIf { it.isNotEmpty() }?.let { add("citati senza averli trovati fra le fonti: ${it.joinToString(", ")}") }
     }
+
+    /**
+     * Ciò che lo Shell riceve: la scheda, con gli avvisi chiamati per quello che sono. Il 02/10 ha detto al Ghost che
+     * «manca la data» era un errore tecnico: un avviso sulla forma dice quanto fidarsi, non che la ricerca è fallita.
+     */
+    fun perIlModello(testo: String, fonti: List<Consulente.Fonte>, problemi: List<String>): String = buildString {
+        append("Ricerca riuscita.\n")
+        append(scheda(testo, fonti, emptyList()))
+        if (problemi.isNotEmpty()) append("\n\nAvvisi del programma sulla risposta (NON sono errori tecnici: la ricerca ha funzionato; " +
+            "dicono quanto ci si può fidare, e così li riferisci): " + problemi.joinToString("; "))
+    }
+
+    /** Chi incrocia gli strati della ricerca a fondo: legge ciò che è stato trovato, non cerca di nuovo. */
+    val SISTEMA_INCROCIO = "Sei lo Shell che incrocia le ricerche già fatte per il Ghost: qui sotto ci sono i risultati di più ricerche " +
+        "mirate e le fonti numerate. Non cerchi altro e non aggiungi ciò che ricordi: lavori solo su questo materiale."
 
     /** Il testo che si vede in chat e nelle letture: la risposta, le fonti vere, gli avvisi. */
     fun scheda(testo: String, fonti: List<Consulente.Fonte>, problemi: List<String>): String = buildString {

@@ -25,6 +25,8 @@ object Listino {
         val temperatura: Boolean = true,
         val strumenti: Boolean = true,
         val scade: String? = null,
+        // Dollari per richiesta, per chi cerca da sé (Perplexity): la ricerca è nel prezzo del modello, non in Exa.
+        val perRichiesta: Double = 0.0,
     )
 
     const val GIORNI_AVVISO = 30
@@ -40,7 +42,8 @@ object Listino {
             val parametri = m["supported_parameters"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }.orEmpty()
             val ingressi = m["architecture"]?.jsonObject?.get("input_modalities")?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }.orEmpty()
             Voce(id, m["name"]?.jsonPrimitive?.contentOrNull.orEmpty(), prezzo("prompt"), prezzo("completion"), "image" in ingressi,
-                "temperature" in parametri, "tools" in parametri, m["expiration_date"]?.jsonPrimitive?.contentOrNull?.take(10))
+                "temperature" in parametri, "tools" in parametri, m["expiration_date"]?.jsonPrimitive?.contentOrNull?.take(10),
+                prezzi?.get("web_search")?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() ?: 0.0)
         }
     }.getOrDefault(emptyList())
 
@@ -66,4 +69,13 @@ object Listino {
     }
 
     fun prezzi(listino: List<Voce>, id: String): Voce? = listino.firstOrNull { it.id == id }
+
+    /** I prezzi di un modello per le stime: dal listino; se non c'è, prudenti (1 $ e 5 $ per milione), mai zero. */
+    fun voce(listino: List<Voce>, id: String): Voce = prezzi(listino, id) ?: Voce(id, ingresso = 1.0, uscita = 5.0)
+
+    /**
+     * Perplexity cerca da sé (02/10/2026): ogni risposta parte da una ricerca sul suo indice, e non accetta strumenti.
+     * Con lui la ricerca web di OpenRouter (Exa) non si chiede: si chiede quanto contesto leggere.
+     */
+    fun cercaDaSe(id: String) = id.startsWith("perplexity/")
 }

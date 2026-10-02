@@ -288,10 +288,12 @@ data class Regole(
     val appuntiVivi: List<it.resonance.adam.dati.Appunto> = emptyList(),
     // Quante cose lo Shell sta già seguendo (Segui): il tetto lo controlla il programma.
     val seguiteAttive: Int = 0,
-    // Per le stime di costo (logica/AFondo.kt): i prezzi del modello che fa le ricerche, dal listino; e quante ricerche
-    // a fondo aspettano già il Ghost (una per volta).
-    val prezzoRicerca: Listino.Voce? = null,
+    // Per le stime di costo (logica/AFondo.kt): i prezzi dei modelli che cercano e di quello che incrocia, dal listino;
+    // e quante ricerche a fondo aspettano già il Ghost (una per volta).
+    val prezzoRicerca: Listino.Voce = Listino.Voce("", ingresso = 1.0, uscita = 5.0),
     val ricercheInAttesa: Int = 0,
+    val prezzoAFondo: Listino.Voce = prezzoRicerca,
+    val prezzoSintesi: Listino.Voce = prezzoRicerca,
 )
 
 sealed class Validazione {
@@ -329,7 +331,7 @@ object Azioni {
 
     // I compiti la cui temperatura si può proporre: la scelta del motore resta a 0, è una classificazione; quella di
     // Balthasar la sceglie il Ghost a ogni tocco, con l'intensità.
-    val COMPITI_REGOLABILI = listOf("ALLEGATI", "TURNO", "BATTITO", "ESPERIMENTO", "DADO", "CONSULENTE", "RICERCA")
+    val COMPITI_REGOLABILI = listOf("ALLEGATI", "TURNO", "BATTITO", "ESPERIMENTO", "DADO", "CONSULENTE", "RICERCA", "A_FONDO")
 
     val strumenti: List<Strumento> = listOf(
         Strumento("leggi_documento", Effetto.LETTURA, "Legge il testo completo di un documento salvato in un percorso.",
@@ -629,14 +631,14 @@ object Azioni {
             val domanda = a.testo("domanda").orEmpty()
             val giorni = intero(a, "giorni", 0)
             Ricerca.difetti(cosa, domanda, giorni, regole.seguiteAttive).takeIf { it.isNotEmpty() }?.let { rifiuta(it.joinToString("; ")) }
-            val una = AFondo.stimaRicerca(regole.prezzoRicerca?.ingresso ?: 1.0, regole.prezzoRicerca?.uscita ?: 5.0)
+            val una = AFondo.stimaRicerca(regole.prezzoRicerca)
             Proposta.Segui(cosa, domanda, giorni, a.testo("prima").orEmpty(), AFondo.testo(AFondo.Forbice(una.min * giorni, una.max * giorni)))
         }
         "ricerca_a_fondo" -> {
             val domanda = a.testo("domanda").orEmpty()
             val sotto = elenco(a, "sotto").map { it.trim() }.filter { it.isNotEmpty() }
             AFondo.difetti(domanda, sotto, regole.ricercheInAttesa).takeIf { it.isNotEmpty() }?.let { rifiuta(it.joinToString("; ")) }
-            Proposta.RicercaAFondo(domanda, sotto, AFondo.testo(AFondo.stima(sotto.size, regole.prezzoRicerca, regole.prezzoRicerca)))
+            Proposta.RicercaAFondo(domanda, sotto, AFondo.testo(AFondo.stima(sotto.size, regole.prezzoAFondo, regole.prezzoSintesi)))
         }
         "scrivi_all_architetto" -> {
             val oggetto = a.testo("oggetto")?.takeIf { it.length <= 120 } ?: rifiuta("oggetto mancante o più lungo di 120 caratteri")

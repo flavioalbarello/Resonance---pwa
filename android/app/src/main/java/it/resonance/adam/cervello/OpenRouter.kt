@@ -107,18 +107,21 @@ open class OpenRouter(
     open suspend fun cercaAFondo(chiave: String, modello: String, messaggi: JsonArray, maxToken: Int, temperatura: Double?): RispostaWeb =
         ricerca(chiave, modello, messaggi, maxToken, temperatura, A_FONDO)
 
-    private data class Profilo(val parametri: kotlinx.serialization.json.JsonObject, val chiamate: Int)
-    private val LEGGERA = Profilo(buildJsonObject { put("max_results", 5); put("max_total_results", 10); put("search_context_size", "low") }, 3)
+    private data class Profilo(val parametri: kotlinx.serialization.json.JsonObject, val chiamate: Int, val contesto: String)
+    private val LEGGERA = Profilo(buildJsonObject { put("max_results", 5); put("max_total_results", 10); put("search_context_size", "low") }, 3, "low")
     private val A_FONDO = Profilo(buildJsonObject {
         put("engine", "exa"); put("max_results", 10); put("max_total_results", 25); put("search_context_size", "high")
-    }, 4)
+    }, 4, "high")
 
     private suspend fun ricerca(chiave: String, modello: String, messaggi: JsonArray, maxToken: Int, temperatura: Double?, profilo: Profilo?): RispostaWeb =
         withContext(Dispatchers.IO) {
+            // Perplexity cerca da sé e rifiuta gli strumenti (logica/Listino.cercaDaSe): gli si dice solo quanto leggere.
+            val daSe = it.resonance.adam.logica.Listino.cercaDaSe(modello)
             val corpo = buildJsonObject {
                 put("model", modello)
                 put("messages", messaggi)
-                if (profilo != null) {
+                if (profilo != null && daSe) putJsonObject("web_search_options") { put("search_context_size", profilo.contesto) }
+                if (profilo != null && !daSe) {
                     put("tools", buildJsonArray {
                         add(buildJsonObject {
                             put("type", "openrouter:web_search")
@@ -130,7 +133,7 @@ open class OpenRouter(
                 }
                 put("max_tokens", maxToken)
                 if (temperatura != null) put("temperature", temperatura)
-                putJsonObject("reasoning") { put("exclude", true) }
+                if (!daSe) putJsonObject("reasoning") { put("exclude", true) }
                 putJsonObject("usage") { put("include", true) }
             }
             val req = Request.Builder()
@@ -139,20 +142,28 @@ open class OpenRouter(
                 .header("X-Title", "Resonance")
                 .post(corpo.toString().toRequestBody("application/json".toMediaType()))
                 .build()
-            val lento = httpLento
-            val chiamata = lento.newCall(req)
-            val legame = currentCoroutineContext()[Job]?.invokeOnCompletion { if (it != null) chiamata.cancel() }
-            try {
-                chiamata.execute().use { r ->
-                    val testo = r.body.string()
-                    if (!r.isSuccessful) throw ErroreModello("HTTP ${r.code}: ${testo.take(300)}")
-                    interpretaRicerca(testo)
-                }
-            } catch (e: java.io.IOException) {
+            // Come in chiama(): una connessione caduta si ritenta una volta, la stessa domanda.
+            try { leggiRicerca(req) } catch (e: java.io.IOException) {
                 ensureActive()
-                throw ErroreModello("connessione caduta (${e.message ?: e.javaClass.simpleName}). Riprova: ciò che avevi chiesto è salvato")
-            } finally { legame?.dispose() }
+                kotlinx.coroutines.delay(1500)
+                try { leggiRicerca(req) } catch (e2: java.io.IOException) {
+                    ensureActive()
+                    throw ErroreModello("connessione caduta due volte (${e2.message ?: e2.javaClass.simpleName})")
+                }
+            }
         }
+
+    private suspend fun leggiRicerca(req: Request): RispostaWeb {
+        val chiamata = httpLento.newCall(req)
+        val legame = currentCoroutineContext()[Job]?.invokeOnCompletion { if (it != null) chiamata.cancel() }
+        try {
+            return chiamata.execute().use { r ->
+                val testo = r.body.string()
+                if (!r.isSuccessful) throw ErroreModello("HTTP ${r.code}: ${testo.take(300)}")
+                interpretaRicerca(testo)
+            }
+        } finally { legame?.dispose() }
+    }
 
     private val httpLento by lazy { http.newBuilder().readTimeout(4, TimeUnit.MINUTES).build() }
 

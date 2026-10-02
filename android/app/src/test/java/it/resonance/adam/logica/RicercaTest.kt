@@ -22,7 +22,9 @@ class RicercaTest {
         // Anche se il modello mette la riga in grassetto.
         assertTrue(Ricerca.problemi("**${Ricerca.DATA}** 1 ottobre", listOf(fonte), "gazprom").isEmpty())
         val senza = Ricerca.problemi("Gazprom è a 130", emptyList(), "gazprom")
-        assertTrue(senza.any { it.contains("non ha restituito fonti") } && senza.any { it.contains("data") })
+        assertTrue(senza.any { it.contains("non ha restituito fonti") } && senza.any { it.contains("di quando") })
+        assertTrue(Ricerca.problemi("${Ricerca.DATA} ${Ricerca.SENZA_DATA}", listOf(fonte), "x").single().contains("le fonti non dicono"))
+        assertTrue(!Ricerca.FORMA.contains("chiusura"))
         // Un sito citato che non è fra le fonti si dice.
         assertTrue(Ricerca.problemi("${Ricerca.DATA} oggi\nsecondo borsainventata.com", listOf(fonte), "gazprom").any { it.contains("borsainventata.com") })
     }

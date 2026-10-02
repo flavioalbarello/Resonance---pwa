@@ -37,6 +37,8 @@ import it.resonance.adam.logica.Lavagna
 import it.resonance.adam.dati.Ambiguo
 import it.resonance.adam.logica.Taccuino
 import it.resonance.adam.logica.Validazione
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -336,6 +338,9 @@ class Shell(
     fun modelloPer(c: Compito): String = ModelloPerCompito.scegli(c, ModelloPerCompito.decodifica(impostazioni.modelliPerCompito),
         impostazioni.modello, impostazioni.modelloLeggero, impostazioni.modelloVista)
 
+    /** Chi incrocia gli strati della ricerca a fondo: il modello della ricerca a fondo, se non cerca da sé; se no il principale. */
+    fun modelloSintesi() = ModelloPerCompito.sintesi(modelloPer(Compito.A_FONDO), modelloPer(Compito.TURNO))
+
     // ── Il listino dei modelli (02/10/2026, logica/Listino.kt) ──
 
     private val listino by lazy { it.resonance.adam.logica.Listino.decodifica(impostazioni.listino) }
@@ -366,9 +371,11 @@ class Shell(
     // ── La ricerca web dello Shell e Segui (02/10/2026, logica/Ricerca.kt) ──
 
     data class Trovato(val testo: String, val fonti: List<Consulente.Fonte>, val problemi: List<String>, val costo: Double) {
+        val riuscita get() = testo.isNotBlank()
         val scheda get() = Ricerca.scheda(testo, fonti, problemi)
-        // Al modello va la scheda intera, avvisi compresi: deve sapere cosa non ha provenienza.
-        val perIlModello get() = if (testo.isBlank()) "Ricerca non riuscita: ${problemi.joinToString("; ")}" else scheda
+        // Al modello va la scheda intera, avvisi compresi, ma chiamati avvisi (Ricerca.perIlModello).
+        val perIlModello get() = if (!riuscita) "Ricerca NON riuscita (questo è un errore tecnico): ${problemi.joinToString("; ")}"
+            else Ricerca.perIlModello(testo, fonti, problemi)
     }
 
     /**
@@ -376,18 +383,18 @@ class Shell(
      * (Ricerca.problemi), le fonti sono quelle del motore. Con `mostra` la scheda compare in chat: il Ghost vede da dove
      * viene ciò che lo Shell dirà.
      */
-    suspend fun cercaNelWeb(domanda: String, mostra: Boolean = true): Trovato {
+    suspend fun cercaNelWeb(domanda: String, mostra: Boolean = true, compito: Compito = Compito.RICERCA): Trovato {
         if (domanda.isBlank()) return Trovato("", emptyList(), listOf("domanda vuota"), 0.0)
         controllaSpesa()?.let { return Trovato("", emptyList(), listOf(it), 0.0) }
         val protetti = Uscita.nomi(archivio.db.profilo().leggi()?.nomiProtetti.orEmpty())
         // Ciò che esce verso il motore passa dal guardiano, come per il consulente: nomi protetti e indirizzi no.
         val chiesto = Consulente.pulisci(domanda, protetti)
-        val modello = modelloPer(Compito.RICERCA)
+        val modello = modelloPer(compito)
         val messaggi = JsonArray(listOf(
             buildJsonObject { put("role", "system"); put("content", Ricerca.SISTEMA + " Oggi è ${LocalDate.now()}.") },
             buildJsonObject { put("role", "user"); put("content", Ricerca.richiesta(chiesto)) },
         ))
-        var t = temperaturaDi(Compito.RICERCA).takeIf { modello !in impostazioni.senzaTemperatura }
+        var t = temperaturaDi(compito).takeIf { modello !in impostazioni.senzaTemperatura }
         val trovato = try {
             val r = try { client.cercaAFondo(impostazioni.chiave, modello, messaggi, MAX_TOKEN_BATTITO, t) } catch (e: ErroreModello) {
                 if (t == null || !Temperatura.rifiutata(e.message)) throw e
@@ -403,8 +410,9 @@ class Shell(
         } catch (e: Exception) {
             Trovato("", emptyList(), listOf("la ricerca non è riuscita: ${e.message ?: e.javaClass.simpleName}"), 0.0)
         }
-        registraTurno(Compito.RICERCA, modello, t, false, emptyList(), 0, false, false, errore = trovato.testo.isBlank(), trovato.costo,
-            listOf("ricerca web: ${trovato.fonti.size} fonti" + if (trovato.problemi.isNotEmpty()) ", ${trovato.problemi.size} avvisi" else ""))
+        registraTurno(compito, modello, t, false, emptyList(), 0, false, false, errore = !trovato.riuscita, trovato.costo,
+            listOf(if (!trovato.riuscita) "ricerca web non riuscita: ${Testi.corto(trovato.problemi.joinToString("; "), 200)}"
+                else "ricerca web: ${trovato.fonti.size} fonti" + if (trovato.problemi.isNotEmpty()) ", ${trovato.problemi.size} avvisi" else ""))
         if (mostra && trovato.testo.isNotBlank()) archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, testo = "«${Testi.corto(chiesto, 140)}»\n\n" + trovato.scheda,
             istante = ora, modello = modello, costo = trovato.costo.takeIf { it > 0 }, temperatura = t))
         return trovato
@@ -418,9 +426,21 @@ class Shell(
      */
     suspend fun ricercaAFondo(p: Proposta.RicercaAFondo): String {
         val sotto = p.sotto.mapNotNull { AFondo.sotto(it) }
-        val trovati = sotto.map { s -> s to cercaNelWeb(AFondo.domandaSotto(s, p.domanda), mostra = false) }
+        // Gli strati partono insieme (il 02/10, uno dopo l'altro, la ricerca durava minuti ed è caduta tutta), e uno che
+        // non riesce si ritenta una volta: il motivo del secondo fallimento resta scritto nella scheda.
+        val trovati = kotlinx.coroutines.coroutineScope {
+            sotto.map { s ->
+                async {
+                    val domanda = AFondo.domandaSotto(s, p.domanda)
+                    val primo = cercaNelWeb(domanda, mostra = false, compito = Compito.A_FONDO)
+                    if (primo.riuscita || controllaSpesa() != null) s to primo
+                    else { kotlinx.coroutines.delay(2_000); s to cercaNelWeb(domanda, mostra = false, compito = Compito.A_FONDO).let { it.copy(costo = it.costo + primo.costo) } }
+                }
+            }.awaitAll()
+        }
         val fonti = AFondo.fonti(trovati.map { it.second.fonti })
         var costo = trovati.sumOf { it.second.costo }
+        val riuscite = trovati.count { it.second.riuscita }
         val perTipo = AFondo.Tipo.entries.filter { t -> sotto.any { it.tipo == t } }.associateWith { t -> trovati.filter { it.first.tipo == t }.sumOf { it.second.fonti.size } }
         val materiale = buildString {
             appendLine("Domanda del Ghost: ${p.domanda}")
@@ -428,16 +448,21 @@ class Shell(
             appendLine(); appendLine("FONTI (numero, livello deciso dal programma, sito):")
             fonti.forEach { appendLine("[${it.n}] ${it.livello.sigla} · ${it.dominio} · ${it.titolo}") }
         }
-        val testo = if (fonti.isEmpty()) "Nessuna fonte trovata in nessuna delle ${sotto.size} ricerche: non c'è niente da incrociare."
-        else runCatching {
-            val messaggi = JsonArray(listOf(
-                buildJsonObject { put("role", "system"); put("content", Ricerca.SISTEMA + " Ora incroci le ricerche fatte: " + AFondo.FORMA) },
-                buildJsonObject { put("role", "user"); put("content", materiale) },
-            ))
-            val (r, _) = chiama(modelloPer(Compito.RICERCA), messaggi, null, MAX_TOKEN_BATTITO, temperaturaDi(Compito.RICERCA))
-            r.costo?.let { archivio.registraCosto(YearMonth.now().toString(), it); costo += it }
-            Testi.senzaFinteNote(r.testo)
-        }.getOrElse { "La sintesi non è riuscita (${it.message ?: it.javaClass.simpleName}): restano le ricerche, qui sotto le fonti." }
+        val sintetizza = modelloSintesi()
+        val testo = when {
+            riuscite == 0 -> "Le ${sotto.size} ricerche non sono riuscite, nemmeno al secondo tentativo: il motivo è qui sotto, strato per strato. " +
+                "Non è un «non c'è niente»: non si è potuto guardare."
+            fonti.isEmpty() -> "Le ricerche hanno risposto, ma il motore non ha restituito nessuna fonte: senza provenienza non c'è niente da incrociare."
+            else -> runCatching {
+                val messaggi = JsonArray(listOf(
+                    buildJsonObject { put("role", "system"); put("content", Ricerca.SISTEMA_INCROCIO + " " + AFondo.FORMA) },
+                    buildJsonObject { put("role", "user"); put("content", materiale) },
+                ))
+                val (r, _) = chiama(sintetizza, messaggi, null, MAX_TOKEN_BATTITO, temperaturaDi(Compito.A_FONDO))
+                r.costo?.let { archivio.registraCosto(YearMonth.now().toString(), it); costo += it }
+                Testi.senzaFinteNote(r.testo)
+            }.getOrElse { "La sintesi non è riuscita (${it.message ?: it.javaClass.simpleName}): restano le ricerche, qui sotto le fonti." }
+        }
         val affermazioni = AFondo.affermazioni(testo, fonti)
         val scheda = buildString {
             appendLine("Ricerca a fondo · «${Testi.corto(p.domanda, 140)}»")
@@ -447,15 +472,22 @@ class Shell(
                 testo.substringAfter(AFondo.SINTESI, "").trim().takeIf { it.isNotEmpty() }?.let { appendLine(); appendLine("${AFondo.SINTESI} $it") }
             }
             appendLine()
-            appendLine("Fonti (livello deciso dal programma: A ufficiale/scientifica, B giornalismo, C forum e recensioni, D commerciale, ? non classificata):")
-            fonti.take(25).forEach { appendLine("[${it.n}] ${it.livello.sigla} · ${it.titolo.ifBlank { it.dominio }} — ${it.url}") }
+            appendLine("Gli strati:")
+            trovati.forEach { (s, t) -> appendLine(AFondo.esito(s, t.riuscita, t.fonti.size, t.problemi)) }
+            if (fonti.isNotEmpty()) {
+                appendLine()
+                appendLine("Fonti (livello deciso dal programma: A ufficiale/scientifica, B giornalismo, C forum e recensioni, D commerciale, ? non classificata):")
+                fonti.take(25).forEach { appendLine("[${it.n}] ${it.livello.sigla} · ${it.titolo.ifBlank { it.dominio }} — ${it.url}") }
+            }
             appendLine()
-            appendLine(AFondo.doveNo(perTipo))
+            if (riuscite > 0) appendLine(AFondo.doveNo(perTipo))
             append("Costo: stimato ${p.stima}, reale ${AFondo.centesimi(costo)} centesimi di dollaro.")
         }
-        archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, testo = scheda, istante = ora, modello = modelloPer(Compito.RICERCA), costo = costo.takeIf { it > 0 }))
-        registraTurno(Compito.RICERCA, modelloPer(Compito.RICERCA), temperaturaDi(Compito.RICERCA), false, emptyList(), 0, false, false, errore = fonti.isEmpty(), costo,
-            listOf("ricerca a fondo: ${sotto.size} ricerche, ${fonti.size} fonti, ${affermazioni.size} affermazioni; stimato ${p.stima}"))
+        archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, testo = scheda, istante = ora, modello = modelloPer(Compito.A_FONDO), costo = costo.takeIf { it > 0 }))
+        val guasti = trovati.filter { !it.second.riuscita }.joinToString("; ") { (s, t) -> "${s.tipo.etichetta}: ${Testi.corto(t.problemi.joinToString(" "), 120)}" }
+        registraTurno(Compito.A_FONDO, sintetizza, temperaturaDi(Compito.A_FONDO), false, emptyList(), 0, false, false, errore = riuscite == 0, costo,
+            listOf("ricerca a fondo: ${sotto.size} strati, $riuscite riusciti, ${fonti.size} fonti, ${affermazioni.size} affermazioni; stimato ${p.stima}") +
+                (if (guasti.isNotEmpty()) listOf("non riusciti: $guasti") else emptyList()))
         return scheda
     }
 
@@ -1032,7 +1064,8 @@ class Shell(
         val seguite = archivio.db.segui().elenco().count { it.chiusa == null }
         val inAttesa = archivio.db.messaggi().ultimi(60).count { it.stato == StatoProposta.IN_ATTESA && it.proposta?.contains("\"ricerca_a_fondo\"") == true }
         return Regole(Uscita.nomi(nomiProtetti), Uscita.indirizzi(scritti), testoGhost, it.resonance.adam.logica.Esperimenti.aperti(i.esperimenti), i.consegne, i.appunti, seguite,
-            it.resonance.adam.logica.Listino.prezzi(listino, modelloPer(Compito.RICERCA)), inAttesa)
+            it.resonance.adam.logica.Listino.voce(listino, modelloPer(Compito.RICERCA)), inAttesa,
+            it.resonance.adam.logica.Listino.voce(listino, modelloPer(Compito.A_FONDO)), it.resonance.adam.logica.Listino.voce(listino, modelloSintesi()))
     }
 
     private suspend fun lettura(v: Validazione.Lettura): String = when (v.nome) {

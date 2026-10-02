@@ -20,6 +20,8 @@ import it.resonance.adam.R
 import it.resonance.adam.cervello.Shell
 import it.resonance.adam.dati.Archivio
 import it.resonance.adam.dati.Db
+import it.resonance.adam.dati.Ruolo
+import it.resonance.adam.logica.Proposta
 import it.resonance.adam.mondo.MondoAndroid
 
 // Se l'app è davanti agli occhi del Ghost: lo tiene aggiornato MainActivity. Serve a decidere se avvisare.
@@ -83,6 +85,50 @@ class TurnoWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
                 description = "Quando lo Shell risponde e non sei nell'app"
             })
             nm.createNotificationChannel(NotificationChannel(CANALE_LAVORO, "Shell al lavoro", NotificationManager.IMPORTANCE_MIN))
+        }
+    }
+}
+
+// La ricerca a fondo autorizzata dal Ghost (02/10/2026, logica/AFondo.kt), come lavoro di sistema: il 02/10 girava dentro
+// l'app aperta, e uscire dall'app poteva troncarla. Ora continua a schermo spento; a lavoro finito, se il Ghost non è
+// nell'app, una notifica. Se il sistema la interrompe e la rilancia, non la si paga due volte: una scheda già scritta
+// dopo la proposta basta.
+class RicercaWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        TurnoWorker.creaCanali(applicationContext)
+        val n = NotificationCompat.Builder(applicationContext, TurnoWorker.CANALE_LAVORO)
+            .setSmallIcon(R.drawable.ic_notifica).setContentTitle("Ricerca a fondo in corso…").setOngoing(true).build()
+        return ForegroundInfo(ID_LAVORO, n)
+    }
+
+    override suspend fun doWork(): Result {
+        val id = inputData.getLong(ID, -1)
+        val archivio = Archivio(Db.di(applicationContext))
+        val m = archivio.db.messaggi().per(id) ?: return Result.failure()
+        val p = archivio.proposta(m) as? Proposta.RicercaAFondo ?: return Result.failure()
+        if (archivio.db.messaggi().dopo(id).any { it.ruolo == Ruolo.RICERCA && it.testo.startsWith("Ricerca a fondo") }) return Result.success()
+        val scheda = Shell(archivio, Impostazioni(applicationContext), mondo = MondoAndroid(applicationContext)).ricercaAFondo(p)
+        if (!Primopiano.visibile) {
+            TurnoWorker.creaCanali(applicationContext)
+            Battiti.notifica(applicationContext, ID_FINE, "Ricerca a fondo pronta", scheda.lineSequence().drop(2).take(6).joinToString("\n"),
+                "", "SHELL", TurnoWorker.CANALE_RISPOSTE)
+        }
+        return Result.success()
+    }
+
+    companion object {
+        const val NOME = "ricerca-a-fondo"
+        const val ID = "id"
+        private const val ID_LAVORO = 303
+        private const val ID_FINE = 304
+
+        fun accoda(context: Context, idProposta: Long) {
+            val r = OneTimeWorkRequestBuilder<RicercaWorker>()
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setInputData(workDataOf(ID to idProposta))
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(NOME, ExistingWorkPolicy.APPEND_OR_REPLACE, r)
         }
     }
 }

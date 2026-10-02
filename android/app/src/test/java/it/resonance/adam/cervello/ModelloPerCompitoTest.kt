@@ -12,7 +12,11 @@ class ModelloPerCompitoTest {
         assertEquals("leggero/l", scegli(Compito.BATTITO))
         assertEquals("vista/v", scegli(Compito.ALLEGATI))
         assertEquals("principale/p", scegli(Compito.TURNO))
-        assertEquals("principale/p", scegli(Compito.RICERCA))
+        // Le ricerche: Perplexity, che cerca da sé; gli strati della ricerca a fondo col Pro, l'incrocio col principale.
+        assertEquals(it.resonance.adam.Impostazioni.MODELLO_RICERCA, scegli(Compito.RICERCA))
+        assertEquals(it.resonance.adam.Impostazioni.MODELLO_A_FONDO, scegli(Compito.A_FONDO))
+        assertEquals("principale/p", ModelloPerCompito.sintesi(scegli(Compito.A_FONDO), "principale/p"))
+        assertEquals("moonshotai/kimi-k3", ModelloPerCompito.sintesi("moonshotai/kimi-k3", "principale/p"))
         assertTrue(Compito.MOTORE !in ModelloPerCompito.REGOLABILI)
     }
 

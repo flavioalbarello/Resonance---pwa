@@ -52,5 +52,10 @@ class AFondoTest {
         // Quattro ricerche col modello economico: qualche centesimo, non frazioni né euro.
         assertTrue(AFondo.testo(e), e.min in 0.02..0.1 && e.max in 0.05..0.3)
         assertEquals("1–2 centesimi di dollaro", AFondo.testo(AFondo.Forbice(0.012, 0.024)))
+        // Perplexity paga la richiesta, dal listino, e pochi token: cinque strati Pro più l'incrocio, qualche decina di centesimi al più.
+        val pro = Listino.Voce("perplexity/sonar-pro", ingresso = 3.0, uscita = 15.0, perRichiesta = 0.005)
+        val p = AFondo.stima(5, pro, economico)
+        assertTrue(AFondo.testo(p), p.min in 0.05..0.15 && p.max in 0.1..0.4)
+        assertTrue(AFondo.stimaRicerca(pro.copy(perRichiesta = 0.0)).min >= AFondo.COSTO_RICHIESTA)
     }
 }

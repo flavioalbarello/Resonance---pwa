@@ -136,4 +136,25 @@ class OpenRouterTest {
         c.cerca("k", "m", JsonArray(emptyList()), 800, 0.2, web = false)
         assertTrue(corpo, !corpo.contains("web_search"))
     }
+
+    // Perplexity cerca da sé e rifiuta gli strumenti (02/10/2026): gli si chiede solo quanto contesto leggere.
+    @Test fun perplexitySenzaStrumentiConIlContesto() = runBlocking {
+        val (c, _) = cliente(cadute = 0, risposta = """{"choices":[{"message":{"content":"Dati al: 1 ottobre 2026"},"finish_reason":"stop"}],"citations":["https://a.it/x"]}""")
+        assertEquals(listOf("a.it"), c.cercaAFondo("k", "perplexity/sonar-pro", JsonArray(emptyList()), 800, 0.2).fonti.map { it.dominio })
+        assertTrue(corpo, corpo.contains("\"web_search_options\":{\"search_context_size\":\"high\"}") && !corpo.contains("tools") &&
+            !corpo.contains("tool_choice") && !corpo.contains("reasoning"))
+        // Con un altro modello resta la ricerca di OpenRouter.
+        c.cercaAFondo("k", "moonshotai/kimi-k3", JsonArray(emptyList()), 800, 0.2)
+        assertTrue(corpo, corpo.contains("\"openrouter:web_search\"") && corpo.contains("\"engine\":\"exa\"") && !corpo.contains("web_search_options"))
+    }
+
+    // Il 02/10 la ricerca a fondo è caduta tutta senza dire perché: una connessione caduta ora si ritenta, come per il turno.
+    @Test fun laRicercaSiRitentaUnaVoltaSeCadeLaConnessione() = runBlocking {
+        val (c, n) = cliente(cadute = 1, risposta = """{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}""")
+        assertEquals("ok", c.cercaAFondo("k", "perplexity/sonar", JsonArray(emptyList()), 800, null).testo)
+        assertEquals(2, n())
+        val (d, _) = cliente(cadute = 2)
+        val e = runCatching { d.cercaAFondo("k", "perplexity/sonar", JsonArray(emptyList()), 800, null) }.exceptionOrNull()
+        assertTrue(e?.message.orEmpty(), e is ErroreModello && e.message!!.contains("connessione caduta due volte"))
+    }
 }

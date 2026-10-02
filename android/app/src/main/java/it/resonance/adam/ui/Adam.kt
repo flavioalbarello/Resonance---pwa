@@ -15,6 +15,7 @@ import it.resonance.adam.Impostazioni
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import it.resonance.adam.battito.Battiti
+import it.resonance.adam.battito.RicercaWorker
 import it.resonance.adam.battito.TurnoWorker
 import kotlinx.coroutines.flow.first
 import it.resonance.adam.cervello.Shell
@@ -191,7 +192,8 @@ class Adam(app: Application) : AndroidViewModel(app) {
     init {
         lavori?.let { wm ->
             viewModelScope.launch {
-                wm.getWorkInfosForUniqueWorkFlow(TurnoWorker.NOME).collect { infos -> pensa = infos.any { !it.state.isFinished } }
+                wm.getWorkInfosForUniqueWorkFlow(TurnoWorker.NOME).combine(wm.getWorkInfosForUniqueWorkFlow(RicercaWorker.NOME)) { a, b -> a + b }
+                    .collect { infos -> pensa = infos.any { !it.state.isFinished } }
             }
         }
     }
@@ -283,8 +285,12 @@ class Adam(app: Application) : AndroidViewModel(app) {
         avviso = shell.conferma(m.id); leggiAgenda()
         // Segui (logica/Ricerca.kt): la prima lettura parte subito e compare in chat, con lo sguardo indietro se chiesto.
         if (p is it.resonance.adam.logica.Proposta.Segui) { pensa = true; runCatching { shell.seguiDovute(inChat = true) }; pensa = false }
-        // La ricerca a fondo (logica/AFondo.kt), appena autorizzata: qualche minuto, poi il risultato in chat.
-        if (p is it.resonance.adam.logica.Proposta.RicercaAFondo) { pensa = true; runCatching { shell.ricercaAFondo(p) }; pensa = false }
+        // La ricerca a fondo (logica/AFondo.kt), appena autorizzata: un lavoro di sistema (battito/Turno.kt), che regge anche
+        // se si esce dall'app; il risultato arriva in chat. Senza WorkManager (le prove) si fa qui.
+        if (p is it.resonance.adam.logica.Proposta.RicercaAFondo) {
+            if (lavori != null) RicercaWorker.accoda(getApplication(), m.id)
+            else { pensa = true; runCatching { shell.ricercaAFondo(p) }; pensa = false }
+        }
     }
 
     // Il listino dei modelli (logica/Listino.kt): gli avvisi su ciò che si usa, e l'aggiornamento a mano da Setup.

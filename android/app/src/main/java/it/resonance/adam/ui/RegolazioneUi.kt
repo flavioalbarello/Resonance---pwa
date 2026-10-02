@@ -48,7 +48,7 @@ fun RegolazioneUi(vm: Adam) {
     // Il modello per compito (cervello/ModelloPerCompito.kt): lo sceglie il programma, lo cambi tu; i numeri sono sotto.
     Scheda(Colori.air) {
         Etichetta("Modello per compito", Colori.air)
-        Tenue("Lo sceglie il programma in base al compito: il leggero per le notifiche, quello per immagini per le foto, il principale per il resto. " +
+        Tenue("Lo sceglie il programma in base al compito: il leggero per le notifiche, quello per immagini per le foto, Perplexity per le ricerche, il principale per il resto. " +
             "Si giudica coi numeri di «Com'è andata», qui sotto. Puoi cambiarlo compito per compito.")
         val versione = vm.modelliVersione
         ModelloPerCompito.REGOLABILI.forEach { c ->
@@ -63,8 +63,12 @@ fun RegolazioneUi(vm: Adam) {
                     TextButton({ aperto = true }, modifier = Modifier.testTag("modello-${c.name}")) { Text("Cambia") }
                     DropdownMenu(aperto, { aperto = false }) {
                         DropdownMenuItem({ Text("Predefinito (${ModelloPerCompito.fascia(c).etichetta})") }, { vm.scegliModello(c, null); aperto = false })
-                        val scelte = if (c == Compito.ALLEGATI) Impostazioni.MODELLI_VISTA + Impostazioni.MODELLI.filter { it.first in Impostazioni.VEDONO }
-                            else Impostazioni.MODELLI + Impostazioni.MODELLI_LEGGERI
+                        // Perplexity non accetta strumenti: si offre solo dove si cerca e basta.
+                        val scelte = when (c) {
+                            Compito.ALLEGATI -> Impostazioni.MODELLI_VISTA + Impostazioni.MODELLI.filter { it.first in Impostazioni.VEDONO }
+                            Compito.RICERCA, Compito.A_FONDO, Compito.CONSULENTE -> Impostazioni.MODELLI_RICERCA + Impostazioni.MODELLI + Impostazioni.MODELLI_LEGGERI
+                            else -> Impostazioni.MODELLI + Impostazioni.MODELLI_LEGGERI
+                        }
                         scelte.distinctBy { it.first }.forEach { (id, nome) ->
                             DropdownMenuItem({ Text(nome) }, { vm.scegliModello(c, id); aperto = false })
                         }

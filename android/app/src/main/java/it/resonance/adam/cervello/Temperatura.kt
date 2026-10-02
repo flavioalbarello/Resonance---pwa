@@ -17,6 +17,8 @@ enum class Compito(val etichetta: String, val temperatura: Double, val perche: S
     CONSULENTE("consulente esterno", 0.2, "riporta ciò che la ricerca ha trovato, non inventa"),
     // La ricerca web dello Shell e Segui (02/10/2026): riporta ciò che le fonti dicono.
     RICERCA("ricerca web e Segui", 0.2, "riporta ciò che le fonti dicono, non inventa"),
+    // Gli strati della ricerca a fondo, e l'incrocio (02/10/2026): stesso registro, modello a parte (ModelloPerCompito).
+    A_FONDO("ricerca a fondo", 0.2, "riporta e incrocia ciò che le fonti dicono, non inventa"),
     BALTHASAR("Balthasar in riunione", 0.85, "la perturbazione: la dose la sceglie il Ghost con l'intensità (0,7 · 0,85 · 1)"),
 }
 

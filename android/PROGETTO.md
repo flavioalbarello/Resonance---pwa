@@ -615,6 +615,26 @@ il nome dello Shell e vengono spiegate queste cose»*. È il primo avvio guidato
   messaggio della persona, e lo Shell risponde davvero.
 - Non provati qui: i permessi veri sul telefono, la chiamata vera dei nomi.
 
+## La ricerca dopo la prima prova (02/10/2026, sera)
+
+Il Ghost, con gli screenshot: *«non mi sembra proprio la più potente, approfondita ed efficace delle ricerche»*. Tre
+difetti, tre cause nel codice.
+
+| visto sul telefono | causa | correzione |
+|---|---|---|
+| Ricerca a fondo: «nessuna fonte in nessuna delle 5 ricerche», reale 0,0 | Tutti e cinque gli strati sono falliti; l'errore di ognuno c'era (`Trovato.problemi`) ma la scheda non lo mostrava. Giravano uno dopo l'altro, dentro l'app aperta | Gli strati partono **insieme** e uno che fallisce **si ritenta una volta**; la connessione caduta si ritenta anche dentro `OpenRouter`. La scheda ha «Gli strati:», una riga per strato (✓ fonti, · senza fonti, ✗ motivo). Se nessuno riesce, lo dice: «non si è potuto guardare», non «non c'è niente». Il motivo va anche nel registro dei turni. La ricerca gira in un **lavoro di sistema** (`RicercaWorker`): regge se si esce dall'app, notifica alla fine |
+| Ricerca rapida: una fonte, una pagina sbagliata di Exa | Il modello principale con la ricerca di OpenRouter (Exa): Exa cerca per somiglianza, non è un indice da motore di ricerca | Il programma sceglie **Perplexity**, che cerca da sé sul suo indice: Sonar per la ricerca rapida e Segui, Sonar Pro per gli strati (compito nuovo `A_FONDO`). L'incrocio degli strati lo fa il principale, che non cerca di nuovo. Il Ghost può cambiare tutti e tre in «Modello per compito» |
+| «Dati al: … chiusura» nella risposta su un ristorante | L'esempio in `Ricerca.FORMA` veniva dalla borsa, e il modello l'ha copiato | La forma descrive la data senza esempio; se le fonti non la dicono, «Dati al: non indicata» |
+| Lo Shell ha chiamato «manca la data» un errore tecnico | Allo Shell gli avvisi arrivavano come la scheda del Ghost, senza nome | Lo Shell riceve «Ricerca riuscita» e poi gli avvisi «che NON sono errori tecnici»; solo il fallimento si chiama errore |
+
+**Costi, coi prezzi del listino del 02/10.** Perplexity: 0,5 centesimi a richiesta più i token (Sonar 1/1 $, Pro 3/15 $
+per milione). Una ricerca rapida ≈ 0,6–1,5 centesimi; una ricerca a fondo di 5 strati ≈ 8–20 centesimi. La stima del
+programma ora sa che Perplexity paga la richiesta e non i risultati letti (`AFondo.stimaRicerca`). Perplexity non
+accetta strumenti: per lui il programma non chiede la ricerca di OpenRouter, ma quanto contesto leggere (`Listino.cercaDaSe`).
+
+**Errore trovato rileggendo**: dal pomeriggio la stima della ricerca a fondo usava i prezzi del modello di ricerca anche
+per l'incrocio. Ora ognuno ha i suoi (`Regole.prezzoAFondo`, `prezzoSintesi`).
+
 ## Per la prossima riunione (argomenti che l'architetto porta)
 
 | argomento | da dove | il nodo |
@@ -623,6 +643,7 @@ il nome dello Shell e vengono spiegate queste cose»*. È il primo avvio guidato
 | **Le descrizioni dei nomi: rivederle e correggerle** | il Ghost, 02/10/2026 | Tutte e due le forme, che stanno nello stesso file (`logica/Significati.kt`): le righe sotto Bio, Air, Vidya e Adam (sullo schermo e nel tour) e il testo lungo con cui lo Shell li spiega. Sono una prima stesura dell'architetto sulle parole del Ghost; si correggono insieme, dopo averle viste sul telefono |
 | **Il tour del primo avvio** | il Ghost, 01/10/2026 | Dopo la prova sul telefono: quanto è lungo, cosa spiega, la frase su che cos'è lo Shell |
 | **Una «decisione» nel taccuino evapora come un'ipotesi** | l'architetto, 01/10/2026 | Il taccuino è non confermato per definizione, quindi è coerente; ma una decisione vera annotata lì e non ripresa sparisce dalle istruzioni dello Shell dopo 21 giorni. Proposta da discutere: quando lo Shell scrive una nota «fatto» o «decisione», propone anche di metterla nel quaderno, dove la conferma il Ghost e non scade |
+| **I colori dell'icona** | il Ghost, 02/10/2026: *«poi rivedremo i tuoi gusti in ambito cromatico»* | Oggi la dev è ambra (`#FFB020`) e la base blu (`#4F6BFF`), scelti solo per non confonderle. Si scelgono insieme, guardandole sul telefono |
 | **Salvare un Adam se il telefono si rompe di punto in bianco** | il Ghost, 01/10/2026 | Oggi solo la copia a mano. Serve una copia che esca dal telefono da sola, ogni giorno, e da cui un telefono nuovo riparta. Da decidere: dove va (Drive, computer, la cassetta?), cosa contiene (la chiave OpenRouter no), chi la rilegge, come si prova che funziona davvero prima che serva |
 
 ## Carenze dichiarate
@@ -653,5 +674,5 @@ il nome dello Shell e vengono spiegate queste cose»*. È il primo avvio guidato
 | Gesti dalla notifica | Provati sul banco: cosa offrire, e la spunta dalla notifica fino al database con la notifica ridisegnata. Non provati qui: «Rispondi» fino al turno (serve WorkManager vero), la dettatura dalla tastiera, l'aspetto sul GT6 |
 | Due app | Provato il banco su tutte e due e che la base non nomini l'architetto. Il codice della riunione resta compilato nella base (irraggiungibile) finché R8 è spento |
 | Ricerca web e Segui dal vivo | Provati sul banco con un motore finto: forma, avvisi, guardiano, letture, resoconto, Specchio. Non provati qui: le risposte vere di Exa, il worker vero alle 17, il costo reale per lettura |
-| Ricerca a fondo dal vivo | Provata sul banco con un motore finto (sotto-domande, livelli, incrocio, stima, costo reale). Non provati: la qualità vera delle ricerche mirate per tipo di fonte, i tempi (qualche minuto), e lo stesso lavoro se l'app viene chiusa a metà (oggi gira nell'app aperta, non in un worker) |
+| Ricerca a fondo dal vivo | Provata sul banco con un motore finto (sotto-domande, livelli, incrocio, stima, costo reale; dal 02/10 sera anche strati in parallelo, ritentativo, motivo dei fallimenti). Il primo tentativo vero (02/10) è fallito in tutti gli strati, e il motivo non si è saputo perché non veniva mostrato: ora si vedrà. Non provati qui: una chiamata vera a Perplexity attraverso OpenRouter (forma presa dal listino e dalla documentazione, non da una risposta vera), il `RicercaWorker` sul telefono |
 | Le stime di costo | Sono forbici grossolane (token medi per ricerca). Il costo reale accanto alla stima serve proprio a correggerle coi numeri |

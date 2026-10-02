@@ -112,6 +112,13 @@ object AFondo {
         else -> "1 sola fonte · ${a.migliore!!.sigla} ${a.migliore!!.etichetta}"
     } + if (a.fonti.isNotEmpty() && a.inventate.isNotEmpty()) " · ⚠ rimanda anche a ${a.inventate.joinToString()}, che non esistono" else ""
 
+    /** Una riga per strato: cosa ha trovato, o perché non ha potuto. Il 02/10 cinque strati falliti dicevano solo «nessuna fonte». */
+    fun esito(s: Sotto, riuscita: Boolean, fonti: Int, problemi: List<String>): String = when {
+        !riuscita -> "✗ ${s.tipo.etichetta}: non riuscita — ${problemi.joinToString("; ").take(220)}"
+        fonti == 0 -> "· ${s.tipo.etichetta}: ha risposto senza fonti"
+        else -> "✓ ${s.tipo.etichetta}: $fonti fonti"
+    }
+
     val CHIUSI = "gruppi chiusi (Facebook, Telegram, WhatsApp), forum dietro login, annunci visibili solo dentro le app, pagine non indicizzate"
 
     /** Dove il programma non ha potuto guardare: i tipi senza nessuna fonte, e ciò che nessun motore vede. */
@@ -123,21 +130,32 @@ object AFondo {
     // ── La stima del costo: la fa il programma coi prezzi del listino, non il modello ──
 
     const val COSTO_RICERCA = 0.007          // dollari per ricerca Exa, verificato sulla documentazione di OpenRouter il 02/10/2026
+    const val COSTO_RICHIESTA = 0.005        // dollari per richiesta a Perplexity, dal listino del 02/10/2026; col contesto alto fino a 2,4 volte
     private const val TOKEN_RICERCA_IN = 12_000
+    private const val TOKEN_DA_SE_IN = 1_500 // a Perplexity va solo la domanda: ciò che legge non si paga a token
     private const val TOKEN_RICERCA_OUT = 900
     private const val TOKEN_SINTESI_OUT = 1_500
 
     data class Forbice(val min: Double, val max: Double)
 
-    /** Una chiamata di ricerca (da 1 a 4 ricerche del motore) col modello che legge. Prezzi in dollari per milione. */
-    fun stimaRicerca(ingresso: Double, uscita: Double): Forbice {
-        val token = TOKEN_RICERCA_IN * ingresso / 1e6 + TOKEN_RICERCA_OUT * uscita / 1e6
+    /**
+     * Una ricerca col modello che legge, prezzi dal listino (dollari per milione). Chi cerca da sé (Perplexity) paga la
+     * richiesta e pochi token; gli altri da 1 a 4 ricerche Exa e i risultati letti come token.
+     */
+    fun stimaRicerca(v: Listino.Voce): Forbice {
+        if (Listino.cercaDaSe(v.id)) {
+            val richiesta = v.perRichiesta.takeIf { it > 0 } ?: COSTO_RICHIESTA
+            val token = TOKEN_DA_SE_IN * v.ingresso / 1e6 + TOKEN_RICERCA_OUT * v.uscita / 1e6
+            return Forbice(richiesta + token * 0.6, richiesta * 2.4 + token * 1.6)
+        }
+        val token = TOKEN_RICERCA_IN * v.ingresso / 1e6 + TOKEN_RICERCA_OUT * v.uscita / 1e6
         return Forbice(COSTO_RICERCA + token * 0.6, 4 * COSTO_RICERCA + token * 1.6)
     }
 
-    fun stima(sotto: Int, ricerca: Listino.Voce?, sintesi: Listino.Voce?): Forbice {
-        val r = stimaRicerca(ricerca?.ingresso ?: 1.0, ricerca?.uscita ?: 5.0)
-        val inSintesi = (sotto * 2_000 + 1_500) * (sintesi?.ingresso ?: 1.0) / 1e6 + TOKEN_SINTESI_OUT * (sintesi?.uscita ?: 5.0) / 1e6
+    /** Gli strati, ciascuno col suo modello di ricerca, più l'incrocio col modello che non cerca. */
+    fun stima(sotto: Int, strato: Listino.Voce, sintesi: Listino.Voce): Forbice {
+        val r = stimaRicerca(strato)
+        val inSintesi = (sotto * 2_000 + 1_500) * sintesi.ingresso / 1e6 + TOKEN_SINTESI_OUT * sintesi.uscita / 1e6
         return Forbice(sotto * r.min + inSintesi * 0.6, sotto * r.max + inSintesi * 1.6)
     }
 

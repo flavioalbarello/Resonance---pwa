@@ -31,6 +31,18 @@ class ListinoTest {
         assertTrue(Listino.leggi("non json").isEmpty())
     }
 
+    // Perplexity (02/10/2026): la ricerca è nel prezzo per richiesta, e non accetta strumenti.
+    @Test fun perplexityHaIlPrezzoPerRichiesta() {
+        val v = Listino.leggi("""{"data":[{"id":"perplexity/sonar-pro","pricing":{"prompt":"0.000003","completion":"0.000015","web_search":"0.005"},
+            "supported_parameters":["max_tokens","temperature","web_search_options"]}]}""").single()
+        assertEquals(0.005, v.perRichiesta, 1e-9)
+        assertFalse(v.strumenti)
+        assertTrue(Listino.cercaDaSe(v.id) && !Listino.cercaDaSe("moonshotai/kimi-k3"))
+        // Un listino salvato prima, senza il campo, si legge ancora.
+        assertEquals(0.0, Listino.decodifica("""[{"id":"x/y","ingresso":1.0}]""").single().perRichiesta, 1e-9)
+        assertEquals(5.0, Listino.voce(emptyList(), "x/y").uscita, 1e-9)
+    }
+
     @Test fun avvisaDiCioCheScadeODiCioCheESparito() {
         val v = Listino.leggi(risposta)
         val avvisi = Listino.avvisi(mapOf("immagini" to "qwen/qwen3-vl-32b-instruct", "principale" to "openai/gpt-6-sol", "leggero" to "nessuno/sparito"), v, oggi)

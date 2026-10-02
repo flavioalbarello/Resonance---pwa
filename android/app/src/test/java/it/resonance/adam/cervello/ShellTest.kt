@@ -116,9 +116,13 @@ class ShellTest {
         }
         // La ricerca a fondo dello Shell e di Segui.
         val aFondo = mutableListOf<JsonArray>()
+        val modelliRicerca = mutableListOf<String>()
+        // Gli strati della ricerca a fondo partono insieme: per non dipendere dall'ordine, la risposta si sceglie dalla domanda.
+        var perDomanda: ((String) -> RispostaWeb)? = null
         override suspend fun cercaAFondo(chiave: String, modello: String, messaggi: JsonArray, maxToken: Int, temperatura: Double?): RispostaWeb {
-            aFondo += JsonArray(messaggi.toList())
-            return ricerche.removeFirst()
+            synchronized(this) { aFondo += JsonArray(messaggi.toList()); modelliRicerca += modello }
+            perDomanda?.let { return it(messaggi.toString()) }
+            return synchronized(this) { ricerche.removeFirst() }
         }
     }
 
@@ -1081,7 +1085,7 @@ class ShellTest {
         val m = FintoModello()
         m.ricerche += web("Gazprom è a circa 130 rubli.")
         val t = shell(m, FintaCassetta()).cercaNelWeb("quotazione Gazprom")
-        assertTrue(t.problemi.toString(), t.problemi.any { it.contains("non ha restituito fonti") } && t.problemi.any { it.contains("data") })
+        assertTrue(t.problemi.toString(), t.problemi.any { it.contains("non ha restituito fonti") } && t.problemi.any { it.contains("di quando") })
         assertTrue(db.messaggi().elenco().single { it.ruolo == Ruolo.RICERCA }.testo.contains("⚠"))
     }
 
@@ -1133,19 +1137,47 @@ class ShellTest {
         assertTrue(proposta.testo, proposta.testo.contains("Ricerca a fondo") && proposta.testo.contains("Costo stimato dal programma") && proposta.testo.contains("centesimi"))
         // Una per volta: una seconda proposta uguale non passa finché la prima aspetta.
         assertTrue(s.conferma(proposta.id).contains("autorizzata"))
-        m.ricerche += web("Dati al: marzo 2026\nCensimento: 1.100 lamantini a Crystal River.", "fws.gov", "myfwc.com")
-        m.ricerche += web("Dati al: settembre 2026\nSu Reddit molti avvistamenti a gennaio.", "reddit.com")
         val sintesi = FintoModello(testo("- Il censimento conta 1.100 lamantini nel 2026 [1, 2]\n- Molti avvistamenti a gennaio [3]\n- Una cosa inventata [8]\nSintesi: dato ufficiale solido, testimonianze coerenti."))
-        sintesi.ricerche.addAll(m.ricerche)
+        sintesi.perDomanda = { d -> if ("avvistamenti" in d) web("Dati al: settembre 2026\nSu Reddit molti avvistamenti a gennaio.", "reddit.com")
+            else web("Dati al: marzo 2026\nCensimento: 1.100 lamantini a Crystal River.", "fws.gov", "myfwc.com") }
         val scheda = shell(sintesi, FintaCassetta()).ricercaAFondo(archivio.proposta(proposta) as Proposta.RicercaAFondo)
-        // Due ricerche mirate, ciascuna col suo tipo di fonte.
+        // Due ricerche mirate, ciascuna col suo tipo di fonte, col modello degli strati (Perplexity Pro, scelto dal programma).
         assertEquals(2, sintesi.aFondo.size)
-        assertTrue(sintesi.aFondo[1].toString().contains("forum"))
+        assertTrue(sintesi.aFondo.any { it.toString().contains("forum") })
+        assertEquals(listOf(Impostazioni.MODELLO_A_FONDO, Impostazioni.MODELLO_A_FONDO), sintesi.modelliRicerca)
+        // L'incrocio lo fa il principale, che non cerca di nuovo.
+        assertTrue(sintesi.modelli.single() != Impostazioni.MODELLO_A_FONDO)
+        assertTrue(scheda, scheda.contains("✓ dati ufficiali: 2 fonti") && scheda.contains("✓ forum e thread: 1 fonti"))
         // Il modello della sintesi riceve le fonti col livello deciso dal programma.
         assertTrue(sintesi.ricevuti.single().toString().contains("[1] A · fws.gov"))
         assertTrue(scheda, scheda.contains("2 fonti indipendenti · migliore A") && scheda.contains("1 sola fonte · C") && scheda.contains("⚠ nessuna fonte"))
         assertTrue(scheda, scheda.contains("Dove non ho potuto guardare") && scheda.contains("Costo: stimato") && scheda.contains("reale"))
         assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.RICERCA && it.testo.startsWith("Ricerca a fondo") })
+    }
+
+    // Il 02/10: cinque strati falliti, la scheda diceva solo «nessuna fonte trovata» e «reale 0,0». Ora ogni strato si
+    // ritenta una volta, e il motivo resta scritto.
+    @Test fun unaRicercaAFondoCheNonRiesceDiceIlPerche() = runBlocking {
+        val m = FintoModello()
+        m.perDomanda = { throw ErroreModello("HTTP 400: context length exceeded") }
+        val p = Proposta.RicercaAFondo("Ford Mustang disponibili?", listOf("annunci: Mustang usate in Italia", "forum: Mustang opinioni"), "2–5 centesimi di dollaro")
+        val scheda = shell(m, FintaCassetta()).ricercaAFondo(p)
+        assertEquals(4, m.aFondo.size)
+        assertTrue(scheda, scheda.contains("non sono riuscite") && scheda.contains("✗ annunci e mercato: non riuscita") && scheda.contains("context length exceeded"))
+        assertTrue(scheda, !scheda.contains("Nessuna fonte trovata") && !scheda.contains("Dove non ho potuto guardare"))
+        val t = db.turni().ultimi(20).single { it.strumenti.startsWith("ricerca a fondo:") }
+        assertTrue(t.strumenti, t.errore && t.strumenti.contains("non riusciti") && t.strumenti.contains("context length"))
+    }
+
+    // Gli avvisi sulla forma non sono guasti: lo Shell li riceve come avvisi, e solo il fallimento si chiama errore.
+    @Test fun unAvvisoNonSiPresentaComeErrore() = runBlocking {
+        val m = FintoModello()
+        m.ricerche += web("Il ristorante Da Mario è aperto a pranzo.", "tripadvisor.it")
+        val t = shell(m, FintaCassetta()).cercaNelWeb("ristorante Da Mario orari")
+        assertTrue(t.perIlModello, t.perIlModello.startsWith("Ricerca riuscita") && t.perIlModello.contains("NON sono errori tecnici") &&
+            t.perIlModello.contains("non dice di quando"))
+        assertTrue(Shell.Trovato("", emptyList(), listOf("HTTP 500"), 0.0).perIlModello.startsWith("Ricerca NON riuscita"))
+        assertEquals(Impostazioni.MODELLO_RICERCA, m.modelliRicerca.single())
     }
 
     @Test fun seguireDiceQuantoCosta() = runBlocking {
