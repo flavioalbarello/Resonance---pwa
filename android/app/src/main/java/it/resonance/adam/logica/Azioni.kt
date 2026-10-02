@@ -338,10 +338,15 @@ object Azioni {
             schema(listOf("titolo"), mapOf("titolo" to s("Titolo o parte del titolo del documento")))),
         // La ricerca web (02/10/2026): eseguita subito, senza conferma, perché non scrive niente. La risposta, con le
         // fonti del motore e gli avvisi del programma, compare anche in chat: il Ghost vede da dove viene ciò che dici.
-        Strumento("cerca_nel_web", Effetto.LETTURA, "Cerca nel web un fatto del mondo di oggi (prezzi, notizie, orari, dati pubblici). " +
+        // Più domande insieme (02/10/2026, sera): una domanda sola su cinque città ha trovato solo il paese del Ghost. Un
+        // motore cerca bene un posto per volta: il programma le fa partire insieme.
+        Strumento("cerca_nel_web", Effetto.LETTURA, "Cerca nel web un fatto del mondo di oggi (prezzi, notizie, orari, dati pubblici, locali e negozi). " +
             "Risponde con la data dei dati e le fonti vere del motore di ricerca; il Ghost la vede in chat. Usala invece di dire che non hai internet; " +
-            "non usarla per ciò che sta già in Adam (per quello c'è cerca). Costa qualche centesimo: una domanda precisa vale più di tre vaghe.",
-            schema(listOf("domanda"), mapOf("domanda" to s("La domanda per la ricerca, precisa: cosa, dove, per quale periodo")))),
+            "non usarla per ciò che sta già in Adam (per quello c'è cerca). Una domanda per posto: se la richiesta copre una zona («entro mezz'ora da qui») " +
+            "o più città, elenca tu i paesi e metti una domanda per paese in domande (fino a ${Ricerca.DOMANDE_MAX}), mai tutte le città in una domanda sola. " +
+            "Circa un centesimo a domanda.",
+            schema(listOf("domanda"), mapOf("domanda" to s("La domanda per la ricerca, precisa: cosa, dove, per quale periodo"),
+                "domande" to lista("Altre domande, una per posto o per argomento, cercate insieme alla prima (fino a ${Ricerca.DOMANDE_MAX} in tutto)")))),
         Strumento("cerca", Effetto.LETTURA, "Cerca un testo nel diario, nei documenti e nei quaderni. Usalo prima di dire che una cosa non esiste.",
             schema(listOf("testo"), mapOf("testo" to s("Parole da cercare")))),
         Strumento("leggi_misure", Effetto.LETTURA, "Serie giornaliera di una misura, per quando la sintesi non basta.",
@@ -492,7 +497,9 @@ object Azioni {
             "Propone una ricerca a fondo, a strati, quando la domanda chiede di incrociare più fonti (dati ufficiali, notizie, forum, recensioni, annunci) " +
                 "e cerca_nel_web non basta. Costa di più: il programma mostra la stima al Ghost, che deve approvarla. Una per volta. " +
                 "Tu scomponi la domanda in ${AFondo.SOTTO_MIN}–${AFondo.SOTTO_MAX} sotto-domande, ciascuna col tipo di fonte davanti " +
-                "(${AFondo.Tipo.entries.joinToString(", ") { it.name.lowercase() }}), per esempio «forum: avvistamenti di trichechi a Crystal River nel 2025».",
+                "(${AFondo.Tipo.entries.joinToString(", ") { it.name.lowercase() }}), per esempio «forum: avvistamenti di trichechi a Crystal River nel 2025». " +
+                "Se la domanda copre una zona, dividi anche per posto: «recensioni: ristoranti eritrei a Viterbo», «recensioni: ristoranti eritrei a Civitavecchia». " +
+                "Quando serve, proponila con questo strumento: non chiedere a parole «vuoi che faccia una ricerca a fondo?», il gesto del Ghost è Conferma.",
             schema(listOf("domanda", "sotto"), mapOf("domanda" to s("La domanda del Ghost, intera"),
                 "sotto" to lista("Le sotto-domande, ognuna «tipo: domanda»")))),
         Strumento("segui", Effetto.SCRITTURA,

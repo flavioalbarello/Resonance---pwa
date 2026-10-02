@@ -103,14 +103,15 @@ object Consulente {
      * fonti, e marchi con una maiuscola interna (la forma dei nomi inventati visti il 26/07) che nessun dominio contiene.
      * Non blocca niente: è un sospetto da verificare, scritto sotto la risposta. Esclusi i nomi già nelle domande.
      */
-    fun sospette(risposta: String, fonti: List<Fonte>, domande: List<String>): List<String> {
+    // `nomi` = false per la ricerca dello Shell: un nome «a cammello» (MagnaMagna) è un locale vero più spesso che un prodotto inventato.
+    fun sospette(risposta: String, fonti: List<Fonte>, domande: List<String>, nomi: Boolean = true): List<String> {
         val domini = fonti.map { it.dominio.lowercase() }
         val chiesto = domande.joinToString(" ").lowercase()
         val siti = SITO.findAll(risposta).map { it.groupValues[1].lowercase().removePrefix("www.") }
             .filter { s -> domini.none { d -> d == s || d.endsWith(".$s") || s.endsWith(".$d") } && s !in chiesto }
-        val nomi = CAMMELLO.findAll(risposta).map { it.value }
+        val nomiSospetti = if (!nomi) emptySequence() else CAMMELLO.findAll(risposta).map { it.value }
             .filter { n -> n.lowercase() !in MARCHI_NOTI && n.lowercase() !in chiesto && domini.none { d -> d.replace(".", "").replace("-", "").contains(n.lowercase()) } }
-        return (siti + nomi).distinct().take(8).toList()
+        return (siti + nomiSospetti).distinct().take(8).toList()
     }
 
     /** La scheda che entra in chat e nel verbale: domande, risposta, fonti vere, sospetti, rinuncia. */

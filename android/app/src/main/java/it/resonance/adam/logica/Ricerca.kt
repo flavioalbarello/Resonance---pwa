@@ -13,6 +13,7 @@ import java.time.temporal.ChronoUnit
 object Ricerca {
     const val DATA = "Dati al:"
     const val PAROLE_MAX = 220
+    const val DOMANDE_MAX = 4
     const val GIORNI_MAX = 30
     const val SEGUITE_MAX = 5
 
@@ -25,7 +26,9 @@ object Ricerca {
         "che riporti, presa dalle fonti (giorno, mese e anno); se le fonti non la dicono, «$DATA $SENZA_DATA». " +
         "Ogni numero porta la sua data e la sua unità (valuta, percentuale). " +
         "Se un dato non lo trovi, scrivi «non trovato»: non stimarlo mai. Se le fonti non sono d'accordo, dillo con i due numeri. " +
-        "Tieni separati i fatti dalla tua lettura, che va in fondo, in una riga che comincia con «Lettura:»."
+        "Tieni separati i fatti dalla tua lettura, che va in fondo, in una riga che comincia con «Lettura:». " +
+        "Se la domanda chiede posti, negozi o prodotti, rispondi con un elenco: uno per riga, nome, dove, il dato che lo distingue " +
+        "(voto e numero di recensioni, prezzo), il numero della fonte. Niente premesse."
 
     fun richiesta(domanda: String) = "$domanda\n\n$FORMA"
 
@@ -35,7 +38,7 @@ object Ricerca {
         val data = testo.lineSequence().map { it.trim().trimStart('*', '_', '#', ' ') }.firstOrNull { it.startsWith(DATA, ignoreCase = true) }
         if (data == null) add("la risposta non dice di quando sono i dati")
         else if (data.contains(SENZA_DATA, ignoreCase = true)) add("le fonti non dicono di quando sono i dati")
-        Consulente.sospette(testo, fonti, listOf(domanda)).takeIf { it.isNotEmpty() }?.let { add("citati senza averli trovati fra le fonti: ${it.joinToString(", ")}") }
+        Consulente.sospette(testo, fonti, listOf(domanda), nomi = false).takeIf { it.isNotEmpty() }?.let { add("citati senza averli trovati fra le fonti: ${it.joinToString(", ")}") }
     }
 
     /**
@@ -62,6 +65,23 @@ object Ricerca {
         }
         problemi.forEach { append("\n⚠ $it") }
     }
+
+    /**
+     * La riga che si vede in chat a scheda chiusa (02/10/2026, sera): la ricerca è materiale, la risposta è dello Shell.
+     * Null = non è una ricerca rapida (una ricerca a fondo, una lettura di Segui, un resoconto restano aperti).
+     */
+    fun riassunto(scheda: String): String? {
+        if (!scheda.startsWith("«")) return null
+        val ricerche = scheda.lines().count { it.startsWith("«") }
+        val fonti = Regex("(?m)^\\d+\\. .* — https?://").findAll(scheda).count()
+        val avvisi = scheda.lines().count { it.startsWith("⚠") }
+        val data = scheda.lines().map { it.trim().trimStart('*', '_', '#', ' ') }.firstOrNull { it.startsWith(DATA, ignoreCase = true) }
+        return listOfNotNull(if (ricerche > 1) "$ricerche ricerche" else null, "$fonti fonti",
+            data?.takeIf { ricerche == 1 }?.trimEnd(':', ' '), if (avvisi > 0) "⚠ $avvisi" else null,
+            if (scheda.contains(NON_RIUSCITA)) "una non riuscita" else null).joinToString(" · ")
+    }
+
+    const val NON_RIUSCITA = "Ricerca non riuscita:"
 
     fun codificaFonti(fonti: List<Consulente.Fonte>) = fonti.joinToString("\n") { "${it.url}\t${it.titolo.replace('\t', ' ').replace('\n', ' ')}" }
     fun decodificaFonti(s: String): List<Consulente.Fonte> = s.lines().filter { it.isNotBlank() }.map { r ->

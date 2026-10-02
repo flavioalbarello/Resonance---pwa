@@ -635,6 +635,23 @@ accetta strumenti: per lui il programma non chiede la ricerca di OpenRouter, ma 
 **Errore trovato rileggendo**: dal pomeriggio la stima della ricerca a fondo usava i prezzi del modello di ricerca anche
 per l'incrocio. Ora ognuno ha i suoi (`Regole.prezzoAFondo`, `prezzoSintesi`).
 
+## La ricerca dopo la seconda prova (02/10/2026, notte)
+
+Il Ghost: *«ancora decisamente fallimentare, meno efficace di una ricerca su Google o TheFork; in più una mole di testo
+smodata per dire quattro cose»*. Perplexity ha risposto (fonti vere, date giuste): il guasto non era più il motore.
+
+| visto | causa | correzione |
+|---|---|---|
+| Ristoranti «nel quadrilatero» solo a Canale Monterano | Lo Shell ha messo cinque città in **una** domanda; il motore ha trovato le pagine del primo paese. «Entro mezz'ora» non l'ha tradotto in paesi | `cerca_nel_web` accetta `domande`: fino a 4, una per posto, partono insieme. La descrizione dello strumento dice di elencare i paesi della zona |
+| Testo doppio e lungo | La scheda della ricerca (220 parole + 8 fonti) in chat, e sotto lo Shell che la riscriveva | La scheda della ricerca rapida è **chiusa**: una riga («3 ricerche · 21 fonti · ⚠ 1»), si apre toccandola. Allo Shell: un elenco è un elenco, una riga per voce, niente premesse né domanda finale |
+| «Vuoi che faccia la ricerca a fondo?» scritto a parole | Lo strumento non lo vietava | Lo propone con lo strumento: il gesto è Conferma, con la stima davanti. Gli strati possono essere anche per posto |
+| ⚠ «MagnaMagna non trovato fra le fonti» | Il controllo dei nomi «a cammello» è nato per i prodotti inventati del consulente; sui locali scatta a vuoto | Nella ricerca dello Shell resta solo il controllo dei siti |
+
+**Il limite, detto.** Per «i migliori ristoranti entro mezz'ora» Google Maps e TheFork hanno ciò che un motore web non
+ha: le distanze vere, i voti, gli orari, in forma di dati. Il motore legge le loro pagine, e male. La strada solida è
+un **sensore di luoghi**: le API di Google Places (chiave Google Cloud del Ghost, a consumo) o OpenStreetMap (gratis,
+senza voti). È una decisione del Ghost: chiave, costo, cosa esce dal telefono (la posizione).
+
 ## Per la prossima riunione (argomenti che l'architetto porta)
 
 | argomento | da dove | il nodo |
@@ -675,4 +692,5 @@ per l'incrocio. Ora ognuno ha i suoi (`Regole.prezzoAFondo`, `prezzoSintesi`).
 | Due app | Provato il banco su tutte e due e che la base non nomini l'architetto. Il codice della riunione resta compilato nella base (irraggiungibile) finché R8 è spento |
 | Ricerca web e Segui dal vivo | Provati sul banco con un motore finto: forma, avvisi, guardiano, letture, resoconto, Specchio. Non provati qui: le risposte vere di Exa, il worker vero alle 17, il costo reale per lettura |
 | Ricerca a fondo dal vivo | Provata sul banco con un motore finto (sotto-domande, livelli, incrocio, stima, costo reale; dal 02/10 sera anche strati in parallelo, ritentativo, motivo dei fallimenti). Il primo tentativo vero (02/10) è fallito in tutti gli strati, e il motivo non si è saputo perché non veniva mostrato: ora si vedrà. Non provati qui: una chiamata vera a Perplexity attraverso OpenRouter (forma presa dal listino e dalla documentazione, non da una risposta vera), il `RicercaWorker` sul telefono |
+| **Il prompt dello Shell cresce a ogni abilità** (il Ghost, 02/10/2026: *«lo Shell sta rincretinendo man mano che gli diamo abilità?»*) | Misurato sul codice: dal 23/09 al 02/10 le regole fisse sono passate da 46 a 107 righe (da 4,4 a 14,8 mila caratteri) e gli strumenti da 20 a 39 (da 9 a 20 mila caratteri di descrizioni). Ogni turno li porta tutti, qualunque cosa chieda il Ghost: circa 9–10 mila token prima ancora dei dati. Un modello medio (Kimi K2.6) con 39 strumenti e cento regole sbaglia di più a scegliere. Cura proposta, come nella PWA dal 12/09 (−72%): un nucleo fisso più le aree che il turno nomina (`Capacita` ha già le aree), e il numero dei token per turno nel registro, per misurare prima e dopo |
 | Le stime di costo | Sono forbici grossolane (token medi per ricerca). Il costo reale accanto alla stima serve proprio a correggerle coi numeri |

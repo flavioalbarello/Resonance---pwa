@@ -1180,6 +1180,19 @@ class ShellTest {
         assertEquals(Impostazioni.MODELLO_RICERCA, m.modelliRicerca.single())
     }
 
+    // Una zona, una domanda per paese (02/10/2026, sera): una domanda sola su cinque città trovava solo la prima.
+    @Test fun piuDomandeInsiemeUnaSchedaSola() = runBlocking {
+        val m = FintoModello(chiama("cerca_nel_web", """{"domanda":"trattorie a Bracciano","domande":["trattorie a Tolfa","trattorie a Manziana","trattorie a Bracciano"]}"""), testo("- Da Peppe, Bracciano"))
+        m.perDomanda = { d -> web("Dati al: 2 ottobre 2026\n- " + (if ("Tolfa" in d) "La Lestra, Tolfa" else if ("Manziana" in d) "Il Pozzo, Manziana" else "Da Peppe, Bracciano") + " [1]", "tripadvisor.it") }
+        shell(m, FintaCassetta()).turno("trattorie entro mezz'ora da qui")
+        // Tre ricerche (il doppione no), una scheda sola in chat, e lo Shell le riceve tutte.
+        assertEquals(3, m.aFondo.size)
+        val r = db.messaggi().elenco().single { it.ruolo == Ruolo.RICERCA }.testo
+        assertEquals("3 ricerche · 3 fonti", it.resonance.adam.logica.Ricerca.riassunto(r))
+        val alModello = m.ricevuti[1].last().toString()
+        assertTrue(alModello, alModello.contains("La Lestra") && alModello.contains("Il Pozzo") && alModello.contains("Da Peppe"))
+    }
+
     @Test fun seguireDiceQuantoCosta() = runBlocking {
         val m = FintoModello(chiama("segui", """{"cosa":"Mustang usate","domanda":"annunci di Ford Mustang usate in Italia","giorni":7}"""), testo("Proposto."))
         shell(m, FintaCassetta()).turno("seguimi le Mustang per una settimana")

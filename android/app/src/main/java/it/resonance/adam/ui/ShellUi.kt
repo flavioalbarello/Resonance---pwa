@@ -14,6 +14,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -234,20 +236,27 @@ private fun Messaggio(vm: Adam, m: Messaggio) {
         // Le due voci nuove della riunione: ognuna col suo nome, perché non si confondano con lo Shell.
         Ruolo.CONSULENTE -> Voce(vm, m, "Consulente esterno · ricerca web", Colori.linea)
         // La ricerca dello Shell e le letture di Segui: fatte dal programma, con le fonti del motore (logica/Ricerca.kt).
-        Ruolo.RICERCA -> Voce(vm, m, "Ricerca web · fonti dal motore", Colori.linea)
+        // La ricerca rapida è materiale: chiusa, una riga; la risposta è dello Shell, sotto (02/10/2026, sera).
+        Ruolo.RICERCA -> Voce(vm, m, "Ricerca web · fonti dal motore", Colori.linea, it.resonance.adam.logica.Ricerca.riassunto(m.testo))
         Ruolo.BALTHASAR -> Voce(vm, m, "Balthasar · ${m.motore ?: "perturbazione"}", Colori.allarme.copy(alpha = 0.5f))
     }
 }
 
 @Composable
-private fun Voce(vm: Adam, m: Messaggio, nome: String, bordo: androidx.compose.ui.graphics.Color) = Column {
+private fun Voce(vm: Adam, m: Messaggio, nome: String, bordo: androidx.compose.ui.graphics.Color, chiusa: String? = null) = Column {
+    var aperta by rememberSaveable(m.id) { mutableStateOf(chiusa == null) }
     Column(Modifier
         .widthIn(max = 330.dp)
         .background(Colori.fondo2, RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp))
         .border(1.dp, bordo, RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp))
+        .then(if (chiusa != null) Modifier.clickable { aperta = !aperta }.testTag("apri-${m.id}") else Modifier)
         .padding(12.dp)) {
         Etichetta(nome, Colori.ambraInchiostro)
-        SelectionContainer { Text(Formato.annota(m.testo), color = Colori.inchiostro, fontSize = 15.sp, lineHeight = 21.sp) }
+        if (aperta) SelectionContainer { Text(Formato.annota(m.testo), color = Colori.inchiostro, fontSize = 15.sp, lineHeight = 21.sp) }
+        else {
+            Text(m.testo.lineSequence().first(), color = Colori.inchiostro, fontSize = 14.sp, maxLines = 2)
+            Text("▸ $chiusa · tocca per aprire", color = Colori.tenue, fontSize = 12.sp)
+        }
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         m.modello?.let { mod ->

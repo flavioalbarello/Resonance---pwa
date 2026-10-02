@@ -370,12 +370,27 @@ class Shell(
 
     // ── La ricerca web dello Shell e Segui (02/10/2026, logica/Ricerca.kt) ──
 
-    data class Trovato(val testo: String, val fonti: List<Consulente.Fonte>, val problemi: List<String>, val costo: Double) {
+    data class Trovato(val testo: String, val fonti: List<Consulente.Fonte>, val problemi: List<String>, val costo: Double, val chiesto: String = "") {
         val riuscita get() = testo.isNotBlank()
         val scheda get() = Ricerca.scheda(testo, fonti, problemi)
         // Al modello va la scheda intera, avvisi compresi, ma chiamati avvisi (Ricerca.perIlModello).
         val perIlModello get() = if (!riuscita) "Ricerca NON riuscita (questo è un errore tecnico): ${problemi.joinToString("; ")}"
             else Ricerca.perIlModello(testo, fonti, problemi)
+        // Come compare in chat: la domanda che è uscita davvero (dopo il guardiano), poi la scheda.
+        val inChat get() = "«${Testi.corto(chiesto, 140)}»\n\n" + if (riuscita) scheda else "${Ricerca.NON_RIUSCITA} ${problemi.joinToString("; ")}"
+    }
+
+    /**
+     * Più domande, cercate insieme (02/10/2026, sera): una per posto, perché una domanda sola su cinque città trovava
+     * solo la prima. In chat una scheda sola; allo Shell i risultati uno dopo l'altro.
+     */
+    suspend fun cercaNelWebTutte(domande: List<String>): String {
+        val d = domande.map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(Ricerca.DOMANDE_MAX)
+        if (d.size <= 1) return cercaNelWeb(d.firstOrNull().orEmpty()).perIlModello
+        val trovati = kotlinx.coroutines.coroutineScope { d.map { q -> async { cercaNelWeb(q, mostra = false) } }.awaitAll() }
+        archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, testo = trovati.joinToString("\n\n") { it.inChat },
+            istante = ora, modello = modelloPer(Compito.RICERCA), costo = trovati.sumOf { it.costo }.takeIf { it > 0 }, temperatura = temperaturaDi(Compito.RICERCA)))
+        return trovati.joinToString("\n\n") { "Domanda «${it.chiesto}»:\n${it.perIlModello}" }
     }
 
     /**
@@ -404,16 +419,16 @@ class Shell(
             }
             r.costo?.let { archivio.registraCosto(YearMonth.now().toString(), it) }
             val testo = Testi.senzaFinteNote(r.testo)
-            Trovato(testo, r.fonti, Ricerca.problemi(testo, r.fonti, chiesto), r.costo ?: 0.0)
+            Trovato(testo, r.fonti, Ricerca.problemi(testo, r.fonti, chiesto), r.costo ?: 0.0, chiesto)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            Trovato("", emptyList(), listOf("la ricerca non è riuscita: ${e.message ?: e.javaClass.simpleName}"), 0.0)
+            Trovato("", emptyList(), listOf("la ricerca non è riuscita: ${e.message ?: e.javaClass.simpleName}"), 0.0, chiesto)
         }
         registraTurno(compito, modello, t, false, emptyList(), 0, false, false, errore = !trovato.riuscita, trovato.costo,
             listOf(if (!trovato.riuscita) "ricerca web non riuscita: ${Testi.corto(trovato.problemi.joinToString("; "), 200)}"
                 else "ricerca web: ${trovato.fonti.size} fonti" + if (trovato.problemi.isNotEmpty()) ", ${trovato.problemi.size} avvisi" else ""))
-        if (mostra && trovato.testo.isNotBlank()) archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, testo = "«${Testi.corto(chiesto, 140)}»\n\n" + trovato.scheda,
+        if (mostra && trovato.testo.isNotBlank()) archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, testo = trovato.inChat,
             istante = ora, modello = modello, costo = trovato.costo.takeIf { it > 0 }, temperatura = t))
         return trovato
     }
@@ -1071,7 +1086,7 @@ class Shell(
     private suspend fun lettura(v: Validazione.Lettura): String = when (v.nome) {
         "leggi_documento" -> archivio.leggiDocumento(Azioni.stringa(v.argomenti, "titolo").orEmpty())
         "cerca" -> archivio.cerca(Azioni.stringa(v.argomenti, "testo").orEmpty())
-        "cerca_nel_web" -> cercaNelWeb(Azioni.stringa(v.argomenti, "domanda").orEmpty()).perIlModello
+        "cerca_nel_web" -> cercaNelWebTutte(listOfNotNull(Azioni.stringa(v.argomenti, "domanda")) + Azioni.elenco(v.argomenti, "domande"))
         "leggi_misure" -> {
             val tipo = Azioni.stringa(v.argomenti, "tipo")?.uppercase()?.let { t -> TipoMisura.entries.find { it.name == t } }
             if (tipo == null) "Tipo di misura sconosciuto." else archivio.leggiMisure(tipo, Azioni.intero(v.argomenti, "giorni", 30))

@@ -137,6 +137,9 @@ class SchermateTest {
                 listOf(it.resonance.adam.logica.Consulente.Fonte("https://developers.meta.com/wearables/faq/", "Wearables FAQ", "developers.meta.com")), emptyList(), emptyList())))
         db.messaggi().inserisci(Messaggio(ruolo = Ruolo.BALTHASAR, istante = t + 7, modello = "moonshotai/kimi-k2.6", temperatura = 0.85, motore = "intensità media",
             testo = "· E se il primo paio fosse di prova, e il vero acquisto dopo un mese di kit?\n· Il reso diventa un esperimento, non una rete."))
+        // La ricerca rapida (02/10/2026, sera): in chat chiusa, una riga; si apre toccandola.
+        db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, istante = t + 7, modello = "perplexity/sonar", costo = 0.012,
+            testo = "«trattorie a Bracciano»\n\nDati al: 2 ottobre 2026\n- Trattoria Da Peppe, Bracciano — 4,6 su 812 recensioni [1]\n\nFonti (dal motore di ricerca):\n1. Tripadvisor — https://www.tripadvisor.it/x"))
         // Segui (02/10/2026): una cosa seguita, con la lettura di oggi e le sue fonti.
         val seguita = db.segui().inserisci(it.resonance.adam.dati.Osservazione(cosa = "Gazprom in borsa", domanda = "prezzo di chiusura",
             inizio = java.time.LocalDate.now().minusDays(2).toString(), fine = java.time.LocalDate.now().plusDays(4).toString(), creata = 1))
@@ -159,7 +162,7 @@ class SchermateTest {
             Evento("Ferie", oggi.plusDays(1).atStartOfDay(), oggi.plusDays(2).atStartOfDay(), true),
         ))
         regola.setContent { TemaResonance { App(vm, sistema) { it() } } }
-        regola.waitUntil(10_000) { vm.istantanea.value.misure.size >= 90 && vm.istantanea.value.rituali.size == 2 && vm.chat.value.size == 9 }
+        regola.waitUntil(10_000) { vm.istantanea.value.misure.size >= 90 && vm.istantanea.value.rituali.size == 2 && vm.chat.value.size == 10 }
 
         // Il tour del primo avvio (ui/Tour.kt). Se parte da solo lo dice TourTest sulla logica pura: qui il database è
         // condiviso con altri test e l'esito dipenderebbe dall'ordine. Lo si apre come da Setup → Rivedi il tour.
@@ -218,6 +221,11 @@ class SchermateTest {
         regola.onNodeWithText("CONSULENTE ESTERNO · RICERCA WEB").assertExists()
         regola.onNodeWithText("▸ Consulente · 2 in cartella · 1/10").assertExists()
         scatta("3d-riunione-chiusa")
+        regola.onNode(androidx.compose.ui.test.hasScrollToNodeAction()).performScrollToNode(androidx.compose.ui.test.hasText("tocca per aprire", substring = true))
+        regola.onNodeWithText("▸ 1 fonti · Dati al: 2 ottobre 2026 · tocca per aprire").assertExists()
+        regola.onNodeWithText("Trattoria Da Peppe", substring = true).assertDoesNotExist()
+        regola.onNodeWithText("▸ 1 fonti · Dati al: 2 ottobre 2026 · tocca per aprire").performClick()
+        regola.onNodeWithText("Trattoria Da Peppe", substring = true).assertExists()
         regola.onNodeWithTag("cartella").performClick()
         regola.onNodeWithText("Manda (2)").assertExists()
         scatta("3e-riunione-cartella")

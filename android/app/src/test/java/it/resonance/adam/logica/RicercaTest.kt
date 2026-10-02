@@ -56,4 +56,17 @@ class RicercaTest {
         assertTrue(Ricerca.domandaDelGiorno(g, prima = true).contains("ultimo anno"))
         assertEquals("prezzo di chiusura", Ricerca.domandaDelGiorno(g, prima = false))
     }
+
+    // La scheda della ricerca rapida in chat, chiusa (02/10/2026, sera): una riga che dice cosa c'è dentro.
+    @Test fun laRicercaChiusaSiRiassumeInUnaRiga() {
+        val una = "«trattorie a Bracciano»\n\n" + Ricerca.scheda("${Ricerca.DATA} 2 ottobre 2026\n- Da Peppe [1]", listOf(fonte, fonte.copy(url = "https://b.it/y")), listOf("avviso"))
+        assertEquals("2 fonti · Dati al: 2 ottobre 2026 · ⚠ 1", Ricerca.riassunto(una))
+        val due = una + "\n\n«trattorie a Tolfa»\n\n${Ricerca.NON_RIUSCITA} HTTP 500"
+        assertEquals("2 ricerche · 2 fonti · ⚠ 1 · una non riuscita", Ricerca.riassunto(due))
+        // La ricerca a fondo e Segui sono il risultato: restano aperte.
+        assertEquals(null, Ricerca.riassunto("Ricerca a fondo · «x»"))
+        assertEquals(null, Ricerca.riassunto("Segui · Gazprom · giorno 1 di 3"))
+        // Il nome di un locale scritto «a cammello» non è un sospetto.
+        assertTrue(Ricerca.problemi("${Ricerca.DATA} oggi\nTrattoria MagnaMagna, Viterbo", listOf(fonte), "trattorie a Viterbo").isEmpty())
+    }
 }
