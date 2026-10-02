@@ -23,12 +23,9 @@ object Ricerca {
     // Niente esempio con un contenuto: il 02/10 «1 ottobre 2026, chiusura» (borsa) è finito nella risposta su un ristorante.
     const val SENZA_DATA = "non indicata"
     val FORMA = "Rispondi in italiano, al massimo $PAROLE_MAX parole. La prima riga è «$DATA» seguita dalla data più recente dei dati " +
-        "che riporti, presa dalle fonti (giorno, mese e anno); se le fonti non la dicono, «$DATA $SENZA_DATA». " +
-        "Ogni numero porta la sua data e la sua unità (valuta, percentuale). " +
-        "Se un dato non lo trovi, scrivi «non trovato»: non stimarlo mai. Se le fonti non sono d'accordo, dillo con i due numeri. " +
-        "Tieni separati i fatti dalla tua lettura, che va in fondo, in una riga che comincia con «Lettura:». " +
-        "Se la domanda chiede posti, negozi o prodotti, rispondi con un elenco: uno per riga, nome, dove, il dato che lo distingue " +
-        "(voto e numero di recensioni, prezzo), il numero della fonte. Niente premesse."
+        "che riporti, presa dalle fonti (giorno, mese e anno); se le fonti non la dicono, «$DATA $SENZA_DATA». " + Incrocio.FORMA + " " +
+        "Ogni numero porta la sua data e la sua unità (valuta, percentuale). Se un dato non lo trovi, scrivi «non trovato»: non stimarlo mai. " +
+        "In fondo, separata, la tua lettura in una riga che comincia con «Lettura:»."
 
     fun richiesta(domanda: String) = "$domanda\n\n$FORMA"
 
@@ -38,6 +35,7 @@ object Ricerca {
         val data = testo.lineSequence().map { it.trim().trimStart('*', '_', '#', ' ') }.firstOrNull { it.startsWith(DATA, ignoreCase = true) }
         if (data == null) add("la risposta non dice di quando sono i dati")
         else if (data.contains(SENZA_DATA, ignoreCase = true)) add("le fonti non dicono di quando sono i dati")
+        if (Incrocio.elementi(testo, fonti, "").isEmpty()) add("la risposta non è nella forma a righe: il programma non ha potuto incrociarla")
         Consulente.sospette(testo, fonti, listOf(domanda), nomi = false).takeIf { it.isNotEmpty() }?.let { add("citati senza averli trovati fra le fonti: ${it.joinToString(", ")}") }
     }
 
@@ -70,8 +68,17 @@ object Ricerca {
      * La riga che si vede in chat a scheda chiusa (02/10/2026, sera): la ricerca è materiale, la risposta è dello Shell.
      * Null = non è una ricerca rapida (una ricerca a fondo, una lettura di Segui, un resoconto restano aperti).
      */
+    const val INCROCIO = "Incrocio del programma:"
+
     fun riassunto(scheda: String): String? {
         if (!scheda.startsWith("«")) return null
+        // La scheda col motore dell'incrocio: la seconda riga dice già quanto ha trovato.
+        scheda.lines().getOrNull(1)?.takeIf { it.startsWith(INCROCIO) }?.let { r ->
+            val caselle = scheda.lines().first().split(" · ").size
+            val avvisi = scheda.lines().count { it.startsWith("⚠") }
+            return listOfNotNull("$caselle " + if (caselle == 1) "ricerca" else "ricerche", r.removePrefix(INCROCIO).trim(),
+                if (avvisi > 0) "⚠ $avvisi" else null, if (scheda.contains(NON_RIUSCITA)) "una non riuscita" else null).joinToString(" · ")
+        }
         val ricerche = scheda.lines().count { it.startsWith("«") }
         val fonti = Regex("(?m)^\\d+\\. .* — https?://").findAll(scheda).count()
         val avvisi = scheda.lines().count { it.startsWith("⚠") }

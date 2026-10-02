@@ -180,11 +180,13 @@ sealed class Proposta {
     // La ricerca a fondo (02/10/2026, logica/AFondo.kt): la propone lo Shell, la autorizza il Ghost, con la stima del
     // programma davanti. Le sotto-domande sono «tipo: domanda».
     @Serializable @SerialName("ricerca_a_fondo")
-    data class RicercaAFondo(val domanda: String, val sotto: List<String>, val stima: String = "") : Proposta() {
+    data class RicercaAFondo(val domanda: String, val sotto: List<String>, val stima: String = "",
+                             // La mappa come casella in più (logica/Mappa.kt), facoltativa: dove, entro quanti km, cosa.
+                             val vicinoA: String = "", val km: Int = 0, val osm: List<String> = emptyList()) : Proposta() {
         override fun descrizione() = "Ricerca a fondo: «${Testi.corto(domanda, 120)}», ${sotto.size} ricerche mirate (" +
-            sotto.mapNotNull { AFondo.sotto(it)?.tipo?.etichetta }.distinct().joinToString(", ") + ")" +
+            (sotto.mapNotNull { AFondo.sotto(it)?.tipo?.etichetta }.distinct() + if (osm.isNotEmpty()) listOf("mappa") else emptyList()).joinToString(", ") + ")" +
             if (stima.isNotBlank()) ". Costo stimato dal programma: $stima" else ""
-        override fun dettaglio() = sotto.joinToString("\n") { "· $it" }
+        override fun dettaglio() = (sotto.map { "· $it" } + if (osm.isNotEmpty()) listOf("· mappa: ${osm.joinToString(" ")} entro $km km da $vicinoA") else emptyList()).joinToString("\n")
     }
 
     @Serializable @SerialName("lettera_architetto")
@@ -338,15 +340,16 @@ object Azioni {
             schema(listOf("titolo"), mapOf("titolo" to s("Titolo o parte del titolo del documento")))),
         // La ricerca web (02/10/2026): eseguita subito, senza conferma, perché non scrive niente. La risposta, con le
         // fonti del motore e gli avvisi del programma, compare anche in chat: il Ghost vede da dove viene ciò che dici.
-        // Più domande insieme (02/10/2026, sera): una domanda sola su cinque città ha trovato solo il paese del Ghost. Un
-        // motore cerca bene un posto per volta: il programma le fa partire insieme.
-        Strumento("cerca_nel_web", Effetto.LETTURA, "Cerca nel web un fatto del mondo di oggi (prezzi, notizie, orari, dati pubblici, locali e negozi). " +
-            "Risponde con la data dei dati e le fonti vere del motore di ricerca; il Ghost la vede in chat. Usala invece di dire che non hai internet; " +
-            "non usarla per ciò che sta già in Adam (per quello c'è cerca). Una domanda per posto: se la richiesta copre una zona («entro mezz'ora da qui») " +
-            "o più città, elenca tu i paesi e metti una domanda per paese in domande (fino a ${Ricerca.DOMANDE_MAX}), mai tutte le città in una domanda sola. " +
-            "Circa un centesimo a domanda.",
-            schema(listOf("domanda"), mapOf("domanda" to s("La domanda per la ricerca, precisa: cosa, dove, per quale periodo"),
-                "domande" to lista("Altre domande, una per posto o per argomento, cercate insieme alla prima (fino a ${Ricerca.DOMANDE_MAX} in tutto)")))),
+        // Più caselle insieme (02/10/2026, sera): una domanda sola su cinque città ha trovato solo il paese del Ghost. E
+        // l'incrocio (notte, logica/Incrocio.kt): le caselle si incrociano, non si affiancano.
+        Strumento("cerca_nel_web", Effetto.LETTURA, "Cerca nel mondo di oggi (prezzi, notizie, orari, dati pubblici, posti, annunci, persone) e INCROCIA: " +
+            "il programma riconosce lo stesso elemento in fonti diverse, conta le fonti indipendenti e mette in cima ciò che più fonti confermano. " +
+            "Il Ghost vede la scheda in chat. Usala invece di dire che non hai internet; non per ciò che sta già in Adam (per quello c'è cerca). " +
+            "Scomponi tu la domanda in caselle lungo gli assi che contano: dove (un paese per casella, mai cinque città in una), che tipo di fonte " +
+            "(recensioni, forum, siti di annunci, fonti ufficiali), quale periodo. Fino a ${Ricerca.DOMANDE_MAX} caselle in domande, più la mappa " +
+            "(osm) quando cerchi posti: la mappa dice che esistono e dove, le ricerche dicono come sono. Circa un centesimo a casella; la mappa è gratis.",
+            schema(listOf("domanda"), mapOf("domanda" to s("La prima casella: cosa, dove, da che tipo di fonte, per quale periodo"),
+                "domande" to lista("Le altre caselle, una per posto, per tipo di fonte o per periodo (fino a ${Ricerca.DOMANDE_MAX} in tutto)")) + CAMPI_MAPPA)),
         Strumento("cerca", Effetto.LETTURA, "Cerca un testo nel diario, nei documenti e nei quaderni. Usalo prima di dire che una cosa non esiste.",
             schema(listOf("testo"), mapOf("testo" to s("Parole da cercare")))),
         Strumento("leggi_misure", Effetto.LETTURA, "Serie giornaliera di una misura, per quando la sintesi non basta.",
@@ -498,10 +501,11 @@ object Azioni {
                 "e cerca_nel_web non basta. Costa di più: il programma mostra la stima al Ghost, che deve approvarla. Una per volta. " +
                 "Tu scomponi la domanda in ${AFondo.SOTTO_MIN}–${AFondo.SOTTO_MAX} sotto-domande, ciascuna col tipo di fonte davanti " +
                 "(${AFondo.Tipo.entries.joinToString(", ") { it.name.lowercase() }}), per esempio «forum: avvistamenti di trichechi a Crystal River nel 2025». " +
-                "Se la domanda copre una zona, dividi anche per posto: «recensioni: ristoranti eritrei a Viterbo», «recensioni: ristoranti eritrei a Civitavecchia». " +
+                "Se la domanda copre una zona, dividi anche per posto: «recensioni: ristoranti eritrei a Viterbo», «recensioni: ristoranti eritrei a Civitavecchia»; " +
+                "e se cerchi posti aggiungi la mappa (osm, vicino_a, km). Il programma incrocia gli elementi di tutti gli strati. " +
                 "Quando serve, proponila con questo strumento: non chiedere a parole «vuoi che faccia una ricerca a fondo?», il gesto del Ghost è Conferma.",
             schema(listOf("domanda", "sotto"), mapOf("domanda" to s("La domanda del Ghost, intera"),
-                "sotto" to lista("Le sotto-domande, ognuna «tipo: domanda»")))),
+                "sotto" to lista("Le sotto-domande, ognuna «tipo: domanda»")) + CAMPI_MAPPA)),
         Strumento("segui", Effetto.SCRITTURA,
             "Propone di seguire una cosa del mondo per alcuni giorni (un titolo in borsa, una notizia, un prezzo): ogni giorno il programma fa la ricerca web, " +
                 "la notifica e la riga sullo Specchio; alla fine tu scrivi il resoconto, che si presenta da solo. La prima lettura parte appena il Ghost conferma. " +
@@ -535,6 +539,28 @@ object Azioni {
             })
         }
     }
+
+    data class RichiestaMappa(val vicinoA: String, val km: Int, val osm: List<String>) {
+        val filtri get() = Mappa.filtri(osm).orEmpty()
+    }
+
+    /** La casella della mappa, se lo Shell l'ha chiesta: dove, entro quanti km, i filtri OpenStreetMap. Null se non c'è. */
+    fun mappa(a: JsonObject): RichiestaMappa? {
+        val osm = elenco(a, "osm")
+        if (osm.isEmpty()) return null
+        if (Mappa.filtri(osm) == null) rifiuta("osm: filtri nella forma di OpenStreetMap, «chiave=valore» o «chiave=a|b» (per esempio amenity=restaurant, cuisine=ethiopian|eritrean)")
+        val dove = a.testo("vicino_a") ?: rifiuta("con osm serve vicino_a: il paese o la città da cui contare i km")
+        val km = intero(a, "km", 20)
+        if (km !in 1..Mappa.KM_MAX) rifiuta("km da 1 a ${Mappa.KM_MAX}")
+        return RichiestaMappa(dove, km, osm)
+    }
+
+    // I campi della mappa, uguali per la ricerca rapida e per quella a fondo.
+    private val CAMPI_MAPPA get() = mapOf(
+        "vicino_a" to s("Con osm: il paese o la città da cui contare la distanza"),
+        "km" to n("Con osm: entro quanti km in linea d'aria (1–${Mappa.KM_MAX}); mezz'ora d'auto in campagna sono circa 25 km"),
+        "osm" to lista("Facoltativo: i filtri OpenStreetMap di ciò che cerchi, «chiave=valore» o «chiave=a|b», per esempio amenity=restaurant e " +
+            "cuisine=ethiopian|eritrean, oppure healthcare=doctor, shop=car. La mappa dice che il posto esiste e dove: il programma lo incrocia con le altre fonti"))
 
     private fun JsonObject.testo(k: String) = this[k]?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }?.trim()?.takeIf { it.isNotEmpty() }
     private fun JsonObject.numero(k: String) = this[k]?.let { el ->
@@ -652,7 +678,9 @@ object Azioni {
             val domanda = a.testo("domanda").orEmpty()
             val sotto = elenco(a, "sotto").map { it.trim() }.filter { it.isNotEmpty() }
             AFondo.difetti(domanda, sotto, regole.ricercheInAttesa).takeIf { it.isNotEmpty() }?.let { rifiuta(it.joinToString("; ")) }
-            Proposta.RicercaAFondo(domanda, sotto, AFondo.testo(AFondo.stima(sotto.size, regole.prezzoAFondo, regole.prezzoSintesi)))
+            val m = mappa(a)
+            Proposta.RicercaAFondo(domanda, sotto, AFondo.testo(AFondo.stima(sotto.size, regole.prezzoAFondo, regole.prezzoSintesi)),
+                m?.vicinoA.orEmpty(), m?.km ?: 0, m?.osm.orEmpty())
         }
         "scrivi_all_architetto" -> {
             val oggetto = a.testo("oggetto")?.takeIf { it.length <= 120 } ?: rifiuta("oggetto mancante o più lungo di 120 caratteri")

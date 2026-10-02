@@ -18,12 +18,12 @@ class RicercaTest {
     @Test fun laFormaSiDiceESiControllaConLaStessaCostante() {
         assertTrue(Ricerca.FORMA.contains(Ricerca.DATA))
         // Con fonti e con la data: niente da dire.
-        assertTrue(Ricerca.problemi("${Ricerca.DATA} 1 ottobre\nGazprom 128 RUB", listOf(fonte), "gazprom").isEmpty())
+        assertTrue(Ricerca.problemi("${Ricerca.DATA} 1 ottobre\n- Gazprom | MOEX | 128 RUB [1]", listOf(fonte), "gazprom").isEmpty())
         // Anche se il modello mette la riga in grassetto.
-        assertTrue(Ricerca.problemi("**${Ricerca.DATA}** 1 ottobre", listOf(fonte), "gazprom").isEmpty())
+        assertTrue(Ricerca.problemi("**${Ricerca.DATA}** 1 ottobre\n- Gazprom | MOEX | 128 RUB [1]", listOf(fonte), "gazprom").isEmpty())
         val senza = Ricerca.problemi("Gazprom è a 130", emptyList(), "gazprom")
         assertTrue(senza.any { it.contains("non ha restituito fonti") } && senza.any { it.contains("di quando") })
-        assertTrue(Ricerca.problemi("${Ricerca.DATA} ${Ricerca.SENZA_DATA}", listOf(fonte), "x").single().contains("le fonti non dicono"))
+        assertTrue(Ricerca.problemi("${Ricerca.DATA} ${Ricerca.SENZA_DATA}\n- Da Peppe | Tolfa | 4,5/5 [1]", listOf(fonte), "x").single().contains("le fonti non dicono"))
         assertTrue(!Ricerca.FORMA.contains("chiusura"))
         // Un sito citato che non è fra le fonti si dice.
         assertTrue(Ricerca.problemi("${Ricerca.DATA} oggi\nsecondo borsainventata.com", listOf(fonte), "gazprom").any { it.contains("borsainventata.com") })
@@ -67,6 +67,6 @@ class RicercaTest {
         assertEquals(null, Ricerca.riassunto("Ricerca a fondo · «x»"))
         assertEquals(null, Ricerca.riassunto("Segui · Gazprom · giorno 1 di 3"))
         // Il nome di un locale scritto «a cammello» non è un sospetto.
-        assertTrue(Ricerca.problemi("${Ricerca.DATA} oggi\nTrattoria MagnaMagna, Viterbo", listOf(fonte), "trattorie a Viterbo").isEmpty())
+        assertTrue(Ricerca.problemi("${Ricerca.DATA} oggi\n- Trattoria MagnaMagna | Viterbo | 4,7/5 [1]", listOf(fonte), "trattorie a Viterbo").isEmpty())
     }
 }

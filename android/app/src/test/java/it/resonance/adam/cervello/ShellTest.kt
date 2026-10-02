@@ -1072,7 +1072,7 @@ class ShellTest {
     @Test fun loShellCercaNelWebConLeFontiDelMotoreEIlGhostLeVede() = runBlocking {
         db.profilo().salva(it.resonance.adam.dati.Profilo(nome = "Flavio", nomiProtetti = "PhysioAlba"))
         val m = FintoModello(chiama("cerca_nel_web", """{"domanda":"Quotazione Gazprom oggi, per PhysioAlba"}"""), testo("Gazprom ha chiuso a 128,4 rubli il 1 ottobre."))
-        m.ricerche += web("Dati al: 1 ottobre 2026, chiusura\nGazprom: 128,4 RUB (−1,2%)\nLettura: in calo da tre giorni.", "moex.com", "investing.com")
+        m.ricerche += web("Dati al: 1 ottobre 2026\n- Gazprom | MOEX | 128,4 RUB (−1,2%) alla chiusura del 1 ottobre [1][2]\nLettura: in calo da tre giorni.", "moex.com", "investing.com")
         shell(m, FintaCassetta()).turno("com'è andata oggi Gazprom?")
         // Al motore va la domanda con la forma, non il prompt di Adam né il nome protetto.
         val inviati = m.aFondo.single().toString()
@@ -1186,12 +1186,12 @@ class ShellTest {
     // Una zona, una domanda per paese (02/10/2026, sera): una domanda sola su cinque città trovava solo la prima.
     @Test fun piuDomandeInsiemeUnaSchedaSola() = runBlocking {
         val m = FintoModello(chiama("cerca_nel_web", """{"domanda":"trattorie a Bracciano","domande":["trattorie a Tolfa","trattorie a Manziana","trattorie a Bracciano"]}"""), testo("- Da Peppe, Bracciano"))
-        m.perDomanda = { d -> web("Dati al: 2 ottobre 2026\n- " + (if ("Tolfa" in d) "La Lestra, Tolfa" else if ("Manziana" in d) "Il Pozzo, Manziana" else "Da Peppe, Bracciano") + " [1]", "tripadvisor.it") }
+        m.perDomanda = { d -> web("Dati al: 2 ottobre 2026\n- " + (if ("Tolfa" in d) "La Lestra | Tolfa" else if ("Manziana" in d) "Il Pozzo | Manziana" else "Da Peppe | Bracciano") + " | 4,5/5 [1]", "tripadvisor.it") }
         shell(m, FintaCassetta()).turno("trattorie entro mezz'ora da qui")
         // Tre ricerche (il doppione no), una scheda sola in chat, e lo Shell le riceve tutte.
         assertEquals(3, m.aFondo.size)
         val r = db.messaggi().elenco().single { it.ruolo == Ruolo.RICERCA }.testo
-        assertEquals("3 ricerche · 3 fonti", it.resonance.adam.logica.Ricerca.riassunto(r))
+        assertEquals("3 ricerche · 3 elementi, 0 confermati da più fonti", it.resonance.adam.logica.Ricerca.riassunto(r))
         val alModello = m.ricevuti[1].last().toString()
         assertTrue(alModello, alModello.contains("La Lestra") && alModello.contains("Il Pozzo") && alModello.contains("Da Peppe"))
     }
@@ -1213,6 +1213,40 @@ class ShellTest {
         assertTrue("crea_evento" in m.nomiStrumenti[2])
         val t = db.turni().ultimi(1).single().strumenti
         assertTrue(t, t.contains("aperto il reparto lavagna") && t.contains("prompt ") && t.contains("strumenti (nucleo"))
+    }
+
+    // L'incrocio (02/10/2026, notte): le caselle e la mappa, lo stesso posto riconosciuto in fonti diverse, in cima il più confermato.
+    private class FintoOsm(val luoghi: List<it.resonance.adam.logica.Mappa.Luogo>, val errore: String? = null) : Osm() {
+        val chiesti = mutableListOf<Triple<String, Int, List<it.resonance.adam.logica.Mappa.Filtro>>>()
+        override suspend fun cerca(vicinoA: String, km: Int, filtri: List<it.resonance.adam.logica.Mappa.Filtro>): Risposta {
+            chiesti += Triple(vicinoA, km, filtri); return Risposta(luoghi, errore)
+        }
+    }
+
+    @Test fun laRicercaIncrociaLeCaselleELaMappa() = runBlocking {
+        val m = FintoModello(chiama("cerca_nel_web", """{"domanda":"recensioni ristoranti eritrei vicino a Canale Monterano","domande":["forum ristoranti eritrei Roma nord"],
+            "vicino_a":"Canale Monterano","km":40,"osm":["amenity=restaurant","cuisine=eritrean|ethiopian"]}"""), testo("- Asmara, Bracciano: 3 fonti"))
+        m.perDomanda = { d -> if ("forum" in d) web("Dati al: 1 ottobre 2026\n- Ristorante Asmara | Bracciano | «injera come ad Asmara» [1]", "reddit.com")
+            else web("Dati al: 2 ottobre 2026\n- Asmara | Bracciano | 4,7/5 su 210 recensioni [1]\n- Sapori d'Africa | Viterbo | 4,1/5 [1]", "tripadvisor.it") }
+        val osm = FintoOsm(listOf(it.resonance.adam.logica.Mappa.Luogo("Asmara", "Bracciano", 8.0, "eritrean", "https://www.openstreetmap.org/node/1"),
+            it.resonance.adam.logica.Mappa.Luogo("Addis", "Anguillara", 15.0, "ethiopian", "https://www.openstreetmap.org/node/2")))
+        Shell(archivio, imp, m, FintoMondo(), FintaCassetta(), osm).turno("ristoranti eritrei entro un'ora da qui")
+        // Alla mappa va il paese e i filtri, nient'altro.
+        assertEquals("Canale Monterano", osm.chiesti.single().first)
+        assertEquals(listOf("amenity", "cuisine"), osm.chiesti.single().third.map { it.chiave })
+        val r = db.messaggi().elenco().single { it.ruolo == Ruolo.RICERCA }.testo
+        assertEquals("3 ricerche · 2 elementi, 1 confermati da più fonti; 2 sulla mappa", it.resonance.adam.logica.Ricerca.riassunto(r))
+        // Lo Shell riceve l'incrocio: Asmara in cima con tre fonti (recensioni, forum, mappa); Addis solo sulla mappa.
+        val alModello = m.ricevuti[1].last().toString()
+        assertTrue(alModello, alModello.contains("1. Asmara — Bracciano") && alModello.contains("3 fonti indipendenti") && alModello.contains("Sulla mappa, senza nessuna fonte sul web: 1 (Addis, Anguillara)"))
+        assertTrue(alModello, alModello.indexOf("Asmara") < alModello.indexOf("Sapori d'Africa"))
+    }
+
+    @Test fun unFiltroDellaMappaSbagliatoTornaAlModello() = runBlocking {
+        val m = FintoModello(chiama("cerca_nel_web", """{"domanda":"ristoranti","vicino_a":"Tolfa","osm":["ristoranti etnici"]}"""), testo("Riprovo."))
+        Shell(archivio, imp, m, FintoMondo(), FintaCassetta(), FintoOsm(emptyList())).turno("ristoranti")
+        assertTrue(m.ricevuti[1].last().toString().contains("Ricerca non fatta: osm: filtri nella forma di OpenStreetMap"))
+        assertTrue(m.aFondo.isEmpty())
     }
 
     @Test fun seguireDiceQuantoCosta() = runBlocking {

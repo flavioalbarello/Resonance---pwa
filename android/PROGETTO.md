@@ -694,6 +694,35 @@ cede: la sera del 02/10 non è mancato il motore, è mancato il piano.
 piano, non solo alla verifica. Proposta di prima prova, sul caso fallito: la ricetta «posti in una zona» (paesi entro N
 minuti da OpenStreetMap, una ricerca per paese, unione e ordine fatti dal programma, una riga per posto).
 
+## L'incrocio: un motore per ogni ricerca (02/10/2026, notte; `logica/Incrocio.kt`, `logica/Mappa.kt`)
+
+Il Ghost: *«incrociare i dati è la base dell'intelligenza e dell'efficacia di ogni ricerca»*; *«la ricerca scema la
+posso fare sempre su Google, noi puntiamo a costruire qualcosa di meglio»*. E prima, sulla ricetta «posti in una zona»:
+*«risolverebbe anche un caso più generico? Se no, rifacciamo l'errore di Gazprom»*. Risposta: da sola no. Quindi non
+una ricetta per i ristoranti, ma un motore sotto ogni ricerca.
+
+| passo | chi |
+|---|---|
+| Scomporre la domanda in caselle: dove (un paese per casella), che tipo di fonte, quale sito, quale periodo | il modello |
+| In ogni casella, gli ELEMENTI trovati, uno per riga: «- nome \| dove \| dato [fonte]» (`Incrocio.FORMA`, detta e letta dalla stessa costante) | il modello che cerca |
+| La mappa come casella in più, se si cercano posti: esistono e dove (OpenStreetMap, gratis, esce solo il nome del paese) | il programma |
+| Riconoscere lo stesso elemento in caselle e fonti diverse («Ristorante La Riserva» = «La Riserva»; ma «Da Mario» a Tolfa ≠ «Bar Mario» a Bracciano) | il programma |
+| Contare le fonti indipendenti (domini diversi, la mappa conta una), il livello migliore, i dati affiancati | il programma |
+| Dire i contrasti: numeri diversi fra le fonti (oltre il 15%, i voti con la barra no), una fonte che lo dice chiuso | il programma |
+| Ordinare: in cima ciò che più fonti confermano; «una sola fonte» detto come tale; i posti solo sulla mappa contati in fondo | il programma |
+| La risposta al Ghost, dall'incrocio | lo Shell |
+
+Vale per la ricerca rapida (fino a 4 caselle più la mappa, senza conferma) e per la ricerca a fondo (gli strati più la
+mappa, autorizzata). Provato sul banco su quattro ambiti, perché non diventi la soluzione di un caso solo: ristoranti
+(mappa + recensioni + forum), Mustang usate (stesso modello su due siti, prezzi diversi), trichechi (lo stesso anno da
+un censimento e da un giornale), pediatri («Dott.ssa Maria Rossi» = «Maria Rossi»).
+
+**Limiti, detti.** Due siti che copiano lo stesso dato contano due: dal dominio non si vede la copia. Il riconoscimento
+è per nome: due locali omonimi nello stesso paese si fondono. La distanza è in linea d'aria, non in minuti d'auto. I
+server pubblici di Overpass a volte sono occupati (visto il 02/10): se ne provano tre, e se nessuno risponde la scheda
+lo dice. Non provata qui una risposta vera di Perplexity nella forma a righe: se il modello non la rispetta, la scheda
+dice «non nella forma a righe: il programma non ha potuto incrociarla» e lo Shell riceve il testo intero.
+
 ## Per la prossima riunione (argomenti che l'architetto porta)
 
 | argomento | da dove | il nodo |

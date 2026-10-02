@@ -37,6 +37,7 @@ import it.resonance.adam.logica.Lavagna
 import it.resonance.adam.dati.Ambiguo
 import it.resonance.adam.logica.Taccuino
 import it.resonance.adam.logica.Reparto
+import it.resonance.adam.logica.Incrocio
 import it.resonance.adam.logica.Validazione
 import it.resonance.adam.logica.Edizione
 import kotlinx.coroutines.async
@@ -84,6 +85,7 @@ class Shell(
     private val client: OpenRouter = OpenRouter(),
     private val mondo: Mondo? = null,
     private val cassetta: Cassetta = Cassetta(),
+    private val osm: Osm = Osm(),
 ) {
     data class Esito(val testo: String, val proposte: List<Long>)
 
@@ -391,16 +393,51 @@ class Shell(
     }
 
     /**
-     * Più domande, cercate insieme (02/10/2026, sera): una per posto, perché una domanda sola su cinque città trovava
-     * solo la prima. In chat una scheda sola; allo Shell i risultati uno dopo l'altro.
+     * La ricerca dello Shell (02/10/2026, notte): le caselle cercate insieme, la mappa se chiesta, e l'INCROCIO del
+     * programma (logica/Incrocio.kt). In chat una scheda sola, chiusa: le domande, l'incrocio, poi le ricerche. Allo Shell
+     * l'incrocio e, per ogni casella, la data e gli avvisi; il testo intero solo dove il programma non ha potuto incrociare.
      */
-    suspend fun cercaNelWebTutte(domande: List<String>): String {
+    suspend fun cercaNelWebTutte(domande: List<String>, mappa: Azioni.RichiestaMappa? = null): String {
         val d = domande.map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(Ricerca.DOMANDE_MAX)
-        if (d.size <= 1) return cercaNelWeb(d.firstOrNull().orEmpty()).perIlModello
-        val trovati = kotlinx.coroutines.coroutineScope { d.map { q -> async { cercaNelWeb(q, mostra = false) } }.awaitAll() }
-        archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, testo = trovati.joinToString("\n\n") { it.inChat },
-            istante = ora, modello = modelloPer(Compito.RICERCA), costo = trovati.sumOf { it.costo }.takeIf { it > 0 }, temperatura = temperaturaDi(Compito.RICERCA)))
-        return trovati.joinToString("\n\n") { "Domanda «${it.chiesto}»:\n${it.perIlModello}" }
+        if (d.isEmpty() && mappa == null) return "Ricerca NON riuscita (questo è un errore tecnico): domanda vuota"
+        val (trovati, luoghi) = kotlinx.coroutines.coroutineScope {
+            val ricerche = d.map { q -> async { cercaNelWeb(q, mostra = false) } }
+            val sullaMappa = mappa?.let { m -> async { cercaSullaMappa(m) } }
+            ricerche.awaitAll() to sullaMappa?.await()
+        }
+        val elementi = trovati.flatMap { t -> Incrocio.elementi(t.testo, t.fonti, Testi.corto(t.chiesto, 40)) }
+        val incrociati = Incrocio.incrocia(elementi, luoghi?.luoghi.orEmpty())
+        val tabella = Incrocio.scheda(incrociati)
+        val conferme = incrociati.count { it.domini.size >= 2 }
+        val caselle = trovati.map { "«${Testi.corto(it.chiesto, 80)}»" } + listOfNotNull(mappa?.let { "«mappa: ${it.osm.joinToString(" ")}, ${it.km} km da ${it.vicinoA}»" })
+        val testa = caselle.joinToString(" · ") + "\n${Ricerca.INCROCIO} ${incrociati.count { it.voci.isNotEmpty() }} elementi, $conferme confermati da più fonti" +
+            (luoghi?.let { l -> l.errore?.let { "; $it" } ?: "; ${l.luoghi.size} sulla mappa" } ?: "")
+        archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, istante = ora, modello = modelloPer(Compito.RICERCA),
+            testo = testa + "\n\n" + tabella + trovati.joinToString("") { "\n\n— " + it.inChat },
+            costo = trovati.sumOf { it.costo }.takeIf { it > 0 }, temperatura = temperaturaDi(Compito.RICERCA)))
+        return buildString {
+            appendLine("INCROCIO DEL PROGRAMMA (in cima ciò che più fonti indipendenti confermano; «una sola fonte» va detto come tale):")
+            appendLine(tabella)
+            luoghi?.errore?.let { appendLine("Mappa: $it.") }
+            trovati.forEach { t ->
+                appendLine()
+                append("Casella «${t.chiesto}»: ")
+                when {
+                    !t.riuscita -> appendLine("NON riuscita (errore tecnico): ${t.problemi.joinToString("; ")}")
+                    Incrocio.elementi(t.testo, t.fonti, "").isEmpty() -> appendLine("non incrociata, il testo:\n${t.testo}")
+                    else -> appendLine((t.testo.lineSequence().firstOrNull { it.trim().startsWith(Ricerca.DATA, true) } ?: "data non indicata") +
+                        t.testo.lineSequence().firstOrNull { it.trim().startsWith("Lettura:") }?.let { "\n$it" }.orEmpty())
+                }
+                if (t.riuscita && t.problemi.isNotEmpty()) appendLine("Avvisi (non errori tecnici): ${t.problemi.joinToString("; ")}")
+            }
+        }.trimEnd()
+    }
+
+    suspend fun cercaSullaMappa(m: Azioni.RichiestaMappa): Osm.Risposta {
+        val protetti = Uscita.nomi(archivio.db.profilo().leggi()?.nomiProtetti.orEmpty())
+        // Esce solo il nome del posto, passato dal guardiano come le domande al motore.
+        return runCatching { osm.cerca(Consulente.pulisci(m.vicinoA, protetti), m.km, m.filtri) }
+            .getOrElse { if (it is kotlinx.coroutines.CancellationException) throw it; Osm.Risposta(emptyList(), "la mappa non ha risposto (${it.message ?: it.javaClass.simpleName})") }
     }
 
     /**
@@ -453,16 +490,22 @@ class Shell(
         val sotto = p.sotto.mapNotNull { AFondo.sotto(it) }
         // Gli strati partono insieme (il 02/10, uno dopo l'altro, la ricerca durava minuti ed è caduta tutta), e uno che
         // non riesce si ritenta una volta: il motivo del secondo fallimento resta scritto nella scheda.
-        val trovati = kotlinx.coroutines.coroutineScope {
-            sotto.map { s ->
+        val mappa = p.osm.takeIf { it.isNotEmpty() }?.let { Azioni.RichiestaMappa(p.vicinoA, p.km, it) }
+        val (trovati, luoghi) = kotlinx.coroutines.coroutineScope {
+            val strati = sotto.map { s ->
                 async {
                     val domanda = AFondo.domandaSotto(s, p.domanda)
                     val primo = cercaNelWeb(domanda, mostra = false, compito = Compito.A_FONDO)
                     if (primo.riuscita || controllaSpesa() != null) s to primo
                     else { kotlinx.coroutines.delay(2_000); s to cercaNelWeb(domanda, mostra = false, compito = Compito.A_FONDO).let { it.copy(costo = it.costo + primo.costo) } }
                 }
-            }.awaitAll()
+            }
+            val sullaMappa = mappa?.let { m -> async { cercaSullaMappa(m) } }
+            strati.awaitAll() to sullaMappa?.await()
         }
+        // L'incrocio degli elementi (logica/Incrocio.kt): lo stesso posto, annuncio o anno in strati e fonti diverse.
+        val incrociati = Incrocio.incrocia(trovati.flatMap { (s, t) -> Incrocio.elementi(t.testo, t.fonti, s.tipo.etichetta) }, luoghi?.luoghi.orEmpty())
+        val tabella = if (incrociati.isEmpty()) "" else Incrocio.scheda(incrociati)
         val fonti = AFondo.fonti(trovati.map { it.second.fonti })
         var costo = trovati.sumOf { it.second.costo }
         val riuscite = trovati.count { it.second.riuscita }
@@ -472,12 +515,13 @@ class Shell(
             trovati.forEach { (s, t) -> appendLine(); appendLine("— Ricerca «${s.tipo.etichetta}»: ${s.domanda}"); appendLine(t.testo.ifBlank { "(nessun risultato: ${t.problemi.joinToString("; ")})" }) }
             appendLine(); appendLine("FONTI (numero, livello deciso dal programma, sito):")
             fonti.forEach { appendLine("[${it.n}] ${it.livello.sigla} · ${it.dominio} · ${it.titolo}") }
+            if (tabella.isNotEmpty()) { appendLine(); appendLine("INCROCIO DEGLI ELEMENTI, FATTO DAL PROGRAMMA (in cima i più confermati):"); appendLine(tabella) }
         }
         val sintetizza = modelloSintesi()
         val testo = when {
-            riuscite == 0 -> "Le ${sotto.size} ricerche non sono riuscite, nemmeno al secondo tentativo: il motivo è qui sotto, strato per strato. " +
+            riuscite == 0 && incrociati.isEmpty() -> "Le ${sotto.size} ricerche non sono riuscite, nemmeno al secondo tentativo: il motivo è qui sotto, strato per strato. " +
                 "Non è un «non c'è niente»: non si è potuto guardare."
-            fonti.isEmpty() -> "Le ricerche hanno risposto, ma il motore non ha restituito nessuna fonte: senza provenienza non c'è niente da incrociare."
+            fonti.isEmpty() && incrociati.isEmpty() -> "Le ricerche hanno risposto, ma il motore non ha restituito nessuna fonte: senza provenienza non c'è niente da incrociare."
             else -> runCatching {
                 val messaggi = JsonArray(listOf(
                     buildJsonObject { put("role", "system"); put("content", Ricerca.SISTEMA_INCROCIO + " " + AFondo.FORMA) },
@@ -496,9 +540,11 @@ class Shell(
                 affermazioni.forEach { a -> appendLine("- ${a.testo}"); appendLine("   ${AFondo.etichetta(a)}") }
                 testo.substringAfter(AFondo.SINTESI, "").trim().takeIf { it.isNotEmpty() }?.let { appendLine(); appendLine("${AFondo.SINTESI} $it") }
             }
+            if (tabella.isNotEmpty()) { appendLine(); appendLine(Ricerca.INCROCIO); appendLine(tabella) }
             appendLine()
             appendLine("Gli strati:")
             trovati.forEach { (s, t) -> appendLine(AFondo.esito(s, t.riuscita, t.fonti.size, t.problemi)) }
+            luoghi?.let { appendLine(it.errore?.let { e -> "✗ mappa: $e" } ?: "✓ mappa: ${it.luoghi.size} luoghi") }
             if (fonti.isNotEmpty()) {
                 appendLine()
                 appendLine("Fonti (livello deciso dal programma: A ufficiale/scientifica, B giornalismo, C forum e recensioni, D commerciale, ? non classificata):")
@@ -1120,7 +1166,9 @@ class Shell(
     private suspend fun lettura(v: Validazione.Lettura): String = when (v.nome) {
         "leggi_documento" -> archivio.leggiDocumento(Azioni.stringa(v.argomenti, "titolo").orEmpty())
         "cerca" -> archivio.cerca(Azioni.stringa(v.argomenti, "testo").orEmpty())
-        "cerca_nel_web" -> cercaNelWebTutte(listOfNotNull(Azioni.stringa(v.argomenti, "domanda")) + Azioni.elenco(v.argomenti, "domande"))
+        "cerca_nel_web" -> runCatching { Azioni.mappa(v.argomenti) }.fold(
+            { m -> cercaNelWebTutte(listOfNotNull(Azioni.stringa(v.argomenti, "domanda")) + Azioni.elenco(v.argomenti, "domande"), m) },
+            { e -> "Ricerca non fatta: ${e.message}. Correggi e riprova." })
         "leggi_misure" -> {
             val tipo = Azioni.stringa(v.argomenti, "tipo")?.uppercase()?.let { t -> TipoMisura.entries.find { it.name == t } }
             if (tipo == null) "Tipo di misura sconosciuto." else archivio.leggiMisure(tipo, Azioni.intero(v.argomenti, "giorni", 30))
