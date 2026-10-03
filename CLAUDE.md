@@ -13,6 +13,9 @@ cognitiva/creativa). Implementato come PWA in uso reale da due utenti (Flavio/Gh
   contrario — errore già commesso in passato).
 
 ## V2: l'APK in `android/` (dal 23/09/2026)
+**Sessione nuova sull'APK? Leggi PRIMA `android/PASSAGGIO_2026-10-03.md`** (o il passaggio più recente in `android/`):
+da dove si riparte, accessi, prossimi passi, promemoria per le riunioni, errori da non ripetere.
+
 Nuova istanza nativa (Kotlin, Compose, Room, Health Connect, WorkManager). La PWA in radice resta
 intatta e in uso finché l'APK non la sostituisce. Tutto ciò che riguarda l'APK — perché, mappa, come
 costruire, carenze — sta in `android/PROGETTO.md`. Le regole sotto su Preact/htm/`app.js` valgono per
