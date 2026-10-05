@@ -168,7 +168,18 @@ Il 05/10 il Ghost: niente telefono al collo («un'ostrica, quando basta la perla
 - in studio si sgancia: le lenti restano, la perla va in tasca;
 - nulla di provato da qui.
 
-Il vecchio telefono in casa, collegato al telefono del Ghost (05/10, solo proposta, nulla di costruito):
+Il Ghost conferma il concetto (05/10): **una microcamera da indossare che parla con l'APK**. Il contratto, che resta
+anche se cambia l'oggetto:
+- l'APK chiede «scatta» via Bluetooth;
+- la camera risponde con la foto (JPEG) e il livello della batteria;
+- luce accesa mentre scatta;
+- un tasto sulla camera per scattare a mano;
+- niente resta salvato sulla camera, e una foto va allo Shell solo a comando.
+
+Primo pezzo: XIAO ESP32S3 Sense, batteria LiPo piccola, guscio con clip (circa 25–35 €).
+Da chiedere al Ghost:
+- ha un computer con Chrome per caricare il programma sulla scheda?
+- la batteria va saldata (due fili): lo fa lui o un negozio di elettronica?, collegato al telefono del Ghost (05/10, solo proposta, nulla di costruito):
 - non fa girare Resonance intera, perché due telefoni sarebbero due Adam: fa da **sensore** (sentinella);
 - collegamento consigliato: **Nearby Connections** di Google, telefono a telefono in casa, senza internet né server, cifrato, abbinati una volta;
 - la sentinella giudica sul posto e manda **righe di testo** («prova di basso, 25 minuti, 21:10»), non video; le foto solo su richiesta;
