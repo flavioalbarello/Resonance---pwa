@@ -112,8 +112,10 @@ class TrovaDoveTest {
 
     @Test fun laRichiestaSbagliataTornaConCosaCorreggere() {
         assertTrue(TrovaDove.difetti(TrovaDove.Richiesta("Mannaja Cane")).any { it.contains("serve vicino_a") })
-        // Col paese serve la mappa: senza, il web porta negozi online e recensioni, non posti vicini (05/10).
-        assertTrue(TrovaDove.difetti(TrovaDove.Richiesta("Mannaja Cane", vicinoA = "Bracciano")).any { it.contains("serve osm") })
+        // Senza mappa si cerca lo stesso, e la scheda lo dice: un rifiuto fermava lo Shell (05/10).
+        assertTrue(TrovaDove.difetti(TrovaDove.Richiesta("Mannaja Cane", vicinoA = "Bracciano")).isEmpty())
+        assertTrue(TrovaDove.senzaMappa(TrovaDove.Richiesta("Mannaja Cane", vicinoA = "Bracciano"))!!.contains("shop=books"))
+        assertNull(TrovaDove.senzaMappa(TrovaDove.Richiesta("Mannaja Cane", vicinoA = "Bracciano", osm = listOf("shop=wine"))))
         assertTrue(TrovaDove.difetti(TrovaDove.Richiesta("Mannaja Cane", vicinoA = "Bracciano", luoghi = listOf("Salotto Belvedere"))).isEmpty())
         // Un nome di una parola sola vuole la marca.
         assertTrue(TrovaDove.difetti(TrovaDove.Richiesta("ReAle", vicinoA = "Bracciano", osm = listOf("shop=beverages"))).any { it.contains("produttore") })

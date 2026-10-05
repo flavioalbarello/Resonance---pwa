@@ -453,7 +453,7 @@ class Shell(
         controllaSpesa()?.let { return "Ricerca non fatta: $it" }
         val lettore = lettore ?: return "Ricerca non fatta: il lettore di pagine non è disponibile qui (serve l'app sul telefono)."
         val protetti = Uscita.nomi(archivio.db.profilo().leggi()?.nomiProtetti.orEmpty())
-        val note = mutableListOf<String>()
+        val note = listOfNotNull(TrovaDove.senzaMappa(r)).toMutableList()
         var costo = 0.0
         suspend fun indirizzi(domande: List<String>, perDomanda: Int): RispostaWeb? = runCatching {
             client.cercaIndirizzi(impostazioni.chiave, domande.map { Consulente.pulisci(it, protetti) }, perDomanda)

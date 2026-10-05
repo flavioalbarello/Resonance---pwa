@@ -50,9 +50,6 @@ object TrovaDove {
         if (r.osm.isNotEmpty() && r.vicinoA.isBlank()) add("con osm serve vicino_a: il paese da cui contare i km")
         if (r.km !in 1..Mappa.KM_MAX) add("km da 1 a ${Mappa.KM_MAX}")
         if (r.vicinoA.isBlank() && r.luoghi.none { it.startsWith("http") }) add("serve vicino_a, il paese o la città")
-        // Senza la mappa i candidati vengono solo dal web, che conosce negozi online e recensioni, non i posti vicini (05/10).
-        if (r.vicinoA.isNotBlank() && r.osm.isEmpty() && r.luoghi.isEmpty())
-            add("serve osm: che tipo di posti lo vendono o lo servono, nella forma di OpenStreetMap (per un vino shop=wine|alcohol e amenity=restaurant|bar; per un formaggio shop=cheese|deli|farm; per un libro shop=books)")
         if (r.corto && normalizza(r.produttore).length < 3) add("un nome di una parola sola si trova dappertutto: aggiungi produttore (la marca o chi lo fa)")
     }
 
@@ -204,6 +201,13 @@ object TrovaDove {
      */
     fun dalWeb(fonti: List<Consulente.Fonte>): List<Candidato> = fonti.filter { !aggregatore(it.url) }.distinctBy { sito(it.url) }
         .map { Candidato(it.titolo.ifBlank { it.dominio }.let { t -> Testi.corto(t, 60) }, it.url, origine = Origine.WEB) }
+
+    // Senza la mappa i candidati vengono solo dal web, che conosce negozi online e recensioni, non i posti vicini. Il 05/10
+    // un rifiuto per osm mancante ha fermato lo Shell due volte su quattro (ripeteva la stessa chiamata, poi chiedeva al
+    // Ghost): meglio cercare lo stesso e dirlo nella scheda, con l'esempio, che non cercare.
+    fun senzaMappa(r: Richiesta): String? = if (r.vicinoA.isNotBlank() && r.osm.isEmpty() && r.luoghi.isEmpty())
+        "senza osm: nessun posto vicino dalla mappa, solo pagine dal web. Per i posti, richiama con osm (vino: shop=wine|alcohol, " +
+            "amenity=restaurant|bar; formaggio: shop=cheese|deli; libro: shop=books)" else null
 
     /** Le ricerche sul web di ogni trova_dove: le pagine che nominano la cosa (nel posto e ovunque), più gli indizi dello Shell. */
     fun ricerche(r: Richiesta): List<String> = (listOfNotNull(

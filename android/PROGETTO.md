@@ -723,6 +723,38 @@ server pubblici di Overpass a volte sono occupati (visto il 02/10): se ne provan
 lo dice. Non provata qui una risposta vera di Perplexity nella forma a righe: se il modello non la rispetta, la scheda
 dice «non nella forma a righe: il programma non ha potuto incrociarla» e lo Shell riceve il testo intero.
 
+## «Dove trovo X»: il programma va a vedere (05/10/2026; `logica/TrovaDove.kt`, `cervello/Lettore.kt`, `mondo/LettoreAndroid.kt`)
+
+Prima ricetta della ricerca nuova, decisa col Ghost il 05/10 (PDF con la libreria). Strumento `trova_dove`, nel nucleo.
+
+| passo | chi |
+|---|---|
+| capire: cosa (nome esatto), varianti, produttore, vicino_a, osm | il modello del turno |
+| candidati: mappa (Overpass, ripiego Nominatim), posti nominati, pagine dal web che nominano la cosa (Exa via OpenRouter, `cercaIndirizzi`) | programma |
+| il sito di chi non ce l'ha: una ricerca di indirizzi, il dominio deve portare il nome del posto | programma |
+| aprire: WebView senza schermo (sul telefono); pagina iniziale → link «carta, menu, listino» → se non bastano, la sitemap (robots.txt) | programma |
+| cercare il nome esatto a parole intere; un nome di una parola sola vuole il produttore nella stessa pagina | programma |
+| scheda: posti vicini separati dalle pagine sul web; allo Shell le prove e come riferirle | programma, poi il modello |
+
+**Perché la sitemap.** La carta dei vini del Salotto Belvedere non è collegata da nessuna pagina del sito (né dalla
+iniziale né dal menu): si arriva solo conoscendo l'indirizzo. Sta nella sitemap (robots.txt → sitemap_index →
+post-sitemap → carta-vini). Senza, il programma l'avrebbe mancata anche aprendo il sito giusto.
+
+**Collaudo dal vivo** (Chromium al posto della WebView, `strumenti/lettore-chromium.mjs`; Kimi K2.6; chiave di prova).
+Tre giri, ognuno ha cambiato il codice:
+
+| giro | cosa ha mostrato | cosa è cambiato |
+|---|---|---|
+| 1 | il Salotto, nominato: trovato in 53 s, 3 ¢. Il vino entro 50 km: 0 su 10 siti, 471 s. La risposta ha ignorato due carte dei vini col Mannaja Cane viste da Perplexity. Lo Shell senza fonti di candidati: rifiutato tre volte, ha chiesto al Ghost | le pagine dal web che nominano la cosa entrano sempre fra i candidati; 8 letture al massimo per sito; 4 siti alla volta |
+| 2 | 46–59 s, 4–5 ¢. Ma senza mappa trovava solo pagine web (negozi online, il disciplinare del pecorino contato come «posto»); «ReAle» da solo trovava una pasticceria di Grosseto | posti vicini e pagine web separati nella scheda; marca obbligatoria per i nomi corti |
+| 3 | la mappa da qui non risponde (Overpass in timeout, Nominatim povero: un posto solo entro 50 km); un rifiuto per osm mancante ha fermato lo Shell sul libro | senza osm si cerca lo stesso e la scheda lo dice, con gli esempi |
+
+**Cosa vale e cosa no, oggi.** Il cuore (aprire un sito vero, superare la sfida, trovare la carta anche non collegata,
+dire la frase e il link) funziona dal vivo. I candidati vicini dipendono dalla mappa: da questo contenitore Overpass non
+risponde, quindi la parte «posti entro N km» è provata solo sul banco. Lo Shell ha anche inventato una cosa sopra le
+prove («La Regina del Quartuccio (Liguria)», dall'indirizzo di una pagina): è il passo 2 dell'ordine, il controllo della
+risposta contro le prove.
+
 ## Per la prossima riunione (argomenti che l'architetto porta)
 
 | argomento | da dove | il nodo |
@@ -764,4 +796,7 @@ dice «non nella forma a righe: il programma non ha potuto incrociarla» e lo Sh
 | Ricerca web e Segui dal vivo | Provati sul banco con un motore finto: forma, avvisi, guardiano, letture, resoconto, Specchio. Non provati qui: le risposte vere di Exa, il worker vero alle 17, il costo reale per lettura |
 | Ricerca a fondo dal vivo | Provata sul banco con un motore finto (sotto-domande, livelli, incrocio, stima, costo reale; dal 02/10 sera anche strati in parallelo, ritentativo, motivo dei fallimenti). Il primo tentativo vero (02/10) è fallito in tutti gli strati, e il motivo non si è saputo perché non veniva mostrato: ora si vedrà. Non provati qui: una chiamata vera a Perplexity attraverso OpenRouter (forma presa dal listino e dalla documentazione, non da una risposta vera), il `RicercaWorker` sul telefono |
 | **Il prompt dello Shell cresceva a ogni abilità** (curato il 02/10 notte coi reparti: −59/−69% sul fisso; resta da misurare sul telefono quanto cambia la qualità) (il Ghost, 02/10/2026: *«lo Shell sta rincretinendo man mano che gli diamo abilità?»*) | Misurato sul codice: dal 23/09 al 02/10 le regole fisse sono passate da 46 a 107 righe (da 4,4 a 14,8 mila caratteri) e gli strumenti da 20 a 39 (da 9 a 20 mila caratteri di descrizioni). Ogni turno li porta tutti, qualunque cosa chieda il Ghost: circa 9–10 mila token prima ancora dei dati. Un modello medio (Kimi K2.6) con 39 strumenti e cento regole sbaglia di più a scegliere. Cura proposta, come nella PWA dal 12/09 (−72%): un nucleo fisso più le aree che il turno nomina (`Capacita` ha già le aree), e il numero dei token per turno nel registro, per misurare prima e dopo |
+| `trova_dove` sul telefono | La WebView senza schermo non è provata: al banco gira Chromium con la stessa attesa (`Lettore.attendi`). Da verificare: che superi la sfida del Salotto, che giri anche dentro il lavoro di sistema (TurnoWorker), i tempi veri |
+| `trova_dove`: la mappa | Da qui Overpass non risponde; il ripiego su Nominatim dà al massimo 50 posti per categoria in un riquadro, scelti non per vicinanza. Un paese scritto «Roma Monteverde» Nominatim non lo trova |
+| `trova_dove`: pagine anti-robot dure | Da un indirizzo di centro dati la sfida del Salotto a volte diventa quella interattiva («Our system thinks you might be a robot») e non si supera; dal telefono, con un indirizzo di casa, si suppone di no |
 | Le stime di costo | Sono forbici grossolane (token medi per ricerca). Il costo reale accanto alla stima serve proprio a correggerle coi numeri |
