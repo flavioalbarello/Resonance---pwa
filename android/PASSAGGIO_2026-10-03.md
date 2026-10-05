@@ -177,9 +177,11 @@ anche se cambia l'oggetto:
 - niente resta salvato sulla camera, e una foto va allo Shell solo a comando.
 
 Primo pezzo: XIAO ESP32S3 Sense, batteria LiPo piccola, guscio con clip (circa 25–35 €).
-Da chiedere al Ghost:
-- ha un computer con Chrome per caricare il programma sulla scheda?
-- la batteria va saldata (due fili): lo fa lui o un negozio di elettronica?, collegato al telefono del Ghost (05/10, solo proposta, nulla di costruito):
+Risposte del Ghost (05/10): ha un computer con Chrome; la saldatura la prova lui o un amico.
+- Domanda sua: si usa insieme agli auricolari (JBL Wave Flex)? Sì. Gli auricolari usano il Bluetooth classico (audio),
+  la camera il Bluetooth Low Energy, e il telefono li tiene insieme come fa con un orologio.
+- Da provare: mentre passa una foto (pochi secondi) l'audio può avere un piccolo scatto su alcuni telefoni.
+- Ripiego, se serve: foto via Wi-Fi, al prezzo di più batteria., collegato al telefono del Ghost (05/10, solo proposta, nulla di costruito):
 - non fa girare Resonance intera, perché due telefoni sarebbero due Adam: fa da **sensore** (sentinella);
 - collegamento consigliato: **Nearby Connections** di Google, telefono a telefono in casa, senza internet né server, cifrato, abbinati una volta;
 - la sentinella giudica sul posto e manda **righe di testo** («prova di basso, 25 minuti, 21:10»), non video; le foto solo su richiesta;
