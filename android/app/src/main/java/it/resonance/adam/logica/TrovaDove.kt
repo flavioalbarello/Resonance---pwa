@@ -28,7 +28,12 @@ object TrovaDove {
         val osm: List<String> = emptyList(),
         val indizi: List<String> = emptyList(),
         val luoghi: List<String> = emptyList(),
+        // La marca o il produttore. Per un nome di una parola sola («ReAle») è obbligatorio e deve stare nella stessa
+        // pagina: il 05/10 «ReAle» da solo ha trovato una pasticceria di Grosseto e un distributore che si chiama Reale.
+        val produttore: String = "",
     ) {
+        /** Il nome è di una parola sola: senza il produttore accanto, si trova dappertutto. */
+        val corto get() = normalizza(cosa).split(' ').filter { it.isNotEmpty() }.size < 2
         /** Tutte le forme del nome che il programma cerca: il nome e le varianti, senza doppioni. */
         val forme get() = (listOf(cosa) + varianti).map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { normalizza(it) }
     }
@@ -44,7 +49,11 @@ object TrovaDove {
         if (r.osm.isNotEmpty() && Mappa.filtri(r.osm) == null) add("osm: filtri nella forma di OpenStreetMap, «chiave=valore» o «chiave=a|b»")
         if (r.osm.isNotEmpty() && r.vicinoA.isBlank()) add("con osm serve vicino_a: il paese da cui contare i km")
         if (r.km !in 1..Mappa.KM_MAX) add("km da 1 a ${Mappa.KM_MAX}")
-        if (r.vicinoA.isBlank() && r.luoghi.none { it.startsWith("http") }) add("serve vicino_a (il paese o la città): basta questo e cosa, il resto lo cerca il programma")
+        if (r.vicinoA.isBlank() && r.luoghi.none { it.startsWith("http") }) add("serve vicino_a, il paese o la città")
+        // Senza la mappa i candidati vengono solo dal web, che conosce negozi online e recensioni, non i posti vicini (05/10).
+        if (r.vicinoA.isNotBlank() && r.osm.isEmpty() && r.luoghi.isEmpty())
+            add("serve osm: che tipo di posti lo vendono o lo servono, nella forma di OpenStreetMap (per un vino shop=wine|alcohol e amenity=restaurant|bar; per un formaggio shop=cheese|deli|farm; per un libro shop=books)")
+        if (r.corto && normalizza(r.produttore).length < 3) add("un nome di una parola sola si trova dappertutto: aggiungi produttore (la marca o chi lo fa)")
     }
 
     // ── Il nome nella pagina ──
@@ -70,6 +79,13 @@ object TrovaDove {
         // Un nome spezzato su due righe (un menu impaginato a colonne): si guarda anche il testo tutto di seguito.
         val tutto = " ${normalizza(testo)} "
         return cercate.firstOrNull { tutto.contains(it) }?.let { "«${it.trim()}» nel testo della pagina (impaginato su più righe)" }
+    }
+
+    /** Il nome nella pagina, con la regola del nome corto: se è di una parola sola, nella pagina deve esserci anche il produttore. */
+    fun trova(testo: String, r: Richiesta): String? {
+        val frase = trova(testo, r.forme) ?: return null
+        if (r.corto && !" ${normalizza(testo)} ".contains(" ${normalizza(r.produttore)} ")) return null
+        return frase
     }
 
     // ── Quali link seguire dentro un sito ──
@@ -191,8 +207,8 @@ object TrovaDove {
 
     /** Le ricerche sul web di ogni trova_dove: le pagine che nominano la cosa (nel posto e ovunque), più gli indizi dello Shell. */
     fun ricerche(r: Richiesta): List<String> = (listOfNotNull(
-        r.vicinoA.takeIf { it.isNotBlank() }?.let { "\"${r.cosa}\" $it" },
-        "\"${r.cosa}\" carta menu listino dove si trova",
+        r.vicinoA.takeIf { it.isNotBlank() }?.let { "\"${r.cosa}\" ${r.produttore} $it".replace(Regex("\\s+"), " ") },
+        "\"${r.cosa}\" ${r.produttore} carta menu listino dove si trova".replace(Regex("\\s+"), " "),
     ) + r.indizi).distinct().take(2 + INDIZI_MAX)
 
     /**
@@ -240,15 +256,24 @@ object TrovaDove {
         }
     }
 
-    /** La scheda in chat: la domanda, quanti posti, le prove una per riga. Prima ciò che è trovato. */
+    /**
+     * La scheda in chat. Due parti, perché dicono cose diverse: i POSTI (dalla mappa o nominati) sono luoghi veri vicini;
+     * le PAGINE dal web sono negozi online, recensioni, distributori, carte di locali chissà dove. Il 05/10 erano tutte
+     * insieme e «4 posti lo hanno» contava il disciplinare del pecorino.
+     */
     fun scheda(r: Richiesta, esiti: List<Esito>, note: List<String>): String = buildString {
-        val trovati = esiti.filterIsInstance<Esito.Trovato>()
-        append("$TITOLO «${r.cosa}»")
+        val (web, posti) = esiti.partition { it.candidato.origine == Origine.WEB }
+        val ordine = { e: Esito -> when (e) { is Esito.Trovato -> 0; is Esito.NonTrovato -> 1; is Esito.NonAperto -> 2; is Esito.SenzaSito -> 3 } }
+        append("$TITOLO «${r.cosa}»" + if (r.produttore.isNotBlank()) " (${r.produttore})" else "")
         if (r.vicinoA.isNotBlank()) append(" vicino a ${r.vicinoA}" + if (r.osm.isNotEmpty()) " (${r.km} km)" else "")
-        append("\n${trovati.size} ${if (trovati.size == 1) "posto lo ha" else "posti lo hanno"} su ${esiti.count { it !is Esito.SenzaSito }} siti aperti")
-        append(" · ${esiti.count { it is Esito.NonAperto }} non aperti · ${esiti.count { it is Esito.SenzaSito }} senza sito")
-        esiti.sortedBy { when (it) { is Esito.Trovato -> 0; is Esito.NonTrovato -> 1; is Esito.NonAperto -> 2; is Esito.SenzaSito -> 3 } }
-            .forEach { append("\n").append(riga(it)) }
+        val trovati = posti.count { it is Esito.Trovato }
+        append("\nPosti vicini: $trovati ${if (trovati == 1) "lo ha" else "lo hanno"} su ${posti.count { it !is Esito.SenzaSito }} siti aperti")
+        append(" · ${posti.count { it is Esito.NonAperto }} non aperti · ${posti.count { it is Esito.SenzaSito }} senza sito")
+        posti.sortedBy(ordine).forEach { append("\n").append(riga(it)) }
+        if (web.isNotEmpty()) {
+            append("\nSul web, pagine che lo nominano (negozi online, recensioni, carte; dove siano non è detto): ${web.count { it is Esito.Trovato }} su ${web.size}")
+            web.sortedBy(ordine).forEach { append("\n").append(riga(it)) }
+        }
         note.forEach { append("\n⚠ $it") }
     }
 
@@ -261,6 +286,8 @@ object TrovaDove {
             "«non risulta dal sito», non «non ce l'ha» (una carta cambia, una pagina può mancare). ✗ e ○ = non verificato, e dillo. " +
             "Non aggiungere posti, distanze o disponibilità che non stanno in queste prove o nelle fonti di altre ricerche di questo turno; " +
             "una pagina che lo nomina senza dire dove sia va detta così, col link.")
-        if (esiti.none { it is Esito.Trovato }) append(" Nessun sito lo nomina: dillo chiaramente, e proponi il passo dopo (telefonare o scrivere ai posti più vicini, allargare la zona, il sito del produttore).")
+        append(" Le pagine «sul web» non sono posti vicini: un negozio online si dice negozio online, una recensione non è un punto vendita.")
+        if (esiti.none { it is Esito.Trovato && it.candidato.origine != Origine.WEB })
+            append(" Nessun posto vicino lo nomina sul suo sito: dillo chiaramente, e proponi il passo dopo (telefonare o scrivere ai posti più vicini, allargare la zona, il sito del produttore).")
     }
 }

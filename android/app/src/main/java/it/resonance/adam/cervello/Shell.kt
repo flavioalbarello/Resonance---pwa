@@ -477,7 +477,7 @@ class Shell(
         val daAprire = ordinati.filter { it.url != null }.take(TrovaDove.SITI_MAX)
         val turni = kotlinx.coroutines.sync.Semaphore(4)
         val esiti = kotlinx.coroutines.coroutineScope {
-            daAprire.map { c -> async { turni.withPermit { kotlinx.coroutines.withTimeoutOrNull(VISITA_MS) { visita(lettore, c, r.forme) }
+            daAprire.map { c -> async { turni.withPermit { kotlinx.coroutines.withTimeoutOrNull(VISITA_MS) { visita(lettore, c, r) }
                 ?: TrovaDove.Esito.NonAperto(c, "il sito non ha finito di caricarsi in ${VISITA_MS / 1000} secondi") } } }.awaitAll()
         } + ordinati.filter { it.url == null }.take(TrovaDove.LUOGHI_MAX).map { TrovaDove.Esito.SenzaSito(it) }
         if (esiti.isEmpty()) note += "nessun posto da guardare: allarga la zona o nomina dei posti"
@@ -491,14 +491,14 @@ class Shell(
 
     // Un sito: la pagina iniziale, poi i link che dicono «carta, menu, listino»; se non bastano, la sitemap. Ci si ferma
     // alla prima pagina che nomina la cosa.
-    private suspend fun visita(lettore0: Lettore, c: TrovaDove.Candidato, forme: List<String>): TrovaDove.Esito {
+    private suspend fun visita(lettore0: Lettore, c: TrovaDove.Candidato, r: TrovaDove.Richiesta): TrovaDove.Esito {
         var letture = 0
         val lettore = object : Lettore {
             override suspend fun leggi(url: String) = if (++letture > TrovaDove.LETTURE_MAX) Lettore.Pagina(url, errore = "letture finite") else lettore0.leggi(url)
         }
         val casa = lettore.leggi(c.url!!)
         if (!casa.riuscita) return TrovaDove.Esito.NonAperto(c, casa.errore.orEmpty())
-        TrovaDove.trova(casa.testo, forme)?.let { return TrovaDove.Esito.Trovato(c, casa.url, it) }
+        TrovaDove.trova(casa.testo, r)?.let { return TrovaDove.Esito.Trovato(c, casa.url, it) }
         var lette = 1
         val gia = mutableSetOf(c.url, casa.url)
         suspend fun guarda(indirizzi: List<String>): TrovaDove.Esito? {
@@ -508,7 +508,7 @@ class Shell(
                 if (!p.riuscita) continue
                 gia += p.url
                 lette++
-                TrovaDove.trova(p.testo, forme)?.let { return TrovaDove.Esito.Trovato(c, p.url, it) }
+                TrovaDove.trova(p.testo, r)?.let { return TrovaDove.Esito.Trovato(c, p.url, it) }
             }
             return null
         }

@@ -353,12 +353,13 @@ object Azioni {
         // «Dove trovo X» (05/10/2026): il programma apre i siti dei posti e cerca il nome esatto nelle loro pagine.
         Strumento("trova_dove", Effetto.LETTURA, "Per «dove trovo X»: un prodotto, un vino, un libro, un pezzo preciso, in posti vicini. Il programma " +
             "raccoglie i posti (mappa, posti che nomini, ricerche di posti), apre i loro siti col browser, segue carta, menu e listino, e cerca il nome " +
-            "esatto nelle pagine: ti torna, posto per posto, trovato (con la frase e il link) o no. Basta cosa e vicino_a; osm, indizi e luoghi " +
-            "aggiungono candidati. Subito, senza conferma; qualche centesimo. " +
+            "esatto nelle pagine: ti torna, posto per posto, trovato (con la frase e il link) o no. Servono cosa, vicino_a e osm (che tipo di posti " +
+            "lo vendono o lo servono); luoghi e indizi aggiungono candidati. Subito, senza conferma; qualche centesimo. " +
             "Per sapere com'è o quanto costa una cosa usa cerca_nel_web.",
             schema(listOf("cosa"), mapOf(
                 "cosa" to s("Il nome esatto, come lo scriverebbe una carta o un listino (es. il nome del vino senza l'annata)"),
                 "varianti" to lista("Altre grafie dello stesso nome (fino a ${TrovaDove.VARIANTI_MAX}): con e senza produttore, j/i, abbreviazioni"),
+                "produttore" to s("La marca o chi lo fa; obbligatorio se il nome è di una parola sola"),
                 "luoghi" to lista("Posti già noti da guardare per primi: nomi (col paese in vicino_a) o indirizzi web, per esempio quelli di una ricerca appena fatta"),
                 "indizi" to lista("Fino a ${TrovaDove.INDIZI_MAX} ricerche di posti adatti, una per paese o tipo di posto (es. «enoteca vini naturali Bracciano»)"),
             ) + CAMPI_MAPPA)),
@@ -559,7 +560,7 @@ object Azioni {
     /** La richiesta di trova_dove; un errore di forma torna al modello come rifiuto, con cosa correggere. */
     fun trovaDove(a: JsonObject): TrovaDove.Richiesta {
         val r = TrovaDove.Richiesta(a.testo("cosa").orEmpty(), elenco(a, "varianti"), a.testo("vicino_a").orEmpty(), intero(a, "km", 20),
-            elenco(a, "osm"), elenco(a, "indizi"), elenco(a, "luoghi"))
+            elenco(a, "osm"), elenco(a, "indizi"), elenco(a, "luoghi"), a.testo("produttore").orEmpty())
         TrovaDove.difetti(r).takeIf { it.isNotEmpty() }?.let { rifiuta(it.joinToString("; ")) }
         return r
     }

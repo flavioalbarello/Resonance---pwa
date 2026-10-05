@@ -33,6 +33,14 @@ class TrovaDoveTest {
         assertNull(TrovaDove.trova(pagina("salotto-menu").testo, listOf("Mannaja Cane")))
     }
 
+    @Test fun unNomeCortoVuoleIlProduttoreNellaPagina() {
+        val r = TrovaDove.Richiesta("ReAle", vicinoA = "Bracciano", osm = listOf("amenity=pub"), produttore = "Birra del Borgo")
+        assertNull(TrovaDove.trova("Pasticceria ReAle, Grosseto: ti aspettiamo!", r))
+        assertNotNull(TrovaDove.trova("Alla spina\nReAle — Birra del Borgo, 6,4% 5€", r))
+        // Un nome di due parole basta da solo.
+        assertNotNull(TrovaDove.trova(pagina("salotto-carta-vini").testo, TrovaDove.Richiesta("Mannaja Cane", vicinoA = "Bracciano")))
+    }
+
     @Test fun dallaPaginaInizialeSiSeguonoIlMenuNonISocial() {
         val casa = pagina("salotto-casa")
         val seguiti = TrovaDove.daSeguire(casa.url, casa.link)
@@ -104,7 +112,11 @@ class TrovaDoveTest {
 
     @Test fun laRichiestaSbagliataTornaConCosaCorreggere() {
         assertTrue(TrovaDove.difetti(TrovaDove.Richiesta("Mannaja Cane")).any { it.contains("serve vicino_a") })
-        assertTrue(TrovaDove.difetti(TrovaDove.Richiesta("Mannaja Cane", vicinoA = "Bracciano")).isEmpty())
+        // Col paese serve la mappa: senza, il web porta negozi online e recensioni, non posti vicini (05/10).
+        assertTrue(TrovaDove.difetti(TrovaDove.Richiesta("Mannaja Cane", vicinoA = "Bracciano")).any { it.contains("serve osm") })
+        assertTrue(TrovaDove.difetti(TrovaDove.Richiesta("Mannaja Cane", vicinoA = "Bracciano", luoghi = listOf("Salotto Belvedere"))).isEmpty())
+        // Un nome di una parola sola vuole la marca.
+        assertTrue(TrovaDove.difetti(TrovaDove.Richiesta("ReAle", vicinoA = "Bracciano", osm = listOf("shop=beverages"))).any { it.contains("produttore") })
         assertEquals(listOf("\"Mannaja Cane\" Bracciano", "\"Mannaja Cane\" carta menu listino dove si trova", "enoteca Bracciano"),
             TrovaDove.ricerche(TrovaDove.Richiesta("Mannaja Cane", vicinoA = "Bracciano", indizi = listOf("enoteca Bracciano"))))
         assertTrue(TrovaDove.difetti(TrovaDove.Richiesta("Mannaja Cane", osm = listOf("amenity=restaurant"))).any { it.contains("vicino_a") })
@@ -121,11 +133,13 @@ class TrovaDoveTest {
             TrovaDove.Esito.NonAperto(TrovaDove.Candidato("Bar", "https://bar.it/", origine = TrovaDove.Origine.WEB), "pagina anti-robot non superata in 25 secondi"),
             TrovaDove.Esito.SenzaSito(TrovaDove.Candidato("Trattoria", null, "Tolfa", 20.0, TrovaDove.Origine.MAPPA)))
         val s = TrovaDove.scheda(r, esiti, emptyList())
-        assertTrue(s, s.lines()[1] == "1 posto lo ha su 3 siti aperti · 1 non aperti · 1 senza sito")
+        assertTrue(s, s.lines()[1] == "Posti vicini: 1 lo ha su 2 siti aperti · 0 non aperti · 1 senza sito")
+        // Le pagine dal web stanno a parte: non sono posti vicini.
+        assertTrue(s, s.contains("Sul web, pagine che lo nominano") && s.indexOf("✗ Bar") > s.indexOf("Sul web"))
         assertTrue(s, s.lines()[2].startsWith("✓ Salotto Belvedere (Bracciano, 7 km in linea d'aria) — «Mannaja Cane 2023"))
         val m = TrovaDove.perIlModello(r, esiti, emptyList())
-        assertTrue(m.contains("non risulta dal sito") && !m.contains("Nessun sito lo nomina"))
-        assertTrue(TrovaDove.perIlModello(r, esiti.filter { it !is TrovaDove.Esito.Trovato }, emptyList()).contains("Nessun sito lo nomina"))
+        assertTrue(m.contains("non risulta dal sito") && !m.contains("Nessun posto vicino lo nomina"))
+        assertTrue(TrovaDove.perIlModello(r, esiti.filter { it !is TrovaDove.Esito.Trovato }, emptyList()).contains("Nessun posto vicino lo nomina"))
     }
 
     @Test fun laMappaDiRiservaLeggeNominatim() {
