@@ -135,6 +135,16 @@ La tabella completa, con il nodo di ciascun argomento, è in `PROGETTO.md` → �
 5. **I colori dell'icona**: dev ambra, base blu.
 6. **Salvare un Adam se il telefono si rompe**. È la carenza più grave: oggi c'è solo la copia a mano.
 
+**Gli occhi di Adam**. Decisione della riunione del 01/10 (verbale nella cassetta, `riunioni/20261001-0836-…`):
+- occhiali **in pausa**: anche spenti, una telecamera sul viso può mettere a disagio i pazienti;
+- in studio occhi e orecchie spenti, in modo visibile.
+
+Il 05/10 il Ghost ha proposto auricolari aperti con telecamera, di marca generica.
+- Audio: funzionerebbero come cuffie Bluetooth normali.
+- Telecamera: quasi certamente passa solo dalla loro app, senza accesso per Resonance.
+- Vantaggio: si tolgono in studio senza perdere la vista.
+- Va verificato col venditore prima di comprarli: nome dell'app, foto nella galleria, uso senza cloud.
+
 Da aggiungere alla riunione, nato il 03/10: **l'architettura della ricerca**.
 - Il piano al programma (ricette), il modello solo dove serve.
 - Andare a vedere sul posto.
