@@ -160,6 +160,15 @@ con mani libere, da togliere in studio:
 - i **Meta col kit sviluppatori**;
 - le **cuffie generiche**: voce sì, occhi quasi certamente no.
 
+Il vecchio telefono in casa, collegato al telefono del Ghost (05/10, solo proposta, nulla di costruito):
+- non fa girare Resonance intera, perché due telefoni sarebbero due Adam: fa da **sensore** (sentinella);
+- collegamento consigliato: **Nearby Connections** di Google, telefono a telefono in casa, senza internet né server, cifrato, abbinati una volta;
+- la sentinella giudica sul posto e manda **righe di testo** («prova di basso, 25 minuti, 21:10»), non video; le foto solo su richiesta;
+- se il telefono del Ghost non c'è, le righe aspettano e partono quando torna;
+- alternative scartate: la cassetta su GitHub (lenta, e le foto finirebbero in un repository); una cartella su Drive (serve lo stesso account Google su tutti e due);
+- da decidere: è una terza app (flavor «sentinella») o una modalità? La regola delle due app dice niente interruttori dentro l'app;
+- da provare: quanto il telefono del Ghost riesce a ricevere in secondo piano, coi limiti di Android.
+
 Da aggiungere alla riunione, nato il 03/10: **l'architettura della ricerca**.
 - Il piano al programma (ricette), il modello solo dove serve.
 - Andare a vedere sul posto.
