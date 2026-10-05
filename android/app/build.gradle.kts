@@ -105,6 +105,7 @@ dependencies {
     implementation(libs.work.runtime)
     implementation(libs.health.connect)
     implementation(libs.okhttp)
+    implementation(libs.pdfbox)
     implementation(libs.serialization.json)
     implementation(libs.coroutines.android)
     testImplementation(libs.junit)

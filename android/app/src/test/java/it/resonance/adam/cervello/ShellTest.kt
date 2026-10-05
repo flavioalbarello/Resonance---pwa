@@ -14,6 +14,7 @@ import it.resonance.adam.dati.Consegna
 import it.resonance.adam.logica.AgendaLetta
 import it.resonance.adam.logica.Azioni
 import it.resonance.adam.logica.Consegne
+import it.resonance.adam.logica.Consulente
 import it.resonance.adam.logica.Lavagna
 import it.resonance.adam.logica.Contesto
 import it.resonance.adam.logica.Regole
@@ -122,6 +123,13 @@ class ShellTest {
         val modelliRicerca = mutableListOf<String>()
         // Gli strati della ricerca a fondo partono insieme: per non dipendere dall'ordine, la risposta si sceglie dalla domanda.
         var perDomanda: ((String) -> RispostaWeb)? = null
+        // La ricerca di indirizzi di trova_dove: le domande, e le fonti che il motore restituirebbe.
+        val indirizziChiesti = mutableListOf<List<String>>()
+        var indirizzi: (List<String>) -> List<it.resonance.adam.logica.Consulente.Fonte> = { emptyList() }
+        override suspend fun cercaIndirizzi(chiave: String, domande: List<String>, perDomanda: Int): RispostaWeb {
+            synchronized(this) { indirizziChiesti += domande }
+            return RispostaWeb("ok", indirizzi(domande), 0.004, false)
+        }
         override suspend fun cercaAFondo(chiave: String, modello: String, messaggi: JsonArray, maxToken: Int, temperatura: Double?): RispostaWeb {
             synchronized(this) { aFondo += JsonArray(messaggi.toList()); modelliRicerca += modello }
             perDomanda?.let { return it(messaggi.toString()) }
@@ -1247,6 +1255,60 @@ class ShellTest {
         Shell(archivio, imp, m, FintoMondo(), FintaCassetta(), FintoOsm(emptyList())).turno("ristoranti")
         assertTrue(m.ricevuti[1].last().toString().contains("Ricerca non fatta: osm: filtri nella forma di OpenStreetMap"))
         assertTrue(m.aFondo.isEmpty())
+    }
+
+    // «Dove trovo X» (05/10/2026): le pagine vere del Salotto Belvedere. La carta non è collegata da nessuna pagina: il
+    // programma la trova dalla sitemap. Il Salotto sulla mappa non ha sito: lo trova la ricerca di indirizzi.
+    private class FintoLettore(val pagine: Map<String, String>) : Lettore {
+        val letti = mutableListOf<String>()
+        override suspend fun leggi(url: String): Lettore.Pagina {
+            synchronized(this) { letti += url }
+            val nome = pagine[url] ?: return Lettore.Pagina(url, errore = "HTTP 404")
+            if (nome.startsWith("testo:")) return Lettore.Pagina(url, "Osteria", nome.removePrefix("testo:"))
+            return Lettore.interpreta(javaClass.getResource("/pagine/$nome.json")!!.readText())!!
+        }
+    }
+
+    private val SALOTTO = mapOf(
+        "https://salottobelvedere.it/" to "salotto-casa", "https://salottobelvedere.it/251807-2/" to "salotto-menu",
+        "https://salottobelvedere.it/il-menu/" to "salotto-menu", "https://salottobelvedere.it/robots.txt" to "salotto-robots",
+        "https://salottobelvedere.it/sitemap_index.xml" to "salotto-sitemap-indice", "https://salottobelvedere.it/post-sitemap.xml" to "salotto-sitemap-post",
+        "https://salottobelvedere.it/carta-vini/" to "salotto-carta-vini",
+        "https://osteriavicina.it/" to "testo:Osteria Vicina\nCarbonara 12€\nVino della casa 10€")
+
+    @Test fun trovaDoveApreISitiETrovaIlVinoNellaCarta() = runBlocking {
+        val m = FintoModello(chiama("trova_dove", """{"cosa":"Mannaja Cane","varianti":["Mannaia Cane"],"vicino_a":"Canale Monterano","km":50,"osm":["amenity=restaurant"]}"""),
+            testo("Al Salotto Belvedere, 28 €."))
+        m.indirizzi = { d -> if (d.size > 1) emptyList() else listOf(Consulente.Fonte("https://it.restaurantguru.com/Salotto-Belvedere-Bracciano", "", "restaurantguru.com"),
+            Consulente.Fonte("https://salottobelvedere.it/dove-siamo/", "Salotto Belvedere", "salottobelvedere.it")) }
+        val osm = FintoOsm(listOf(
+            it.resonance.adam.logica.Mappa.Luogo("Osteria Vicina", "Canale Monterano", 1.2, "restaurant", "https://osteriavicina.it/"),
+            it.resonance.adam.logica.Mappa.Luogo("Salotto Belvedere", "Bracciano", 7.4, "restaurant", "https://www.openstreetmap.org/node/1")))
+        val lettore = FintoLettore(SALOTTO)
+        Shell(archivio, imp, m, FintoMondo(), FintaCassetta(), osm, lettore).turno("dove trovo il Mannaja Cane entro 50 km?")
+        // Prima le pagine che nominano il vino (nel paese e ovunque); poi il sito del Salotto, col suo nome e il paese.
+        assertEquals(listOf("\"Mannaja Cane\" Canale Monterano", "\"Mannaja Cane\" carta menu listino dove si trova"), m.indirizziChiesti[0])
+        assertEquals(listOf("sito ufficiale Salotto Belvedere Bracciano"), m.indirizziChiesti[1])
+        // La carta: dalla pagina iniziale non c'è link, la porta la sitemap.
+        assertTrue(lettore.letti.toString(), "https://salottobelvedere.it/carta-vini/" in lettore.letti && "https://salottobelvedere.it/robots.txt" in lettore.letti)
+        val scheda = db.messaggi().elenco().single { it.ruolo == Ruolo.RICERCA }
+        assertTrue(scheda.testo, scheda.testo.contains("✓ Salotto Belvedere (Bracciano, 7 km in linea d'aria) — «Mannaja Cane 2023") && scheda.testo.contains("https://salottobelvedere.it/carta-vini/"))
+        assertTrue(scheda.testo, scheda.testo.contains("· Osteria Vicina") && scheda.testo.contains("non c'è"))
+        // Due ricerche di indirizzi (le pagine che lo nominano, il sito del Salotto): il costo è la somma.
+        assertEquals(0.008, scheda.costo!!, 1e-9)
+        // Lo Shell riceve le prove e come riferirle.
+        val alModello = m.ricevuti[1].last().toString()
+        assertTrue(alModello, alModello.contains("PROVE DEL PROGRAMMA") && alModello.contains("Regina del Quartuccio") && alModello.contains("non risulta dal sito"))
+        assertTrue(db.turni().ultimi(5).any { it.strumenti.contains("trova_dove: 2 siti aperti, 1 trovati") })
+    }
+
+    @Test fun trovaDoveSenzaLettoreLoDice() = runBlocking {
+        val m = FintoModello(chiama("trova_dove", """{"cosa":"Mannaja Cane","luoghi":["https://salottobelvedere.it/"]}"""), testo("Non posso."))
+        shell(m, FintaCassetta()).turno("dove trovo il Mannaja Cane?")
+        assertTrue(m.ricevuti[1].last().toString().contains("il lettore di pagine non è disponibile"))
+        val m2 = FintoModello(chiama("trova_dove", """{"cosa":"Mannaja Cane"}"""), testo("Correggo."))
+        Shell(archivio, imp, m2, FintoMondo(), FintaCassetta(), FintoOsm(emptyList()), FintoLettore(SALOTTO)).turno("dove trovo il Mannaja Cane?")
+        assertTrue(m2.ricevuti[1].last().toString().contains("Ricerca non fatta: serve vicino_a"))
     }
 
     @Test fun seguireDiceQuantoCosta() = runBlocking {

@@ -9,7 +9,7 @@ package it.resonance.adam.logica
 // strumento stia in un reparto solo e che le chiavi non si accendano su frasi che non c'entrano.
 enum class Reparto(val etichetta: String, val cosa: String, val strumenti: List<String>, chiavi: String) {
     NUCLEO("nucleo", "sempre aperto",
-        listOf("cerca", "leggi_documento", "cerca_nel_web", "leggi_misure", "registra_misura", "scrivi_voce", "modifica_quaderno",
+        listOf("cerca", "leggi_documento", "cerca_nel_web", "trova_dove", "leggi_misure", "registra_misura", "scrivi_voce", "modifica_quaderno",
             "scrivi_taccuino", "riprendi_nota", "prendi_consegna"), ""),
     PERCORSI("percorsi", "percorsi, nodi e tappe, documenti, riscrivere il quaderno",
         listOf("crea_percorso", "aggiungi_nodi", "pilastro_nodo", "sposta_nodi", "togli_nodo", "stato_nodo", "salva_documento",

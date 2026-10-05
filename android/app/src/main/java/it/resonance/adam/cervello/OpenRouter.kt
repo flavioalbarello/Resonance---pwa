@@ -46,6 +46,8 @@ open class OpenRouter(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
+    companion object { const val INDIRIZZI = "mistralai/ministral-8b-2512" }
+
     // `rapida`: per la microchiamata che sceglie il motore; 6 secondi, nessuno streaming e nessun secondo tentativo.
     private val httpRapido by lazy { http.newBuilder().callTimeout(6, TimeUnit.SECONDS).build() }
 
@@ -91,6 +93,19 @@ open class OpenRouter(
     // `web` = false serve al secondo invito, quello che chiede solo i punti mancanti: non si paga un'altra ricerca.
     open suspend fun cerca(chiave: String, modello: String, messaggi: JsonArray, maxToken: Int, temperatura: Double?, web: Boolean = true): RispostaWeb =
         ricerca(chiave, modello, messaggi, maxToken, temperatura, if (web) LEGGERA else null)
+
+    // Gli indirizzi dei posti (logica/TrovaDove.kt, 05/10/2026): Exa attraverso OpenRouter, comandato dal modello più
+    // piccolo, che fa le ricerche e basta. Si usano le fonti che il motore restituisce, mai il testo del modello. Provato
+    // dal vivo il 05/10: trova salottobelvedere.it dove Perplexity rispondeva «nessuno»; circa 0,7 centesimi a posto.
+    open suspend fun cercaIndirizzi(chiave: String, domande: List<String>, perDomanda: Int = 3): RispostaWeb {
+        val messaggi = JsonArray(listOf(buildJsonObject {
+            put("role", "user")
+            put("content", "Fai esattamente queste ricerche, una per riga, e nient'altro; poi rispondi solo «ok».\n" + domande.joinToString("\n"))
+        }))
+        val profilo = Profilo(buildJsonObject { put("engine", "exa"); put("max_results", perDomanda); put("max_total_results", perDomanda * domande.size) },
+            domande.size, "low")
+        return ricerca(chiave, INDIRIZZI, messaggi, 80, 0.0, profilo)
+    }
 
     // Il listino pubblico dei modelli (logica/Listino.kt): senza chiave, una volta al giorno.
     open suspend fun listino(): String = withContext(Dispatchers.IO) {

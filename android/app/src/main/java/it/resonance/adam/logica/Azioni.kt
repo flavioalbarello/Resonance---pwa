@@ -350,6 +350,18 @@ object Azioni {
             "(osm) quando cerchi posti: la mappa dice che esistono e dove, le ricerche dicono come sono. Circa un centesimo a casella; la mappa è gratis.",
             schema(listOf("domanda"), mapOf("domanda" to s("La prima casella: cosa, dove, da che tipo di fonte, per quale periodo"),
                 "domande" to lista("Le altre caselle, una per posto, per tipo di fonte o per periodo (fino a ${Ricerca.DOMANDE_MAX} in tutto)")) + CAMPI_MAPPA)),
+        // «Dove trovo X» (05/10/2026): il programma apre i siti dei posti e cerca il nome esatto nelle loro pagine.
+        Strumento("trova_dove", Effetto.LETTURA, "Per «dove trovo X»: un prodotto, un vino, un libro, un pezzo preciso, in posti vicini. Il programma " +
+            "raccoglie i posti (mappa, posti che nomini, ricerche di posti), apre i loro siti col browser, segue carta, menu e listino, e cerca il nome " +
+            "esatto nelle pagine: ti torna, posto per posto, trovato (con la frase e il link) o no. Basta cosa e vicino_a; osm, indizi e luoghi " +
+            "aggiungono candidati. Subito, senza conferma; qualche centesimo. " +
+            "Per sapere com'è o quanto costa una cosa usa cerca_nel_web.",
+            schema(listOf("cosa"), mapOf(
+                "cosa" to s("Il nome esatto, come lo scriverebbe una carta o un listino (es. il nome del vino senza l'annata)"),
+                "varianti" to lista("Altre grafie dello stesso nome (fino a ${TrovaDove.VARIANTI_MAX}): con e senza produttore, j/i, abbreviazioni"),
+                "luoghi" to lista("Posti già noti da guardare per primi: nomi (col paese in vicino_a) o indirizzi web, per esempio quelli di una ricerca appena fatta"),
+                "indizi" to lista("Fino a ${TrovaDove.INDIZI_MAX} ricerche di posti adatti, una per paese o tipo di posto (es. «enoteca vini naturali Bracciano»)"),
+            ) + CAMPI_MAPPA)),
         Strumento("cerca", Effetto.LETTURA, "Cerca un testo nel diario, nei documenti e nei quaderni. Usalo prima di dire che una cosa non esiste.",
             schema(listOf("testo"), mapOf("testo" to s("Parole da cercare")))),
         Strumento("leggi_misure", Effetto.LETTURA, "Serie giornaliera di una misura, per quando la sintesi non basta.",
@@ -542,6 +554,14 @@ object Azioni {
 
     data class RichiestaMappa(val vicinoA: String, val km: Int, val osm: List<String>) {
         val filtri get() = Mappa.filtri(osm).orEmpty()
+    }
+
+    /** La richiesta di trova_dove; un errore di forma torna al modello come rifiuto, con cosa correggere. */
+    fun trovaDove(a: JsonObject): TrovaDove.Richiesta {
+        val r = TrovaDove.Richiesta(a.testo("cosa").orEmpty(), elenco(a, "varianti"), a.testo("vicino_a").orEmpty(), intero(a, "km", 20),
+            elenco(a, "osm"), elenco(a, "indizi"), elenco(a, "luoghi"))
+        TrovaDove.difetti(r).takeIf { it.isNotEmpty() }?.let { rifiuta(it.joinToString("; ")) }
+        return r
     }
 
     /** La casella della mappa, se lo Shell l'ha chiesta: dove, entro quanti km, i filtri OpenStreetMap. Null se non c'è. */

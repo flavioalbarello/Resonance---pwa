@@ -40,6 +40,8 @@ import it.resonance.adam.logica.Reparto
 import it.resonance.adam.logica.Incrocio
 import it.resonance.adam.logica.Validazione
 import it.resonance.adam.logica.Edizione
+import it.resonance.adam.logica.TrovaDove
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.serialization.json.Json
@@ -86,6 +88,8 @@ class Shell(
     private val mondo: Mondo? = null,
     private val cassetta: Cassetta = Cassetta(),
     private val osm: Osm = Osm(),
+    // Il browser che apre i siti (cervello/Lettore.kt): sul telefono la WebView, al banco un finto o Chromium.
+    private val lettore: Lettore? = null,
 ) {
     data class Esito(val testo: String, val proposte: List<Long>)
 
@@ -441,6 +445,90 @@ class Shell(
     }
 
     /**
+     * «Dove trovo X» (logica/TrovaDove.kt). I candidati dalle tre fonti insieme, il sito per chi non ce l'ha, poi tre siti
+     * alla volta: la pagina iniziale e i link «carta, menu, listino». In chat la scheda con le prove; allo Shell le prove
+     * e come riferirle. Il costo (la ricerca di indirizzi) entra nel tetto del mese come ogni altra chiamata.
+     */
+    suspend fun trovaDove(r: TrovaDove.Richiesta): String {
+        controllaSpesa()?.let { return "Ricerca non fatta: $it" }
+        val lettore = lettore ?: return "Ricerca non fatta: il lettore di pagine non è disponibile qui (serve l'app sul telefono)."
+        val protetti = Uscita.nomi(archivio.db.profilo().leggi()?.nomiProtetti.orEmpty())
+        val note = mutableListOf<String>()
+        var costo = 0.0
+        suspend fun indirizzi(domande: List<String>, perDomanda: Int): RispostaWeb? = runCatching {
+            client.cercaIndirizzi(impostazioni.chiave, domande.map { Consulente.pulisci(it, protetti) }, perDomanda)
+        }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it; note += "ricerca di indirizzi non riuscita: ${it.message ?: it.javaClass.simpleName}" }
+            .getOrNull()?.also { w -> w.costo?.let { costo += it; archivio.registraCosto(YearMonth.now().toString(), it) } }
+
+        val candidati = TrovaDove.nominati(r.luoghi.map { Consulente.pulisci(it, protetti) }, r.vicinoA).toMutableList()
+        kotlinx.coroutines.coroutineScope {
+            val mappa = if (r.osm.isNotEmpty()) async { cercaSullaMappa(Azioni.RichiestaMappa(r.vicinoA, r.km, r.osm)) } else null
+            val web = async { indirizzi(TrovaDove.ricerche(r), 6) }
+            mappa?.await()?.let { m -> m.errore?.let { note += "mappa: $it" }; candidati += TrovaDove.dallaMappa(m.luoghi) }
+            web?.await()?.let { candidati += TrovaDove.dalWeb(it.fonti) }
+        }
+        var ordinati = TrovaDove.ordina(candidati)
+        val posti = (TrovaDove.SITI_MAX - ordinati.count { it.url != null }).coerceAtLeast(0)
+        val daScoprire = ordinati.filter { it.url == null }.take(minOf(TrovaDove.SCOPERTE_MAX, posti))
+        if (daScoprire.isNotEmpty()) indirizzi(TrovaDove.domandeSito(daScoprire), 3)?.let { w ->
+            val siti = daScoprire.associateWith { TrovaDove.sitoDi(it, w.fonti) }
+            ordinati = TrovaDove.ordina(ordinati.map { c -> siti[c]?.let { u -> c.copy(url = u) } ?: c })
+        }
+        val daAprire = ordinati.filter { it.url != null }.take(TrovaDove.SITI_MAX)
+        val turni = kotlinx.coroutines.sync.Semaphore(4)
+        val esiti = kotlinx.coroutines.coroutineScope {
+            daAprire.map { c -> async { turni.withPermit { kotlinx.coroutines.withTimeoutOrNull(VISITA_MS) { visita(lettore, c, r.forme) }
+                ?: TrovaDove.Esito.NonAperto(c, "il sito non ha finito di caricarsi in ${VISITA_MS / 1000} secondi") } } }.awaitAll()
+        } + ordinati.filter { it.url == null }.take(TrovaDove.LUOGHI_MAX).map { TrovaDove.Esito.SenzaSito(it) }
+        if (esiti.isEmpty()) note += "nessun posto da guardare: allarga la zona o nomina dei posti"
+        val scheda = TrovaDove.scheda(r, esiti, note)
+        archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, istante = ora, modello = OpenRouter.INDIRIZZI, testo = scheda, costo = costo.takeIf { it > 0 }))
+        val trovati = esiti.count { it is TrovaDove.Esito.Trovato }
+        registraTurno(Compito.RICERCA, OpenRouter.INDIRIZZI, 0.0, false, emptyList(), 0, false, false, errore = false, costo,
+            listOf("trova_dove: ${daAprire.size} siti aperti, $trovati trovati, ${esiti.count { it is TrovaDove.Esito.NonAperto }} non aperti"))
+        return TrovaDove.perIlModello(r, esiti, note)
+    }
+
+    // Un sito: la pagina iniziale, poi i link che dicono «carta, menu, listino»; se non bastano, la sitemap. Ci si ferma
+    // alla prima pagina che nomina la cosa.
+    private suspend fun visita(lettore0: Lettore, c: TrovaDove.Candidato, forme: List<String>): TrovaDove.Esito {
+        var letture = 0
+        val lettore = object : Lettore {
+            override suspend fun leggi(url: String) = if (++letture > TrovaDove.LETTURE_MAX) Lettore.Pagina(url, errore = "letture finite") else lettore0.leggi(url)
+        }
+        val casa = lettore.leggi(c.url!!)
+        if (!casa.riuscita) return TrovaDove.Esito.NonAperto(c, casa.errore.orEmpty())
+        TrovaDove.trova(casa.testo, forme)?.let { return TrovaDove.Esito.Trovato(c, casa.url, it) }
+        var lette = 1
+        val gia = mutableSetOf(c.url, casa.url)
+        suspend fun guarda(indirizzi: List<String>): TrovaDove.Esito? {
+            for (u in indirizzi) {
+                gia += u
+                val p = lettore.leggi(u)
+                if (!p.riuscita) continue
+                gia += p.url
+                lette++
+                TrovaDove.trova(p.testo, forme)?.let { return TrovaDove.Esito.Trovato(c, p.url, it) }
+            }
+            return null
+        }
+        guarda(TrovaDove.daSeguire(casa.url, casa.link, gia))?.let { return it }
+        // La sitemap: robots.txt la indica; da un indice si leggono le figlie (pagine, articoli). Non conta fra le pagine lette.
+        val robots = lettore.leggi(TrovaDove.radice(casa.url) + "/robots.txt").takeIf { it.riuscita }?.testo
+        val trovati = mutableListOf<String>()
+        for (sm in TrovaDove.sitemap(casa.url, robots)) {
+            val p = lettore.leggi(sm).takeIf { it.riuscita } ?: continue
+            val dentro = TrovaDove.indirizzi(casa.url, p.testo, p.link)
+            val figlie = TrovaDove.figlie(dentro)
+            trovati += dentro.filter { it !in figlie }
+            for (f in figlie) lettore.leggi(f).takeIf { it.riuscita }?.let { trovati += TrovaDove.indirizzi(casa.url, it.testo, it.link) }
+            if (trovati.isNotEmpty()) break
+        }
+        guarda(TrovaDove.daSeguire(casa.url, trovati.map { TrovaDove.Link(it, "") }, gia))?.let { return it }
+        return TrovaDove.Esito.NonTrovato(c, lette)
+    }
+
+    /**
      * Una ricerca a fondo (OpenRouter.cercaAFondo): la forma si dice prima (Ricerca.FORMA) e si controlla dopo
      * (Ricerca.problemi), le fonti sono quelle del motore. Con `mostra` la scheda compare in chat: il Ghost vede da dove
      * viene ciò che lo Shell dirà.
@@ -774,7 +862,7 @@ class Shell(
                 }
                 var allargati = false
                 for (c in r.chiamate) {
-                    if (c.nome == "cerca_nel_web" || c.nome == "ricerca_a_fondo") cercato = true
+                    if (c.nome == "cerca_nel_web" || c.nome == "ricerca_a_fondo" || c.nome == "trova_dove") cercato = true
                     // Un reparto si apre su richiesta, o perché lo Shell ne ha usato uno strumento; dopo una ricerca rapida,
                     // la ricerca a fondo è il passo dopo possibile.
                     if (reparti != null) {
@@ -885,6 +973,8 @@ class Shell(
         // («tagliata dal limite», visto sul telefono il 23/09). Si paga ciò che si usa, non il tetto.
         const val MAX_TOKEN = 12000
         const val MAX_TOKEN_BATTITO = 3000
+        // Un sito, dalla pagina iniziale alla carta: oltre, il Ghost aspetta per un posto solo.
+        const val VISITA_MS = 90_000L
     }
 
     // Nel dubbio, o senza risposta in 6 secondi, PIENO. Il costo della microchiamata entra nel turno e nel tetto.
@@ -1169,6 +1259,7 @@ class Shell(
         "cerca_nel_web" -> runCatching { Azioni.mappa(v.argomenti) }.fold(
             { m -> cercaNelWebTutte(listOfNotNull(Azioni.stringa(v.argomenti, "domanda")) + Azioni.elenco(v.argomenti, "domande"), m) },
             { e -> "Ricerca non fatta: ${e.message}. Correggi e riprova." })
+        "trova_dove" -> runCatching { Azioni.trovaDove(v.argomenti) }.fold({ trovaDove(it) }, { e -> "Ricerca non fatta: ${e.message}. Correggi e riprova." })
         "leggi_misure" -> {
             val tipo = Azioni.stringa(v.argomenti, "tipo")?.uppercase()?.let { t -> TipoMisura.entries.find { it.name == t } }
             if (tipo == null) "Tipo di misura sconosciuto." else archivio.leggiMisure(tipo, Azioni.intero(v.argomenti, "giorni", 30))

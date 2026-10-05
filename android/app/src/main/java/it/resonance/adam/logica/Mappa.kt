@@ -65,6 +65,44 @@ object Mappa {
         }.distinctBy { Incrocio.chiave(it.nome) + "@" + it.dove.lowercase() + "@" + Math.round(it.km) }.sortedBy { it.km }
     }.getOrDefault(emptyList())
 
+    // ── Il ripiego: Nominatim (05/10/2026) ──
+    // Overpass è spesso occupato o irraggiungibile (il 02/10 il server principale, il 05/10 tutti e tre da qui). Nominatim
+    // cerca per categoria in un riquadro: meno completo (al massimo 50 per categoria) ma risponde. Una categoria per
+    // domanda, dalla prima regola; le altre regole si controllano sui tag che Nominatim restituisce.
+
+    /** Le categorie per Nominatim: «[amenity=restaurant]», una per valore della prima regola, al massimo tre. */
+    fun categorie(filtri: List<Filtro>): List<String> = filtri.firstOrNull()?.let { f ->
+        f.valori.split('|').map { it.trim() }.filter { it.isNotEmpty() }.take(3).map { "[${f.chiave}=$it]" }
+    }.orEmpty()
+
+    /** Il riquadro attorno al centro, in gradi: «ovest,nord,est,sud», come lo vuole Nominatim. */
+    fun riquadro(lat: Double, lon: Double, km: Int): String {
+        val dLat = km / 111.0
+        val dLon = km / (111.0 * cos(Math.toRadians(lat)))
+        return "%.5f,%.5f,%.5f,%.5f".format(java.util.Locale.ROOT, lon - dLon, lat + dLat, lon + dLon, lat - dLat)
+    }
+
+    /** I luoghi dalla risposta di Nominatim (jsonv2 con extratags), entro km, che rispettano anche le altre regole. */
+    fun luoghiNominatim(testo: String, lat: Double, lon: Double, km: Int, filtri: List<Filtro>): List<Luogo> = runCatching {
+        json.parseToJsonElement(testo).jsonArray.mapNotNull { e ->
+            val o = e.jsonObject
+            val nome = o["name"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty().ifEmpty { return@mapNotNull null }
+            val la = o["lat"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() ?: return@mapNotNull null
+            val lo = o["lon"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() ?: return@mapNotNull null
+            val extra = o["extratags"]?.let { runCatching { it.jsonObject }.getOrNull() }
+            fun tag(k: String) = extra?.get(k)?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+            val tipo = o["type"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            val altre = filtri.drop(1).all { f -> f.valori.split('|').any { v -> tag(f.chiave).split(';').any { it.trim().equals(v.trim(), true) } } }
+            if (!altre) return@mapNotNull null
+            val km0 = distanza(lat, lon, la, lo)
+            if (km0 > km) return@mapNotNull null
+            val dove = o["display_name"]?.jsonPrimitive?.contentOrNull.orEmpty().split(',').map { it.trim() }
+                .firstOrNull { p -> p.isNotEmpty() && p != nome && !p.any { it.isDigit() } && !p.startsWith("Via ") && !p.startsWith("Piazza ") }.orEmpty()
+            Luogo(nome, dove, km0, tag("cuisine").ifEmpty { tipo }.replace(';', ','),
+                tag("website").ifEmpty { tag("contact:website") }.ifEmpty { "https://www.openstreetmap.org/${o["osm_type"]?.jsonPrimitive?.contentOrNull}/${o["osm_id"]?.jsonPrimitive?.contentOrNull}" })
+        }
+    }.getOrDefault(emptyList())
+
     fun distanza(la1: Double, lo1: Double, la2: Double, lo2: Double): Double {
         val r = 6371.0
         val dLa = Math.toRadians(la2 - la1)

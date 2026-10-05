@@ -37,6 +37,21 @@ open class Osm(private val http: OkHttpClient = OkHttpClient.Builder().connectTi
             if (!testo.trimStart().startsWith("{")) { ultimo = "server occupato"; continue }
             return@withContext Risposta(Mappa.luoghi(testo, centro.first, centro.second))
         }
+        // Overpass non risponde: si ripiega su Nominatim, una categoria per volta (al massimo una domanda al secondo, è la sua regola).
+        val luoghi = mutableListOf<Mappa.Luogo>()
+        for ((i, c) in Mappa.categorie(filtri).withIndex()) {
+            if (i > 0) kotlinx.coroutines.delay(1100)
+            val u = "https://nominatim.openstreetmap.org/search".toHttpUrl().newBuilder().addQueryParameter("q", c).addQueryParameter("format", "jsonv2")
+                .addQueryParameter("limit", "50").addQueryParameter("extratags", "1").addQueryParameter("bounded", "1")
+                .addQueryParameter("viewbox", Mappa.riquadro(centro.first, centro.second, km)).build()
+            runCatching {
+                http.newCall(Request.Builder().url(u).header("User-Agent", agente).build()).execute().use { r ->
+                    if (r.isSuccessful) luoghi += Mappa.luoghiNominatim(r.body.string(), centro.first, centro.second, km, filtri)
+                }
+            }
+        }
+        if (luoghi.isNotEmpty()) return@withContext Risposta(luoghi.distinctBy { it.nome.lowercase() + "@" + Math.round(it.km) }.sortedBy { it.km },
+            "Overpass non ha risposto ($ultimo): luoghi da Nominatim, meno completi")
         Risposta(emptyList(), "la mappa non ha risposto ($ultimo)")
     }
 }

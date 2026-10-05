@@ -76,7 +76,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
     val sensi = Sensi(app)
     val mondo = MondoAndroid(app)
     val allegatore = Allegatore(app)
-    private val shell = Shell(archivio, impostazioni, mondo = mondo)
+    private val shell = Shell(archivio, impostazioni, mondo = mondo, lettore = it.resonance.adam.mondo.LettoreAndroid(app))
 
     private fun <T> Flow<List<T>>.stato(): StateFlow<List<T>> = stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
