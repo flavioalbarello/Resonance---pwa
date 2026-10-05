@@ -145,6 +145,14 @@ Il 05/10 il Ghost ha proposto auricolari aperti con telecamera, di marca generic
 - Vantaggio: si tolgono in studio senza perdere la vista.
 - Va verificato col venditore prima di comprarli: nome dell'app, foto nella galleria, uso senza cloud.
 
+Dalla stessa riunione, da non ridiscutere da capo:
+- **una telecamera non facciale** (spilla, collana, orecchio) in studio non spaventa meno, spaventa di più, perché non si riconosce;
+- **criteri** per qualunque oggetto: copertura fisica della telecamera, che si chiude con un dito e si vede; microfono spento con un tasto; lenti progressive montabili, se è un occhiale;
+- **due livelli**: al lavoro niente sensi, o spenti in modo visibile; a casa e fuori, gli occhiali oppure il **corpo di Adam**, cioè un vecchio telefono Android fisso su un supporto, dove si suona o si cucina, a costo quasi zero;
+- la **modalità studio** nell'app serve con qualunque scelta.
+
+Ultima scelta dichiarata prima della pausa: Meta Fury, poi rimessa in revisione dal Ghost.
+
 Da aggiungere alla riunione, nato il 03/10: **l'architettura della ricerca**.
 - Il piano al programma (ricette), il modello solo dove serve.
 - Andare a vedere sul posto.
