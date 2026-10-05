@@ -191,6 +191,14 @@ La voce non può essere l'unico comando. Tre modi, tutti nel contratto:
 Aspettative: la fotocamera di serie (2 MP) riconosce un animale vicino; non fa foto naturalistiche da lontano. Esiste un
 modulo da 5 MP per la stessa scheda, da verificare.
 
+**La luce**: anche questa si comanda in silenzio (il Ghost, 05/10, per gli animali).
+- Accesa di serie quando scatta.
+- Si spegne con un gesto del Ghost: pressione lunga sul tasto della camera, o un interruttore nell'app. Il diario registra quando è stata spenta.
+- Si riaccende da sola dopo un tempo scelto, o alla fine dell'uscita.
+- In studio la camera è spenta del tutto: la luce lì non c'entra.
+- Le persone intorno restano il criterio: luce spenta solo quando ci sono gli animali, non quando ci sono le persone. La regola è del Ghost; il programma tiene la traccia.
+- Pezzo in più: un LED esterno da 3 mm (o SMD) con resistenza da 220 Ω, perché quello della scheda resta chiuso nel guscio.
+
 **La lista dei pezzi** mandata al Ghost il 05/10, circa 35–50 € senza attrezzi:
 - XIAO ESP32S3 Sense;
 - facoltativo, modulo camera OV5640;
