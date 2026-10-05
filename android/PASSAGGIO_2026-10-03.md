@@ -153,6 +153,13 @@ Dalla stessa riunione, da non ridiscutere da capo:
 
 Ultima scelta dichiarata prima della pausa: Meta Fury, poi rimessa in revisione dal Ghost.
 
+Il 05/10 il Ghost: il vecchio telefono va bene in casa, ma fuori è ingombrante e occupa una mano. Strade per fuori,
+con mani libere, da togliere in studio:
+- il **telefono principale a tracolla** (custodia da collo con la fotocamera libera), più un comando a voce «guarda» in Resonance che scatta e manda allo Shell. Costo zero: è la prova per capire se le sbirciate servono, prima di comprare;
+- una **telecamera a clip con API ufficiale** (GoPro con Open GoPro; Insta360 ha un SDK su richiesta), da verificare sul modello;
+- i **Meta col kit sviluppatori**;
+- le **cuffie generiche**: voce sì, occhi quasi certamente no.
+
 Da aggiungere alla riunione, nato il 03/10: **l'architettura della ricerca**.
 - Il piano al programma (ricette), il modello solo dove serve.
 - Andare a vedere sul posto.
