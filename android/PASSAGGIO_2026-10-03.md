@@ -181,7 +181,25 @@ Risposte del Ghost (05/10): ha un computer con Chrome; la saldatura la prova lui
 - Domanda sua: si usa insieme agli auricolari (JBL Wave Flex)? Sì. Gli auricolari usano il Bluetooth classico (audio),
   la camera il Bluetooth Low Energy, e il telefono li tiene insieme come fa con un orologio.
 - Da provare: mentre passa una foto (pochi secondi) l'audio può avere un piccolo scatto su alcuni telefoni.
-- Ripiego, se serve: foto via Wi-Fi, al prezzo di più batteria., collegato al telefono del Ghost (05/10, solo proposta, nulla di costruito):
+- Ripiego, se serve: foto via Wi-Fi, al prezzo di più batteria.
+
+**Attivazione silenziosa** (il Ghost, 05/10: *«corro per le campagne, incontro animali, se mi metto a chiacchierare scappano»*).
+La voce non può essere l'unico comando. Tre modi, tutti nel contratto:
+1. un **tasto sulla camera**: si tocca la clip e scatta, in silenzio. È il modo principale;
+2. un **tocco sugli auricolari**: un gesto dei JBL che l'app intercetta come comando multimediale. Da provare: litiga con la musica;
+3. la **voce** («guarda»).
+Aspettative: la fotocamera di serie (2 MP) riconosce un animale vicino; non fa foto naturalistiche da lontano. Esiste un
+modulo da 5 MP per la stessa scheda, da verificare.
+
+**La lista dei pezzi** mandata al Ghost il 05/10, circa 35–50 € senza attrezzi:
+- XIAO ESP32S3 Sense;
+- facoltativo, modulo camera OV5640;
+- LiPo 3,7 V da 250–400 mAh con protezione;
+- microinterruttori a pulsante;
+- interruttore a slitta;
+- guscio stampato in 3D con clip;
+- cavo USB-C per dati.
+Attrezzi, se mancano: saldatore a punta fine, stagno, flux, guaina termorestringente, tester., collegato al telefono del Ghost (05/10, solo proposta, nulla di costruito):
 - non fa girare Resonance intera, perché due telefoni sarebbero due Adam: fa da **sensore** (sentinella);
 - collegamento consigliato: **Nearby Connections** di Google, telefono a telefono in casa, senza internet né server, cifrato, abbinati una volta;
 - la sentinella giudica sul posto e manda **righe di testo** («prova di basso, 25 minuti, 21:10»), non video; le foto solo su richiesta;
