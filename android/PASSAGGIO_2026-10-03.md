@@ -156,9 +156,17 @@ Ultima scelta dichiarata prima della pausa: Meta Fury, poi rimessa in revisione 
 Il 05/10 il Ghost: il vecchio telefono va bene in casa, ma fuori è ingombrante e occupa una mano. Strade per fuori,
 con mani libere, da togliere in studio:
 - il **telefono principale a tracolla** (custodia da collo con la fotocamera libera), più un comando a voce «guarda» in Resonance che scatta e manda allo Shell. Costo zero: è la prova per capire se le sbirciate servono, prima di comprare;
-- una **telecamera a clip con API ufficiale** (GoPro con Open GoPro; Insta360 ha un SDK su richiesta), da verificare sul modello;
+- una **telecamera a clip con API ufficiale** (GoPro con Open GoPro). Correzione del 05/10: l'SDK Android di Insta360 copre le 360 (X5, X4…), **non** le GO;
 - i **Meta col kit sviluppatori**;
 - le **cuffie generiche**: voce sì, occhi quasi certamente no.
+
+Il 05/10 il Ghost: niente telefono al collo («un'ostrica, quando basta la perla»). La perla candidata:
+- **OpenGlass / omiGlass**, progetto aperto di Based Hardware: una schedina Seeed XIAO ESP32S3 Sense (fotocamera e microfono, grande come un'unghia, circa 20 $) con batteria e guscio, da agganciare alla montatura, al colletto o al cappello;
+- parla col telefono via **Bluetooth Low Energy con un protocollo aperto**, quindi Resonance la può leggere direttamente, senza l'app di nessuno;
+- limiti: è un progetto da assemblare, la fotocamera è modesta (2–5 MP, basta per etichette e oggetti), la batteria dura poche ore;
+- condizioni: una luce visibile quando scatta, scatti solo a comando («guarda»), mai registrazione continua. La discrezione non deve diventare una telecamera nascosta per chi sta intorno;
+- in studio si sgancia: le lenti restano, la perla va in tasca;
+- nulla di provato da qui.
 
 Il vecchio telefono in casa, collegato al telefono del Ghost (05/10, solo proposta, nulla di costruito):
 - non fa girare Resonance intera, perché due telefoni sarebbero due Adam: fa da **sensore** (sentinella);
