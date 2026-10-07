@@ -354,12 +354,14 @@ object Azioni {
         Strumento("trova_dove", Effetto.LETTURA, "Per «dove trovo X»: un prodotto, un vino, un libro, un pezzo preciso, in posti vicini. Il programma " +
             "raccoglie i posti (mappa, posti che nomini, ricerche di posti), apre i loro siti col browser, segue carta, menu e listino, e cerca il nome " +
             "esatto nelle pagine: ti torna, posto per posto, trovato (con la frase e il link) o no. Servono cosa, vicino_a e osm (che tipo di posti " +
-            "lo vendono o lo servono); luoghi e indizi aggiungono candidati. Subito, senza conferma; qualche centesimo. " +
+            "lo vendono o lo servono); luoghi e indizi aggiungono candidati. Rifalla anche se ne avete già parlato: le carte cambiano, e " +
+            "ciò che sta in chat non è una verifica. Subito, senza conferma; qualche centesimo. " +
             "Per sapere com'è o quanto costa una cosa usa cerca_nel_web.",
             schema(listOf("cosa"), mapOf(
-                "cosa" to s("Il nome esatto, come lo scriverebbe una carta o un listino (es. il nome del vino senza l'annata)"),
+                "cosa" to s("Il nome come lo scriverebbe una carta o un listino, senza anni, annate né misure (il vino senza l'annata; " +
+                    "il pezzo con marca e modello: «filtro aria Fiat Panda 1.2», non «… 2015»)"),
                 "varianti" to lista("Altre grafie dello stesso nome (fino a ${TrovaDove.VARIANTI_MAX}): con e senza produttore, j/i, abbreviazioni"),
-                "produttore" to s("La marca o chi lo fa; obbligatorio se il nome è di una parola sola"),
+                "produttore" to s("La marca o chi lo fa: se lo dai, deve stare nella stessa pagina; obbligatorio se il nome è di una parola sola"),
                 "luoghi" to lista("Posti già noti da guardare per primi: nomi (col paese in vicino_a) o indirizzi web, per esempio quelli di una ricerca appena fatta"),
                 "indizi" to lista("Fino a ${TrovaDove.INDIZI_MAX} ricerche di posti adatti, una per paese o tipo di posto (es. «enoteca vini naturali Bracciano»)"),
             ) + CAMPI_MAPPA)),

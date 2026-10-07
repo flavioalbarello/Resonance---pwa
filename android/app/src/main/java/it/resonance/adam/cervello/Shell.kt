@@ -498,7 +498,11 @@ class Shell(
         }
         val casa = lettore.leggi(c.url!!)
         if (!casa.riuscita) return TrovaDove.Esito.NonAperto(c, casa.errore.orEmpty())
-        TrovaDove.trova(casa.testo, r)?.let { return TrovaDove.Esito.Trovato(c, casa.url, it) }
+        var nominato: TrovaDove.Esito? = null
+        fun esito(p: Lettore.Pagina): TrovaDove.Esito? = TrovaDove.trova(p.testo, r)?.let { m ->
+            if (m.conProduttore) TrovaDove.Esito.Trovato(c, p.url, m.frase) else { if (nominato == null) nominato = TrovaDove.Esito.Nominato(c, p.url, m.frase); null }
+        }
+        esito(casa)?.let { return it }
         var lette = 1
         val gia = mutableSetOf(c.url, casa.url)
         suspend fun guarda(indirizzi: List<String>): TrovaDove.Esito? {
@@ -508,7 +512,7 @@ class Shell(
                 if (!p.riuscita) continue
                 gia += p.url
                 lette++
-                TrovaDove.trova(p.testo, r)?.let { return TrovaDove.Esito.Trovato(c, p.url, it) }
+                esito(p)?.let { return it }
             }
             return null
         }
@@ -525,7 +529,7 @@ class Shell(
             if (trovati.isNotEmpty()) break
         }
         guarda(TrovaDove.daSeguire(casa.url, trovati.map { TrovaDove.Link(it, "") }, gia))?.let { return it }
-        return TrovaDove.Esito.NonTrovato(c, lette)
+        return nominato ?: TrovaDove.Esito.NonTrovato(c, lette)
     }
 
     /**
@@ -759,10 +763,12 @@ class Shell(
         return ciclo(lavoro, oggi, regole(istantanea, ""), modelloPer(Compito.ESPERIMENTO), null, 0.0, origine = "perturbazione", compito = Compito.ESPERIMENTO)
     }
 
-    private suspend fun ciclo(lavoro: MutableList<JsonObject>, oggi: LocalDate, regole: Regole, modello: String, motore: String?,
+    private suspend fun ciclo(lavoro: MutableList<JsonObject>, oggi: LocalDate, regole: Regole, modello0: String, motore: String?,
                               costoIniziale: Double, origine: String = "shell", compito: Compito = Compito.TURNO, forza: Forzatura? = null,
                               reparti: MutableSet<Reparto>? = null, sistema: ((Set<Reparto>) -> String)? = null): Esito {
         var costoTurno = costoIniziale
+        // Se il leggero chiama una ricerca, la risposta sopra le prove la scrive il principale (05/10).
+        var modello = modello0
         val temperatura = forza?.temperatura ?: temperaturaDi(compito)
         var usata: Double? = null
         var rifiutate = 0
@@ -862,7 +868,12 @@ class Shell(
                 }
                 var allargati = false
                 for (c in r.chiamate) {
-                    if (c.nome == "cerca_nel_web" || c.nome == "ricerca_a_fondo" || c.nome == "trova_dove") cercato = true
+                    if (c.nome == "cerca_nel_web" || c.nome == "ricerca_a_fondo" || c.nome == "trova_dove") {
+                        cercato = true
+                        if (modello == impostazioni.modelloLeggero && modello != modelloPer(Compito.TURNO)) {
+                            modello = modelloPer(Compito.TURNO); traccia += "dopo la ricerca, il principale"
+                        }
+                    }
                     // Un reparto si apre su richiesta, o perché lo Shell ne ha usato uno strumento; dopo una ricerca rapida,
                     // la ricerca a fondo è il passo dopo possibile.
                     if (reparti != null) {

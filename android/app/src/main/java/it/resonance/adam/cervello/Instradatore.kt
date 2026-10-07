@@ -29,6 +29,9 @@ object Instradatore {
         allegati.any { it.tipo == Allegato.Tipo.TESTO } -> Motore.PIENO
         allegati.any { it.tipo == Allegato.Tipo.PDF } -> Motore.PIENO
         testo.length > 600 -> Motore.PIENO
+        // Una domanda che porta a una ricerca: la risposta va scritta sopra le prove, ed è lì che il leggero inventa
+        // (05/10: le risposte dopo le ricerche le scriveva Gemini Flash Lite). Le parole sono quelle del reparto della ricerca.
+        it.resonance.adam.logica.Reparto.MONDO.chiave?.containsMatchIn(testo) == true -> Motore.PIENO
         else -> null
     }
 

@@ -65,10 +65,14 @@ object TrovaDove {
      */
     fun trova(testo: String, forme: List<String>): String? {
         val cercate = forme.map { " ${normalizza(it)} " }.filter { it.isNotBlank() }
+        val parole = forme.map { parole(it) }.filter { it.size >= 2 }
         val righe = testo.lines()
         righe.forEachIndexed { i, r ->
             val n = " ${normalizza(r)} "
-            if (cercate.any { n.contains(it) }) {
+            val diRiga = n.trim().split(' ').toSet()
+            // La frase esatta, oppure (per una descrizione, 05/10: «filtro aria Fiat Panda 1.2») tutte le sue parole nella
+            // stessa riga, in qualunque ordine: «Filtro aria per FIAT PANDA (312) 1.2».
+            if (cercate.any { n.contains(it) } || parole.any { diRiga.containsAll(it) }) {
                 val frase = if (r.trim().length < 50 && i + 1 < righe.size) r.trim() + " " + righe[i + 1].trim() else r.trim()
                 return Testi.corto(frase.replace(Regex("\\s+"), " "), 220)
             }
@@ -78,12 +82,41 @@ object TrovaDove {
         return cercate.firstOrNull { tutto.contains(it) }?.let { "«${it.trim()}» nel testo della pagina (impaginato su più righe)" }
     }
 
-    /** Il nome nella pagina, con la regola del nome corto: se è di una parola sola, nella pagina deve esserci anche il produttore. */
-    fun trova(testo: String, r: Richiesta): String? {
-        val frase = trova(testo, r.forme) ?: return null
-        if (r.corto && !" ${normalizza(testo)} ".contains(" ${normalizza(r.produttore)} ")) return null
-        return frase
+    // Parole che non distinguono: articoli, preposizioni. E gli anni: le pagine scrivono intervalli («2012-2019»), un anno
+    // chiesto alla riga la esclude anche quando è giusta.
+    private val VUOTE = setOf("il", "lo", "la", "i", "gli", "le", "l", "un", "una", "uno", "di", "del", "della", "dei", "delle", "da", "dal",
+        "per", "con", "e", "a", "al", "in", "su", "the", "of", "and", "for")
+    private val ANNO = Regex("^(19|20)\\d\\d$")
+
+    /** Le parole che contano di un nome o di una descrizione. */
+    fun parole(s: String): Set<String> = normalizza(s).split(' ').filter { it.isNotEmpty() && it !in VUOTE && !ANNO.matches(it) }.toSet()
+
+    // Parole del nome di un produttore che non lo distinguono: «Cantina Lupi Grigi» si riconosce da «lupi grigi».
+    private val DI_MESTIERE = setOf("cantina", "cantine", "azienda", "agricola", "vinicola", "birrificio", "caseificio", "casa", "fattoria",
+        "tenuta", "srl", "spa", "snc", "sas")
+
+    /** Il produttore nella pagina: la sua frase, o tutte le sue parole che contano (almeno una). */
+    fun conProduttore(testo: String, produttore: String): Boolean {
+        val n = " ${normalizza(testo)} "
+        if (n.contains(" ${normalizza(produttore)} ")) return true
+        val sue = parole(produttore) - DI_MESTIERE
+        val tutte = n.trim().split(' ').toSet()
+        return sue.isNotEmpty() && tutte.containsAll(sue)
     }
+
+    /**
+     * Il nome nella pagina, col produttore. Se il produttore è stato dato deve stare nella stessa pagina, sempre: il 05/10
+     * «Rosso Fantasma» (Cantina Lupi Grigi, inventata) ha «trovato» un sequestro di vino, un manga e un tonno. Senza il
+     * produttore la pagina NOMINA la cosa, non la HA: è un esito a parte. Un nome di una parola sola senza produttore non vale.
+     */
+    fun trova(testo: String, r: Richiesta): Corrispondenza? {
+        val frase = trova(testo, r.forme) ?: return null
+        if (r.produttore.isBlank()) return Corrispondenza(frase, true)
+        val con = conProduttore(testo, r.produttore)
+        return if (!con && r.corto) null else Corrispondenza(frase, con)
+    }
+
+    data class Corrispondenza(val frase: String, val conProduttore: Boolean)
 
     // ── Quali link seguire dentro un sito ──
 
@@ -177,6 +210,8 @@ object TrovaDove {
         abstract val candidato: Candidato
         data class Trovato(override val candidato: Candidato, val url: String, val frase: String) : Esito()
         data class NonTrovato(override val candidato: Candidato, val pagine: Int) : Esito()
+        // Il nome c'è, il produttore no: probabilmente un'altra cosa con lo stesso nome.
+        data class Nominato(override val candidato: Candidato, val url: String, val frase: String) : Esito()
         data class NonAperto(override val candidato: Candidato, val motivo: String) : Esito()
         data class SenzaSito(override val candidato: Candidato) : Esito()
     }
@@ -255,6 +290,7 @@ object TrovaDove {
         return when (e) {
             is Esito.Trovato -> "✓ $chi — «${e.frase}» — ${e.url}"
             is Esito.NonTrovato -> "· $chi — letto (${e.pagine} ${if (e.pagine == 1) "pagina" else "pagine"}), non c'è — ${c.url}"
+            is Esito.Nominato -> "~ $chi — il nome c'è, il produttore no: «${e.frase}» — ${e.url}"
             is Esito.NonAperto -> "✗ $chi — non aperto: ${e.motivo} — ${c.url}"
             is Esito.SenzaSito -> "○ $chi — nessun sito trovato"
         }
@@ -267,7 +303,7 @@ object TrovaDove {
      */
     fun scheda(r: Richiesta, esiti: List<Esito>, note: List<String>): String = buildString {
         val (web, posti) = esiti.partition { it.candidato.origine == Origine.WEB }
-        val ordine = { e: Esito -> when (e) { is Esito.Trovato -> 0; is Esito.NonTrovato -> 1; is Esito.NonAperto -> 2; is Esito.SenzaSito -> 3 } }
+        val ordine = { e: Esito -> when (e) { is Esito.Trovato -> 0; is Esito.Nominato -> 1; is Esito.NonTrovato -> 2; is Esito.NonAperto -> 3; is Esito.SenzaSito -> 4 } }
         append("$TITOLO «${r.cosa}»" + if (r.produttore.isNotBlank()) " (${r.produttore})" else "")
         if (r.vicinoA.isNotBlank()) append(" vicino a ${r.vicinoA}" + if (r.osm.isNotEmpty()) " (${r.km} km)" else "")
         val trovati = posti.count { it is Esito.Trovato }
@@ -286,7 +322,8 @@ object TrovaDove {
         appendLine("PROVE DEL PROGRAMMA: ha aperto i siti e cercato «${r.forme.joinToString("» / «")}» nel testo delle pagine.")
         appendLine(scheda(r, esiti, note))
         appendLine()
-        append("Come riferirle: ✓ = il nome è scritto in quella pagina, dillo con la frase e il link. · = letto senza trovarlo: " +
+        append("Come riferirle: ✓ = il nome è scritto in quella pagina, dillo con la frase e il link. ~ = il nome c'è ma il produttore no: " +
+            "probabilmente è un'altra cosa con lo stesso nome, non contarla. · = letto senza trovarlo: " +
             "«non risulta dal sito», non «non ce l'ha» (una carta cambia, una pagina può mancare). ✗ e ○ = non verificato, e dillo. " +
             "Non aggiungere posti, distanze o disponibilità che non stanno in queste prove o nelle fonti di altre ricerche di questo turno; " +
             "una pagina che lo nomina senza dire dove sia va detta così, col link.")

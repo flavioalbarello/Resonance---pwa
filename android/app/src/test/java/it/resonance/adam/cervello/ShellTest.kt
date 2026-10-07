@@ -1302,6 +1302,21 @@ class ShellTest {
         assertTrue(db.turni().ultimi(5).any { it.strumenti.contains("trova_dove: 2 siti aperti, 1 trovati") })
     }
 
+    // Il leggero che chiama una ricerca cede la risposta al principale (07/10): sopra le prove scrive il modello migliore.
+    @Test fun dopoUnaRicercaRispondeIlPrincipale() = runBlocking {
+        imp.sceltaAutomatica = true
+        try {
+            val m = FintoModello(chiama("trova_dove", """{"cosa":"Mannaja Cane","luoghi":["https://salottobelvedere.it/"]}"""), testo("Sì, 28 €."))
+            m.instradatore = { testo("LEGGERO") }
+            Shell(archivio, imp, m, FintoMondo(), FintaCassetta(), FintoOsm(emptyList()), FintoLettore(SALOTTO)).turno("il Salotto ha il Mannaja Cane? controlla")
+            val turno = m.modelli.filter { !it.startsWith("router:") }
+            assertEquals(listOf(imp.modelloLeggero, imp.modello), turno)
+            assertTrue(db.turni().ultimi(5).any { it.strumenti.contains("dopo la ricerca, il principale") })
+            // Il Salotto, nominato per indirizzo: trovato, col produttore non chiesto.
+            assertTrue(db.messaggi().elenco().single { it.ruolo == Ruolo.RICERCA }.testo.contains("✓ "))
+        } finally { imp.sceltaAutomatica = false }
+    }
+
     @Test fun trovaDoveSenzaLettoreLoDice() = runBlocking {
         val m = FintoModello(chiama("trova_dove", """{"cosa":"Mannaja Cane","luoghi":["https://salottobelvedere.it/"]}"""), testo("Non posso."))
         shell(m, FintaCassetta()).turno("dove trovo il Mannaja Cane?")

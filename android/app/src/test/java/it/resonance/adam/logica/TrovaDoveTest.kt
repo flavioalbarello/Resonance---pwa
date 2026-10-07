@@ -36,9 +36,32 @@ class TrovaDoveTest {
     @Test fun unNomeCortoVuoleIlProduttoreNellaPagina() {
         val r = TrovaDove.Richiesta("ReAle", vicinoA = "Bracciano", osm = listOf("amenity=pub"), produttore = "Birra del Borgo")
         assertNull(TrovaDove.trova("Pasticceria ReAle, Grosseto: ti aspettiamo!", r))
-        assertNotNull(TrovaDove.trova("Alla spina\nReAle — Birra del Borgo, 6,4% 5€", r))
+        assertTrue(TrovaDove.trova("Alla spina\nReAle — Birra del Borgo, 6,4% 5€", r)!!.conProduttore)
         // Un nome di due parole basta da solo.
         assertNotNull(TrovaDove.trova(pagina("salotto-carta-vini").testo, TrovaDove.Richiesta("Mannaja Cane", vicinoA = "Bracciano")))
+    }
+
+    // Le prove sul telefono del 07/10: «Rosso Fantasma» (cantina inventata) trovato in un sequestro di vino e in un manga;
+    // il filtro aria della Panda segnato «non c'è» su dieci negozi che lo vendevano.
+    @Test fun ilProduttoreDatoDeveStareNellaPagina() {
+        val r = TrovaDove.Richiesta("Rosso Fantasma", vicinoA = "Bracciano", produttore = "Cantina Lupi Grigi")
+        val m = TrovaDove.trova("Foggia, sequestrati oltre 1,3 milioni di litri di vino rosso fantasma", r)!!
+        assertFalse(m.conProduttore)
+        assertTrue(TrovaDove.trova("Rosso Fantasma 2022 — Lupi Grigi, Tuscia 18€", r)!!.conProduttore)
+        // «Regina del Quartuccio» nella carta vera: con il produttore.
+        val vino = TrovaDove.Richiesta("Mannaja Cane", vicinoA = "Bracciano", produttore = "Regina del Quartuccio")
+        assertTrue(TrovaDove.trova(pagina("salotto-carta-vini").testo, vino)!!.conProduttore)
+        // Senza produttore dato, il nome basta.
+        assertTrue(TrovaDove.trova(pagina("salotto-carta-vini").testo, TrovaDove.Richiesta("Mannaja Cane", vicinoA = "Bracciano"))!!.conProduttore)
+    }
+
+    @Test fun unaDescrizioneSiTrovaParolaPerParolaSenzaAnni() {
+        val r = TrovaDove.Richiesta("filtro aria Fiat Panda 1.2 2015", vicinoA = "Bracciano")
+        assertNotNull(TrovaDove.trova("Filtro aria per FIAT PANDA (312_, 319_) 1.2 (312PXA1A) (dal 2012)", r))
+        assertNotNull(TrovaDove.trova("Filtro Aria Fiat Panda 1.2 2012 02-2019 12 Tecneco", r))
+        // Le parole in righe diverse non bastano: «filtro aria» in un menu e «Panda» in un altro.
+        assertNull(TrovaDove.trova("Filtro aria universale\nFiat Panda 1.2 tagliando completo", r))
+        assertEquals(setOf("filtro", "aria", "fiat", "panda", "1", "2"), TrovaDove.parole("filtro aria Fiat Panda 1.2 2015"))
     }
 
     @Test fun dallaPaginaInizialeSiSeguonoIlMenuNonISocial() {
