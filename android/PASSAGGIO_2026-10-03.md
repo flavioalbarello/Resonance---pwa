@@ -135,6 +135,87 @@ La tabella completa, con il nodo di ciascun argomento, è in `PROGETTO.md` → �
 5. **I colori dell'icona**: dev ambra, base blu.
 6. **Salvare un Adam se il telefono si rompe**. È la carenza più grave: oggi c'è solo la copia a mano.
 
+**Gli occhi di Adam**. Decisione della riunione del 01/10 (verbale nella cassetta, `riunioni/20261001-0836-…`):
+- occhiali **in pausa**: anche spenti, una telecamera sul viso può mettere a disagio i pazienti;
+- in studio occhi e orecchie spenti, in modo visibile.
+
+Il 05/10 il Ghost ha proposto auricolari aperti con telecamera, di marca generica.
+- Audio: funzionerebbero come cuffie Bluetooth normali.
+- Telecamera: quasi certamente passa solo dalla loro app, senza accesso per Resonance.
+- Vantaggio: si tolgono in studio senza perdere la vista.
+- Va verificato col venditore prima di comprarli: nome dell'app, foto nella galleria, uso senza cloud.
+
+Dalla stessa riunione, da non ridiscutere da capo:
+- **una telecamera non facciale** (spilla, collana, orecchio) in studio non spaventa meno, spaventa di più, perché non si riconosce;
+- **criteri** per qualunque oggetto: copertura fisica della telecamera, che si chiude con un dito e si vede; microfono spento con un tasto; lenti progressive montabili, se è un occhiale;
+- **due livelli**: al lavoro niente sensi, o spenti in modo visibile; a casa e fuori, gli occhiali oppure il **corpo di Adam**, cioè un vecchio telefono Android fisso su un supporto, dove si suona o si cucina, a costo quasi zero;
+- la **modalità studio** nell'app serve con qualunque scelta.
+
+Ultima scelta dichiarata prima della pausa: Meta Fury, poi rimessa in revisione dal Ghost.
+
+Il 05/10 il Ghost: il vecchio telefono va bene in casa, ma fuori è ingombrante e occupa una mano. Strade per fuori,
+con mani libere, da togliere in studio:
+- il **telefono principale a tracolla** (custodia da collo con la fotocamera libera), più un comando a voce «guarda» in Resonance che scatta e manda allo Shell. Costo zero: è la prova per capire se le sbirciate servono, prima di comprare;
+- una **telecamera a clip con API ufficiale** (GoPro con Open GoPro). Correzione del 05/10: l'SDK Android di Insta360 copre le 360 (X5, X4…), **non** le GO;
+- i **Meta col kit sviluppatori**;
+- le **cuffie generiche**: voce sì, occhi quasi certamente no.
+
+Il 05/10 il Ghost: niente telefono al collo («un'ostrica, quando basta la perla»). La perla candidata:
+- **OpenGlass / omiGlass**, progetto aperto di Based Hardware: una schedina Seeed XIAO ESP32S3 Sense (fotocamera e microfono, grande come un'unghia, circa 20 $) con batteria e guscio, da agganciare alla montatura, al colletto o al cappello;
+- parla col telefono via **Bluetooth Low Energy con un protocollo aperto**, quindi Resonance la può leggere direttamente, senza l'app di nessuno;
+- limiti: è un progetto da assemblare, la fotocamera è modesta (2–5 MP, basta per etichette e oggetti), la batteria dura poche ore;
+- condizioni: una luce visibile quando scatta, scatti solo a comando («guarda»), mai registrazione continua. La discrezione non deve diventare una telecamera nascosta per chi sta intorno;
+- in studio si sgancia: le lenti restano, la perla va in tasca;
+- nulla di provato da qui.
+
+Il Ghost conferma il concetto (05/10): **una microcamera da indossare che parla con l'APK**. Il contratto, che resta
+anche se cambia l'oggetto:
+- l'APK chiede «scatta» via Bluetooth;
+- la camera risponde con la foto (JPEG) e il livello della batteria;
+- luce accesa mentre scatta;
+- un tasto sulla camera per scattare a mano;
+- niente resta salvato sulla camera, e una foto va allo Shell solo a comando.
+
+Primo pezzo: XIAO ESP32S3 Sense, batteria LiPo piccola, guscio con clip (circa 25–35 €).
+Risposte del Ghost (05/10): ha un computer con Chrome; la saldatura la prova lui o un amico.
+- Domanda sua: si usa insieme agli auricolari (JBL Wave Flex)? Sì. Gli auricolari usano il Bluetooth classico (audio),
+  la camera il Bluetooth Low Energy, e il telefono li tiene insieme come fa con un orologio.
+- Da provare: mentre passa una foto (pochi secondi) l'audio può avere un piccolo scatto su alcuni telefoni.
+- Ripiego, se serve: foto via Wi-Fi, al prezzo di più batteria.
+
+**Attivazione silenziosa** (il Ghost, 05/10: *«corro per le campagne, incontro animali, se mi metto a chiacchierare scappano»*).
+La voce non può essere l'unico comando. Tre modi, tutti nel contratto:
+1. un **tasto sulla camera**: si tocca la clip e scatta, in silenzio. È il modo principale;
+2. un **tocco sugli auricolari**: un gesto dei JBL che l'app intercetta come comando multimediale. Da provare: litiga con la musica;
+3. la **voce** («guarda»).
+Aspettative: la fotocamera di serie (2 MP) riconosce un animale vicino; non fa foto naturalistiche da lontano. Esiste un
+modulo da 5 MP per la stessa scheda, da verificare.
+
+**La luce**: anche questa si comanda in silenzio (il Ghost, 05/10, per gli animali).
+- Accesa di serie quando scatta.
+- Si spegne con un gesto del Ghost: pressione lunga sul tasto della camera, o un interruttore nell'app. Il diario registra quando è stata spenta.
+- Si riaccende da sola dopo un tempo scelto, o alla fine dell'uscita.
+- In studio la camera è spenta del tutto: la luce lì non c'entra.
+- Le persone intorno restano il criterio: luce spenta solo quando ci sono gli animali, non quando ci sono le persone. La regola è del Ghost; il programma tiene la traccia.
+- Pezzo in più: un LED esterno da 3 mm (o SMD) con resistenza da 220 Ω, perché quello della scheda resta chiuso nel guscio.
+
+**La lista dei pezzi** mandata al Ghost il 05/10, circa 35–50 € senza attrezzi:
+- XIAO ESP32S3 Sense;
+- facoltativo, modulo camera OV5640;
+- LiPo 3,7 V da 250–400 mAh con protezione;
+- microinterruttori a pulsante;
+- interruttore a slitta;
+- guscio stampato in 3D con clip;
+- cavo USB-C per dati.
+Attrezzi, se mancano: saldatore a punta fine, stagno, flux, guaina termorestringente, tester., collegato al telefono del Ghost (05/10, solo proposta, nulla di costruito):
+- non fa girare Resonance intera, perché due telefoni sarebbero due Adam: fa da **sensore** (sentinella);
+- collegamento consigliato: **Nearby Connections** di Google, telefono a telefono in casa, senza internet né server, cifrato, abbinati una volta;
+- la sentinella giudica sul posto e manda **righe di testo** («prova di basso, 25 minuti, 21:10»), non video; le foto solo su richiesta;
+- se il telefono del Ghost non c'è, le righe aspettano e partono quando torna;
+- alternative scartate: la cassetta su GitHub (lenta, e le foto finirebbero in un repository); una cartella su Drive (serve lo stesso account Google su tutti e due);
+- da decidere: è una terza app (flavor «sentinella») o una modalità? La regola delle due app dice niente interruttori dentro l'app;
+- da provare: quanto il telefono del Ghost riesce a ricevere in secondo piano, coi limiti di Android.
+
 Da aggiungere alla riunione, nato il 03/10: **l'architettura della ricerca**.
 - Il piano al programma (ricette), il modello solo dove serve.
 - Andare a vedere sul posto.
