@@ -64,6 +64,13 @@ class TrovaDoveTest {
         assertEquals(setOf("filtro", "aria", "fiat", "panda", "1", "2"), TrovaDove.parole("filtro aria Fiat Panda 1.2 2015"))
     }
 
+    @Test fun leDomandeDiPosto() {
+        listOf("Dove compro un filtro aria per Fiat Panda 1.2 del 2015 vicino a Bracciano?", "Dove posso trovare il vino Mannaja Cane entro 50 km da Canale Monterano?",
+            "Ci sono ristoranti etiopi o eritrei entro 40 km da Canale Monterano?", "Ieri sera ero al Salotto Belvedere: hanno in carta il Mannaja Cane?",
+            "C'è una libreria vicino a Bracciano che ha L'arminuta?").forEach { assertTrue(it, TrovaDove.domandaDiPosto(it)) }
+        listOf("dove ho messo le chiavi?", "oggi peso 82", "quanto pesa un tricheco?", "dove eravamo rimasti col piano?").forEach { assertFalse(it, TrovaDove.domandaDiPosto(it)) }
+    }
+
     @Test fun dallaPaginaInizialeSiSeguonoIlMenuNonISocial() {
         val casa = pagina("salotto-casa")
         val seguiti = TrovaDove.daSeguire(casa.url, casa.link)

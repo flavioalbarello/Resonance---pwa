@@ -53,6 +53,14 @@ object TrovaDove {
         if (r.corto && normalizza(r.produttore).length < 3) add("un nome di una parola sola si trova dappertutto: aggiungi produttore (la marca o chi lo fa)")
     }
 
+    // Le domande di posto: «dove trovo / compro / mangio», «c'è un … vicino a», «hanno in carta», «entro 20 km». Non le
+    // domande sulla vita del Ghost («dove ho messo le chiavi»): servono un verbo di ricerca o una distanza.
+    private val DI_POSTO = Regex("\\bdove (posso |si )?(trovo|trovare|trova|compro|comprare|compra|vende|vendono|mangio|mangiare|bevo|bere|prendo|prendere)\\b|" +
+        "\\bchi (vende|ha)\\b|\\b(hanno|ha|c'è) in carta\\b|\\bentro \\d+ ?km\\b|\\bc'è (un|una|qualche)\\b.*\\b(vicino|nei dintorni|in zona)\\b|" +
+        "\\bci sono\\b.*\\b(vicino|entro|in zona|nei dintorni)\\b", RegexOption.IGNORE_CASE)
+
+    fun domandaDiPosto(t: String) = DI_POSTO.containsMatchIn(t)
+
     // ── Il nome nella pagina ──
 
     fun normalizza(s: String): String = Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{M}"), "")
