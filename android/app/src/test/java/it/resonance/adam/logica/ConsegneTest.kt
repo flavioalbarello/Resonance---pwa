@@ -81,4 +81,18 @@ class ConsegneTest {
         assertEquals(listOf("crea_evento"), Testi.chiamateScritte("proposto crea_evento(titolo='a')", listOf("crea_evento", "cerca")))
         assertTrue(Testi.chiamateScritte("ho usato crea_evento per metterlo", listOf("crea_evento")).isEmpty())
     }
+
+    // 08/10: il turno fallito non diceva niente, e la consegna restava segnata come lavorata.
+    @Test fun dopoIlLavoroSiDiceIlVero() {
+        val c = Consegna(id = 1, cosa = "La scaletta del tributo", documento = "Scaletta", presa = "2026-10-01", scadenza = "2026-10-09", creata = 0, lavorata = true)
+        val fallito = Consegne.dopoIlLavoro(c, errore = true, proposte = 0, risposta = "Il modello non ha risposto: timeout", chi = "Lo Shell")
+        assertFalse(fallito.consegna.lavorata)
+        assertTrue(fallito.testo, fallito.testo.contains("timeout") && fallito.testo.contains("Riprova") && fallito.testo.contains("09/10"))
+        val proposta = Consegne.dopoIlLavoro(c, errore = false, proposte = 1, risposta = "Pronta.", chi = "Lo Shell")
+        assertTrue(proposta.consegna.lavorata && proposta.testo.contains("da confermare entro il 09/10"))
+        val niente = Consegne.dopoIlLavoro(c, errore = false, proposte = 0, risposta = "Non trovo i brani.", chi = "Lo Shell")
+        assertTrue(niente.titolo.contains("non ha preparato") && niente.testo.contains("Non trovo i brani."))
+        // Rimessa da lavorare, il battito dopo la riprende.
+        assertEquals(1, Consegne.daLavorare(listOf(fallito.consegna), java.time.LocalDate.parse("2026-10-08")).size)
+    }
 }

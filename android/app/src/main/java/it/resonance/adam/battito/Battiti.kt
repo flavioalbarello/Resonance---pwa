@@ -218,7 +218,7 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             if (chiusi.isNotEmpty()) Battiti.notifica(applicationContext, 110, if (chiusi.size == 1) "Esperimento finito" else "Esperimenti finiti",
                 chiusi.joinToString("\n") { "«${it.titolo}»: ${it.esito?.etichetta}" }, chiusi.joinToString("\n") { Esperimenti.traccia(it) }, "SPECCHIO")
             // Le consegne dello Shell: il programma guarda se il documento c'è, e il giorno prima della scadenza apre
-            // il turno di lavoro, una volta sola (segnato PRIMA della chiamata: un turno fallito non si ripete a ogni battito).
+            // il turno di lavoro (segnato PRIMA della chiamata; se il turno fallisce torna da lavorare, e lo si dice: 08/10).
             runCatching { archivio.verificaConsegne(oggi) }.getOrDefault(emptyList()).forEach { c ->
                 val t = it.resonance.adam.logica.Consegne.traccia(c)
                 archivio.db.messaggi().inserisci(it.resonance.adam.dati.Messaggio(ruolo = it.resonance.adam.dati.Ruolo.NOTA, testo = t, istante = System.currentTimeMillis()))
@@ -226,9 +226,11 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             }
             if (!prova) it.resonance.adam.logica.Consegne.daLavorare(archivio.db.consegne().aperte(), oggi).forEach { c ->
                 archivio.db.consegne().aggiorna(c.copy(lavorata = true))
-                val e = runCatching { Shell(archivio, imp, mondo = mondo).lavoraConsegna(c) }.getOrNull()
-                Battiti.notifica(applicationContext, 115, "${it.resonance.adam.logica.Nomi.soggetto(archivio.db.profilo().leggi())} ha lavorato a una consegna", "«${c.cosa}»: " +
-                    if (e?.proposte?.isNotEmpty() == true) "c'è una proposta da confermare" else "guarda cosa ha scritto", "", "SHELL")
+                val e = runCatching { Shell(archivio, imp, mondo = mondo).lavoraConsegna(c) }
+                val d = it.resonance.adam.logica.Consegne.dopoIlLavoro(c, errore = e.getOrNull()?.errore ?: true, proposte = e.getOrNull()?.proposte?.size ?: 0,
+                    risposta = e.getOrNull()?.testo ?: (e.exceptionOrNull()?.message ?: "errore"), chi = it.resonance.adam.logica.Nomi.soggetto(archivio.db.profilo().leggi()))
+                if (d.consegna != c.copy(lavorata = true)) archivio.db.consegne().aggiorna(d.consegna)
+                Battiti.notifica(applicationContext, 115, d.titolo, d.testo, "", "SHELL")
             }
             // La lavagna: ciò che è finito da 30 giorni si cancella davvero; le notifiche fissate seguono le scadenze.
             runCatching { archivio.pulisciLavagna(oggi) }

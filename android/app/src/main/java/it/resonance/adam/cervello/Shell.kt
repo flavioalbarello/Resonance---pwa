@@ -91,7 +91,9 @@ class Shell(
     // Il browser che apre i siti (cervello/Lettore.kt): sul telefono la WebView, al banco un finto o Chromium.
     private val lettore: Lettore? = null,
 ) {
-    data class Esito(val testo: String, val proposte: List<Long>)
+    // `errore`: il turno non è andato (il modello non ha risposto, il tetto di spesa). Chi lo apre da solo, come il battito
+    // per le consegne, deve poterlo dire e riprovare invece di scrivere «guarda cosa ha scritto».
+    data class Esito(val testo: String, val proposte: List<Long>, val errore: Boolean = false)
 
     private val ora get() = System.currentTimeMillis()
     private suspend fun nota(t: String) = archivio.db.messaggi().inserisci(Messaggio(ruolo = Ruolo.NOTA, testo = t, istante = ora))
@@ -727,7 +729,7 @@ class Shell(
     // Il turno di lavoro su una consegna: lo apre il programma, il giorno prima della scadenza, anche ad app chiusa.
     // Ciò che lo Shell prepara resta proposta: niente si salva senza il tocco del Ghost.
     suspend fun lavoraConsegna(c: it.resonance.adam.dati.Consegna): Esito {
-        controllaSpesa()?.let { return Esito(it, emptyList()) }
+        controllaSpesa()?.let { return Esito(it, emptyList(), errore = true) }
         nota("Turno di lavoro dello Shell sulla consegna ${it.resonance.adam.logica.Consegne.riga(c)}.")
         val oggi = LocalDate.now()
         val istantanea = fotografia(oggi, 2)
@@ -951,7 +953,7 @@ class Shell(
             val t = "Il modello non ha risposto: ${e.message ?: e.javaClass.simpleName}"
             nota(t)
             registraTurno(compito, modello, usata ?: temperatura, forza != null, proposte, rifiutate, troncata, esauriti, errore = true, costoTurno, traccia.ifEmpty { listOf("nessuno strumento") } + listOfNotNull(misura))
-            return Esito(t, proposte)
+            return Esito(t, proposte, errore = true)
         }
         val finta = Testi.fintaNota(testo)
         if (finta) testo = Testi.senzaFinteNote(testo)

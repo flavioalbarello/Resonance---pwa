@@ -50,6 +50,27 @@ object Consegne {
         it.stato == StatoConsegna.APERTA && !it.lavorata && ChronoUnit.DAYS.between(oggi, LocalDate.parse(it.scadenza)) <= 1
     }
 
+    data class DopoIlLavoro(val consegna: Consegna, val titolo: String, val testo: String)
+
+    /**
+     * Ciò che il battito fa dopo il turno di lavoro (08/10). Prima la notifica diceva «guarda cosa ha scritto» anche quando
+     * il turno era fallito: non c'era niente da guardare, la consegna era già segnata come lavorata e alla scadenza
+     * risultava mancata. Il fallimento muto della lista in CLAUDE.md. Ora: un turno fallito si dice col motivo e torna da
+     * lavorare (riprova al battito dopo, fino alla scadenza); una proposta si conferma entro la scadenza, e lo si dice;
+     * un turno senza proposta si dice per quello che è, con la risposta.
+     */
+    fun dopoIlLavoro(c: Consegna, errore: Boolean, proposte: Int, risposta: String, chi: String): DopoIlLavoro {
+        val entro = LocalDate.parse(c.scadenza).format(giorno)
+        return when {
+            errore -> DopoIlLavoro(c.copy(lavorata = false), "$chi non è riuscito a lavorare a una consegna",
+                "«${c.cosa}»: ${Testi.corto(risposta.ifBlank { "nessuna risposta" }, 160)}. Riprova al prossimo battito, fino al $entro.")
+            proposte > 0 -> DopoIlLavoro(c, "$chi ha lavorato a una consegna",
+                "«${c.cosa}»: c'è una proposta da confermare entro il $entro. Senza la tua conferma il documento non c'è, e la consegna risulta mancata.")
+            else -> DopoIlLavoro(c, "$chi non ha preparato il documento",
+                "«${c.cosa}»: nessuna proposta. ${Testi.corto(risposta.ifBlank { "Non ha scritto niente." }, 160)}")
+        }
+    }
+
     fun riga(c: Consegna) = "«${c.cosa}» — ${forma(c)}, entro il ${LocalDate.parse(c.scadenza).format(giorno)}" +
         (if (c.lavorata) " (turno di lavoro già fatto)" else "")
 

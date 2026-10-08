@@ -755,6 +755,25 @@ risponde, quindi la parte «posti entro N km» è provata solo sul banco. Lo She
 prove («La Regina del Quartuccio (Liguria)», dall'indirizzo di una pagina): è il passo 2 dell'ordine, il controllo della
 risposta contro le prove.
 
+## Le prove sul telefono del 07–08/10 e cosa ne è venuto
+
+| prova | cosa è successo | cosa è cambiato |
+|---|---|---|
+| «Rosso Fantasma» (cantina inventata) | 7 «trovati» falsi: un sequestro di vino, un manga, un tonno | col produttore dato, una pagina che non lo nomina dice «~ il nome c'è, il produttore no» |
+| filtro aria Panda 1.2 | «non c'è» su dieci negozi che lo vendevano: si cercava la frase esatta con «2015» | una descrizione si trova con tutte le sue parole nella stessa riga; gli anni non si chiedono |
+| il Mannaja entro 50 km | il leggero ha risposto senza cercare, inventando verifiche su distributori | le domande da ricerca vanno al principale; se il leggero chiama una ricerca, risponde il principale |
+| lo stesso, col principale | «abbiamo già cercato»: nessuno strumento, risposta dalla chat | un rimando che obbligava a ricercare (`ceb93da`), **annullato** (`13bfd05`): il Ghost, 08/10, *«è giusto in linea di massima che controlli prima in chat»*. Si riprova fra qualche giorno, quando la chat avrà dimenticato |
+| etiopi entro 40 km | «non risultano»: giusto, il Bethelehem è chiuso definitivamente | la verità del banco era sbagliata; la mappa tiene posti chiusi |
+
+## Le consegne: il fallimento muto (08/10)
+
+Il turno di lavoro sulla consegna si segnava «lavorato» prima della chiamata; se la chiamata falliva (rete, tetto di
+spesa), la notifica diceva «guarda cosa ha scritto» e non c'era niente: alla scadenza, mancata. Ora (`Consegne.dopoIlLavoro`):
+un turno fallito si dice col motivo e torna da lavorare (riprova al battito dopo, fino alla scadenza); una proposta si
+conferma entro la scadenza, e la notifica lo dice; un turno senza proposta si dice per quello che è.
+Restano da discutere con il Ghost gli altri due modi in cui una consegna sembra non funzionare: la proposta che va
+confermata in poche ore, e il titolo del documento che deve coincidere.
+
 ## Per la prossima riunione (argomenti che l'architetto porta)
 
 | argomento | da dove | il nodo |
@@ -770,7 +789,7 @@ risposta contro le prove.
 
 | carenza | stato |
 |---|---|
-| Mai girata su un telefono vero | Qui non c'è emulatore. Provate: logica, Room, rendering delle schermate. Non provate: voce, Health Connect, notifiche, chiamate reali al modello |
+| Provata qui solo sul banco | Il Ghost la usa sul telefono dal 23/09 (fino al 08/10 questa riga diceva «mai girata su un telefono vero»). Qui non c'è emulatore: provate logica, Room, schermate disegnate, e dal 05/10 la ricerca dal vivo con Chromium. Ciò che funziona sul telefono lo sa il Ghost, non il banco: voce, Health Connect, notifiche |
 | Occhiali Ray-Ban Meta | Non scrivono in Health Connect, per quanto so: non entrano. Tutto ciò che scrive in Health Connect sì |
 | **Dati persi se si disinstalla o si cambia telefono — GRAVE** (il Ghost, 01/10/2026: *«carenza grave e rischiosa»*) | Oggi c'è solo la copia manuale (Setup → Salva una copia), un gesto che il giorno in cui costa fatica non si fa; e `allowBackup="false"` nel manifest, quindi nemmeno il backup di Android. Strade, da scegliere: (1) `hasFragileUserData`: alla disinstallazione Android chiede se tenere i dati — una riga, copre il tocco sbagliato, non il telefono nuovo; (2) copia automatica, ogni giorno, in una cartella scelta una volta (Drive o computer): sopravvive a tutto, e serve anche per il telefono nuovo; (3) backup di Android con regole che escludono la chiave cifrata (il Keystore non si trasferisce), che dipende dal backup Google attivo e non è provabile qui. Due telefoni = due Adam resta vero: si parla di salvare un Adam, non di sincronizzarne due. Il Ghost: la (1) serve a poco, il vero rischio è **il telefono che si rompe di punto in bianco**. Tenuta da parte: argomento per la prossima riunione |
 | Conferma a voce | Solo per l'ultima proposta in attesa |
@@ -782,7 +801,7 @@ risposta contro le prove.
 | Allegati: sul telefono vero | Provati: riduzione immagine (strada BitmapFactory), testo, docx, messaggio al modello, cambio di modello. Non provati qui: ImageDecoder (foto ruotate), PdfRenderer, fotocamera, condivisione da altre app |
 | Turno in secondo piano | Provato: registra/rispondi e il non rispondere due volte. Non provati qui: il lavoro vero a schermo spento, la notifica, il servizio in primo piano sui telefoni prima di Android 12 |
 | Calendario scelto | Il principale dell'account Google, se no il primo scrivibile. La ricevuta ne dice il nome; non si sceglie ancora in Setup |
-| Database | Versione 13 (stanze e tracce). Migrazioni automatiche dalla 1, provate passo per passo in `MigrazioneTest` |
+| Database | Versione 15 (fino al 08/10 questa riga diceva 13). Migrazioni automatiche dalla 1, provate passo per passo in `MigrazioneTest` |
 | R8 spento | APK da circa 11,5 MB (`useLegacyPackaging`). La minificazione va accesa solo dopo una prova su telefono vero |
 | Modello predefinito | Llama 3.3 70B, lo stesso della PWA. Da scegliere con un numero, non col prezzario |
 | Consulente dal vivo | Provati sul banco la cartella, il guardiano, la forma, le fonti lette dalla risposta (`annotations` e `citations`) con un modello finto. Non provata una chiamata vera: la forma delle fonti del motore web di OpenRouter è quella che la PWA legge dal 31/08, non verificata da qui |
