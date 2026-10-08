@@ -1317,16 +1317,6 @@ class ShellTest {
         } finally { imp.sceltaAutomatica = false }
     }
 
-    // 08/10 sul telefono: «Abbiamo già cercato», nessuno strumento. Il programma lo rimanda a cercare, una volta.
-    @Test fun dovetrovoSenzaCercareTornaAlModello() = runBlocking {
-        val m = FintoModello(testo("Abbiamo già cercato: nessuno ce l'ha."),
-            chiama("trova_dove", """{"cosa":"Mannaja Cane","luoghi":["https://salottobelvedere.it/"]}"""), testo("Al Salotto, 28 €."))
-        Shell(archivio, imp, m, FintoMondo(), FintaCassetta(), FintoOsm(emptyList()), FintoLettore(SALOTTO)).turno("Dove posso trovare il Mannaja Cane vicino a Bracciano?")
-        assertTrue(m.ricevuti[1].last().toString().contains("hai risposto senza cercare"))
-        assertTrue(db.messaggi().elenco().any { it.ruolo == Ruolo.RICERCA && it.testo.contains("✓ ") })
-        assertEquals("Al Salotto, 28 €.", db.messaggi().elenco().last { it.ruolo == Ruolo.SHELL }.testo)
-    }
-
     @Test fun trovaDoveSenzaLettoreLoDice() = runBlocking {
         val m = FintoModello(chiama("trova_dove", """{"cosa":"Mannaja Cane","luoghi":["https://salottobelvedere.it/"]}"""), testo("Non posso."))
         shell(m, FintaCassetta()).turno("dove trovo il Mannaja Cane?")

@@ -196,7 +196,7 @@ class Shell(
         val modello = if (Allegati.conImmagini(allegati) && !vede(base)) modelloPer(Compito.ALLEGATI) else base
         val compito = if (allegati.isEmpty()) Compito.TURNO else Compito.ALLEGATI
         val esito = ciclo(lavoro, oggi, regole, modello, motore?.etichetta, costoTurno, compito = compito, forza = forza,
-            reparti = reparti, sistema = { Contesto.sistema(istantanea, it) }, domanda = if (architetto) "" else testoGhost)
+            reparti = reparti, sistema = { Contesto.sistema(istantanea, it) })
         // In riunione lo scambio va nel verbale da solo: il Ghost non spiega due volte. Gli allegati non escono.
         val tavolo = Tavolo(archivio, impostazioni, cassetta)
         if (tavolo.aperta()) try {
@@ -765,7 +765,7 @@ class Shell(
 
     private suspend fun ciclo(lavoro: MutableList<JsonObject>, oggi: LocalDate, regole: Regole, modello0: String, motore: String?,
                               costoIniziale: Double, origine: String = "shell", compito: Compito = Compito.TURNO, forza: Forzatura? = null,
-                              reparti: MutableSet<Reparto>? = null, sistema: ((Set<Reparto>) -> String)? = null, domanda: String = ""): Esito {
+                              reparti: MutableSet<Reparto>? = null, sistema: ((Set<Reparto>) -> String)? = null): Esito {
         var costoTurno = costoIniziale
         // Se il leggero chiama una ricerca, la risposta sopra le prove la scrive il principale (05/10).
         var modello = modello0
@@ -810,20 +810,6 @@ class Shell(
                             put("content", "[Nota del programma, non del Ghost] Hai scritto che c'è una proposta da confermare, ma in questo turno non " +
                                 "ne hai creata nessuna: il pulsante non c'è." + (ultimoFermo?.let { " L'ultima è stata fermata: $it." } ?: "") +
                                 " Falla con lo strumento; se non si può, di' al Ghost cosa manca, senza dire che c'è un pulsante.")
-                        }
-                        continue
-                    }
-                    // «Dove trovo X» risposto con la chat invece che con una ricerca (08/10: «Abbiamo già cercato», nessuno
-                    // strumento, e il Salotto il vino ce l'aveva). Ciò che sta in chat è di prima: si rimanda una volta.
-                    if (scritte.isEmpty() && !cercato && TrovaDove.domandaDiPosto(domanda) && !corretto && giro < GIRI_MASSIMI - 1) {
-                        corretto = true
-                        traccia += "dove trovo senza cercare"
-                        lavoro += buildJsonObject { put("role", "assistant"); put("content", r.testo) }
-                        lavoro += buildJsonObject {
-                            put("role", "user")
-                            put("content", "[Nota del programma, non del Ghost] Il Ghost chiede dove trovare una cosa e hai risposto senza cercare. " +
-                                "Ciò che sta in chat è di prima e non è una verifica: le carte e i negozi cambiano. Fai adesso trova_dove " +
-                                "(con vicino_a e osm) o cerca_nel_web, poi rispondi sopra le prove di adesso.")
                         }
                         continue
                     }
