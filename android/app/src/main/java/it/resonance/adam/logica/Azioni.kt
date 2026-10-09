@@ -102,7 +102,7 @@ sealed class Proposta {
     @Serializable @SerialName("crea_rituale")
     data class CreaRituale(val nome: String, val pilastro: Pilastro, val criterio: String? = null) : Proposta() {
         override fun descrizione() = "Creare il rituale «$nome» in ${pilastro.etichetta}" +
-            (criterio?.let { " — si spunta da solo quando $it" } ?: "")
+            (criterio?.let { " — si spunta da solo quando " + (Stabilita.leggiCriterio(it)?.leggibile() ?: it) } ?: "")
     }
 
     @Serializable @SerialName("spunta_rituale")

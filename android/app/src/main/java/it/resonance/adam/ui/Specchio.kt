@@ -1,5 +1,6 @@
 package it.resonance.adam.ui
 
+import it.resonance.adam.logica.Stabilita
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -136,7 +137,7 @@ private fun RigaRituale(vm: Adam, s: StatoRituale) {
         )
         Column(Modifier.weight(1f)) {
             Riga(s.rituale.nome)
-            Tenue("serie ${s.tenuta.serie} · ${s.tenuta.tenutiSu14}/14" + (s.rituale.criterio?.let { " · automatico: $it" } ?: ""))
+            Tenue("serie ${s.tenuta.serie} · ${s.tenuta.tenutiSu14}/14" + (s.rituale.criterio?.let { c -> " · si spunta da solo: " + (Stabilita.leggiCriterio(c)?.leggibile() ?: c) } ?: ""))
         }
         TextButton({ vm.disattivaRituale(s.rituale) }) { Text("✕", color = Colori.tenue) }
     }

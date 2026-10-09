@@ -14,6 +14,12 @@ data class Criterio(val tipo: TipoMisura, val operatore: String, val soglia: Dou
         else -> false
     }
 
+    // Come lo legge il Ghost (09/10): «sonno almeno 7h», non «SONNO>=420». La forma col codice resta per il modello e il database.
+    fun leggibile(): String {
+        val come = when (operatore) { ">=" -> "almeno"; "<=" -> "al massimo"; ">" -> "più di"; "<" -> "meno di"; else -> operatore }
+        return "${tipo.etichetta.lowercase()} $come ${Esiti.formatta(tipo, soglia)}"
+    }
+
     override fun toString() = "${tipo.name}$operatore${soglia.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() }}"
 }
 

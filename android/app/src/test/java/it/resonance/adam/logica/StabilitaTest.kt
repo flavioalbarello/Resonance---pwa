@@ -21,6 +21,9 @@ class StabilitaTest {
     }
 
     @Test fun criterioStortoNonSiIndovina() {
+        // Come lo legge il Ghost (09/10).
+        assertEquals("sonno almeno 7h", Stabilita.leggiCriterio("SONNO>=420")!!.leggibile())
+        assertEquals("passi almeno 7.000", Stabilita.leggiCriterio("PASSI>=7000")!!.leggibile())
         assertNull(Stabilita.leggiCriterio("dormire bene"))
         assertNull(Stabilita.leggiCriterio("RESPIRO>=3"))
     }
