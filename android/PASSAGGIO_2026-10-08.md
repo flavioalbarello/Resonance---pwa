@@ -9,7 +9,7 @@ prossimo passaggio sarà un file nuovo, con la sua data.
 | cosa | dove |
 |---|---|
 | **Branch con tutto** | `claude/new-session-0lkw9y`. Contiene anche i 9 commit dell'altra sessione su `claude/new-session-w6u5wo` (passaggio del 03/10: gli occhi di Adam, la microcamera), uniti il 07/10 |
-| `claude/new-session-w6u5wo` | è **indietro**: non ha TROVA_DOVE. Non portarlo avanti senza l'ok del Ghost |
+| `claude/new-session-w6u5wo` | portato avanti allo stesso punto il 09/10, su richiesta del Ghost (avanzamento semplice, nessun commit perso). I due branch coincidono |
 | `main`, `stable` | la PWA. `android/` non ci va senza richiesta |
 | Ultima versione consegnata | `2.261007.1819` (commit `74f8df7`), firmata dalla CI di GitHub |
 | Banco | 332 prove verdi in tutte e due le app, lint senza errori (08/10) |
