@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Resonance base: icona di un altro colore, così sullo stesso telefono non si confonde con la dev (01/10/2026). -->
+    <color name="icona">#4F6BFF</color>
+</resources>

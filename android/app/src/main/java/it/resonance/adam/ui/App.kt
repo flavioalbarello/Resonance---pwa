@@ -1,0 +1,92 @@
+package it.resonance.adam.ui
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import it.resonance.adam.dati.Pilastro
+
+@Composable
+fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
+    val avvisi = remember { SnackbarHostState() }
+    val profilo by vm.profilo.collectAsState()
+    LaunchedEffect(vm.avviso) {
+        vm.avviso?.let { avvisi.showSnackbar(it); vm.avviso = null }
+    }
+    // In modalità auto lo schermo resta acceso: a schermo bloccato il riconoscimento vocale si ferma, e il Ghost
+    // doveva sbloccare il telefono a ogni frase (25/09/2026). Si spegne da solo quando l'auto si ferma o va in pausa.
+    val vista = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(vm.ascolta) {
+        vista.keepScreenOn = vm.ascolta == Ascolta.AUTO
+        onDispose { vista.keepScreenOn = false }
+    }
+    // Al ritorno nell'app la riunione si ritira subito: fuori, Android la congela e gli interventi aspettavano (26/09).
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { vm.alRitorno() }
+    BackHandler(enabled = vm.schermata != Schermata.SPECCHIO || vm.percorsoAperto != null || vm.documentoAperto != null) { vm.indietro() }
+
+    Box(Modifier.fillMaxSize()) {
+        Scaffold(
+            containerColor = Colori.fondo,
+            modifier = Modifier.systemBarsPadding(),
+            snackbarHost = { SnackbarHost(avvisi) },
+            topBar = {
+                // Durante il tour (ui/Tour.kt) niente barre: una cosa per volta.
+                if (!vm.tour) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("RESONANCE", fontWeight = FontWeight.Bold, letterSpacing = 3.sp, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    TextButton({ vm.vai(Schermata.SETUP) }) { Text("Setup", color = Colori.tenue) }
+                }
+            },
+            bottomBar = {
+                if (!vm.tour) NavigationBar(containerColor = Colori.superficie) {
+                    listOf(Schermata.SPECCHIO, Schermata.SHELL, Schermata.ADAM, Schermata.BIO, Schermata.AIR, Schermata.VIDYA).forEach { s ->
+                        val colore = when (s) { Schermata.BIO -> Colori.bio; Schermata.AIR -> Colori.air; Schermata.VIDYA -> Colori.vidya; else -> Colori.ambraInchiostro }
+                        NavigationBarItem(
+                            selected = vm.schermata == s,
+                            onClick = { vm.vai(s) },
+                            icon = { Text(if (vm.schermata == s) "●" else "○", color = colore) },
+                            // La scheda dello Shell porta il suo nome, se il Ghost gliene ha dato uno (logica/Nomi.kt).
+                            label = { Text(if (s == Schermata.SHELL) it.resonance.adam.logica.Nomi.shell(profilo) else s.etichetta,
+                                fontSize = 11.sp, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+                            colors = NavigationBarItemDefaults.colors(indicatorColor = colore.copy(alpha = 0.12f), selectedTextColor = colore),
+                        )
+                    }
+                }
+            },
+        ) { interno ->
+            Column(Modifier.padding(interno).fillMaxSize()) {
+                if (vm.tour) TourUi(vm, sistema) else when (vm.schermata) {
+                    Schermata.SPECCHIO -> Specchio(vm)
+                    Schermata.SHELL -> ShellUi(vm, sistema)
+                    Schermata.ADAM -> PilastroUi(vm, Pilastro.ADAM)
+                    Schermata.BIO -> PilastroUi(vm, Pilastro.BIO)
+                    Schermata.AIR -> PilastroUi(vm, Pilastro.AIR)
+                    Schermata.VIDYA -> PilastroUi(vm, Pilastro.VIDYA)
+                    Schermata.SETUP -> Setup(vm, sistema)
+                }
+            }
+        }
+        if (!vm.tour) Box(Modifier.fillMaxSize().systemBarsPadding().padding(bottom = 80.dp)) { Ancora(vm, conMicrofono) }
+    }
+}

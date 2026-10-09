@@ -1,0 +1,697 @@
+package it.resonance.adam.dati
+
+import androidx.room.withTransaction
+import it.resonance.adam.logica.Azioni
+import it.resonance.adam.logica.Esiti
+import it.resonance.adam.logica.Esperimenti
+import it.resonance.adam.logica.Giorni
+import it.resonance.adam.logica.Importato
+import it.resonance.adam.logica.Proposta
+import it.resonance.adam.logica.Nodi
+import it.resonance.adam.logica.Fondo
+import it.resonance.adam.logica.Consegne
+import it.resonance.adam.logica.Lavagna
+import it.resonance.adam.logica.Testi
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import java.time.LocalDate
+
+data class Esecuzione(val riuscita: Boolean, val ricevuta: String)
+
+data class EsitoImport(val misure: Int, val voci: Int, val percorsi: Int, val documenti: Int, val quaderni: Int, val profilo: Boolean, val scartati: List<String>)
+
+@Serializable
+data class Copia(
+    val _formato: String = "resonance-apk",
+    val _versione: Int = 1,
+    val creato: Long,
+    val misure: List<Misura>, val voci: List<Voce>, val versioni: List<Versione>,
+    val rituali: List<Rituale>, val spunte: List<Spunta>,
+    val percorsi: List<Percorso>, val nodi: List<Nodo>, val documenti: List<Documento>,
+    val quaderni: List<Quaderno>, val messaggi: List<Messaggio>, val spesa: List<SpesaMese>, val profilo: Profilo?,
+    val esperimenti: List<Esperimento> = emptyList(),
+    // Pacchetto Adam: il taccuino dello Shell, il fondo, le lettere. I turni no: sono diagnostica, si rifanno.
+    val taccuino: List<Nota> = emptyList(),
+    val movimenti: List<Movimento> = emptyList(),
+    val lettere: List<Lettera> = emptyList(),
+    val risposte: List<RispostaLettera> = emptyList(),
+    val consegne: List<Consegna> = emptyList(),
+    val appunti: List<Appunto> = emptyList(),
+    val stanze: List<Stanza> = emptyList(),
+    val tracce: List<Traccia> = emptyList(),
+    val osservazioni: List<Osservazione> = emptyList(),
+    val letture: List<Lettura> = emptyList(),
+)
+
+class Ambiguo(m: String) : Exception(m)
+
+class Archivio(val db: Db) {
+    private val ora get() = System.currentTimeMillis()
+
+    // ── Ricerca per nome: esatto normalizzato, poi contenuto; due candidati non si indovinano. ──
+    private fun <T> trova(tutti: List<T>, cercato: String, nome: (T) -> String, cosa: String): T {
+        val c = Testi.normalizza(cercato)
+        tutti.filter { Testi.normalizza(nome(it)) == c }.let { if (it.size == 1) return it.single() }
+        val simili = tutti.filter { Testi.normalizza(nome(it)).contains(c) || c.contains(Testi.normalizza(nome(it))) }
+        return when (simili.size) {
+            1 -> simili.single()
+            0 -> throw Ambiguo("nessun $cosa si chiama «$cercato»" + if (tutti.isNotEmpty()) ". Esistono: ${tutti.take(12).joinToString("; ") { nome(it) }}" else "")
+            else -> throw Ambiguo("«$cercato» corrisponde a più $cosa: ${simili.joinToString("; ") { nome(it) }}")
+        }
+    }
+
+    // Togliere un nodo non cancella la sua storia (Legge 14): prima una voce nel diario del pilastro con nome e stato,
+    // poi i documenti legati restano nel percorso senza nodo, poi il nodo esce.
+    suspend fun togliNodo(n: Nodo): String = db.withTransaction {
+        togliNodoDentro(n, db.percorsi().elenco().first { it.id == n.percorsoId })
+    }
+
+    private suspend fun togliNodoDentro(n: Nodo, per: Percorso): String {
+        val oggi = java.time.LocalDate.now().toString()
+        val tutti = db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+        val figli = Nodi.figli(tutti, n.id)
+        // Un padre tolto non si porta via i figli: tornano al primo livello.
+        if (figli.isNotEmpty()) spostaDentro(per, figli, null)
+        val stato = if (figli.isEmpty()) "era ${n.stato.etichetta}" else "raccoglieva ${Nodi.sintesi(figli)}, tornati al primo livello"
+        db.voci().inserisci(Voce(pilastro = per.pilastro, giorno = oggi, fonte = "percorso", creato = ora, aggiornato = ora,
+            testo = "Nodo tolto dal percorso «${per.titolo}»: «${n.etichetta}», $stato."))
+        db.percorsi().sganciaDocumenti(n.id)
+        db.percorsi().togliNodo(n)
+        return "Tolto il nodo «${n.etichetta}» da «${per.titolo}» ($stato); traccia nel diario ${per.pilastro.etichetta}"
+    }
+
+    // Il nodo che raccoglie: per nome esatto fra quelli di primo livello; se non c'è, lo si crea. Mai un sotto-nodo.
+    private suspend fun genitore(per: Percorso, sotto: String): Nodo {
+        val tutti = db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+        val c = Testi.normalizza(sotto)
+        Nodi.radici(tutti).find { Testi.normalizza(it.etichetta) == c }?.let { return it }
+        if (tutti.any { Testi.normalizza(it.etichetta) == c }) throw Ambiguo("«$sotto» è già un sotto-nodo: due livelli al massimo")
+        val ordine = (Nodi.radici(tutti).maxOfOrNull { it.ordine } ?: -1) + 1
+        val id = db.percorsi().inserisciNodo(Nodo(percorsoId = per.id, etichetta = sotto.trim(), ordine = ordine))
+        return db.percorsi().elencoNodi().first { it.id == id }
+    }
+
+    suspend fun pilastroNodo(n: Nodo, p: Pilastro?): String {
+        db.percorsi().aggiornaNodo(n.copy(pilastro = p))
+        return "«${n.etichetta}»: ${p?.etichetta ?: "senza pilastro"}"
+    }
+
+    suspend fun spostaNodo(n: Nodo, genitoreId: Long?): String = try {
+        db.withTransaction {
+            val per = db.percorsi().elenco().first { it.id == n.percorsoId }
+            spostaDentro(per, listOf(n), genitoreId?.let { g -> db.percorsi().elencoNodi().first { it.id == g } })
+        }
+    } catch (e: Ambiguo) { "Non spostato: ${e.message}" }
+
+    // Due livelli: sotto un nodo di primo livello va solo un nodo senza figli. L'ordine fra fratelli è quello dato.
+    private suspend fun spostaDentro(per: Percorso, nodi: List<Nodo>, g: Nodo?): String {
+        val tutti = db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+        if (g != null) {
+            if (g.genitoreId != null) throw Ambiguo("«${g.etichetta}» è un sotto-nodo: due livelli al massimo")
+            if (nodi.any { it.id == g.id }) throw Ambiguo("«${g.etichetta}» non può andare sotto sé stesso")
+            nodi.find { Nodi.haFigli(tutti, it.id) }?.let { throw Ambiguo("«${it.etichetta}» ha dei sotto-nodi: non può andare sotto un altro") }
+        }
+        val fratelli = (if (g == null) Nodi.radici(tutti) else Nodi.figli(tutti, g.id)).filter { f -> nodi.none { it.id == f.id } }
+        var ordine = (fratelli.maxOfOrNull { it.ordine } ?: -1) + 1
+        nodi.forEach { n -> db.percorsi().aggiornaNodo(tutti.first { it.id == n.id }.copy(genitoreId = g?.id, ordine = ordine++)) }
+        return "Spostati ${nodi.size} nodi " + (g?.let { "sotto «${it.etichetta}»" } ?: "al primo livello") + " in «${per.titolo}»"
+    }
+
+    suspend fun percorso(titolo: String) = trova(db.percorsi().elenco().filter { !it.archiviato }, titolo, { it.titolo }, "percorso")
+    suspend fun documento(titolo: String) = trova(db.percorsi().elencoDocumenti(), titolo, { it.titolo }, "documento")
+    suspend fun rituale(nome: String) = trova(db.rituali().elenco().filter { it.attivo }, nome, { it.nome }, "rituale")
+
+    suspend fun esegui(p: Proposta, oggi: LocalDate = LocalDate.now()): Esecuzione = try {
+        db.withTransaction { eseguiDentro(p, oggi) }
+    } catch (e: Ambiguo) {
+        Esecuzione(false, "Non eseguito: ${e.message}")
+    }
+
+    private suspend fun eseguiDentro(p: Proposta, oggi: LocalDate): Esecuzione = when (p) {
+        is Proposta.RegistraMisura -> {
+            db.misure().sostituisci(Misura(tipo = p.tipo, valore = p.valore, giorno = p.giorno, istante = ora, fonte = "shell", nota = p.nota, legataAlTempo = p.legataAlTempo))
+            Esecuzione(true, "Registrato — ${p.tipo.etichetta} ${Esiti.formatta(p.tipo, p.valore)}, ${Giorni.leggibile(p.giorno, oggi)}")
+        }
+        is Proposta.ScriviVoce -> {
+            db.voci().inserisci(Voce(pilastro = p.pilastro, giorno = p.giorno, testo = p.testo, fonte = "shell", creato = ora, aggiornato = ora))
+            Esecuzione(true, "Scritto nel diario ${p.pilastro.etichetta}, ${Giorni.leggibile(p.giorno, oggi)}")
+        }
+        is Proposta.CreaPercorso -> {
+            val esistente = db.percorsi().elenco().any { !it.archiviato && Testi.normalizza(it.titolo) == Testi.normalizza(p.titolo) }
+            if (esistente) Esecuzione(false, "Non creato: esiste già un percorso «${p.titolo}»")
+            else {
+                val id = db.percorsi().inserisci(Percorso(pilastro = p.pilastro, titolo = p.titolo, scopo = p.scopo, creato = ora))
+                p.nodi.forEachIndexed { i, n -> db.percorsi().inserisciNodo(Nodo(percorsoId = id, etichetta = n, ordine = i)) }
+                Esecuzione(true, "Creato il percorso «${p.titolo}» in ${p.pilastro.etichetta}, ${p.nodi.size} nodi")
+            }
+        }
+        is Proposta.SalvaDocumento -> {
+            val per = percorso(p.percorso)
+            val nodo = p.nodo?.let { n -> trova(db.percorsi().elencoNodi().filter { it.percorsoId == per.id }, n, { it.etichetta }, "nodo") }
+            db.percorsi().inserisciDocumento(Documento(percorsoId = per.id, nodoId = nodo?.id, titolo = p.titolo, testo = p.testo, creato = ora, aggiornato = ora))
+            Esecuzione(true, "Salvato «${p.titolo}» (${p.testo.length} caratteri) in «${per.titolo}»" + (nodo?.let { " › ${it.etichetta}" } ?: ""))
+        }
+        is Proposta.ModificaDocumento -> {
+            val d = documento(p.documento)
+            when (val r = Testi.applicaModifica(d.testo, p.ancora, p.testo, p.modo)) {
+                is Testi.Modifica.Impossibile -> Esecuzione(false, "Non modificato: ${r.motivo}")
+                is Testi.Modifica.Fatta -> {
+                    salvaTestoDocumento(d, r.testo)
+                    Esecuzione(true, "Modificato «${d.titolo}»: ${d.testo.length} → ${r.testo.length} caratteri, versione precedente nello storico")
+                }
+            }
+        }
+        is Proposta.AggiornaQuaderno -> {
+            aggiornaQuaderno(p.pilastro, p.testo)
+            Esecuzione(true, "Quaderno ${p.pilastro.etichetta} riscritto (${p.testo.length} caratteri), versione precedente nello storico")
+        }
+        is Proposta.ModificaQuaderno -> {
+            val attuale = db.quaderni().elenco().find { it.pilastro == p.pilastro }?.testo.orEmpty()
+            val esito = if (p.modo == "aggiungi") Testi.Modifica.Fatta(attuale.trimEnd() + "\n" + p.testo)
+            else Testi.applicaModifica(attuale, p.ancora, p.testo, p.modo)
+            when (val r = esito) {
+                is Testi.Modifica.Impossibile -> Esecuzione(false, "Quaderno ${p.pilastro.etichetta} non modificato: ${r.motivo}")
+                is Testi.Modifica.Fatta -> {
+                    // Togliere una frase non deve lasciare righe vuote doppie dove stava.
+                    val pulito = r.testo.replace(Regex("\n{3,}"), "\n\n").trim()
+                    aggiornaQuaderno(p.pilastro, pulito)
+                    Esecuzione(true, "Quaderno ${p.pilastro.etichetta} modificato: ${attuale.length} → ${pulito.length} caratteri, versione precedente nello storico")
+                }
+            }
+        }
+        is Proposta.CreaRituale -> {
+            db.rituali().inserisci(Rituale(nome = p.nome, pilastro = p.pilastro, criterio = p.criterio, creato = ora))
+            Esecuzione(true, "Creato il rituale «${p.nome}»" + (p.criterio?.let { ", si spunta da solo quando $it" } ?: ""))
+        }
+        is Proposta.SpuntaRituale -> {
+            val r = rituale(p.nome)
+            db.rituali().spunta(Spunta(r.id, p.giorno, "shell", ora))
+            Esecuzione(true, "«${r.nome}» segnato come tenuto, ${Giorni.leggibile(p.giorno, oggi)}")
+        }
+        is Proposta.TogliNodo -> {
+            val per = percorso(p.percorso)
+            Esecuzione(true, togliNodoDentro(trova(db.percorsi().elencoNodi().filter { it.percorsoId == per.id }, p.nodo, { it.etichetta }, "nodo"), per))
+        }
+        is Proposta.AggiungiNodi -> {
+            val per = percorso(p.percorso)
+            val esistenti = db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+            val g = p.sotto?.let { genitore(per, it) }
+            val nuovi = p.nodi.filter { n -> esistenti.none { Testi.normalizza(it.etichetta) == Testi.normalizza(n) } && n != g?.etichetta }
+            val fratelli = if (g == null) Nodi.radici(esistenti) else Nodi.figli(esistenti, g.id)
+            val base = (fratelli.maxOfOrNull { it.ordine } ?: -1) + 1
+            // Il pilastro va solo sulle parti di primo livello di un percorso di Adam.
+            val pil = p.pilastro?.takeIf { per.pilastro == Pilastro.ADAM && g == null }
+            nuovi.forEachIndexed { i, n -> db.percorsi().inserisciNodo(Nodo(percorsoId = per.id, etichetta = n, ordine = base + i, genitoreId = g?.id, pilastro = pil)) }
+            Esecuzione(nuovi.isNotEmpty(), if (nuovi.isEmpty()) "Nessun nodo aggiunto: c'erano già tutti in «${per.titolo}»"
+                else "Aggiunti ${nuovi.size} nodi a «${per.titolo}»" + (g?.let { " sotto «${it.etichetta}»" } ?: ""))
+        }
+        is Proposta.PilastroNodo -> {
+            val per = percorso(p.percorso)
+            val n = trova(db.percorsi().elencoNodi().filter { it.percorsoId == per.id }, p.nodo, { it.etichetta }, "nodo")
+            when {
+                per.pilastro != Pilastro.ADAM -> Esecuzione(false, "Non cambiato: «${per.titolo}» è di ${per.pilastro.etichetta}, i suoi nodi sono tutti lì")
+                n.genitoreId != null -> Esecuzione(false, "Non cambiato: «${n.etichetta}» è un sotto-nodo, prende il pilastro del padre")
+                else -> {
+                    db.percorsi().aggiornaNodo(n.copy(pilastro = p.pilastro))
+                    Esecuzione(true, "«${per.titolo}» › ${n.etichetta}: ${n.pilastro?.etichetta ?: "senza pilastro"} → ${p.pilastro.etichetta}")
+                }
+            }
+        }
+        is Proposta.SpostaNodi -> {
+            val per = percorso(p.percorso)
+            val tutti = db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+            val nodi = p.nodi.map { trova(tutti, it, { n -> n.etichetta }, "nodo") }.distinctBy { it.id }
+            Esecuzione(true, spostaDentro(per, nodi, p.sotto?.let { genitore(per, it) }))
+        }
+        is Proposta.StatoDelNodo -> {
+            val per = percorso(p.percorso)
+            val tutti = db.percorsi().elencoNodi().filter { it.percorsoId == per.id }
+            val n = trova(tutti, p.nodo, { it.etichetta }, "nodo")
+            val figli = Nodi.figli(tutti, n.id)
+            if (figli.isNotEmpty()) Esecuzione(false, "Non cambiato: lo stato di «${n.etichetta}» lo calcola il programma dai suoi ${figli.size} sotto-nodi")
+            else {
+                db.percorsi().aggiornaNodo(n.copy(stato = p.stato))
+                Esecuzione(true, "«${per.titolo}» › ${n.etichetta}: ${n.stato.etichetta} → ${p.stato.etichetta}")
+            }
+        }
+        is Proposta.ApriEsperimento -> {
+            val tutti = db.esperimenti().elenco()
+            val aperti = Esperimenti.aperti(tutti)
+            // L'archivio ricontrolla: fra la proposta e la conferma può esserne stato aperto un altro.
+            when {
+                aperti.size >= Esperimenti.APERTI_MASSIMI -> Esecuzione(false, "Non aperto: ci sono già ${aperti.size} esperimenti aperti")
+                aperti.any { it.tipo == p.tipo } -> Esecuzione(false, "Non aperto: c'è già un esperimento aperto su ${Esperimenti.nomeMisura(p.tipo)}")
+                else -> {
+                    val base = Esperimenti.partenza(db.misure().dal(oggi.minusDays(p.giorni.toLong()).toString()), p.tipo, oggi, p.giorni)
+                    if (base == null) Esecuzione(false, "Non aperto: per ${Esperimenti.nomeMisura(p.tipo)} nei ${p.giorni} giorni prima ci sono meno di 3 giorni di dati. " +
+                        "Senza un punto di partenza non c'è confronto: collega i sensori o registra qualche giorno, poi riprova")
+                    else {
+                        val fine = oggi.plusDays(p.giorni.toLong())
+                        db.esperimenti().inserisci(Esperimento(titolo = p.titolo, tipo = p.tipo, direzione = p.direzione, soglia = p.soglia,
+                            giorni = p.giorni, inizio = oggi.toString(), fine = fine.toString(), base = base, origine = p.origine, creato = ora))
+                        Esecuzione(true, "Esperimento aperto: «${p.titolo}», ${p.giorni} giorni, fino a ${Giorni.leggibile(fine.minusDays(1).toString(), oggi)}. " +
+                            "Partenza congelata: ${Esperimenti.nomeMisura(p.tipo)} ${Esiti.formatta(p.tipo, base)}")
+                    }
+                }
+            }
+        }
+        is Proposta.LasciaEsperimento -> {
+            val e = trova(Esperimenti.aperti(db.esperimenti().elenco()), p.titolo, { it.titolo }, "esperimento aperto")
+            db.esperimenti().aggiorna(e.copy(stato = StatoEsperimento.ABBANDONATO, chiuso = ora, nota = p.motivo))
+            db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = oggi.toString(), fonte = "esperimento", creato = ora, aggiornato = ora,
+                testo = "Esperimento lasciato prima della fine: «${e.titolo}»" + (if (p.motivo.isNotBlank()) " — ${p.motivo}" else "") + "."))
+            Esecuzione(true, "Esperimento «${e.titolo}» lasciato. Traccia nel diario di Adam")
+        }
+        // Calendario e posta stanno fuori dall'archivio: li esegue il Mondo (cervello/Mondo.kt).
+        // Il fondo di Adam: un'uscita non supera il saldo, e a fondo fermo non ne parte nessuna (le soglie dello Shell).
+        is Proposta.PrendiConsegna -> {
+            val aperte = db.consegne().aperte()
+            when {
+                aperte.size >= Consegne.MASSIMO -> Esecuzione(false, "Non presa: ci sono già ${Consegne.MASSIMO} consegne aperte")
+                aperte.any { Testi.normalizza(it.documento) == Testi.normalizza(p.documento) } -> Esecuzione(false, "Non presa: c'è già una consegna aperta su «${p.documento}»")
+                else -> {
+                    val c = Consegna(cosa = p.cosa, documento = p.documento, percorso = p.percorso, presa = oggi.toString(), scadenza = p.scadenza, creata = ora)
+                    db.consegne().inserisci(c)
+                    Esecuzione(true, "Consegna presa: ${Consegne.riga(c)}. Il giorno prima lo Shell ci lavora; alla scadenza guarda il programma")
+                }
+            }
+        }
+        // Segui (logica/Ricerca.kt): il tetto si ricontrolla qui, dove la proposta diventa un fatto.
+        is Proposta.Segui -> {
+            val attive = db.segui().elenco().count { it.chiusa == null }
+            val difetti = it.resonance.adam.logica.Ricerca.difetti(p.cosa, p.domanda, p.giorni, attive)
+            if (difetti.isNotEmpty()) Esecuzione(false, "Non avviato: ${difetti.joinToString("; ")}")
+            else {
+                val fine = oggi.plusDays(p.giorni.toLong() - 1)
+                db.segui().inserisci(Osservazione(cosa = p.cosa, domanda = p.domanda, prima = p.prima, inizio = oggi.toString(), fine = fine.toString(), creata = ora))
+                Esecuzione(true, "Segui «${p.cosa}» fino al ${Giorni.leggibile(fine.toString())}: una lettura al giorno con le fonti, sullo Specchio e in una notifica; la prima arriva ora in chat")
+            }
+        }
+        is Proposta.MovimentoFondo -> {
+            val prima = Fondo.stato(db.fondo().elenco(), oggi)
+            when {
+                p.tipo == TipoMovimento.USCITA && prima.modo == Fondo.Modo.FERMO -> Esecuzione(false, "Non registrata: il fondo è a zero, è fermo")
+                p.tipo == TipoMovimento.USCITA && p.importo > prima.saldo + 1e-9 ->
+                    Esecuzione(false, "Non registrata: ${Fondo.euro(p.importo)} supera il saldo di ${Fondo.euro(prima.saldo)}")
+                else -> {
+                    db.fondo().inserisci(Movimento(giorno = p.giorno, tipo = p.tipo, importo = p.importo, motivo = p.motivo, creato = ora))
+                    val dopo = Fondo.stato(db.fondo().elenco(), oggi)
+                    Esecuzione(true, "Fondo di Adam: ${p.tipo.etichetta} ${Fondo.euro(p.importo)} — ${p.motivo}. Saldo ${Fondo.euro(dopo.saldo)}" +
+                        if (dopo.modo != prima.modo) ". Ora: ${dopo.modo.etichetta}" else "")
+                }
+            }
+        }
+        is Proposta.TogliDocumento -> {
+            val d = documento(p.titolo)
+            Esecuzione(true, togliDocumento(d, p.perche, oggi))
+        }
+        is Proposta.ScriviAppunto -> {
+            val vivi = db.lavagna().elenco().filter { Lavagna.vivo(it, oggi) }
+            if (vivi.any { Testi.normalizza(it.titolo) == Testi.normalizza(p.titolo) }) Esecuzione(false, "Non scritto: sulla lavagna c'è già «${p.titolo}»")
+            else {
+                db.lavagna().inserisci(Appunto(titolo = p.titolo, righe = Lavagna.codifica(p.righe.map { Lavagna.Riga(it) }), creato = ora, scade = p.scade))
+                Esecuzione(true, "Sulla lavagna: «${p.titolo}», ${p.righe.size} righe, scade ${Giorni.leggibile(p.scade, oggi)}")
+            }
+        }
+        is Proposta.ModificaAppunto -> {
+            val a = appuntoVivo(p.appunto, oggi)
+            val (via, dubbie) = Lavagna.trova(a, p.togli)
+            if (dubbie.isNotEmpty()) Esecuzione(false, "Non modificato: in «${a.titolo}» non trovo con certezza ${dubbie.joinToString { "«$it»" }}")
+            else {
+                val righe = Lavagna.righe(a).filterIndexed { i, _ -> i !in via } + p.aggiungi.map { Lavagna.Riga(it) }
+                db.lavagna().aggiorna(Lavagna.conFine(a.copy(righe = Lavagna.codifica(righe.take(Lavagna.RIGHE_MAX))), oggi))
+                Esecuzione(true, "Lavagna, «${a.titolo}»: " + listOfNotNull(
+                    p.aggiungi.takeIf { it.isNotEmpty() }?.let { "aggiunte ${it.size} righe" }, via.takeIf { it.isNotEmpty() }?.let { "tolte ${it.size}" }).joinToString(", "))
+            }
+        }
+        is Proposta.RegolaTemperatura, is Proposta.LetteraArchitetto, is Proposta.RicercaAFondo -> Esecuzione(false, "Non eseguito: la esegue lo Shell, non l'archivio")
+        is Proposta.CreaEvento, is Proposta.SpostaEvento, is Proposta.TogliEvento, is Proposta.ScriviMail ->
+            Esecuzione(false, "Non eseguito: calendario e posta non sono nell'archivio")
+    }
+
+    // ── L'anello: alla scadenza confronta il programma, e la traccia resta nel diario di Adam ──
+    suspend fun chiudiScaduti(oggi: LocalDate = LocalDate.now()): List<Esperimento> = db.withTransaction {
+        val scaduti = Esperimenti.scaduti(db.esperimenti().elenco(), oggi)
+        if (scaduti.isEmpty()) return@withTransaction emptyList()
+        val misure = db.misure().dal(scaduti.minOf { it.inizio })
+        scaduti.map { e ->
+            val finale = Esperimenti.misura(misure, e.tipo, LocalDate.parse(e.inizio), LocalDate.parse(e.fine))
+            val chiuso = e.copy(stato = StatoEsperimento.CHIUSO, finale = finale, esito = Esperimenti.esito(e.base, finale, e.direzione, e.soglia), chiuso = ora)
+            db.esperimenti().aggiorna(chiuso)
+            db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = oggi.toString(), testo = Esperimenti.traccia(chiuso), fonte = "esperimento", creato = ora, aggiornato = ora))
+            chiuso
+        }
+    }
+
+    // ── Documenti tolti: spariscono dal percorso e dallo Shell, restano recuperabili ──
+    suspend fun togliDocumento(d: Documento, perche: String = "", oggi: LocalDate = LocalDate.now()): String {
+        if (d.tolto != null) return "«${d.titolo}» è già tolto"
+        val per = db.percorsi().elenco().find { it.id == d.percorsoId }
+        db.percorsi().aggiornaDocumento(d.copy(tolto = ora))
+        per?.let { p -> db.voci().inserisci(Voce(pilastro = p.pilastro, giorno = oggi.toString(), fonte = "documento", creato = ora, aggiornato = ora,
+            testo = "Documento «${d.titolo}» tolto dal percorso «${p.titolo}» (${d.testo.length} caratteri)" + (if (perche.isNotBlank()) ": $perche" else "") +
+                ". Si rimette dal percorso, in fondo: Tolti.")) }
+        return "Tolto «${d.titolo}»: non si vede più e lo Shell non lo legge. Si rimette dal percorso, in fondo: Tolti"
+    }
+
+    /**
+     * Eliminare per sempre (26/09/2026, su richiesta del Ghost: «documenti errati da rimuovere del tutto»). Eccezione
+     * dichiarata alla Legge 14, con due argini: solo un documento già tolto, e solo da un gesto del Ghost — nessuno
+     * strumento dello Shell arriva qui. Se ne vanno testo e versioni; resta una riga nel diario col titolo soltanto.
+     * Le copie di sicurezza già fatte lo contengono ancora: da qui non si raggiungono.
+     */
+    suspend fun eliminaDocumento(d: Documento, oggi: LocalDate = LocalDate.now()): String = db.withTransaction {
+        val attuale = db.percorsi().tuttiIDocumenti().find { it.id == d.id } ?: return@withTransaction "Il documento non c'è più"
+        if (attuale.tolto == null) return@withTransaction "Prima si toglie, poi si elimina: «${d.titolo}» è ancora nel percorso"
+        db.versioni().togliDi("documento", attuale.id)
+        db.percorsi().eliminaDocumento(attuale)
+        db.percorsi().elenco().find { it.id == attuale.percorsoId }?.let { p ->
+            db.voci().inserisci(Voce(pilastro = p.pilastro, giorno = oggi.toString(), fonte = "documento", creato = ora, aggiornato = ora,
+                testo = "Documento «${attuale.titolo}» eliminato per sempre dal Ghost (percorso «${p.titolo}»)."))
+        }
+        "«${attuale.titolo}» eliminato per sempre"
+    }
+
+    suspend fun rimettiDocumento(d: Documento): String {
+        db.percorsi().aggiornaDocumento(d.copy(tolto = null))
+        return "«${d.titolo}» è tornato nel percorso"
+    }
+
+    // ── La lavagna del Ghost ──
+    /** L'appunto nominato fra quelli vivi (poi fra tutti): due candidati non si indovinano. */
+    suspend fun appuntoVivo(titolo: String, oggi: LocalDate = LocalDate.now()): Appunto {
+        val tutti = db.lavagna().elenco().filterNot { it.tenuto }
+        val vivi = tutti.filter { Lavagna.vivo(it, oggi) }
+        // Prima fra i vivi; se nessuno ha quel nome, fra tutti (per togliere una spunta a una lista appena finita).
+        return try { trova(vivi, titolo, { it.titolo }, "appunto vivo") }
+        catch (e: Ambiguo) { if (e.message.orEmpty().startsWith("nessun")) trova(tutti, titolo, { it.titolo }, "appunto") else throw e }
+    }
+
+    /** Spunte dello Shell e del Ghost: senza conferma, si annullano con un tocco. Restituisce la ricevuta. */
+    suspend fun spunta(titolo: String, righe: List<String>, fatta: Boolean, oggi: LocalDate = LocalDate.now()): Esecuzione = try {
+        val a = appuntoVivo(titolo, oggi)
+        val (trovate, dubbie) = Lavagna.trova(a, righe)
+        if (trovate.isEmpty()) Esecuzione(false, "In «${a.titolo}» non trovo ${dubbie.joinToString { "«$it»" }}: righe ${Lavagna.righe(a).joinToString("; ") { it.testo }}")
+        else {
+            val r = Lavagna.righe(a).mapIndexed { i, x -> if (i in trovate) x.copy(fatta = fatta) else x }
+            val dopo = Lavagna.conFine(a.copy(righe = Lavagna.codifica(r)), oggi)
+            db.lavagna().aggiorna(dopo)
+            val nomi = trovate.joinToString(", ") { r[it].testo }
+            Esecuzione(true, (if (fatta) "Spuntato" else "Tolta la spunta") + " in «${a.titolo}»: $nomi" +
+                (if (dubbie.isNotEmpty()) ". Non trovate con certezza: ${dubbie.joinToString { "«$it»" }}" else "") +
+                (if (!Lavagna.vivo(dopo, oggi)) ". Lista finita: esce dalla lavagna" else ". Restano ${Lavagna.daFare(dopo).size}"))
+        }
+    } catch (e: Ambiguo) { Esecuzione(false, "Non spuntato: ${e.message}") }
+
+    suspend fun alternaRiga(a: Appunto, indice: Int, oggi: LocalDate = LocalDate.now()) = db.lavagna().aggiorna(Lavagna.alterna(a, indice, oggi))
+    // Gesti del Ghost sulla sua lavagna: niente conferma, è lui che scrive.
+    suspend fun aggiungiRighe(a: Appunto, testo: String, oggi: LocalDate = LocalDate.now()) = db.lavagna().aggiorna(Lavagna.aggiungi(a, testo, oggi))
+    suspend fun cambiaRiga(a: Appunto, indice: Int, testo: String, oggi: LocalDate = LocalDate.now()) = db.lavagna().aggiorna(Lavagna.cambia(a, indice, testo, oggi))
+
+    /** «Tieni»: l'appunto diventa un documento in un percorso, e lascia la lavagna. */
+    suspend fun tieniAppunto(a: Appunto, percorso: Percorso, oggi: LocalDate = LocalDate.now()): String {
+        db.percorsi().inserisciDocumento(Documento(percorsoId = percorso.id, titolo = a.titolo, testo = Lavagna.perCondividere(a).substringAfter("\n\n"), creato = ora, aggiornato = ora))
+        db.lavagna().aggiorna(a.copy(tenuto = true, finito = a.finito ?: oggi.toString(), fissato = false))
+        return "«${a.titolo}» tenuto: ora è un documento in «${percorso.titolo}»"
+    }
+
+    /** Ciò che è finito da più di 30 giorni si cancella davvero: la scelta del Ghost, niente spazzatura. */
+    suspend fun pulisciLavagna(oggi: LocalDate = LocalDate.now()): Int = db.lavagna().elenco().filter { Lavagna.daCancellare(it, oggi) }
+        .onEach { db.lavagna().togli(it) }.size
+
+    // Le consegne dello Shell: il programma guarda se il documento c'è. Chiuse, vanno nel diario di Adam.
+    suspend fun verificaConsegne(oggi: LocalDate = LocalDate.now()): List<Consegna> = db.withTransaction {
+        val aperte = db.consegne().aperte()
+        if (aperte.isEmpty()) return@withTransaction emptyList()
+        Consegne.verifica(aperte, db.percorsi().elencoDocumenti(), db.percorsi().elenco(), oggi).onEach { c ->
+            db.consegne().aggiorna(c)
+            db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = oggi.toString(), testo = Consegne.traccia(c), fonte = "consegna", creato = ora, aggiornato = ora))
+        }
+    }
+
+    // ── Segui (02/10/2026, logica/Ricerca.kt) ──
+
+    /** Fine del periodo: il resoconto entra nel diario di Adam e in chat, e resta sullo Specchio finché non è visto. */
+    suspend fun chiudiSegui(o: Osservazione, resoconto: String, oggi: LocalDate = LocalDate.now()): Osservazione {
+        val chiusa = o.copy(chiusa = oggi.toString(), resoconto = resoconto)
+        db.segui().aggiorna(chiusa)
+        db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = oggi.toString(), testo = "Seguito «${o.cosa}» dal ${o.inizio} al ${o.fine}. Resoconto: $resoconto",
+            fonte = "segui", creato = ora, aggiornato = ora))
+        db.messaggi().inserisci(Messaggio(ruolo = Ruolo.RICERCA, istante = ora, testo = "Resoconto · ${o.cosa} (dal ${o.inizio} al ${o.fine})\n\n$resoconto"))
+        return chiusa
+    }
+
+    /** Il Ghost smette di seguire una cosa prima della fine: niente resoconto, la traccia resta. */
+    suspend fun smettiDiSeguire(id: Long, oggi: LocalDate = LocalDate.now()): String {
+        val o = db.segui().per(id) ?: return "Non trovata"
+        if (o.chiusa != null) return "Già finita"
+        val letture = db.segui().lettureDi(id).size
+        db.segui().aggiorna(o.copy(chiusa = oggi.toString(), resoconto = "Smessa dal Ghost il $oggi, dopo $letture letture.", visto = true))
+        db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = oggi.toString(), testo = "Smesso di seguire «${o.cosa}» il $oggi, dopo $letture letture.", fonte = "segui", creato = ora, aggiornato = ora))
+        return "Smesso di seguire «${o.cosa}»"
+    }
+
+    suspend fun resocontoVisto(id: Long) { db.segui().per(id)?.let { db.segui().aggiorna(it.copy(visto = true)) } }
+
+    // ── «Sono via» / «Sono tornato» (01/10/2026, logica/Assenza.kt) ──
+
+    suspend fun assenzaInCorso() = it.resonance.adam.logica.Assenza.inCorso(db.voci().elenco())
+
+    suspend fun vaVia(oggi: LocalDate = LocalDate.now()): String {
+        if (assenzaInCorso() != null) return "Sei già via"
+        db.voci().inserisci(it.resonance.adam.logica.Assenza.voceApertura(oggi, ora))
+        return "Sei via da oggi: il battito tace, rituali, consegne ed esperimenti sono fermi finché non torni"
+    }
+
+    /**
+     * Il ritorno: le consegne aperte slittano dei giorni di assenza, gli esperimenti aperti si allungano, il periodo si
+     * chiude nel diario. Restituisce il riepilogo per la chat. Tutto in una transazione: o tutto o niente.
+     */
+    suspend fun torna(oggi: LocalDate = LocalDate.now()): String? = db.withTransaction {
+        val (voce, p) = assenzaInCorso() ?: return@withTransaction null
+        // Toccato e ritirato lo stesso giorno: un tocco sbagliato, non un'assenza. Niente slitta, nessun giorno di pausa;
+        // la voce resta, con un testo che non è più un periodo (Legge 14).
+        if (oggi == p.da) {
+            db.voci().aggiorna(voce.copy(testo = it.resonance.adam.logica.Assenza.testoRitirato(p.da), aggiornato = ora))
+            return@withTransaction "«Sono via» ritirato: niente è stato spostato."
+        }
+        // Il giorno del ritorno conta come presente: via fino a ieri (almeno un giorno, se si torna lo stesso giorno).
+        val fine = maxOf(p.da, oggi.minusDays(1))
+        val n = it.resonance.adam.logica.Assenza.giorni(p.da, fine)
+        val consegne = db.consegne().aperte().map { c -> it.resonance.adam.logica.Assenza.slitta(c, n).also { db.consegne().aggiorna(it) } }
+        val esperimenti = db.esperimenti().elenco().filter { it.stato == StatoEsperimento.APERTO }
+            .map { e -> it.resonance.adam.logica.Assenza.allunga(e, n).also { db.esperimenti().aggiorna(it) } }
+        val attesa = db.messaggi().ultimi(200).count { it.ruolo == Ruolo.PROPOSTA && it.stato == StatoProposta.IN_ATTESA }
+        val dettagli = listOfNotNull(
+            consegne.takeIf { it.isNotEmpty() }?.let { "Consegne spostate: ${it.size}." },
+            esperimenti.takeIf { it.isNotEmpty() }?.let { "Esperimenti allungati: ${it.size}." },
+        ).joinToString(" ")
+        db.voci().aggiorna(voce.copy(testo = it.resonance.adam.logica.Assenza.testoChiusura(p.da, fine, dettagli), aggiornato = ora))
+        it.resonance.adam.logica.Assenza.riepilogo(n, consegne, esperimenti, attesa)
+    }
+
+    // ── Il terreno di Adam City (logica/Tracce.kt). Si entra in una stanza solo col gesto del Ghost. ──
+
+    suspend fun entraInStanza(nome: String, oggi: LocalDate = LocalDate.now(), scade: LocalDate? = null): Stanza {
+        val n = nome.trim()
+        require(n.isNotEmpty()) { "una stanza ha un nome" }
+        db.tracce().stanze().firstOrNull { Testi.normalizza(it.nome) == Testi.normalizza(n) && it.uscita == null }?.let { return it }
+        val s = Stanza(nome = n, entrata = oggi.toString(), scade = scade?.toString())
+        return s.copy(id = db.tracce().entra(s))
+    }
+
+    suspend fun esciDaStanza(id: Long, oggi: LocalDate = LocalDate.now()) {
+        val s = db.tracce().stanza(id) ?: return
+        if (s.uscita == null) db.tracce().aggiornaStanza(s.copy(uscita = oggi.toString()))
+    }
+
+    suspend fun depositaTraccia(stanzaId: Long, chi: String, ambito: String, cosa: String, durata: Int, oggi: LocalDate = LocalDate.now(), quando: LocalDate = oggi): Result<Traccia> {
+        val s = db.tracce().stanza(stanzaId)
+        val difetti = it.resonance.adam.logica.Tracce.difetti(s, ambito, cosa, durata, oggi)
+        if (difetti.isNotEmpty()) return Result.failure(IllegalArgumentException(difetti.joinToString("; ")))
+        val t = it.resonance.adam.logica.Tracce.deposita(s!!, chi, ambito, cosa, quando, durata, ora)
+        return Result.success(t.copy(id = db.tracce().deposita(t)))
+    }
+
+    /** Il programma va a vedere che il fatto esista davvero, e di che giorno è: una frase non rinforza niente. */
+    suspend fun rinforzaTraccia(id: Long, fonte: String, idFatto: Long, oggi: LocalDate = LocalDate.now()): Result<Traccia> {
+        val t = db.tracce().per(id) ?: return Result.failure(IllegalArgumentException("nessuna traccia $id"))
+        val giorno = when (fonte) {
+            "voce" -> db.voci().per(idFatto)?.giorno
+            "misura" -> db.misure().elenco().firstOrNull { it.id == idFatto }?.giorno
+            "documento" -> db.percorsi().elencoDocumenti().firstOrNull { it.id == idFatto }?.let { java.time.Instant.ofEpochMilli(it.creato).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString() }
+            // Una spunta non ha un id suo: si indica col rituale, e vale la spunta del giorno stesso.
+            "spunta" -> db.rituali().elencoSpunte().firstOrNull { it.ritualeId == idFatto && it.giorno == oggi.toString() }?.giorno
+            else -> null
+        } ?: return Result.failure(IllegalArgumentException("il fatto $fonte:$idFatto non c'è nell'archivio"))
+        return it.resonance.adam.logica.Tracce.rinforza(t, it.resonance.adam.logica.Tracce.Prova(fonte, idFatto, LocalDate.parse(giorno)), oggi)
+            .onSuccess { db.tracce().aggiorna(it) }
+    }
+
+    suspend fun svanisciTracce(oggi: LocalDate = LocalDate.now()): Int =
+        it.resonance.adam.logica.Tracce.daSvanire(db.tracce().elenco(), oggi).onEach { db.tracce().aggiorna(it) }.size
+
+    suspend fun lasciaConsegna(c: Consegna, oggi: LocalDate = LocalDate.now()): String {
+        if (c.stato != StatoConsegna.APERTA) return "La consegna non è più aperta"
+        val chiusa = c.copy(stato = StatoConsegna.LASCIATA, chiusa = oggi.toString(), esito = "lasciata dal Ghost prima della scadenza")
+        db.consegne().aggiorna(chiusa)
+        db.voci().inserisci(Voce(pilastro = Pilastro.ADAM, giorno = oggi.toString(), testo = Consegne.traccia(chiusa), fonte = "consegna", creato = ora, aggiornato = ora))
+        return "Consegna lasciata: resta nel diario di Adam"
+    }
+
+    // ── Legge 14: ogni sovrascrittura lascia la versione precedente ──
+    suspend fun salvaTestoDocumento(d: Documento, nuovo: String) {
+        if (nuovo == d.testo) return
+        db.versioni().inserisci(Versione(entita = "documento", idEntita = d.id, testo = d.testo, sostituitoIl = ora))
+        db.percorsi().aggiornaDocumento(d.copy(testo = nuovo, aggiornato = ora))
+    }
+
+    suspend fun aggiornaQuaderno(pilastro: Pilastro, testo: String) {
+        val vecchio = db.quaderni().elenco().find { it.pilastro == pilastro }
+        if (vecchio != null) {
+            if (vecchio.testo == testo) return
+            db.versioni().inserisci(Versione(entita = "quaderno", idEntita = pilastro.ordinal.toLong(), testo = vecchio.testo, sostituitoIl = ora))
+        }
+        db.quaderni().salva(Quaderno(pilastro, testo, ora))
+    }
+
+    suspend fun modificaVoce(v: Voce, nuovo: String) {
+        if (nuovo == v.testo) return
+        db.withTransaction {
+            db.versioni().inserisci(Versione(entita = "voce", idEntita = v.id, testo = v.testo, sostituitoIl = ora))
+            db.voci().aggiorna(v.copy(testo = nuovo, aggiornato = ora))
+        }
+    }
+
+    suspend fun aggiungiMisura(tipo: TipoMisura, valore: Double, giorno: String, nota: String = "", legataAlTempo: Boolean? = null) {
+        db.misure().sostituisci(Misura(tipo = tipo, valore = valore, giorno = giorno, istante = ora, fonte = "manuale", nota = nota, legataAlTempo = legataAlTempo))
+    }
+
+    suspend fun scriviVoce(pilastro: Pilastro, testo: String, giorno: String) {
+        db.voci().inserisci(Voce(pilastro = pilastro, giorno = giorno, testo = testo, fonte = "manuale", creato = ora, aggiornato = ora))
+    }
+
+    suspend fun alternaSpunta(r: Rituale, giorno: String, tenuto: Boolean) {
+        if (tenuto) db.rituali().togli(r.id, giorno) else db.rituali().spunta(Spunta(r.id, giorno, "manuale", ora))
+    }
+
+    // ── Strumenti di lettura dello Shell: restituiscono testo, mai inventato ──
+    suspend fun leggiDocumento(titolo: String): String = try {
+        val d = documento(titolo)
+        val per = db.percorsi().elenco().find { it.id == d.percorsoId }?.titolo ?: "?"
+        val tetto = 12000
+        val corpo = if (d.testo.length > tetto) d.testo.take(tetto) + "\n[…tagliato: il documento ha ${d.testo.length} caratteri, qui i primi $tetto]" else d.testo
+        "Documento «${d.titolo}» (percorso «$per», ${d.testo.length} caratteri):\n$corpo"
+    } catch (e: Ambiguo) { e.message ?: "non trovato" }
+
+    suspend fun cerca(testo: String): String {
+        val parole = Testi.normalizza(testo).split(" ").filter { it.length > 2 }
+        if (parole.isEmpty()) return "Ricerca vuota."
+        fun colpisce(t: String) = Testi.normalizza(t).let { n -> parole.all { it in n } }
+        val righe = mutableListOf<String>()
+        db.voci().elenco().filter { colpisce(it.testo) }.sortedByDescending { it.giorno }.take(8)
+            .forEach { righe += "[diario ${it.pilastro.etichetta} ${it.giorno}] ${Testi.corto(it.testo, 300)}" }
+        db.percorsi().elencoDocumenti().filter { colpisce(it.titolo + " " + it.testo) }.take(6)
+            .forEach { righe += "[documento «${it.titolo}»] ${Testi.corto(it.testo, 300)}" }
+        db.quaderni().elenco().filter { colpisce(it.testo) }
+            .forEach { righe += "[quaderno ${it.pilastro.etichetta}] ${Testi.corto(it.testo, 300)}" }
+        return if (righe.isEmpty()) "Nessun risultato per «$testo» nel diario, nei documenti e nei quaderni."
+        else righe.joinToString("\n")
+    }
+
+    suspend fun leggiMisure(tipo: TipoMisura, giorni: Int, oggi: LocalDate = LocalDate.now()): String {
+        val da = oggi.minusDays(giorni.coerceIn(1, 180).toLong() - 1)
+        val serie = Esiti.serieGiornaliera(db.misure().dal(da.toString()), tipo)
+        if (serie.isEmpty()) return "${tipo.etichetta}: nessun dato negli ultimi $giorni giorni."
+        return "${tipo.etichetta}, un valore per giorno:\n" + serie.joinToString("\n") { "${it.giorno}: ${Esiti.formatta(tipo, it.valore)}" }
+    }
+
+    // ── Spesa ──
+    suspend fun registraCosto(mese: String, dollari: Double) {
+        val s = db.spesa().di(mese) ?: SpesaMese(mese, 0.0, 0)
+        db.spesa().salva(s.copy(dollari = s.dollari + dollari, chiamate = s.chiamate + 1))
+    }
+
+    // ── Import dalla PWA: idempotente grazie a idEsterno ──
+    suspend fun importa(i: Importato): EsitoImport = db.withTransaction {
+        var misure = 0; var voci = 0; var percorsi = 0; var documenti = 0; var quaderni = 0
+        i.misure.forEach { if (db.misure().inserisciSeNuova(it) > 0) misure++ }
+        i.voci.forEach { if (db.voci().inserisci(it) > 0) voci++ }
+        for (pi in i.percorsi) {
+            val id = db.percorsi().inserisci(pi.percorso)
+            if (id <= 0) continue
+            percorsi++
+            val mappa = pi.nodi.associate { it.idPwa to db.percorsi().inserisciNodo(it.nodo.copy(percorsoId = id)) }
+            pi.documenti.forEach { d ->
+                db.percorsi().inserisciDocumento(d.documento.copy(percorsoId = id, nodoId = d.idNodoPwa?.let { mappa[it] }))
+                documenti++
+            }
+        }
+        val esistenti = db.quaderni().elenco().associateBy { it.pilastro }
+        i.quaderni.forEach { q ->
+            if (esistenti[q.pilastro]?.testo.isNullOrBlank()) { db.quaderni().salva(q); quaderni++ }
+        }
+        val profiloImportato = i.profilo != null && (db.profilo().leggi()?.let { it.nome.isBlank() && it.vincoli.isBlank() } ?: true)
+        if (profiloImportato) db.profilo().salva(i.profilo!!)
+        // Un profilo già scritto non si tocca, tranne i nomi protetti se mancano: chi ha importato prima della V2.1 li riceve.
+        else db.profilo().leggi()?.let { attuale ->
+            val nomi = i.profilo?.nomiProtetti.orEmpty()
+            if (attuale.nomiProtetti.isBlank() && nomi.isNotBlank()) db.profilo().salva(attuale.copy(nomiProtetti = nomi))
+        }
+        EsitoImport(misure, voci, percorsi, documenti, quaderni, profiloImportato, i.scartati)
+    }
+
+    // ── Copia completa e ripristino ──
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+    suspend fun copia(): String = json.encodeToString(Copia.serializer(), Copia(
+        creato = ora,
+        misure = db.misure().elenco(), voci = db.voci().elenco(), versioni = db.versioni().elenco(),
+        rituali = db.rituali().elenco(), spunte = db.rituali().elencoSpunte(),
+        percorsi = db.percorsi().elenco(), nodi = db.percorsi().elencoNodi(), documenti = db.percorsi().tuttiIDocumenti(),
+        quaderni = db.quaderni().elenco(), messaggi = db.messaggi().elenco(), spesa = db.spesa().elenco(), profilo = db.profilo().leggi(),
+        esperimenti = db.esperimenti().elenco(),
+        taccuino = db.taccuino().elenco(), movimenti = db.fondo().elenco(), lettere = db.lettere().elenco(), risposte = db.lettere().risposte(),
+        consegne = db.consegne().elenco(), appunti = db.lavagna().elenco(),
+        stanze = db.tracce().stanze(), tracce = db.tracce().elenco(),
+        osservazioni = db.segui().elenco(), letture = db.segui().letture(),
+    ))
+
+    fun eUnaCopia(testo: String) = testo.contains("\"_formato\":\"resonance-apk\"") || testo.contains("\"_formato\": \"resonance-apk\"")
+
+    // Ripristino: riporta lo stato della copia, non fonde. Chiamarlo su un'app già usata la sostituisce.
+    suspend fun ripristina(testo: String): Int {
+        val c = json.decodeFromString(Copia.serializer(), testo)
+        db.withTransaction {
+            listOf("misure", "voci", "versioni", "rituali", "spunte", "percorsi", "nodi", "documenti", "quaderni", "messaggi", "spesa", "profilo", "esperimenti",
+                "taccuino", "movimenti", "lettere", "risposte", "consegne", "appunti", "stanze", "tracce", "osservazioni", "letture")
+                .forEach { db.openHelper.writableDatabase.execSQL("DELETE FROM $it") }
+            c.misure.forEach { db.misure().sostituisci(it) }
+            c.voci.forEach { db.voci().inserisci(it) }
+            c.versioni.forEach { db.versioni().inserisci(it) }
+            c.rituali.forEach { db.rituali().inserisci(it) }
+            c.spunte.forEach { db.rituali().spunta(it) }
+            c.percorsi.forEach { db.percorsi().inserisci(it) }
+            c.nodi.forEach { db.percorsi().inserisciNodo(it) }
+            c.documenti.forEach { db.percorsi().inserisciDocumento(it) }
+            c.quaderni.forEach { db.quaderni().salva(it) }
+            c.messaggi.forEach { db.messaggi().inserisci(it) }
+            c.spesa.forEach { db.spesa().salva(it) }
+            c.profilo?.let { db.profilo().salva(it) }
+            c.esperimenti.forEach { db.esperimenti().inserisci(it) }
+            c.taccuino.forEach { db.taccuino().inserisci(it) }
+            c.movimenti.forEach { db.fondo().inserisci(it) }
+            c.lettere.forEach { db.lettere().inserisci(it) }
+            c.risposte.forEach { db.lettere().inserisciRisposta(it) }
+            c.consegne.forEach { db.consegne().inserisci(it) }
+            c.appunti.forEach { db.lavagna().inserisci(it) }
+            c.stanze.forEach { db.tracce().entra(it) }
+            c.tracce.forEach { db.tracce().deposita(it) }
+            c.osservazioni.forEach { db.segui().inserisci(it) }
+            c.letture.forEach { db.segui().leggi(it) }
+        }
+        return c.misure.size + c.voci.size + c.documenti.size
+    }
+
+    fun proposta(m: Messaggio): Proposta? = m.proposta?.let { runCatching { Azioni.decodifica(it) }.getOrNull() }
+}

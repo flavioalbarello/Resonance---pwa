@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ambra">#FFB020</color>
+    <!-- Il fondo dell'icona: ambra per la dev; la base ha il suo (src/base/res), per non confondere le due app. -->
+    <color name="icona">#FFB020</color>
+    <color name="fondo">#FAF9F4</color>
+</resources>

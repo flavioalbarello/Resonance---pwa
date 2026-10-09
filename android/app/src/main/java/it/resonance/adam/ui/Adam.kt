@@ -1,0 +1,772 @@
+package it.resonance.adam.ui
+
+import it.resonance.adam.logica.Ritmo
+
+import it.resonance.adam.logica.Battito
+
+import android.app.Application
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import it.resonance.adam.Impostazioni
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import it.resonance.adam.battito.Battiti
+import it.resonance.adam.battito.RicercaWorker
+import it.resonance.adam.battito.TurnoWorker
+import kotlinx.coroutines.flow.first
+import it.resonance.adam.cervello.Shell
+import it.resonance.adam.dati.Archivio
+import it.resonance.adam.dati.Db
+import it.resonance.adam.dati.Documento
+import it.resonance.adam.dati.Messaggio
+import it.resonance.adam.dati.Nodo
+import it.resonance.adam.dati.Percorso
+import it.resonance.adam.dati.Pilastro
+import it.resonance.adam.dati.Profilo
+import it.resonance.adam.dati.Rituale
+import it.resonance.adam.dati.Ruolo
+import it.resonance.adam.dati.StatoNodo
+import it.resonance.adam.dati.StatoProposta
+import it.resonance.adam.dati.TipoMisura
+import it.resonance.adam.dati.Voce
+import android.net.Uri
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import it.resonance.adam.logica.AgendaLetta
+import it.resonance.adam.logica.Allegato
+import it.resonance.adam.mondo.Allegatore
+import java.io.File
+import it.resonance.adam.logica.ImportPwa
+import it.resonance.adam.logica.Istantanea
+import it.resonance.adam.logica.Tour
+import it.resonance.adam.logica.Nomi
+import it.resonance.adam.logica.Stabilita
+import it.resonance.adam.mondo.MondoAndroid
+import it.resonance.adam.sensi.Sensi
+import it.resonance.adam.voce.Ascolto
+import it.resonance.adam.voce.ComandiVocali
+import it.resonance.adam.voce.Parlato
+import it.resonance.adam.voce.Segnale
+import it.resonance.adam.voce.Raccolta
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.YearMonth
+
+enum class Schermata(val etichetta: String) { SPECCHIO("Specchio"), SHELL("Shell"), ADAM("Adam"), BIO("Bio"), AIR("Air"), VIDYA("Vidya"), SETUP("Setup") }
+
+enum class Ascolta { SPENTO, DETTATURA, AUTO }
+
+// Quanti messaggi la chat mostra alla volta; «Mostra i precedenti» ne aggiunge altrettanti.
+const val FINESTRA = 200
+
+class Adam(app: Application) : AndroidViewModel(app) {
+    val db = Db.di(app)
+    val archivio = Archivio(db)
+    val impostazioni = Impostazioni(app)
+    val sensi = Sensi(app)
+    val mondo = MondoAndroid(app)
+    val allegatore = Allegatore(app)
+    private val shell = Shell(archivio, impostazioni, mondo = mondo, lettore = it.resonance.adam.mondo.LettoreAndroid(app))
+
+    private fun <T> Flow<List<T>>.stato(): StateFlow<List<T>> = stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val misure = db.misure().tutte().stato()
+    val voci = db.voci().tutte().stato()
+    val rituali = db.rituali().attivi().stato()
+    val spunte = db.rituali().spunte().stato()
+    val percorsi = db.percorsi().attivi().stato()
+    val nodi = db.percorsi().nodi().stato()
+    val documenti = db.percorsi().documenti().stato()
+    val documentiTolti = db.percorsi().documentiTolti().stato()
+    val quaderni = db.quaderni().tutti().stato()
+    val esperimenti = db.esperimenti().tutti().stato()
+    // Tutti i messaggi solo per chi li guarda (la Regolazione); la chat legge una finestra degli ultimi (fluidità, 01/10/2026).
+    val messaggi = db.messaggi().tutti().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    var finestra by mutableStateOf(FINESTRA)
+        private set
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val chat = snapshotFlow { finestra }.flatMapLatest { db.messaggi().osservaUltimi(it) }.stato()
+    fun mostraPrecedenti() { finestra += FINESTRA }
+    val turni = db.turni().osserva(300).stato()
+    val note = db.taccuino().tutte().stato()
+    val movimenti = db.fondo().tutti().stato()
+    val lettere = db.lettere().tutte().stato()
+    val risposte = db.lettere().tutteLeRisposte().stato()
+    val consegne = db.consegne().tutte().stato()
+    val appunti = db.lavagna().tutti().stato()
+    val osservazioni = db.segui().tutte().stato()
+    val letture = db.segui().tutteLeLetture().stato()
+    val profilo: StateFlow<Profilo?> = db.profilo().osserva().stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val spesaMese = db.spesa().osserva(YearMonth.now().toString()).stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    // Il giorno si rilegge al ritorno nell'app: lasciata aperta oltre mezzanotte, lo Specchio restava a ieri.
+    private val giorno = kotlinx.coroutines.flow.MutableStateFlow(LocalDate.now())
+    val istantanea: StateFlow<Istantanea> = combine(
+        combine(misure, rituali, spunte, profilo) { m, r, s, p -> Quattro(m, r, s, p) },
+        combine(percorsi, nodi, documenti, quaderni) { p, n, d, q -> Quattro(p, n, d, q) },
+        giorno,
+    ) { a, b, g -> Istantanea(g, a.d, a.a, a.b, a.c, b.a, b.b, b.c, b.d) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, Istantanea(LocalDate.now(), null, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList()))
+
+    private data class Quattro<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
+
+    var schermata by mutableStateOf(Schermata.SPECCHIO)
+    var percorsoAperto by mutableStateOf<Long?>(null)
+    var documentoAperto by mutableStateOf<Long?>(null)
+    var input by mutableStateOf("")
+    var parziale by mutableStateOf("")
+    var ascolta by mutableStateOf(Ascolta.SPENTO)
+    var pensa by mutableStateOf(false)
+    var avviso by mutableStateOf<String?>(null)
+    var statoSensi by mutableStateOf("")
+    var agenda by mutableStateOf<AgendaLetta>(AgendaLetta.NonLetta)
+    val inAllegato = mutableStateListOf<Allegato>()
+    var preparo by mutableIntStateOf(0)
+
+    // `temporaneo`: la foto grande della fotocamera, da buttare dopo averne fatto la copia ridotta.
+    fun aggiungiAllegato(uri: Uri, temporaneo: File? = null) = viewModelScope.launch {
+        preparo++
+        allegatore.prepara(uri)
+            .onSuccess { inAllegato += it; if (schermata != Schermata.SHELL) vai(Schermata.SHELL) }
+            .onFailure { avviso = "Allegato non letto: ${it.message}" }
+        temporaneo?.delete()
+        preparo--
+    }
+
+    fun togliAllegato(a: Allegato) {
+        inAllegato.remove(a)
+        a.immagini.forEach { File(it).delete() }
+    }
+
+    fun vai(s: Schermata) {
+        schermata = s; percorsoAperto = null; documentoAperto = null
+        if (s == Schermata.SPECCHIO) leggiAgenda()
+    }
+
+    // L'anello si chiude anche aprendo l'app: un esperimento scaduto si confronta subito.
+    fun chiudiScaduti() = viewModelScope.launch {
+        val chiusi = archivio.chiudiScaduti()
+        if (chiusi.isNotEmpty()) avviso = chiusi.joinToString(" · ") { "«${it.titolo}»: ${it.esito?.etichetta}" }
+    }
+
+    fun lasciaEsperimento(e: it.resonance.adam.dati.Esperimento) = viewModelScope.launch {
+        avviso = archivio.esegui(it.resonance.adam.logica.Proposta.LasciaEsperimento(e.titolo, "lasciato dallo Specchio")).ricevuta
+    }
+
+    // Il Ghost può chiedere la perturbazione quando vuole; il ristagno però lo decide il programma, non la richiesta.
+    fun perturbaAdesso() = viewModelScope.launch {
+        val motivi = it.resonance.adam.logica.Ristagno.trova(istantanea.value, esperimenti.value)
+        if (motivi.isEmpty()) { avviso = "Nei numeri non c'è un ristagno: niente da perturbare. Se vuoi provare comunque qualcosa, chiedilo allo Shell."; return@launch }
+        if (pensa) return@launch
+        pensa = true
+        vai(Schermata.SHELL)
+        impostazioni.ultimaPerturbazione = LocalDate.now().toString()
+        runCatching { shell.perturba(motivi) }.onFailure { avviso = "Perturbazione non riuscita: ${it.message}" }
+        pensa = false
+    }
+
+    fun leggiAgenda() = viewModelScope.launch { agenda = mondo.agenda(LocalDate.now(), 2) }
+
+    fun indietro(): Boolean = when {
+        documentoAperto != null -> { documentoAperto = null; true }
+        percorsoAperto != null -> { percorsoAperto = null; true }
+        schermata != Schermata.SPECCHIO -> { schermata = Schermata.SPECCHIO; true }
+        else -> false
+    }
+
+    // ── Shell ──
+    // La risposta la prepara un lavoro di sistema (battito/Turno.kt): continua a schermo spento e ad app chiusa.
+    // `pensa` segue quel lavoro, anche se l'app è stata riaperta nel frattempo.
+    private val lavori = runCatching { WorkManager.getInstance(app) }.getOrNull()
+
+    init {
+        lavori?.let { wm ->
+            viewModelScope.launch {
+                wm.getWorkInfosForUniqueWorkFlow(TurnoWorker.NOME).combine(wm.getWorkInfosForUniqueWorkFlow(RicercaWorker.NOME)) { a, b -> a + b }
+                    .collect { infos -> pensa = infos.any { !it.state.isFinished } }
+            }
+        }
+    }
+
+    // ── Il tour del primo avvio (logica/Tour.kt, ui/Tour.kt) ──
+    var tour by mutableStateOf(Tour.daMostrare(impostazioni.tourVisto, impostazioni.chiave, ""))
+    var passoTour by mutableStateOf(Tour.Passo.NOME)
+    var nomiProposti by mutableStateOf(listOf<String>())
+    var proponendo by mutableStateOf(false)
+
+    init {
+        // Un profilo con un nome (per esempio da un ripristino) vuol dire che l'app non è nuova: niente tour da solo.
+        if (tour) viewModelScope.launch { if (db.profilo().leggi()?.nome?.isNotBlank() == true) tour = false }
+    }
+
+    fun apriTour() { passoTour = Tour.Passo.NOME; nomiProposti = emptyList(); tour = true }
+
+    fun chiudiTour() {
+        impostazioni.tourVisto = true
+        tour = false
+    }
+
+    fun salvaNomi(tuo: String? = null, shell: String? = null) = viewModelScope.launch {
+        val p = db.profilo().leggi() ?: Profilo()
+        db.profilo().salva(p.copy(nome = tuo?.trim() ?: p.nome, nomeShell = shell?.trim()?.takeIf { Nomi.valido(it) } ?: if (shell != null) "" else p.nomeShell))
+    }
+
+    fun proponiNomi() = viewModelScope.launch {
+        proponendo = true
+        nomiProposti = shell.proponiNomi()
+        proponendo = false
+        if (nomiProposti.isEmpty()) avviso = if (impostazioni.chiave.isBlank()) "Senza chiave lo Shell non può proporre: scrivi tu un nome" else "Nessuna proposta arrivata: scrivi tu un nome"
+    }
+
+    /** L'ultimo passo: la risposta alla prima domanda entra in chat come un tuo messaggio, e lo Shell risponde. */
+    fun fineTour(risposta: String) {
+        chiudiTour()
+        if (risposta.isNotBlank() && impostazioni.chiave.isNotBlank()) { vai(Schermata.SHELL); invia(risposta) } else vai(Schermata.SPECCHIO)
+    }
+
+    fun invia(testo: String = input) {
+        val allegati = inAllegato.toList()
+        val t = testo.trim().ifEmpty { if (allegati.isNotEmpty()) "Guarda l'allegato." else "" }
+        if (t.isEmpty() || pensa || preparo > 0) return
+        input = ""
+        inAllegato.clear()
+        pensa = true
+        // La forzatura vale per questo messaggio e basta: poi la temperatura torna quella del compito.
+        val f = forza
+        forza = null
+        // In riunione, un messaggio per l'architetto non chiama lo Shell (01/10/2026): va nel verbale e basta. Il tasto
+        // Rispondi sceglie il destinatario; nominare lo Shell (o «entrambi») lo aggiunge.
+        val perArchitetto = rispondiArchitetto
+        rispondiArchitetto = false
+        if (riunione != null && !it.resonance.adam.cervello.Tavolo.chiamaShell(t, perArchitetto)) {
+            viewModelScope.launch {
+                val id = shell.registra(t, allegati)
+                runCatching { shell.soloAlVerbale(id) }.onFailure { e -> avviso = "Non copiato nel verbale: ${e.message ?: e.javaClass.simpleName}" }
+                pensa = false
+            }
+            return
+        }
+        viewModelScope.launch { turnoSu(shell.registra(t, allegati), f) }
+    }
+
+    // Il tasto Rispondi sotto un intervento dell'architetto: il prossimo messaggio va a lui.
+    var rispondiArchitetto by mutableStateOf(false)
+
+    // Il turno dello Shell su un messaggio già salvato: del Ghost, o dell'architetto che gli si rivolge in riunione.
+    private suspend fun turnoSu(id: Long, f: it.resonance.adam.cervello.Forzatura? = null) {
+        val wm = lavori
+        if (wm == null) {
+            val esito = shell.rispondi(id, f)
+            pensa = false
+            aggiornaConsulente()
+            if (ascolta == Ascolta.AUTO) rispondiAVoce(esito)
+            return
+        }
+        val r = TurnoWorker.accoda(getApplication(), id, f)
+        val fine = wm.getWorkInfoByIdFlow(r.id).first { it?.state?.isFinished == true }
+        // Lo Shell può aver messo domande nella cartella del consulente.
+        aggiornaConsulente()
+        if (ascolta == Ascolta.AUTO && fine?.state == WorkInfo.State.SUCCEEDED) rispondiAVoce(Shell.Esito(
+            fine.outputData.getString(TurnoWorker.TESTO).orEmpty(), fine.outputData.getLongArray(TurnoWorker.PROPOSTE)?.toList().orEmpty()))
+    }
+
+    fun conferma(m: Messaggio) = viewModelScope.launch {
+        val p = archivio.proposta(m)
+        avviso = shell.conferma(m.id); leggiAgenda()
+        // Segui (logica/Ricerca.kt): la prima lettura parte subito e compare in chat, con lo sguardo indietro se chiesto.
+        if (p is it.resonance.adam.logica.Proposta.Segui) { pensa = true; runCatching { shell.seguiDovute(inChat = true) }; pensa = false }
+        // La ricerca a fondo (logica/AFondo.kt), appena autorizzata: un lavoro di sistema (battito/Turno.kt), che regge anche
+        // se si esce dall'app; il risultato arriva in chat. Senza WorkManager (le prove) si fa qui.
+        if (p is it.resonance.adam.logica.Proposta.RicercaAFondo) {
+            if (lavori != null) RicercaWorker.accoda(getApplication(), m.id)
+            else { pensa = true; runCatching { shell.ricercaAFondo(p) }; pensa = false }
+        }
+    }
+
+    // Il listino dei modelli (logica/Listino.kt): gli avvisi su ciò che si usa, e l'aggiornamento a mano da Setup.
+    var listinoVersione by mutableStateOf(0)
+        private set
+    fun avvisiModelli(): List<String> = it.resonance.adam.logica.Listino.avvisi(shell.modelliUsati(),
+        it.resonance.adam.logica.Listino.decodifica(impostazioni.listino), LocalDate.now())
+    fun aggiornaListino() = viewModelScope.launch {
+        shell.aggiornaListino(forza = true)
+        listinoVersione++
+        avviso = if (impostazioni.listinoLetto > 0) "Listino letto: ${it.resonance.adam.logica.Listino.decodifica(impostazioni.listino).size} modelli" else "Listino non raggiungibile: riprova con la rete"
+    }
+
+    fun smettiDiSeguire(id: Long) = viewModelScope.launch { avviso = archivio.smettiDiSeguire(id) }
+    fun resocontoVisto(id: Long) = viewModelScope.launch { archivio.resocontoVisto(id) }
+    fun rifiuta(m: Messaggio) = viewModelScope.launch { shell.rifiuta(m.id) }
+
+    // ── Voce: dettatura (come Gemini: testo nella casella) e auto (mani libere) ──
+    private val parlato by lazy { Parlato(getApplication()) }
+    private var silenzi = 0
+    private val ascolto by lazy {
+        Ascolto(getApplication(),
+            parziale = { p -> parziale = p; if (p.isNotBlank()) invioJob?.cancel() },
+            finale = { t -> parziale = ""; ricevuto(t) },
+            fine = { errore -> finito(errore) },
+        )
+    }
+
+    // Modalità auto: ciò che il Ghost ha detto finora in questo messaggio. Parte dopo `pausaInvio` secondi di silenzio,
+    // o subito con «invia». Prima partiva alla prima pausa del riconoscimento, a metà frase (visto il 25/09).
+    var raccolto by mutableStateOf("")
+    // Temperatura forzata per il prossimo messaggio soltanto (null = decide il compito).
+    var forza by mutableStateOf<it.resonance.adam.cervello.Forzatura?>(null)
+
+    private var invioJob: kotlinx.coroutines.Job? = null
+    // Il segmento appena arrivato ha già fatto partire qualcosa (invio, sì/no): chi chiude l'ascolto non lo riaccende.
+    private var azione = false
+
+    fun microfonoDisponibile() = ascolto.disponibile()
+    fun pausaInvio() = impostazioni.pausaInvio
+
+    fun avviaDettatura() { ferma(); ascolta = Ascolta.DETTATURA; ascolto.avvia() }
+
+    fun avviaAuto() {
+        ferma()
+        ascolta = Ascolta.AUTO
+        silenzi = 0
+        schermata = Schermata.SHELL
+        ascolto.avvia()
+    }
+
+    fun ferma() {
+        invioJob?.cancel()
+        ascolto.ferma()
+        parlato.zitto()
+        daDire.clear()
+        parlando = false
+        inLettura = null
+        ascolta = Ascolta.SPENTO
+        parziale = ""
+        // Ciò che era stato detto non si perde: resta nella casella, da inviare o correggere.
+        if (raccolto.isNotBlank()) input = listOf(input.trim(), raccolto).filter { it.isNotEmpty() }.joinToString(" ")
+        raccolto = ""
+    }
+
+    private fun ricevuto(t: String) {
+        when (ascolta) {
+            Ascolta.DETTATURA -> {
+                input = listOf(input.trim(), t).filter { it.isNotEmpty() }.joinToString(" ")
+                if (schermata != Schermata.SHELL) vai(Schermata.SHELL)
+            }
+            Ascolta.AUTO -> {
+                silenzi = 0
+                invioJob?.cancel()
+                // «sì» / «no» da soli, a messaggio vuoto, rispondono alla proposta in attesa.
+                if (raccolto.isBlank() && (ComandiVocali.eSi(t) || ComandiVocali.eNo(t))) {
+                    azione = true
+                    viewModelScope.launch {
+                        val inAttesa = db.messaggi().ultimaInAttesa()
+                        when {
+                            // Nessuna proposta: era una parola del messaggio. Chi ha chiuso l'ascolto è già passato, quindi si riaccende qui.
+                            inAttesa == null -> { segmento(t); azione = false; if (ascolta == Ascolta.AUTO && !pensa) ascolto.avvia() }
+                            ComandiVocali.eSi(t) -> {
+                                db.messaggi().inserisci(Messaggio(ruolo = Ruolo.GHOST, testo = t, istante = System.currentTimeMillis()))
+                                parla(shell.conferma(inAttesa.id))
+                            }
+                            else -> {
+                                db.messaggi().inserisci(Messaggio(ruolo = Ruolo.GHOST, testo = t, istante = System.currentTimeMillis()))
+                                shell.rifiuta(inAttesa.id)
+                                parla("Annullato.")
+                            }
+                        }
+                    }
+                    return
+                }
+                segmento(t)
+            }
+            Ascolta.SPENTO -> {}
+        }
+    }
+
+    private fun segmento(t: String) {
+        when (val e = Raccolta.aggiungi(raccolto, t)) {
+            is Raccolta.Esito.Invia -> { azione = true; spedisci(e.testo) }
+            Raccolta.Esito.Azzera -> { raccolto = ""; Segnale.dai(false) }
+            is Raccolta.Esito.Continua -> {
+                raccolto = e.testo
+                invioJob = viewModelScope.launch {
+                    kotlinx.coroutines.delay(impostazioni.pausaInvio * 1000L)
+                    if (ascolta == Ascolta.AUTO && !pensa && raccolto.isNotBlank()) spedisci(raccolto)
+                }
+            }
+        }
+    }
+
+    private fun spedisci(t: String) {
+        invioJob?.cancel()
+        raccolto = ""
+        parziale = ""
+        Segnale.dai(true)
+        ascolto.ferma()
+        invia(t)
+    }
+
+    private fun finito(errore: String?) {
+        when (ascolta) {
+            // La dettatura continua di frase in frase; si ferma al silenzio lungo del riconoscimento o col tocco.
+            Ascolta.DETTATURA -> if (errore == null) ascolto.avvia() else {
+                ascolta = Ascolta.SPENTO
+                parziale = ""
+                if (errore != "silenzio" && errore != "annullato") avviso = "Voce: $errore"
+            }
+            Ascolta.AUTO -> {
+                if (azione) { azione = false; return }
+                if (pensa || errore == "annullato") return
+                when {
+                    errore == null -> ascolto.avvia()
+                    raccolto.isNotBlank() -> spedisci(raccolto)
+                    errore == "silenzio" && ++silenzi < 3 -> ascolto.avvia()
+                    else -> {
+                        ascolta = Ascolta.SPENTO
+                        avviso = if (errore == "silenzio") "Modalità auto in pausa dopo tre silenzi." else "Modalità auto ferma: $errore"
+                    }
+                }
+            }
+            Ascolta.SPENTO -> {}
+        }
+    }
+
+    // ── Lettura ad alta voce di un messaggio, a richiesta ──
+    var inLettura by mutableStateOf<Long?>(null)
+
+    fun leggi(m: Messaggio) {
+        // Una lettura a richiesta interrompe la coda della modalità auto: la sua fine non arriverebbe più.
+        daDire.clear()
+        parlando = false
+        if (inLettura == m.id) { parlato.zitto(); inLettura = null; riprendiAuto(); return }
+        invioJob?.cancel()
+        ascolto.ferma()
+        inLettura = m.id
+        val testo = when (m.ruolo) {
+            Ruolo.ARCHITETTO -> it.resonance.adam.cervello.Tavolo.leggibile(m.testo)
+            Ruolo.CONSULENTE -> it.resonance.adam.logica.Consulente.perLaVoce(m.testo)
+            else -> m.testo
+        }
+        parlato.parla(testo) { inLettura = null; riprendiAuto() }
+    }
+
+    private fun riprendiAuto() { if (ascolta == Ascolta.AUTO && !pensa) ascolto.avvia() }
+
+    private suspend fun rispondiAVoce(esito: Shell.Esito) {
+        val proposte = esito.proposte.mapNotNull { db.messaggi().per(it)?.testo }
+        val testo = buildString {
+            if (impostazioni.leggiRisposteInAuto) append(esito.testo)
+            if (proposte.isNotEmpty()) append("\nPropongo: ${proposte.joinToString(". ") { it.trimEnd('.') }}. Confermi?")
+        }
+        parla(testo)
+    }
+
+    // In coda, non uno sopra l'altro: l'intervento dell'architetto letto in auto non si tronca quando arriva lo Shell.
+    private val daDire = ArrayDeque<String>()
+    private var parlando = false
+
+    private fun parla(testo: String) {
+        if (ascolta != Ascolta.AUTO || testo.isBlank()) return
+        if (parlando) { daDire.addLast(testo); return }
+        parlando = true
+        ascolto.ferma()
+        parlato.parla(testo) {
+            parlando = false
+            daDire.removeFirstOrNull()?.let { parla(it) } ?: riprendiAuto()
+        }
+    }
+
+    // ── Gesti diretti, senza modello ──
+    fun aggiungiMisura(tipo: TipoMisura, valore: Double, giorno: String = LocalDate.now().toString(), legata: Boolean? = null) = viewModelScope.launch {
+        if (valore < tipo.minimo || valore > tipo.massimo) { avviso = "${tipo.etichetta}: $valore fuori dall'intervallo plausibile"; return@launch }
+        archivio.aggiungiMisura(tipo, valore, giorno, legataAlTempo = legata)
+    }
+    fun eliminaMisura(id: Long) = viewModelScope.launch { db.misure().elimina(id) }
+    fun scriviVoce(p: Pilastro, testo: String) = viewModelScope.launch { archivio.scriviVoce(p, testo, LocalDate.now().toString()) }
+    fun modificaVoce(v: Voce, testo: String) = viewModelScope.launch { archivio.modificaVoce(v, testo) }
+    fun alternaSpunta(r: Rituale, tenutoOggi: Boolean) = viewModelScope.launch { archivio.alternaSpunta(r, LocalDate.now().toString(), tenutoOggi) }
+    fun creaRituale(nome: String, p: Pilastro, criterio: String?) = viewModelScope.launch {
+        val c = criterio?.takeIf { it.isNotBlank() }
+        if (c != null && Stabilita.leggiCriterio(c) == null) { avviso = "Criterio non leggibile: forma TIPO>=numero (es. PASSI>=7000)"; return@launch }
+        db.rituali().inserisci(Rituale(nome = nome.trim(), pilastro = p, criterio = c?.let { Stabilita.leggiCriterio(it).toString() }, creato = System.currentTimeMillis()))
+    }
+    fun disattivaRituale(r: Rituale) = viewModelScope.launch { db.rituali().aggiorna(r.copy(attivo = false)) }
+    fun salvaQuaderno(p: Pilastro, testo: String) = viewModelScope.launch {
+        archivio.aggiornaQuaderno(p, testo.trim())
+        avviso = if (testo.isBlank()) "Quaderno ${p.etichetta} svuotato: la versione precedente resta nello storico" else "Quaderno ${p.etichetta} salvato"
+    }
+    fun togliDocumento(d: Documento) = viewModelScope.launch { avviso = archivio.togliDocumento(d); if (documentoAperto == d.id) documentoAperto = null }
+    fun rimettiDocumento(d: Documento) = viewModelScope.launch { avviso = archivio.rimettiDocumento(d) }
+    fun eliminaDocumento(d: Documento) = viewModelScope.launch { avviso = archivio.eliminaDocumento(d) }
+    fun salvaDocumento(d: Documento, testo: String) = viewModelScope.launch { archivio.salvaTestoDocumento(d, testo); avviso = "Documento salvato" }
+    fun togliNodo(n: Nodo) = viewModelScope.launch { avviso = archivio.togliNodo(n) }
+    fun pilastroNodo(n: Nodo, p: Pilastro?) = viewModelScope.launch { avviso = archivio.pilastroNodo(n, p) }
+    // Il modello per compito (cervello/ModelloPerCompito.kt): quello in uso, e la scelta del Ghost compito per compito.
+    var modelliVersione by mutableStateOf(0)
+        private set
+    fun modelloPer(c: it.resonance.adam.cervello.Compito) = shell.modelloPer(c)
+    fun sceltoPer(c: it.resonance.adam.cervello.Compito) = it.resonance.adam.cervello.ModelloPerCompito.decodifica(impostazioni.modelliPerCompito)[c.name]
+    fun scegliModello(c: it.resonance.adam.cervello.Compito, id: String?) {
+        val m = it.resonance.adam.cervello.ModelloPerCompito.decodifica(impostazioni.modelliPerCompito).toMutableMap()
+        if (id.isNullOrBlank()) m.remove(c.name) else m[c.name] = id
+        impostazioni.modelliPerCompito = it.resonance.adam.cervello.ModelloPerCompito.codifica(m)
+        modelliVersione++
+        avviso = "${c.etichetta.replaceFirstChar { ch -> ch.uppercase() }}: ${it.resonance.adam.cervello.Instradatore.etichetta(shell.modelloPer(c))}"
+    }
+
+    fun senzaTemperatura() = impostazioni.senzaTemperatura
+    fun temperatureConfermate() = impostazioni.temperature
+    fun ripristinaTemperatura(c: it.resonance.adam.cervello.Compito) = viewModelScope.launch {
+        impostazioni.temperature = impostazioni.temperature - c.name
+        archivio.scriviVoce(Pilastro.ADAM, "Temperatura per «${c.etichetta}» riportata alla tabella (${c.temperatura}) dal Ghost.", LocalDate.now().toString())
+        avviso = "«${c.etichetta}» torna a ${c.temperatura}"
+    }
+    // Il Ghost toglie una nota dal taccuino: non si cancella, smette di essere letta (Legge 14).
+    fun togliNota(n: it.resonance.adam.dati.Nota) = viewModelScope.launch { db.taccuino().aggiorna(n.copy(tolta = true)) }
+    fun aggiungiMovimento(tipo: it.resonance.adam.dati.TipoMovimento, importo: Double, motivo: String) = viewModelScope.launch {
+        if (importo <= 0.0 || motivo.isBlank()) { avviso = "Serve un importo positivo e un motivo"; return@launch }
+        db.fondo().inserisci(it.resonance.adam.dati.Movimento(giorno = LocalDate.now().toString(), tipo = tipo, importo = importo, motivo = motivo.trim(), creato = System.currentTimeMillis()))
+    }
+    fun cassettaPronta() = it.resonance.adam.cervello.Corrispondenza(archivio, impostazioni).pronta()
+    fun controllaLettere() = viewModelScope.launch {
+        val posta = it.resonance.adam.cervello.Corrispondenza(archivio, impostazioni)
+        if (!posta.pronta()) { avviso = "Cassetta non configurata: Setup → Cassetta delle lettere"; return@launch }
+        val spedite = posta.spedisciInSospeso()
+        val nuove = posta.ritira()
+        nuove.forEach { (l, r) -> db.messaggi().inserisci(Messaggio(ruolo = Ruolo.ARCHITETTO, testo = "Risposta dell'architetto alla lettera «${l.oggetto}»:\n${r.testo}", istante = System.currentTimeMillis())) }
+        avviso = "Spedite $spedite, risposte nuove ${nuove.size}"
+    }
+    fun salvaCassetta(repo: String, token: String) {
+        if (!it.resonance.adam.cervello.Cassetta.valido(repo)) { avviso = "Serve «proprietario/nome» di un repository privato, non quello pubblico dell'app"; return }
+        impostazioni.cassetta = repo
+        if (token.isNotBlank()) impostazioni.tokenCassetta = token
+        avviso = "Cassetta salvata"
+    }
+    fun cassetta() = impostazioni.cassetta
+
+    // ── Riunione a tre ──
+    var riunione by mutableStateOf(impostazioni.riunioneTema.takeIf { impostazioni.riunione.isNotBlank() })
+    private var ascoltaRiunione: kotlinx.coroutines.Job? = null
+    private val tavolo get() = it.resonance.adam.cervello.Tavolo(archivio, impostazioni)
+
+    var chiudendo by mutableStateOf(false)
+
+    // A riunione aperta e app viva, ogni 10 secondi (erano 20 fino al 01/10/2026): gli interventi dell'architetto entrano in chat. Riparte da capo
+    // (ritirando subito) quando il Ghost torna nell'app: fuori, Android la congela e il giro si ferma (visto il 26/09).
+    private fun seguiRiunione() {
+        ascoltaRiunione?.cancel()
+        if (riunione == null) return
+        ascoltaRiunione = viewModelScope.launch {
+            while (riunione != null) {
+                ritiraOra(false)
+                kotlinx.coroutines.delay(10_000)
+            }
+        }
+    }
+
+    fun alRitorno() {
+        giorno.value = LocalDate.now()
+        if (riunione != null) seguiRiunione()
+    }
+    fun ritiraRiunione() = viewModelScope.launch { ritiraOra(true) }
+
+    private suspend fun ritiraOra(aMano: Boolean) {
+        val r = try { tavolo.ritira() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+            if (aMano) avviso = "Ritiro non riuscito: ${e.message ?: e.javaClass.simpleName}"
+            return
+        }
+        aggiornaConsulente()
+        if (aMano && r.nuovi.isEmpty()) avviso = "Niente di nuovo dall'architetto"
+        r.nuovi.forEach { m -> parla("L'architetto. " + it.resonance.adam.cervello.Tavolo.leggibile(m.testo)) }
+        r.allaShell?.let { id -> pensa = true; viewModelScope.launch { turnoSu(id) } }
+        r.perBalthasar?.let { d -> perturba(d, it.resonance.adam.logica.Balthasar.Intensita.MEDIA, daArchitetto = true) }
+    }
+
+    // Dopo le dichiarazioni di sopra: un init più in alto le troverebbe ancora vuote.
+    init { seguiRiunione() }
+
+    fun apriRiunione(tema: String) = viewModelScope.launch {
+        if (tema.isBlank()) { avviso = "Serve un tema"; return@launch }
+        runCatching { tavolo.apri(tema) }
+            .onSuccess { riunione = tema.trim(); avviso = "Riunione aperta. Nella sessione di Claude Code scrivi una volta: «riunione aperta»"; seguiRiunione(); vai(Schermata.SHELL) }
+            .onFailure { avviso = "Riunione non aperta: ${it.message}" }
+    }
+
+    fun chiudiRiunione() {
+        if (chiudendo) return
+        chiudendo = true
+        viewModelScope.launch {
+            val esito = runCatching { shell.chiudiRiunione() }
+            chiudendo = false
+            if (!tavolo.aperta()) { riunione = null; ascoltaRiunione?.cancel(); aggiornaConsulente(); avviso = "Riunione chiusa: il verbale è in chat e nella cassetta" }
+            else esito.exceptionOrNull()?.let {
+                avviso = "Chiusura non riuscita (${it.message ?: it.javaClass.simpleName}). Il verbale è salvato: riprova Chiudi quando c'è rete"
+            }
+        }
+    }
+    // ── Il consulente esterno e Balthasar, in riunione (27/09/2026) ──
+    // Lo stato vive nelle impostazioni (lo cambiano anche lo Shell e l'architetto): qui se ne tiene una copia per lo
+    // schermo, rinfrescata a ogni gesto, a ogni ritiro e a ogni turno.
+    var consulentePresente by mutableStateOf(false)
+    var cartella by mutableStateOf<List<it.resonance.adam.logica.Consulente.Domanda>>(emptyList())
+    var inviiConsulente by mutableStateOf(0 to 0)
+    var consultando by mutableStateOf(false)
+    var perturbando by mutableStateOf(false)
+
+    fun aggiornaConsulente() {
+        consulentePresente = tavolo.consulentePresente()
+        cartella = tavolo.domande()
+        inviiConsulente = impostazioni.consulenteInvii to impostazioni.consulenteTetto
+    }
+
+    fun convocaConsulente() = viewModelScope.launch { avviso = runCatching { tavolo.convoca() }.getOrElse { "Non convocato: ${it.message}" }; aggiornaConsulente() }
+    fun congedaConsulente() = viewModelScope.launch { avviso = runCatching { tavolo.congeda() }.getOrElse { "Non congedato: ${it.message}" }; aggiornaConsulente() }
+    fun domandaAlConsulente(t: String) { tavolo.aggiungiDomanda("Ghost", t)?.let { avviso = "Non in cartella: $it" }; aggiornaConsulente() }
+    fun togliDomanda(i: Int) { tavolo.togliDomanda(i); aggiornaConsulente() }
+    fun alzaTettoConsulente() { tavolo.alzaTetto(); aggiornaConsulente() }
+
+    fun mandaAlConsulente() {
+        if (consultando) return
+        consultando = true
+        viewModelScope.launch {
+            val esito = runCatching { shell.consulta() }
+            consultando = false
+            aggiornaConsulente()
+            esito.onSuccess { e -> parla("Il consulente. " + it.resonance.adam.logica.Consulente.perLaVoce(e.testo)) }
+                .onFailure { e -> avviso = "Consulente: ${e.message ?: e.javaClass.simpleName}" }
+        }
+    }
+
+    // La domanda sul tavolo, per partire: l'ultimo messaggio del Ghost. Il Ghost la corregge prima di toccare Perturba.
+    fun domandaSulTavolo(): String = chat.value.lastOrNull { it.ruolo == Ruolo.GHOST }?.testo.orEmpty()
+
+    fun perturba(domanda: String, intensita: it.resonance.adam.logica.Balthasar.Intensita, daArchitetto: Boolean = false) {
+        if (perturbando || domanda.isBlank()) return
+        perturbando = true
+        viewModelScope.launch {
+            val esito = runCatching { shell.balthasar(domanda, intensita, daArchitetto) }
+            perturbando = false
+            esito.onSuccess { parla("Balthasar. " + it.testo) }.onFailure { avviso = "Perturba: ${it.message ?: it.javaClass.simpleName}" }
+        }
+    }
+
+    // «Sono via» / «Sono tornato» (01/10/2026, logica/Assenza.kt): il ritorno lascia il riepilogo in chat.
+    fun vaVia() = viewModelScope.launch { avviso = archivio.vaVia() }
+    fun torna() = viewModelScope.launch {
+        val r = archivio.torna() ?: run { avviso = "Non risultavi via"; return@launch }
+        if (r.startsWith("«Sono via» ritirato")) { avviso = r; return@launch }
+        db.messaggi().inserisci(Messaggio(ruolo = Ruolo.NOTA, testo = r, istante = System.currentTimeMillis()))
+        avviso = "Bentornato: il riepilogo è in chat"
+    }
+
+    fun lasciaConsegna(c: it.resonance.adam.dati.Consegna) = viewModelScope.launch { avviso = archivio.lasciaConsegna(c) }
+
+    // ── La lavagna del Ghost: gesti diretti, senza modello ──
+    // Le notifiche fissate seguono la lavagna: qualunque cambio (tocco, turno dello Shell) le ridisegna.
+    init { viewModelScope.launch { appunti.collect { lista -> runCatching { it.resonance.adam.battito.Fissati.aggiorna(getApplication(), lista) } } } }
+
+    fun alternaRiga(a: it.resonance.adam.dati.Appunto, indice: Int) = viewModelScope.launch { archivio.alternaRiga(a, indice) }
+    fun aggiungiRighe(a: it.resonance.adam.dati.Appunto, testo: String) = viewModelScope.launch { archivio.aggiungiRighe(a, testo) }
+    fun cambiaRiga(a: it.resonance.adam.dati.Appunto, indice: Int, testo: String) = viewModelScope.launch { archivio.cambiaRiga(a, indice, testo) }
+    fun fissa(a: it.resonance.adam.dati.Appunto) = viewModelScope.launch { db.lavagna().aggiorna(a.copy(fissato = !a.fissato)) }
+    fun tieni(a: it.resonance.adam.dati.Appunto, p: it.resonance.adam.dati.Percorso) = viewModelScope.launch { avviso = archivio.tieniAppunto(a, p) }
+    fun nuovoAppunto(titolo: String, testo: String) = viewModelScope.launch {
+        val righe = it.resonance.adam.logica.Lavagna.daTesto(testo)
+        if (titolo.isBlank() || righe.isEmpty()) { avviso = "Serve un titolo e almeno una riga"; return@launch }
+        val p = it.resonance.adam.logica.Proposta.ScriviAppunto(titolo.trim(), righe.take(it.resonance.adam.logica.Lavagna.RIGHE_MAX),
+            LocalDate.now().plusDays(it.resonance.adam.logica.Lavagna.GIORNI_PREDEFINITI.toLong()).toString())
+        avviso = archivio.esegui(p).ricevuta
+    }
+    // Il modello si riprova con la temperatura: se la rifiuta ancora, torna in elenco da solo.
+    fun dimenticaRinunce() { impostazioni.senzaTemperatura = emptySet(); avviso = "Al prossimo turno la temperatura si riprova con tutti i modelli." }
+    fun spostaNodo(n: Nodo, genitoreId: Long?) = viewModelScope.launch { avviso = archivio.spostaNodo(n, genitoreId) }
+    fun aggiungiNodo(p: Percorso, etichetta: String) = viewModelScope.launch {
+        if (etichetta.isNotBlank()) avviso = archivio.esegui(it.resonance.adam.logica.Proposta.AggiungiNodi(p.titolo, listOf(etichetta.trim()))).ricevuta
+    }
+    fun cambiaStatoNodo(n: Nodo) = viewModelScope.launch {
+        val prossimo = StatoNodo.entries[(n.stato.ordinal + 1) % StatoNodo.entries.size]
+        db.percorsi().aggiornaNodo(n.copy(stato = prossimo))
+    }
+    fun creaPercorso(p: Pilastro, titolo: String, nodi: List<String>) = viewModelScope.launch {
+        val e = archivio.esegui(it.resonance.adam.logica.Proposta.CreaPercorso(p, titolo.trim(), "", nodi))
+        avviso = e.ricevuta
+    }
+    fun archiviaPercorso(p: Percorso) = viewModelScope.launch { db.percorsi().aggiorna(p.copy(archiviato = true)); percorsoAperto = null }
+    fun nuovoDocumento(p: Percorso, titolo: String) = viewModelScope.launch {
+        val ora = System.currentTimeMillis()
+        documentoAperto = db.percorsi().inserisciDocumento(Documento(percorsoId = p.id, titolo = titolo.trim(), testo = "", creato = ora, aggiornato = ora))
+    }
+    fun salvaProfilo(p: Profilo) = viewModelScope.launch { db.profilo().salva(p); avviso = "Profilo salvato" }
+    fun versioni(entita: String, id: Long) = db.versioni().di(entita, id)
+
+    // ── Sensi ──
+    fun leggiSensi() = viewModelScope.launch {
+        statoSensi = "Lettura in corso…"
+        statoSensi = runCatching {
+            val r = sensi.sincronizza(archivio)
+            buildString {
+                append("${r.nuoveOAggiornate} valori letti")
+                if (r.fonti.isNotEmpty()) append(" da ${r.fonti.size} fonti")
+                if (r.mancanti.isNotEmpty()) append(". Senza permesso: ${r.mancanti.joinToString(", ")}")
+            }
+        }.getOrElse { "Health Connect: ${it.message}" }
+    }
+
+    // ── Import, copia, ripristino ──
+    fun importaPwa(testo: String) = viewModelScope.launch {
+        avviso = runCatching {
+            val r = archivio.importa(ImportPwa.leggi(testo))
+            "Importati: ${r.misure} misure, ${r.voci} voci, ${r.percorsi} percorsi (${r.documenti} documenti), ${r.quaderni} quaderni" +
+                (if (r.profilo) ", profilo" else "") +
+                (if (r.scartati.isNotEmpty()) ". Non importati ${r.scartati.size}: ${r.scartati.take(4).joinToString("; ")}" else "")
+        }.getOrElse { "Import non riuscito: ${it.message}" }
+    }
+
+    suspend fun copia(): String = archivio.copia()
+
+    fun ripristina(testo: String) = viewModelScope.launch {
+        avviso = runCatching { "Ripristinati ${archivio.ripristina(testo)} elementi." }.getOrElse { "Ripristino non riuscito: ${it.message}" }
+    }
+
+    fun apriFile(testo: String) {
+        if (archivio.eUnaCopia(testo)) ripristina(testo) else importaPwa(testo)
+    }
+
+    fun riprogrammaBattito() = Battiti.programma(getApplication())
+
+    // Cosa sa l'app del proprio battito: se le notifiche si vedono, se la sveglia è esatta, quando suona, com'è andata.
+    fun muto() = Battiti.muto(getApplication())
+    fun sveglieEsatte() = Battiti.esatte(getApplication())
+    fun prossimiBattiti(): String {
+        val imp = Impostazioni(getApplication())
+        if (!imp.battitoAttivo) return "Battito spento."
+        return Battito.entries.joinToString(" · ") { b -> "${b.etichetta} ${Ritmo.quando(Battiti.quando(imp, b))}" }
+    }
+    fun registroBattito() = Impostazioni(getApplication()).registroBattito
+    fun provaBattito() {
+        Battiti.avvia(getApplication(), Battito.MATTINO, prova = true)
+        avviso = "Battito di prova in arrivo: tra qualche secondo una notifica, e una riga nel registro qui sotto."
+    }
+
+    fun liberoDallaBatteria() = runCatching {
+        getApplication<Application>().getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(getApplication<Application>().packageName)
+    }.getOrDefault(false)
+
+    fun speso() = spesaMese.value?.dollari ?: 0.0
+
+    fun propostaInAttesa(m: Messaggio) = m.ruolo == Ruolo.PROPOSTA && m.stato == StatoProposta.IN_ATTESA
+
+    override fun onCleared() {
+        runCatching { ascolto.chiudi() }
+        runCatching { parlato.chiudi() }
+    }
+}

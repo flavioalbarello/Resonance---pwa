@@ -12,6 +12,19 @@ cognitiva/creativa). Implementato come PWA in uso reale da due utenti (Flavio/Gh
   progetti Vercel separati, merge sempre manuale **base: stable ← compare: main** (mai il
   contrario — errore già commesso in passato).
 
+## V2: l'APK in `android/` (dal 23/09/2026)
+**Sessione nuova sull'APK? Leggi PRIMA `android/PASSAGGIO_2026-10-03.md`** (o il passaggio più recente in `android/`):
+da dove si riparte, accessi, prossimi passi, promemoria per le riunioni, errori da non ripetere.
+
+Nuova istanza nativa (Kotlin, Compose, Room, Health Connect, WorkManager). La PWA in radice resta
+intatta e in uso finché l'APK non la sostituisce. Tutto ciò che riguarda l'APK — perché, mappa, come
+costruire, carenze — sta in `android/PROGETTO.md`. Le regole sotto su Preact/htm/`app.js` valgono per
+la PWA; le discipline (Legge 14, accettore/effettore, il programma verifica) valgono per entrambe.
+La chiave di firma dell'APK non va MAI nel repository: è pubblico.
+Dal 01/10/2026 l'APK esce in **due app da un codice solo** (flavor `dev` del Ghost, con l'architetto; `base` per gli
+altri, senza): nessun interruttore dentro l'app, e la base si costruisce solo da una versione promossa. Perché, e come,
+in `android/PROGETTO.md` → «Due app da un codice solo».
+
 ## Build step — una scelta, non un divieto (G.8, emendato il 12/08/2026)
 **Nessun bundler in uso oggi**: Preact + htm da file vendored, si modifica `app.js` e si ricarica.
 
@@ -115,6 +128,10 @@ Vale per ogni futura coppia genera/controlla, non solo per i plasmidi:
   (26/07/2026) col rilascio della feature Semi: il Ghost ha scritto "sto testando i Semi nel
   pilastro AIR" e lo Shell ha risposto come se si riferisse alla vecchia strategia contenuti,
   ignaro che "Semi" fosse una feature appena costruita.
+
+**Nell'APK (`android/`, dal 25/09/2026)** l'equivalente è `logica/Capacita.kt`: ogni strumento nuovo dello Shell vuole
+la sua riga nell'area giusta, e ciò che il Ghost fa da solo va in `SOLO_GHOST`. Il banco (`PacchettoAdamTest`)
+fallisce se uno strumento manca dalla mappa.
 
 ## Prima di ogni task
 1. Leggi il codice esistente prima di proporre modifiche — non assumere, verificare.

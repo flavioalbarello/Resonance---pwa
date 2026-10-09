@@ -1,0 +1,1001 @@
+package it.resonance.adam.logica
+
+import it.resonance.adam.dati.Direzione
+import it.resonance.adam.dati.Esperimento
+import it.resonance.adam.dati.Pilastro
+import it.resonance.adam.dati.StatoNodo
+import it.resonance.adam.dati.TipoMovimento
+import it.resonance.adam.dati.TipoMisura
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+// INTERNO: scrive senza proposta, perché non tocca niente del Ghost né del mondo (il Taccuino dello Shell).
+enum class Effetto { LETTURA, SCRITTURA, INTERNO }
+
+// Il modello non esegue niente: propone. Una scrittura diventa una proposta che il Ghost
+// conferma, e la ricevuta la scrive il programma dopo averla eseguita davvero.
+@Serializable
+sealed class Proposta {
+    abstract fun descrizione(): String
+
+    // Il testo intero, per «Vedi tutto» sulla scheda: la descrizione accorcia, e non si conferma ciò che non si legge.
+    open fun dettaglio(): String? = null
+
+    @Serializable @SerialName("registra_misura")
+    data class RegistraMisura(
+        val tipo: TipoMisura, val valore: Double, val giorno: String,
+        val nota: String = "", val legataAlTempo: Boolean? = null,
+    ) : Proposta() {
+        override fun descrizione(): String {
+            val legata = when (legataAlTempo) { true -> " (legata al tempo)"; false -> " (non legata al tempo)"; null -> "" }
+            val n = if (nota.isNotBlank()) " — $nota" else ""
+            return "Registrare ${tipo.etichetta}: ${Esiti.formatta(tipo, valore)}$legata, ${Giorni.leggibile(giorno)}$n"
+        }
+    }
+
+    @Serializable @SerialName("scrivi_voce")
+    data class ScriviVoce(val pilastro: Pilastro, val testo: String, val giorno: String) : Proposta() {
+        override fun descrizione() = "Scrivere nel diario ${pilastro.etichetta}, ${Giorni.leggibile(giorno)}: «${Testi.corto(testo, 140)}»"
+        override fun dettaglio() = testo
+    }
+
+    @Serializable @SerialName("crea_percorso")
+    data class CreaPercorso(val pilastro: Pilastro, val titolo: String, val scopo: String, val nodi: List<String>) : Proposta() {
+        override fun descrizione() = "Creare il percorso «$titolo» in ${pilastro.etichetta}" +
+            (if (nodi.isNotEmpty()) " con ${nodi.size} nodi: ${nodi.joinToString(", ")}" else "")
+    }
+
+    @Serializable @SerialName("salva_documento")
+    data class SalvaDocumento(val percorso: String, val titolo: String, val testo: String, val nodo: String? = null) : Proposta() {
+        override fun descrizione() = "Salvare «$titolo» (${testo.length} caratteri) nel percorso «$percorso»" +
+            (nodo?.let { " sotto il nodo «$it»" } ?: "") + ". Inizia: «${Testi.corto(testo, 100)}»"
+        override fun dettaglio() = testo
+    }
+
+    @Serializable @SerialName("modifica_documento")
+    data class ModificaDocumento(val documento: String, val ancora: String, val testo: String, val modo: String) : Proposta() {
+        override fun descrizione() = when (modo) {
+            "prima" -> "In «$documento», inserire prima di «${Testi.corto(ancora, 60)}»: «${Testi.corto(testo, 120)}»"
+            "dopo" -> "In «$documento», inserire dopo «${Testi.corto(ancora, 60)}»: «${Testi.corto(testo, 120)}»"
+            else -> "In «$documento», sostituire «${Testi.corto(ancora, 60)}» con «${Testi.corto(testo, 120)}»"
+        }
+        override fun dettaglio() = Testi.primaDopo(ancora, testo, modo)
+    }
+
+    @Serializable @SerialName("aggiorna_quaderno")
+    data class AggiornaQuaderno(val pilastro: Pilastro, val testo: String) : Proposta() {
+        override fun descrizione() = "Riscrivere il quaderno ${pilastro.etichetta} (${testo.length} caratteri; il testo precedente resta nello storico)"
+        override fun dettaglio() = testo
+    }
+
+    // Cambiare una parte del quaderno senza riscriverlo: riscriverlo intero per togliere una riga supera il tetto di lunghezza.
+    @Serializable @SerialName("modifica_quaderno")
+    data class ModificaQuaderno(val pilastro: Pilastro, val ancora: String, val testo: String, val modo: String) : Proposta() {
+        override fun descrizione() = when {
+            modo == "aggiungi" -> "Nel quaderno ${pilastro.etichetta}, aggiungere in fondo: «${Testi.corto(testo, 160)}»"
+            modo == "sostituisci" && testo.isEmpty() -> "Dal quaderno ${pilastro.etichetta}, togliere «${Testi.corto(ancora, 120)}»"
+            modo == "prima" -> "Nel quaderno ${pilastro.etichetta}, prima di «${Testi.corto(ancora, 60)}» aggiungere «${Testi.corto(testo, 120)}»"
+            modo == "dopo" -> "Nel quaderno ${pilastro.etichetta}, dopo «${Testi.corto(ancora, 60)}» aggiungere «${Testi.corto(testo, 120)}»"
+            else -> "Nel quaderno ${pilastro.etichetta}, sostituire «${Testi.corto(ancora, 60)}» con «${Testi.corto(testo, 120)}»"
+        } + " (il testo precedente resta nello storico)"
+        override fun dettaglio() = if (modo == "aggiungi") "Da aggiungere in fondo:\n$testo" else Testi.primaDopo(ancora, testo, modo)
+    }
+
+    @Serializable @SerialName("crea_rituale")
+    data class CreaRituale(val nome: String, val pilastro: Pilastro, val criterio: String? = null) : Proposta() {
+        override fun descrizione() = "Creare il rituale «$nome» in ${pilastro.etichetta}" +
+            (criterio?.let { " — si spunta da solo quando $it" } ?: "")
+    }
+
+    @Serializable @SerialName("spunta_rituale")
+    data class SpuntaRituale(val nome: String, val giorno: String) : Proposta() {
+        override fun descrizione() = "Segnare «$nome» come tenuto, ${Giorni.leggibile(giorno)}"
+    }
+
+    // Le tappe di un percorso che c'è già: prima si potevano dare solo creandolo, e lo Shell ripiegava sul testo libero
+    // (visto il 24/09: 21 brani del tributo scritti in un documento con «[introdotto]» ricopiato a mano).
+    // `sotto`: il nodo di primo livello che li raccoglie (i brani sotto «Scaletta»); `sottoNuovo` se va creato.
+    // `saltati`: quelli che c'erano già, detti al Ghost e al modello invece di sparire in silenzio.
+    @Serializable @SerialName("aggiungi_nodi")
+    data class AggiungiNodi(
+        val percorso: String, val nodi: List<String>, val sotto: String? = null,
+        val sottoNuovo: Boolean = false, val saltati: List<String> = emptyList(), val pilastro: Pilastro? = null,
+    ) : Proposta() {
+        override fun descrizione() = "Nel percorso «$percorso», aggiungere ${nodi.size} " + (if (nodi.size == 1) "nodo" else "nodi") +
+            Nodi.dove(sotto, sottoNuovo, "sotto") + (pilastro?.let { " in ${it.etichetta}" } ?: "") +
+            " (non iniziati): ${Testi.corto(nodi.joinToString(", "), 160)}" +
+            (if (saltati.isNotEmpty()) " — già presenti, non aggiunti: ${Testi.corto(saltati.joinToString(", "), 80)}" else "")
+        override fun dettaglio() = nodi.joinToString("\n") { "• $it" }
+    }
+
+    @Serializable @SerialName("pilastro_nodo")
+    data class PilastroNodo(val percorso: String, val nodo: String, val pilastro: Pilastro) : Proposta() {
+        override fun descrizione() = "Nel percorso «$percorso», il nodo «$nodo» va in ${pilastro.etichetta}" +
+            (if (pilastro == Pilastro.ADAM) " (riguarda tutto Adam)" else "")
+    }
+
+    @Serializable @SerialName("regola_temperatura")
+    data class RegolaTemperatura(val compito: String, val valore: Double, val perche: String) : Proposta() {
+        override fun descrizione() = "Temperatura per «${compito.lowercase()}»: ${String.format(Locale.ITALIAN, "%.1f", valore)} — $perche"
+    }
+
+    @Serializable @SerialName("movimento_fondo")
+    data class MovimentoFondo(val tipo: TipoMovimento, val importo: Double, val motivo: String, val giorno: String) : Proposta() {
+        override fun descrizione() = "Fondo di Adam, ${tipo.etichetta}: ${Fondo.euro(importo)}, ${Giorni.leggibile(giorno)} — $motivo"
+    }
+
+    @Serializable @SerialName("togli_documento")
+    data class TogliDocumento(val titolo: String, val perche: String = "") : Proposta() {
+        override fun descrizione() = "Togliere il documento «$titolo»" + (if (perche.isNotBlank()) " — $perche" else "") +
+            ". Non si vedrà più e non lo leggerai; resta recuperabile in fondo al percorso (Tolti)"
+    }
+
+    @Serializable @SerialName("scrivi_appunto")
+    data class ScriviAppunto(val titolo: String, val righe: List<String>, val scade: String) : Proposta() {
+        override fun descrizione() = "Sulla lavagna: «$titolo» — ${Testi.corto(righe.joinToString("; "), 160)} (${righe.size} righe, scade ${Giorni.leggibile(scade)})"
+        override fun dettaglio() = righe.joinToString("\n") { "☐ $it" }
+    }
+
+    @Serializable @SerialName("modifica_appunto")
+    data class ModificaAppunto(val appunto: String, val aggiungi: List<String> = emptyList(), val togli: List<String> = emptyList()) : Proposta() {
+        override fun descrizione() = "Sulla lavagna, «$appunto»: " + listOfNotNull(
+            aggiungi.takeIf { it.isNotEmpty() }?.let { "aggiungere ${Testi.corto(it.joinToString("; "), 120)}" },
+            togli.takeIf { it.isNotEmpty() }?.let { "togliere ${Testi.corto(it.joinToString("; "), 120)}" },
+        ).joinToString(", ")
+    }
+
+    @Serializable @SerialName("prendi_consegna")
+    data class PrendiConsegna(val cosa: String, val documento: String, val percorso: String? = null, val scadenza: String) : Proposta() {
+        override fun descrizione() = "Consegna dello Shell: «$cosa» — documento «$documento»" + (percorso?.let { " nel percorso «$it»" } ?: "") +
+            ", entro ${Giorni.leggibile(scadenza)}. Il giorno prima ci lavora da solo; alla scadenza il programma guarda se il documento c'è"
+    }
+
+    // Segui (02/10/2026, logica/Ricerca.kt): una cosa del mondo letta ogni giorno per N giorni, con un resoconto alla fine.
+    @Serializable @SerialName("segui")
+    data class Segui(val cosa: String, val domanda: String, val giorni: Int, val prima: String = "", val stima: String = "") : Proposta() {
+        override fun descrizione() = "Seguire «$cosa» per $giorni " + (if (giorni == 1) "giorno" else "giorni") +
+            ": ogni giorno una ricerca web con le fonti, una notifica e la riga sullo Specchio; alla fine il resoconto" +
+            if (stima.isNotBlank()) ". Costo stimato dal programma: $stima in tutto" else ""
+        override fun dettaglio() = "Ogni giorno: $domanda" + if (prima.isNotBlank()) "\nLa prima volta anche: $prima" else ""
+    }
+
+    // La ricerca a fondo (02/10/2026, logica/AFondo.kt): la propone lo Shell, la autorizza il Ghost, con la stima del
+    // programma davanti. Le sotto-domande sono «tipo: domanda».
+    @Serializable @SerialName("ricerca_a_fondo")
+    data class RicercaAFondo(val domanda: String, val sotto: List<String>, val stima: String = "",
+                             // La mappa come casella in più (logica/Mappa.kt), facoltativa: dove, entro quanti km, cosa.
+                             val vicinoA: String = "", val km: Int = 0, val osm: List<String> = emptyList()) : Proposta() {
+        override fun descrizione() = "Ricerca a fondo: «${Testi.corto(domanda, 120)}», ${sotto.size} ricerche mirate (" +
+            (sotto.mapNotNull { AFondo.sotto(it)?.tipo?.etichetta }.distinct() + if (osm.isNotEmpty()) listOf("mappa") else emptyList()).joinToString(", ") + ")" +
+            if (stima.isNotBlank()) ". Costo stimato dal programma: $stima" else ""
+        override fun dettaglio() = (sotto.map { "· $it" } + if (osm.isNotEmpty()) listOf("· mappa: ${osm.joinToString(" ")} entro $km km da $vicinoA") else emptyList()).joinToString("\n")
+    }
+
+    @Serializable @SerialName("lettera_architetto")
+    data class LetteraArchitetto(val oggetto: String, val testo: String) : Proposta() {
+        override fun descrizione() = "Spedire all'architetto la lettera «$oggetto» (con lo stato dell'app allegato)"
+        override fun dettaglio() = testo
+    }
+
+    @Serializable @SerialName("sposta_nodi")
+    data class SpostaNodi(val percorso: String, val nodi: List<String>, val sotto: String? = null, val sottoNuovo: Boolean = false) : Proposta() {
+        override fun descrizione() = "Nel percorso «$percorso», spostare ${nodi.size} " + (if (nodi.size == 1) "nodo" else "nodi") +
+            (if (sotto == null) " al primo livello" else Nodi.dove(sotto, sottoNuovo, "sotto")) + ": ${Testi.corto(nodi.joinToString(", "), 160)}"
+        override fun dettaglio() = nodi.joinToString("\n") { "• $it" }
+    }
+
+    @Serializable @SerialName("togli_nodo")
+    data class TogliNodo(val percorso: String, val nodo: String) : Proposta() {
+        override fun descrizione() = "Dal percorso «$percorso», togliere il nodo «$nodo» (resta una traccia nel diario)"
+    }
+
+    @Serializable @SerialName("stato_nodo")
+    data class StatoDelNodo(val percorso: String, val nodo: String, val stato: StatoNodo) : Proposta() {
+        override fun descrizione() = "Nel percorso «$percorso», portare il nodo «$nodo» a «${stato.etichetta}»"
+    }
+
+    // ── Verso il mondo: non passano dall'archivio ──
+
+    @Serializable @SerialName("crea_evento")
+    data class CreaEvento(
+        val titolo: String, val inizio: String, val durataMinuti: Int = 60,
+        val luogo: String = "", val note: String = "",
+        // Il calendario lo sceglie il Ghost in Setup; la proposta lo porta, così si vede PRIMA di confermare (26/09:
+        // un evento di Adam era finito nel calendario professionale, scelto a caso fra calendari a pari punteggio).
+        val calendarioId: Long? = null, val calendario: String? = null,
+        // Per chi è: "adam" (Adam, lo Shell, Resonance) o "personale" (la vita del Ghost). Decide il calendario.
+        val per: String? = null,
+    ) : Proposta() {
+        override fun descrizione(): String {
+            val (da, a) = Agenda.inizioFine(this)
+            val tutto = inizio.trim().length == 10
+            return "Mettere in calendario " + (calendario?.let { "«$it» " } ?: "") + "«$titolo», ${Agenda.quando(da, a, tutto, LocalDate.now())}" +
+                (if (luogo.isNotBlank()) " ($luogo)" else "") + (if (note.isNotBlank()) " — ${Testi.corto(note, 80)}" else "")
+        }
+    }
+
+    @Serializable @SerialName("sposta_evento")
+    data class SpostaEvento(
+        val titolo: String, val giorno: String, val ora: String? = null,
+        val nuovoInizio: String? = null, val nuovaDurataMinuti: Int? = null,
+        val nuovoTitolo: String? = null, val nuovoLuogo: String? = null,
+        val bersaglio: Bersaglio? = null,
+    ) : Proposta() {
+        override fun descrizione() = Impegni.descriviSposta(this)
+    }
+
+    @Serializable @SerialName("togli_evento")
+    data class TogliEvento(
+        val titolo: String, val giorno: String, val ora: String? = null,
+        val portata: Portata? = null, val bersaglio: Bersaglio? = null,
+    ) : Proposta() {
+        override fun descrizione() = Impegni.descriviTogli(this)
+    }
+
+    // L'anello: il bersaglio si dichiara qui, prima. La partenza la congela il programma alla conferma.
+    @Serializable @SerialName("proponi_esperimento")
+    data class ApriEsperimento(
+        val titolo: String, val tipo: TipoMisura, val direzione: Direzione, val giorni: Int,
+        val soglia: Double, val perche: String = "", val origine: String = "shell",
+    ) : Proposta() {
+        override fun descrizione() = "Esperimento di $giorni giorni: «$titolo». Bersaglio: ${Esperimenti.nomeMisura(tipo)} " +
+            "${direzione.freccia} di almeno ${Esiti.formatta(tipo, soglia)} rispetto ai $giorni giorni prima (partenza congelata alla conferma)." +
+            (if (perche.isNotBlank()) " Perché: ${Testi.corto(perche, 200)}" else "")
+    }
+
+    @Serializable @SerialName("lascia_esperimento")
+    data class LasciaEsperimento(val titolo: String, val motivo: String = "") : Proposta() {
+        override fun descrizione() = "Lasciare prima della fine l'esperimento «$titolo»" + (if (motivo.isNotBlank()) " — $motivo" else "") + ". Resta traccia."
+    }
+
+    @Serializable @SerialName("scrivi_mail")
+    data class ScriviMail(val a: String, val oggetto: String, val corpo: String, val da: String = "",
+                          // Un appunto della lavagna o un documento, allegato in PDF (26/09). Il testo si risolve PRIMA di
+                          // proporre: parte ciò che il Ghost ha visto e confermato, non ciò che c'è al momento dell'invio.
+                          val allegato: String? = null, val allegatoTesto: String? = null) : Proposta() {
+        override fun descrizione() = "Preparare una mail" + (if (a.isNotBlank()) " a $a" else " (destinatario lo scrivi tu)") +
+            " — «${Testi.corto(oggetto, 60)}»: «${Testi.corto(corpo, 160)}»" + (allegato?.let { ", con allegato «$it».pdf" } ?: "") +
+            ". Si apre come bozza nell'app di posta: parte solo se premi Invia tu." +
+            (if (da.isNotBlank()) " Nella bozza controlla che il mittente sia $da: l'app non può sceglierlo." else "")
+        override fun dettaglio() = "Oggetto: $oggetto\n\n$corpo" + (allegatoTesto?.let { "\n\n— Allegato «$allegato».pdf —\n$it" } ?: "")
+    }
+}
+
+// Ciò che il programma sa del turno e che il modello non può cambiare.
+data class Regole(
+    val nomiProtetti: List<String> = emptyList(),
+    // null = non controllare (per le prove); altrimenti gli indirizzi che il Ghost ha scritto davvero.
+    val indirizziNoti: Set<String>? = null,
+    val detteDalGhost: String = "",
+    val esperimentiAperti: List<Esperimento> = emptyList(),
+    val consegneAperte: List<it.resonance.adam.dati.Consegna> = emptyList(),
+    val appuntiVivi: List<it.resonance.adam.dati.Appunto> = emptyList(),
+    // Quante cose lo Shell sta già seguendo (Segui): il tetto lo controlla il programma.
+    val seguiteAttive: Int = 0,
+    // Per le stime di costo (logica/AFondo.kt): i prezzi dei modelli che cercano e di quello che incrocia, dal listino;
+    // e quante ricerche a fondo aspettano già il Ghost (una per volta).
+    val prezzoRicerca: Listino.Voce = Listino.Voce("", ingresso = 1.0, uscita = 5.0),
+    val ricercheInAttesa: Int = 0,
+    val prezzoAFondo: Listino.Voce = prezzoRicerca,
+    val prezzoSintesi: Listino.Voce = prezzoRicerca,
+)
+
+sealed class Validazione {
+    data class Lettura(val nome: String, val argomenti: JsonObject) : Validazione()
+    data class Interna(val nome: String, val argomenti: JsonObject) : Validazione()
+    data class Scrittura(val proposta: Proposta) : Validazione()
+    data class Rifiutata(val motivo: String) : Validazione()
+}
+
+data class Strumento(val nome: String, val effetto: Effetto, val descrizione: String, val parametri: JsonObject)
+
+object Azioni {
+    val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; classDiscriminator = "azione" }
+
+    private val TIPI = TipoMisura.entries.map { it.name }
+    private val PILASTRI = Pilastro.entries.map { it.name }
+    private val STATI = StatoNodo.entries.map { it.name }
+
+    private fun schema(obbligatori: List<String>, props: Map<String, JsonObject>) = buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") { props.forEach { (k, v) -> put(k, v) } }
+        putJsonArray("required") { obbligatori.forEach { add(JsonPrimitive(it)) } }
+    }
+    private fun s(desc: String) = buildJsonObject { put("type", "string"); put("description", desc) }
+    private fun n(desc: String) = buildJsonObject { put("type", "number"); put("description", desc) }
+    private fun b(desc: String) = buildJsonObject { put("type", "boolean"); put("description", desc) }
+    private fun e(valori: List<String>, desc: String) = buildJsonObject {
+        put("type", "string"); put("description", desc)
+        putJsonArray("enum") { valori.forEach { add(JsonPrimitive(it)) } }
+    }
+    private fun lista(desc: String) = buildJsonObject {
+        put("type", "array"); put("description", desc)
+        putJsonObject("items") { put("type", "string") }
+    }
+
+    // I compiti la cui temperatura si può proporre: la scelta del motore resta a 0, è una classificazione; quella di
+    // Balthasar la sceglie il Ghost a ogni tocco, con l'intensità.
+    val COMPITI_REGOLABILI = listOf("ALLEGATI", "TURNO", "BATTITO", "ESPERIMENTO", "DADO", "CONSULENTE", "RICERCA", "A_FONDO")
+
+    val strumenti: List<Strumento> = listOf(
+        Strumento("leggi_documento", Effetto.LETTURA, "Legge il testo completo di un documento salvato in un percorso.",
+            schema(listOf("titolo"), mapOf("titolo" to s("Titolo o parte del titolo del documento")))),
+        // La ricerca web (02/10/2026): eseguita subito, senza conferma, perché non scrive niente. La risposta, con le
+        // fonti del motore e gli avvisi del programma, compare anche in chat: il Ghost vede da dove viene ciò che dici.
+        // Più caselle insieme (02/10/2026, sera): una domanda sola su cinque città ha trovato solo il paese del Ghost. E
+        // l'incrocio (notte, logica/Incrocio.kt): le caselle si incrociano, non si affiancano.
+        Strumento("cerca_nel_web", Effetto.LETTURA, "Cerca nel mondo di oggi (prezzi, notizie, orari, dati pubblici, posti, annunci, persone) e INCROCIA: " +
+            "il programma riconosce lo stesso elemento in fonti diverse, conta le fonti indipendenti e mette in cima ciò che più fonti confermano. " +
+            "Il Ghost vede la scheda in chat. Usala invece di dire che non hai internet; non per ciò che sta già in Adam (per quello c'è cerca). " +
+            "Scomponi tu la domanda in caselle lungo gli assi che contano: dove (un paese per casella, mai cinque città in una), che tipo di fonte " +
+            "(recensioni, forum, siti di annunci, fonti ufficiali), quale periodo. Fino a ${Ricerca.DOMANDE_MAX} caselle in domande, più la mappa " +
+            "(osm) quando cerchi posti: la mappa dice che esistono e dove, le ricerche dicono come sono. Circa un centesimo a casella; la mappa è gratis.",
+            schema(listOf("domanda"), mapOf("domanda" to s("La prima casella: cosa, dove, da che tipo di fonte, per quale periodo"),
+                "domande" to lista("Le altre caselle, una per posto, per tipo di fonte o per periodo (fino a ${Ricerca.DOMANDE_MAX} in tutto)")) + CAMPI_MAPPA)),
+        // «Dove trovo X» (05/10/2026): il programma apre i siti dei posti e cerca il nome esatto nelle loro pagine.
+        Strumento("trova_dove", Effetto.LETTURA, "Per «dove trovo X»: un prodotto, un vino, un libro, un pezzo preciso, in posti vicini. Il programma " +
+            "raccoglie i posti (mappa, posti che nomini, ricerche di posti), apre i loro siti col browser, segue carta, menu e listino, e cerca il nome " +
+            "esatto nelle pagine: ti torna, posto per posto, trovato (con la frase e il link) o no. Servono cosa, vicino_a e osm (che tipo di posti " +
+            "lo vendono o lo servono); luoghi e indizi aggiungono candidati. Rifalla anche se ne avete già parlato: le carte cambiano, e " +
+            "ciò che sta in chat non è una verifica. Subito, senza conferma; qualche centesimo. " +
+            "Per sapere com'è o quanto costa una cosa usa cerca_nel_web.",
+            schema(listOf("cosa"), mapOf(
+                "cosa" to s("Il nome come lo scriverebbe una carta o un listino, senza anni, annate né misure (il vino senza l'annata; " +
+                    "il pezzo con marca e modello: «filtro aria Fiat Panda 1.2», non «… 2015»)"),
+                "varianti" to lista("Altre grafie dello stesso nome (fino a ${TrovaDove.VARIANTI_MAX}): con e senza produttore, j/i, abbreviazioni"),
+                "produttore" to s("La marca o chi lo fa: se lo dai, deve stare nella stessa pagina; obbligatorio se il nome è di una parola sola"),
+                "luoghi" to lista("Posti già noti da guardare per primi: nomi (col paese in vicino_a) o indirizzi web, per esempio quelli di una ricerca appena fatta"),
+                "indizi" to lista("Fino a ${TrovaDove.INDIZI_MAX} ricerche di posti adatti, una per paese o tipo di posto (es. «enoteca vini naturali Bracciano»)"),
+            ) + CAMPI_MAPPA)),
+        Strumento("cerca", Effetto.LETTURA, "Cerca un testo nel diario, nei documenti e nei quaderni. Usalo prima di dire che una cosa non esiste.",
+            schema(listOf("testo"), mapOf("testo" to s("Parole da cercare")))),
+        Strumento("leggi_misure", Effetto.LETTURA, "Serie giornaliera di una misura, per quando la sintesi non basta.",
+            schema(listOf("tipo"), mapOf("tipo" to e(TIPI, "Misura"), "giorni" to n("Quanti giorni indietro, massimo 180")))),
+        Strumento("registra_misura", Effetto.SCRITTURA,
+            "Propone di registrare un numero. Unità: PESO kg, SONNO/ALLENAMENTO/PRATICA minuti, PASSI conteggio, FC_RIPOSO bpm, ENTRATA euro, OPERA 1 per opera conclusa.",
+            schema(listOf("tipo", "valore"), mapOf(
+                "tipo" to e(TIPI, "Misura"), "valore" to n("Valore nell'unità indicata"),
+                "giorno" to s("yyyy-MM-dd, se assente oggi"), "nota" to s("Facoltativa"),
+                "legata_al_tempo" to b("Solo ENTRATA: true se è pagamento di ore/prestazioni, false se entra senza vendere tempo"),
+            ))),
+        Strumento("scrivi_voce", Effetto.SCRITTURA, "Propone una voce di diario qualitativa in un pilastro.",
+            schema(listOf("pilastro", "testo"), mapOf("pilastro" to e(PILASTRI, "Pilastro"), "testo" to s("Testo"), "giorno" to s("yyyy-MM-dd, se assente oggi")))),
+        Strumento("crea_percorso", Effetto.SCRITTURA, "Propone un nuovo percorso con i suoi nodi. ADAM per un percorso che attraversa più pilastri: poi ogni nodo di primo livello riceve il suo pilastro.",
+            schema(listOf("pilastro", "titolo", "nodi"), mapOf(
+                "pilastro" to e(PILASTRI, "Pilastro; ADAM se attraversa più pilastri"), "titolo" to s("Nome breve del percorso, non una frase"),
+                "scopo" to s("Chi diventa il Ghost percorrendolo"), "nodi" to lista("Tappe concrete, da 1 a 20: quelle che il Ghost ha nominato o riconoscerebbe come sue. Non inventare fasi generiche: se non le sai, chiedile"),
+            ))),
+        Strumento("salva_documento", Effetto.SCRITTURA, "Propone di salvare un testo come documento in un percorso esistente.",
+            schema(listOf("percorso", "titolo", "testo"), mapOf(
+                "percorso" to s("Titolo del percorso"), "titolo" to s("Titolo del documento"),
+                "testo" to s("Testo completo"), "nodo" to s("Nodo a cui appartiene, facoltativo"),
+            ))),
+        Strumento("modifica_documento", Effetto.SCRITTURA,
+            "Propone una modifica a un documento: indica un frammento ESATTO già presente (ancora) e il testo nuovo. Non riscrivere il documento intero.",
+            schema(listOf("documento", "ancora", "testo", "modo"), mapOf(
+                "documento" to s("Titolo del documento"), "ancora" to s("Frammento esatto, presente una sola volta"),
+                "testo" to s("Testo nuovo"), "modo" to e(listOf("prima", "dopo", "sostituisci"), "Dove va il testo nuovo rispetto all'ancora"),
+            ))),
+        Strumento("aggiorna_quaderno", Effetto.SCRITTURA,
+            "Propone di riscrivere TUTTO il quaderno di un pilastro (memoria procedurale). Il testo sostituisce il precedente: includi ciò che resta valido. Per un cambio piccolo usa modifica_quaderno.",
+            schema(listOf("pilastro", "testo"), mapOf("pilastro" to e(PILASTRI, "Pilastro"), "testo" to s("Testo completo del quaderno")))),
+        Strumento("modifica_quaderno", Effetto.SCRITTURA,
+            "Propone di cambiare UNA PARTE del quaderno di un pilastro. Per aggiungere una cosa imparata: modo aggiungi (va in fondo, niente ancora). Per cambiare o togliere: un frammento ESATTO già presente (ancora) e il testo nuovo; per togliere, modo sostituisci e testo vuoto. Preferiscilo ad aggiorna_quaderno.",
+            schema(listOf("pilastro", "testo", "modo"), mapOf(
+                "pilastro" to e(PILASTRI, "Pilastro"), "ancora" to s("Frammento esatto del quaderno, presente una sola volta (non serve con aggiungi)"),
+                "testo" to s("Testo nuovo; vuoto per togliere l'ancora"), "modo" to e(listOf("aggiungi", "prima", "dopo", "sostituisci"), "aggiungi in fondo, o dove va rispetto all'ancora"),
+            ))),
+        Strumento("crea_rituale", Effetto.SCRITTURA,
+            "Propone un rituale da mantenere. Se misurabile, dai un criterio tipo SONNO>=420 o PASSI>=7000: si spunterà da solo.",
+            schema(listOf("nome", "pilastro"), mapOf("nome" to s("Nome breve"), "pilastro" to e(PILASTRI, "Pilastro"), "criterio" to s("Facoltativo, forma TIPO>=numero")))),
+        Strumento("spunta_rituale", Effetto.SCRITTURA, "Propone di segnare un rituale come tenuto in un giorno.",
+            schema(listOf("nome"), mapOf("nome" to s("Nome del rituale"), "giorno" to s("yyyy-MM-dd, se assente oggi")))),
+        Strumento("leggi_calendario", Effetto.LETTURA,
+            "Legge gli impegni veri dal calendario del telefono. Usalo prima di dire cosa c'è o non c'è in agenda.",
+            schema(emptyList(), mapOf("da" to s("yyyy-MM-dd, se assente oggi"), "giorni" to n("Quanti giorni, da 1 a 31; se assente 7")))),
+        Strumento("crea_evento", Effetto.SCRITTURA,
+            "Propone di mettere un impegno nel calendario del Ghost. Esiste solo dopo la sua conferma. «per» sceglie il calendario: " +
+                "adam per ciò che riguarda Adam, lo Shell, Resonance e i suoi percorsi; personale per gli impegni della vita del Ghost.",
+            schema(listOf("titolo", "inizio", "per"), mapOf(
+                "per" to e(listOf("adam", "personale"), "Di chi è l'impegno"),
+                "titolo" to s("Nome breve dell'impegno"),
+                "inizio" to s("yyyy-MM-ddTHH:mm; solo yyyy-MM-dd se dura tutto il giorno"),
+                "durata_minuti" to n("Se assente 60"), "luogo" to s("Facoltativo"), "note" to s("Facoltative"),
+            ))),
+        Strumento("sposta_evento", Effetto.SCRITTURA,
+            "Propone di spostare o modificare UN impegno del calendario. Indicalo con titolo e giorno in cui cade; se si ripete, cambia solo quella volta.",
+            schema(listOf("titolo", "giorno"), mapOf(
+                "titolo" to s("Titolo dell'impegno com'è in calendario"), "giorno" to s("yyyy-MM-dd in cui cade ora"),
+                "ora" to s("HH:mm in cui inizia ora, se quel giorno ce n'è più d'uno"),
+                "nuovo_inizio" to s("yyyy-MM-ddTHH:mm, oppure solo HH:mm per lo stesso giorno, oppure yyyy-MM-dd se dura tutto il giorno"),
+                "nuova_durata_minuti" to n("Se cambia la durata"), "nuovo_titolo" to s("Se cambia il titolo"), "nuovo_luogo" to s("Se cambia il luogo"),
+            ))),
+        Strumento("togli_evento", Effetto.SCRITTURA,
+            "Propone di togliere un impegno dal calendario. Se si ripete e il Ghost non ha detto quanto togliere, non indovinare: il programma te lo farà chiedere.",
+            schema(listOf("titolo", "giorno"), mapOf(
+                "titolo" to s("Titolo dell'impegno com'è in calendario"), "giorno" to s("yyyy-MM-dd di un'occorrenza"),
+                "ora" to s("HH:mm, se quel giorno ce n'è più d'uno"),
+                "quali" to e(Portata.entries.map { it.chiave }, "Solo se l'impegno si ripete e il Ghost l'ha detto: solo quello, da quello in poi, o tutta la serie"),
+            ))),
+        Strumento("proponi_esperimento", Effetto.SCRITTURA,
+            "Propone un esperimento: UNA cosa da fare per un periodo e il numero che dovrebbe muoversi. Il programma congela la partenza e alla fine confronta. Massimo 3 aperti, uno per numero.",
+            schema(listOf("titolo", "misura", "direzione"), mapOf(
+                "titolo" to s("La cosa da fare, breve e concreta (es. «A letto entro le 23»)"),
+                "misura" to e(TIPI, "Il numero che dovrebbe muoversi (ENTRATA = entrate che non vendono tempo)"),
+                "direzione" to e(Direzione.entries.map { it.chiave }, "Se deve salire o scendere"),
+                "giorni" to n("Durata, da 7 a 42; se assente 14"),
+                "soglia" to n("Di quanto deve muoversi per contare, nell'unità della misura; se assente un valore predefinito"),
+                "perche" to s("In una o due righe, perché proprio questa prova"),
+            ))),
+        Strumento("lascia_esperimento", Effetto.SCRITTURA, "Propone di chiudere prima della fine un esperimento aperto. Resta traccia.",
+            schema(listOf("titolo"), mapOf("titolo" to s("Titolo dell'esperimento"), "motivo" to s("Facoltativo")))),
+        Strumento("scrivi_mail", Effetto.SCRITTURA,
+            "Propone una mail. Dopo la conferma si apre come bozza nell'app di posta e la invia il Ghost: non dire mai che è partita.",
+            schema(listOf("oggetto", "corpo"), mapOf(
+                "a" to s("Indirizzo esatto come l'ha scritto il Ghost; lascia vuoto se non te l'ha dato"),
+                "oggetto" to s("Oggetto"), "corpo" to s("Testo completo"),
+                "allegato" to s("Facoltativo: titolo di un appunto della lavagna o di un documento, da allegare in PDF"),
+            ))),
+        Strumento("aggiungi_nodi", Effetto.SCRITTURA,
+            "Propone di aggiungere nodi (tappe, brani, capitoli…) in fondo a un percorso che esiste già; partono non iniziati. Poi lo stato di ciascuno si cambia con stato_nodo.",
+            schema(listOf("percorso", "nodi"), mapOf("percorso" to s("Titolo del percorso"), "nodi" to lista("Etichette brevi, una per nodo, da 1 a 30"),
+                "sotto" to s("Facoltativo: il nodo di primo livello che li raccoglie (es. «Scaletta»); se non c'è si crea. Due livelli al massimo"),
+                "pilastro" to e(PILASTRI, "Solo nei percorsi di ADAM e solo per nodi di primo livello: il pilastro di queste parti. Se non è chiaro, chiedilo")))),
+        Strumento("pilastro_nodo", Effetto.SCRITTURA, "Propone il pilastro di un nodo di primo livello in un percorso di ADAM (trasversale). I sotto-nodi lo ereditano.",
+            schema(listOf("percorso", "nodo", "pilastro"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del nodo"), "pilastro" to e(PILASTRI, "Pilastro")))),
+        Strumento("sposta_nodi", Effetto.SCRITTURA,
+            "Propone di spostare nodi che esistono già sotto un nodo di primo livello (che si crea se non c'è), o al primo livello se «sotto» manca. Per raccogliere elementi dello stesso tipo, come i brani di una scaletta.",
+            schema(listOf("percorso", "nodi"), mapOf("percorso" to s("Titolo del percorso"), "nodi" to lista("Etichette dei nodi da spostare, da 1 a 40"),
+                "sotto" to s("Il nodo di primo livello che li raccoglie; vuoto per portarli al primo livello")))),
+        Strumento("togli_nodo", Effetto.SCRITTURA, "Propone di togliere un nodo da un percorso (doppione, tappa che non serve più). Resta una traccia nel diario.",
+            schema(listOf("percorso", "nodo"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del nodo")))),
+        Strumento("scrivi_taccuino", Effetto.INTERNO,
+            "Scrive una nota nel TUO taccuino: un'ipotesi, un'idea, una cosa da ripensare. Niente conferma, non tocca niente. Evapora dopo ${Taccuino.GIORNI} giorni se non la riprendi. " +
+                "Il tipo dice che cosa è, e resta: un esempio del Ghost non diventa mai un dato.",
+            schema(listOf("testo", "tipo"), mapOf("testo" to s("Al massimo ${Taccuino.LUNGHEZZA} caratteri"),
+                "tipo" to e(Taccuino.TIPI, "ipotesi tua, fatto verificato, decisione del Ghost, o esempio fatto per spiegare")))),
+        Strumento("punto_fermo", Effetto.INTERNO,
+            "Solo in riunione: registra una decisione appena presa dal tavolo, in una riga. Niente conferma. I punti fermi ti restano davanti finché la riunione è aperta.",
+            schema(listOf("testo"), mapOf("testo" to s("La decisione, in una riga")))),
+        Strumento("riprendi_nota", Effetto.INTERNO, "Riprende una nota del taccuino: la tiene viva altri ${Taccuino.GIORNI} giorni.",
+            schema(listOf("id"), mapOf("id" to n("Il numero della nota, quello dopo #")))),
+        Strumento("regola_temperatura", Effetto.SCRITTURA,
+            "Propone di cambiare la temperatura di un compito, con il perché. Vale dal turno dopo, se il Ghost conferma.",
+            schema(listOf("compito", "valore", "perche"), mapOf("compito" to e(COMPITI_REGOLABILI, "Compito"),
+                "valore" to n("Da 0 a 1, un decimale"), "perche" to s("Cosa hai visto che la chiede")))),
+        Strumento("movimento_fondo", Effetto.SCRITTURA,
+            "Propone un'entrata o un'uscita del fondo di Adam, col motivo. Il Ghost esegue e conferma. I versamenti li fa lui.",
+            schema(listOf("tipo", "importo", "motivo"), mapOf("tipo" to e(listOf("entrata", "uscita"), "Verso"),
+                "importo" to n("Euro, positivo"), "motivo" to s("Per cosa"), "giorno" to s("yyyy-MM-dd, se assente oggi")))),
+        Strumento("togli_documento", Effetto.SCRITTURA,
+            "Propone di togliere un documento vecchio, sbagliato o doppio da un percorso. Il Ghost conferma; il documento resta recuperabile, non si cancella.",
+            schema(listOf("titolo"), mapOf("titolo" to s("Titolo del documento"), "perche" to s("In una riga: vecchio, sbagliato, doppio di…")))),
+        Strumento("scrivi_appunto", Effetto.SCRITTURA,
+            "Propone un appunto sulla LAVAGNA del Ghost: cose usa e getta (la lista della spesa, cose da fare nei prossimi giorni). Righe spuntabili; " +
+                "sparisce quando è tutto spuntato o alla scadenza. Non per ciò che deve restare: per quello salva_documento.",
+            schema(listOf("titolo", "righe"), mapOf("titolo" to s("Breve: «Spesa», «Da fare sabato»"), "righe" to lista("Una voce per riga"),
+                "giorni" to n("Fra quanti giorni scade, ${Lavagna.GIORNI_MIN}–${Lavagna.GIORNI_MAX}; se assente ${Lavagna.GIORNI_PREDEFINITI}")))),
+        Strumento("modifica_appunto", Effetto.SCRITTURA, "Propone di aggiungere o togliere righe a un appunto della lavagna.",
+            schema(listOf("appunto"), mapOf("appunto" to s("Titolo dell'appunto"), "aggiungi" to lista("Righe nuove"), "togli" to lista("Righe da togliere, come sono scritte")))),
+        Strumento("spunta_appunto", Effetto.INTERNO,
+            "Spunta righe di un appunto della lavagna quando il Ghost dice di averle fatte («preso il latte»). Senza conferma: è una spunta sua, " +
+                "si annulla con un tocco. Con fatta=false toglie la spunta.",
+            schema(listOf("appunto", "righe"), mapOf("appunto" to s("Titolo dell'appunto"), "righe" to lista("Le righe fatte, come sono scritte"),
+                "fatta" to e(listOf("true", "false"), "true se fatte (predefinito), false per togliere la spunta")))),
+        Strumento("chiedi_consulente", Effetto.INTERNO,
+            "In riunione, col consulente esterno nella stanza: mette UNA domanda nella sua cartella. Niente conferma e niente esce: " +
+                "le domande partono tutte insieme quando il Ghost tocca Manda. Il consulente vede solo la domanda, non Adam: scrivila completa, senza nomi né dati personali.",
+            schema(listOf("domanda"), mapOf("domanda" to s("Una domanda, al massimo ${Consulente.LUNGHEZZA_MAX} caratteri")))),
+        Strumento("prendi_consegna", Effetto.SCRITTURA,
+            "Propone una tua consegna: quando dici «lo preparo nei prossimi giorni», prendila qui. Dichiari ORA la forma che il programma verificherà: " +
+                "un documento con un titolo, in un percorso. Il giorno prima della scadenza parte da solo un tuo turno di lavoro; alla scadenza il programma " +
+                "guarda se il documento c'è, scritto dopo la presa e non vuoto. Mantenuta o mancata, resta nel diario di Adam. Al massimo ${Consegne.MASSIMO} aperte.",
+            schema(listOf("cosa", "documento", "giorni"), mapOf("cosa" to s("Cosa consegni, in una riga"),
+                "documento" to s("Titolo esatto del documento che consegnerai"), "percorso" to s("Titolo del percorso dove starà (consigliato)"),
+                "giorni" to n("Fra quanti giorni la scadenza, ${Consegne.GIORNI_MIN}–${Consegne.GIORNI_MAX}")))),
+        Strumento("ricerca_a_fondo", Effetto.SCRITTURA,
+            "Propone una ricerca a fondo, a strati, quando la domanda chiede di incrociare più fonti (dati ufficiali, notizie, forum, recensioni, annunci) " +
+                "e cerca_nel_web non basta. Costa di più: il programma mostra la stima al Ghost, che deve approvarla. Una per volta. " +
+                "Tu scomponi la domanda in ${AFondo.SOTTO_MIN}–${AFondo.SOTTO_MAX} sotto-domande, ciascuna col tipo di fonte davanti " +
+                "(${AFondo.Tipo.entries.joinToString(", ") { it.name.lowercase() }}), per esempio «forum: avvistamenti di trichechi a Crystal River nel 2025». " +
+                "Se la domanda copre una zona, dividi anche per posto: «recensioni: ristoranti eritrei a Viterbo», «recensioni: ristoranti eritrei a Civitavecchia»; " +
+                "e se cerchi posti aggiungi la mappa (osm, vicino_a, km). Il programma incrocia gli elementi di tutti gli strati. " +
+                "Quando serve, proponila con questo strumento: non chiedere a parole «vuoi che faccia una ricerca a fondo?», il gesto del Ghost è Conferma.",
+            schema(listOf("domanda", "sotto"), mapOf("domanda" to s("La domanda del Ghost, intera"),
+                "sotto" to lista("Le sotto-domande, ognuna «tipo: domanda»")) + CAMPI_MAPPA)),
+        Strumento("segui", Effetto.SCRITTURA,
+            "Propone di seguire una cosa del mondo per alcuni giorni (un titolo in borsa, una notizia, un prezzo): ogni giorno il programma fa la ricerca web, " +
+                "la notifica e la riga sullo Specchio; alla fine tu scrivi il resoconto, che si presenta da solo. La prima lettura parte appena il Ghost conferma. " +
+                "Al massimo ${Ricerca.SEGUITE_MAX} cose insieme, da 1 a ${Ricerca.GIORNI_MAX} giorni.",
+            schema(listOf("cosa", "domanda", "giorni"), mapOf("cosa" to s("Che cosa si segue, un nome corto (es. Gazprom in borsa)"),
+                "domanda" to s("La domanda da fare ogni giorno, precisa (es. prezzo di chiusura più recente di Gazprom alla borsa di Mosca e variazione sul giorno prima)"),
+                "giorni" to n("Per quanti giorni, 1–${Ricerca.GIORNI_MAX}"),
+                "prima" to s("Facoltativo: ciò che si chiede solo alla prima lettura (es. andamento dell'ultimo anno, mese e settimana)")))),
+        Strumento("scrivi_all_architetto", Effetto.SCRITTURA,
+            "Propone una lettera all'architetto dell'app (Claude Code). Parte dopo la conferma del Ghost, con lo stato dell'app allegato; la risposta arriva entro un giorno.",
+            schema(listOf("oggetto", "testo"), mapOf("oggetto" to s("Una riga"),
+                "testo" to s("Contesto con date; cosa vedi nell'app; UNA richiesta; cosa hai già provato; domande chiuse")))),
+        Strumento("stato_nodo", Effetto.SCRITTURA, "Propone di cambiare lo stato di un nodo di un percorso. È il posto dello stato di una tappa: non scriverlo nel quaderno né in un documento. Non per un nodo con sotto-nodi: il suo stato lo calcola il programma dai figli.",
+            schema(listOf("percorso", "nodo", "stato"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del nodo"), "stato" to e(STATI, "Nuovo stato")))),
+    )
+
+    // Lo strumento che apre un reparto chiuso (logica/Reparti.kt): non fa niente nel mondo, cambia solo cosa lo Shell ha davanti.
+    val APRI_REPARTO = Strumento(Reparto.APRI, Effetto.INTERNO, "Apre un reparto di strumenti chiuso in questo turno: dal giro dopo hai i suoi strumenti e le sue regole.",
+        schema(listOf("reparto"), mapOf("reparto" to e(Reparto.entries.filter { it != Reparto.NUCLEO }.map { it.etichetta }, "Il reparto da aprire"))))
+
+    /** Gli strumenti del turno. `reparti` = null: tutti, come prima; altrimenti quelli dei reparti aperti più apri_reparto. */
+    fun definizioni(sviluppatore: Boolean = Edizione.sviluppatore, reparti: Set<Reparto>? = null): JsonArray = buildJsonArray {
+        val scelti = strumenti.filter { Edizione.offerto(it.nome, sviluppatore) && (reparti == null || Reparto.di(it.nome) in reparti) } +
+            (if (reparti != null && reparti.size < Reparto.entries.size) listOf(APRI_REPARTO) else emptyList())
+        scelti.forEach { st ->
+            add(buildJsonObject {
+                put("type", "function")
+                putJsonObject("function") {
+                    put("name", st.nome); put("description", st.descrizione); put("parameters", st.parametri)
+                }
+            })
+        }
+    }
+
+    data class RichiestaMappa(val vicinoA: String, val km: Int, val osm: List<String>) {
+        val filtri get() = Mappa.filtri(osm).orEmpty()
+    }
+
+    /** La richiesta di trova_dove; un errore di forma torna al modello come rifiuto, con cosa correggere. */
+    fun trovaDove(a: JsonObject): TrovaDove.Richiesta {
+        val r = TrovaDove.Richiesta(a.testo("cosa").orEmpty(), elenco(a, "varianti"), a.testo("vicino_a").orEmpty(), intero(a, "km", 20),
+            elenco(a, "osm"), elenco(a, "indizi"), elenco(a, "luoghi"), a.testo("produttore").orEmpty())
+        TrovaDove.difetti(r).takeIf { it.isNotEmpty() }?.let { rifiuta(it.joinToString("; ")) }
+        return r
+    }
+
+    /** La casella della mappa, se lo Shell l'ha chiesta: dove, entro quanti km, i filtri OpenStreetMap. Null se non c'è. */
+    fun mappa(a: JsonObject): RichiestaMappa? {
+        val osm = elenco(a, "osm")
+        if (osm.isEmpty()) return null
+        if (Mappa.filtri(osm) == null) rifiuta("osm: filtri nella forma di OpenStreetMap, «chiave=valore» o «chiave=a|b» (per esempio amenity=restaurant, cuisine=ethiopian|eritrean)")
+        val dove = a.testo("vicino_a") ?: rifiuta("con osm serve vicino_a: il paese o la città da cui contare i km")
+        val km = intero(a, "km", 20)
+        if (km !in 1..Mappa.KM_MAX) rifiuta("km da 1 a ${Mappa.KM_MAX}")
+        return RichiestaMappa(dove, km, osm)
+    }
+
+    // I campi della mappa, uguali per la ricerca rapida e per quella a fondo.
+    private val CAMPI_MAPPA get() = mapOf(
+        "vicino_a" to s("Con osm: il paese o la città da cui contare la distanza"),
+        "km" to n("Con osm: entro quanti km in linea d'aria (1–${Mappa.KM_MAX}); mezz'ora d'auto in campagna sono circa 25 km"),
+        "osm" to lista("Facoltativo: i filtri OpenStreetMap di ciò che cerchi, «chiave=valore» o «chiave=a|b», per esempio amenity=restaurant e " +
+            "cuisine=ethiopian|eritrean, oppure healthcare=doctor, shop=car. La mappa dice che il posto esiste e dove: il programma lo incrocia con le altre fonti"))
+
+    private fun JsonObject.testo(k: String) = this[k]?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }?.trim()?.takeIf { it.isNotEmpty() }
+    private fun JsonObject.numero(k: String) = this[k]?.let { el ->
+        runCatching { el.jsonPrimitive.doubleOrNull ?: el.jsonPrimitive.content.replace(',', '.').toDoubleOrNull() }.getOrNull()
+    }
+
+    fun valida(nome: String, argomenti: JsonObject, oggi: LocalDate, regole: Regole = Regole(), sviluppatore: Boolean = Edizione.sviluppatore): Validazione {
+        val st = strumenti.find { it.nome == nome && Edizione.offerto(nome, sviluppatore) } ?: return Validazione.Rifiutata("strumento sconosciuto: $nome")
+        if (st.effetto == Effetto.LETTURA) return Validazione.Lettura(nome, argomenti)
+        if (st.effetto == Effetto.INTERNO) return try { interna(nome, argomenti) } catch (e: Rifiuto) { Validazione.Rifiutata(e.message ?: "argomenti non validi") }
+        return try { Validazione.Scrittura(scrittura(nome, argomenti, oggi, regole)) }
+        catch (e: Rifiuto) { Validazione.Rifiutata(e.message ?: "argomenti non validi") }
+    }
+
+    private class Rifiuto(m: String) : Exception(m)
+    private fun rifiuta(m: String): Nothing = throw Rifiuto(m)
+
+    private fun pilastro(a: JsonObject) = a.testo("pilastro")?.uppercase()?.let { p -> Pilastro.entries.find { it.name == p } }
+        ?: rifiuta("pilastro mancante o sconosciuto (usa ${PILASTRI.joinToString("/")})")
+
+    private fun giorno(a: JsonObject, oggi: LocalDate): String {
+        val g = Giorni.interpreta(a.testo("giorno"), oggi) ?: rifiuta("giorno non leggibile: usa yyyy-MM-dd")
+        if (g.isAfter(oggi)) rifiuta("il giorno ${g} è nel futuro")
+        return g.toString()
+    }
+
+    private fun interna(nome: String, a: JsonObject): Validazione = when (nome) {
+        "scrivi_taccuino" -> {
+            val t = a.testo("testo") ?: rifiuta("testo vuoto")
+            if (t.length > Taccuino.LUNGHEZZA) rifiuta("al massimo ${Taccuino.LUNGHEZZA} caratteri: una nota è un'idea, non un documento (per quello salva_documento)")
+            if (a.testo("tipo")?.lowercase() !in Taccuino.TIPI) rifiuta("serve il tipo: ${Taccuino.TIPI.joinToString(", ")}")
+            Validazione.Interna(nome, a)
+        }
+        "punto_fermo" -> {
+            val t = a.testo("testo") ?: rifiuta("punto vuoto")
+            if (t.length > 200) rifiuta("al massimo 200 caratteri: una decisione, non un riassunto")
+            Validazione.Interna(nome, a)
+        }
+        "riprendi_nota" -> {
+            a.numero("id")?.toLong() ?: rifiuta("id della nota mancante (è il numero dopo #)")
+            Validazione.Interna(nome, a)
+        }
+        "spunta_appunto" -> {
+            a.testo("appunto") ?: rifiuta("quale appunto: serve il titolo")
+            if (elenco(a, "righe").isEmpty()) rifiuta("quali righe: servono come elenco")
+            Validazione.Interna(nome, a)
+        }
+        "chiedi_consulente" -> {
+            val d = a.testo("domanda") ?: rifiuta("domanda vuota")
+            if (d.length > Consulente.LUNGHEZZA_MAX) rifiuta("al massimo ${Consulente.LUNGHEZZA_MAX} caratteri: una domanda, non un documento")
+            Validazione.Interna(nome, a)
+        }
+        else -> rifiuta("strumento interno non previsto: $nome")
+    }
+
+    private fun scrittura(nome: String, a: JsonObject, oggi: LocalDate, regole: Regole): Proposta = when (nome) {
+        "regola_temperatura" -> {
+            val c = a.testo("compito")?.uppercase()?.takeIf { it in COMPITI_REGOLABILI } ?: rifiuta("compito sconosciuto (usa ${COMPITI_REGOLABILI.joinToString("/")})")
+            val v = a.numero("valore") ?: rifiuta("valore mancante")
+            if (v < 0.0 || v > 1.0) rifiuta("la temperatura va da 0 a 1")
+            Proposta.RegolaTemperatura(c, Math.round(v * 10) / 10.0, a.testo("perche") ?: rifiuta("serve il perché: resta scritto"))
+        }
+        "movimento_fondo" -> {
+            val tipo = when (a.testo("tipo")?.lowercase()) {
+                "entrata" -> TipoMovimento.ENTRATA
+                "uscita" -> TipoMovimento.USCITA
+                else -> rifiuta("tipo: entrata o uscita (i versamenti li fa il Ghost)")
+            }
+            val imp = a.numero("importo") ?: rifiuta("importo mancante")
+            if (imp <= 0.0 || imp > 10_000.0) rifiuta("importo in euro, positivo: il verso lo dice il tipo")
+            Proposta.MovimentoFondo(tipo, Math.round(imp * 100) / 100.0, a.testo("motivo") ?: rifiuta("serve il motivo: resta scritto"), giorno(a, oggi))
+        }
+        "togli_documento" -> Proposta.TogliDocumento(a.testo("titolo") ?: rifiuta("quale documento: serve il titolo"), a.testo("perche") ?: "")
+        "scrivi_appunto" -> {
+            val titolo = a.testo("titolo")?.takeIf { it.length <= 80 } ?: rifiuta("titolo mancante o più lungo di 80 caratteri")
+            val righe = elenco(a, "righe")
+            if (righe.size !in 1..Lavagna.RIGHE_MAX) rifiuta("servono da 1 a ${Lavagna.RIGHE_MAX} righe, come elenco")
+            righe.find { it.length > 200 }?.let { rifiuta("«${Testi.corto(it, 40)}» è troppo lunga per una riga di lavagna") }
+            val giorni = intero(a, "giorni", Lavagna.GIORNI_PREDEFINITI)
+            if (giorni !in Lavagna.GIORNI_MIN..Lavagna.GIORNI_MAX) rifiuta("giorni fuori da ${Lavagna.GIORNI_MIN}–${Lavagna.GIORNI_MAX}: la lavagna è per cose brevi")
+            regole.appuntiVivi.find { Testi.normalizza(it.titolo) == Testi.normalizza(titolo) }?.let {
+                rifiuta("sulla lavagna c'è già «${it.titolo}»: aggiungi le righe con modifica_appunto")
+            }
+            Proposta.ScriviAppunto(titolo, righe, oggi.plusDays(giorni.toLong()).toString())
+        }
+        "modifica_appunto" -> {
+            val appunto = a.testo("appunto") ?: rifiuta("quale appunto: serve il titolo")
+            val aggiungi = elenco(a, "aggiungi")
+            val togli = elenco(a, "togli")
+            if (aggiungi.isEmpty() && togli.isEmpty()) rifiuta("niente da aggiungere né da togliere")
+            Proposta.ModificaAppunto(appunto, aggiungi, togli)
+        }
+        "prendi_consegna" -> {
+            val cosa = a.testo("cosa")?.takeIf { it.length <= 200 } ?: rifiuta("cosa mancante o più lungo di 200 caratteri: una riga")
+            val documento = a.testo("documento")?.takeIf { it.length <= 120 } ?: rifiuta("serve il titolo del documento che consegnerai (al massimo 120 caratteri): è la forma che il programma verifica")
+            val giorni = intero(a, "giorni", 0)
+            if (giorni !in Consegne.GIORNI_MIN..Consegne.GIORNI_MAX)
+                rifiuta("giorni fuori da ${Consegne.GIORNI_MIN}–${Consegne.GIORNI_MAX}: più in là si dimentica, e allora è una dichiarazione")
+            if (regole.consegneAperte.size >= Consegne.MASSIMO)
+                rifiuta("ci sono già ${Consegne.MASSIMO} consegne aperte: prima mantienine una, o chiedi al Ghost quale lasciare")
+            regole.consegneAperte.find { Testi.normalizza(it.documento) == Testi.normalizza(documento) }?.let {
+                rifiuta("c'è già una consegna aperta sul documento «${it.documento}» («${it.cosa}»)")
+            }
+            Proposta.PrendiConsegna(cosa, documento, a.testo("percorso"), oggi.plusDays(giorni.toLong()).toString())
+        }
+        "segui" -> {
+            val cosa = a.testo("cosa").orEmpty()
+            val domanda = a.testo("domanda").orEmpty()
+            val giorni = intero(a, "giorni", 0)
+            Ricerca.difetti(cosa, domanda, giorni, regole.seguiteAttive).takeIf { it.isNotEmpty() }?.let { rifiuta(it.joinToString("; ")) }
+            val una = AFondo.stimaRicerca(regole.prezzoRicerca)
+            Proposta.Segui(cosa, domanda, giorni, a.testo("prima").orEmpty(), AFondo.testo(AFondo.Forbice(una.min * giorni, una.max * giorni)))
+        }
+        "ricerca_a_fondo" -> {
+            val domanda = a.testo("domanda").orEmpty()
+            val sotto = elenco(a, "sotto").map { it.trim() }.filter { it.isNotEmpty() }
+            AFondo.difetti(domanda, sotto, regole.ricercheInAttesa).takeIf { it.isNotEmpty() }?.let { rifiuta(it.joinToString("; ")) }
+            val m = mappa(a)
+            Proposta.RicercaAFondo(domanda, sotto, AFondo.testo(AFondo.stima(sotto.size, regole.prezzoAFondo, regole.prezzoSintesi)),
+                m?.vicinoA.orEmpty(), m?.km ?: 0, m?.osm.orEmpty())
+        }
+        "scrivi_all_architetto" -> {
+            val oggetto = a.testo("oggetto")?.takeIf { it.length <= 120 } ?: rifiuta("oggetto mancante o più lungo di 120 caratteri")
+            val testo = a.testo("testo") ?: rifiuta("testo vuoto")
+            if (testo.length > 8000) rifiuta("la lettera supera 8000 caratteri: una richiesta per lettera")
+            val v = Uscita.violazioni("$oggetto\n$testo", regole.nomiProtetti, regole.detteDalGhost)
+            if (v.isNotEmpty()) rifiuta("la lettera contiene ${v.joinToString { "«$it»" }}, un nome che il Ghost non fa uscire: riscrivila senza")
+            Proposta.LetteraArchitetto(oggetto, testo)
+        }
+        "registra_misura" -> {
+            val tipo = a.testo("tipo")?.uppercase()?.let { t -> TipoMisura.entries.find { it.name == t } }
+                ?: rifiuta("tipo di misura sconosciuto (usa ${TIPI.joinToString("/")})")
+            val v = a.numero("valore") ?: rifiuta("valore mancante o non numerico")
+            if (v < tipo.minimo || v > tipo.massimo)
+                rifiuta("${tipo.etichetta} = $v fuori dall'intervallo plausibile ${tipo.minimo}–${tipo.massimo} ${tipo.unita}: controlla l'unità")
+            val legata = a["legata_al_tempo"]?.let { runCatching { it.jsonPrimitive.booleanOrNull }.getOrNull() }
+            if (tipo == TipoMisura.ENTRATA && legata == null)
+                rifiuta("per un'entrata serve legata_al_tempo: se non lo sai, chiedilo al Ghost")
+            Proposta.RegistraMisura(tipo, v, giorno(a, oggi), a.testo("nota") ?: "", if (tipo == TipoMisura.ENTRATA) legata else null)
+        }
+        "scrivi_voce" -> Proposta.ScriviVoce(pilastro(a), a.testo("testo") ?: rifiuta("testo vuoto"), giorno(a, oggi))
+        "crea_percorso" -> {
+            val p = pilastro(a)
+            val titolo = a.testo("titolo") ?: rifiuta("titolo mancante")
+            if (titolo.length > 50 || titolo.split(Regex("\\s+")).size > 6) rifiuta("il titolo è una frase, non un nome: accorcialo")
+            val nodi = runCatching { a["nodi"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf(String::isNotEmpty) } }.getOrNull().orEmpty()
+            if (nodi.size !in 1..20) rifiuta("servono da 1 a 20 nodi")
+            Proposta.CreaPercorso(p, titolo, a.testo("scopo") ?: "", nodi)
+        }
+        "salva_documento" -> Proposta.SalvaDocumento(
+            a.testo("percorso") ?: rifiuta("percorso mancante"), a.testo("titolo") ?: rifiuta("titolo mancante"),
+            a.testo("testo") ?: rifiuta("testo vuoto"), a.testo("nodo"),
+        )
+        "modifica_documento" -> {
+            val modo = a.testo("modo")?.lowercase() ?: "sostituisci"
+            if (modo !in listOf("prima", "dopo", "sostituisci")) rifiuta("modo deve essere prima, dopo o sostituisci")
+            Proposta.ModificaDocumento(
+                a.testo("documento") ?: rifiuta("documento mancante"),
+                a["ancora"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() } ?: rifiuta("ancora mancante"),
+                a["testo"]?.jsonPrimitive?.contentOrNull ?: rifiuta("testo mancante"), modo,
+            )
+        }
+        "aggiorna_quaderno" -> Proposta.AggiornaQuaderno(pilastro(a), a.testo("testo") ?: rifiuta("testo vuoto"))
+        "modifica_quaderno" -> {
+            val modo = a.testo("modo")?.lowercase() ?: "sostituisci"
+            if (modo !in listOf("aggiungi", "prima", "dopo", "sostituisci")) rifiuta("modo deve essere aggiungi, prima, dopo o sostituisci")
+            val testo = a["testo"]?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }?.trim() ?: ""
+            if (testo.isEmpty() && modo != "sostituisci") rifiuta("testo vuoto: per togliere una frase usa modo sostituisci")
+            val ancora = a["ancora"]?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }?.takeIf { it.isNotBlank() }
+            if (modo == "aggiungi") Proposta.ModificaQuaderno(pilastro(a), "", testo, modo)
+            else Proposta.ModificaQuaderno(pilastro(a), ancora ?: rifiuta("ancora mancante: per aggiungere in fondo usa modo aggiungi"), testo, modo)
+        }
+        "crea_rituale" -> {
+            val criterio = a.testo("criterio")
+            if (criterio != null && Stabilita.leggiCriterio(criterio) == null)
+                rifiuta("criterio non leggibile: forma TIPO>=numero, TIPO fra ${TIPI.joinToString("/")}")
+            Proposta.CreaRituale(a.testo("nome") ?: rifiuta("nome mancante"), pilastro(a), criterio?.let { Stabilita.leggiCriterio(it).toString() })
+        }
+        "spunta_rituale" -> Proposta.SpuntaRituale(a.testo("nome") ?: rifiuta("nome mancante"), giorno(a, oggi))
+        "aggiungi_nodi" -> {
+            val nodi = runCatching { a["nodi"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf(String::isNotEmpty) } }.getOrNull().orEmpty()
+                .distinctBy { Testi.normalizza(it) }
+            if (nodi.size !in 1..30) rifiuta("servono da 1 a 30 nodi, come elenco di etichette")
+            nodi.find { it.length > 80 }?.let { rifiuta("«${Testi.corto(it, 40)}» è una frase, non un'etichetta: accorciala") }
+            val pil = a.testo("pilastro")?.uppercase()?.let { t -> Pilastro.entries.find { it.name == t } ?: rifiuta("pilastro sconosciuto (usa ${PILASTRI.joinToString("/")})") }
+            Proposta.AggiungiNodi(a.testo("percorso") ?: rifiuta("percorso mancante"), nodi, a.testo("sotto")?.trim()?.takeIf { it.isNotEmpty() }, pilastro = pil)
+        }
+        "sposta_nodi" -> {
+            val nodi = runCatching { a["nodi"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf(String::isNotEmpty) } }.getOrNull().orEmpty()
+                .distinctBy { Testi.normalizza(it) }
+            if (nodi.size !in 1..40) rifiuta("servono da 1 a 40 nodi, come elenco di etichette")
+            Proposta.SpostaNodi(a.testo("percorso") ?: rifiuta("percorso mancante"), nodi, a.testo("sotto")?.trim()?.takeIf { it.isNotEmpty() })
+        }
+        "pilastro_nodo" -> Proposta.PilastroNodo(a.testo("percorso") ?: rifiuta("percorso mancante"), a.testo("nodo") ?: rifiuta("nodo mancante"), pilastro(a))
+        "togli_nodo" -> Proposta.TogliNodo(a.testo("percorso") ?: rifiuta("percorso mancante"), a.testo("nodo") ?: rifiuta("nodo mancante"))
+        "stato_nodo" -> {
+            val stato = a.testo("stato")?.uppercase()?.let { s -> StatoNodo.entries.find { it.name == s } } ?: rifiuta("stato sconosciuto (usa ${STATI.joinToString("/")})")
+            Proposta.StatoDelNodo(a.testo("percorso") ?: rifiuta("percorso mancante"), a.testo("nodo") ?: rifiuta("nodo mancante"), stato)
+        }
+        "crea_evento" -> {
+            val titolo = a.testo("titolo") ?: rifiuta("titolo mancante")
+            if (titolo.length > 100) rifiuta("il titolo è un testo, non un nome: accorcialo e metti il resto nelle note")
+            val grezzo = a.testo("inizio") ?: rifiuta("inizio mancante")
+            val (inizio, tutto) = Agenda.interpretaInizio(grezzo) ?: rifiuta("inizio non leggibile: usa yyyy-MM-ddTHH:mm, o yyyy-MM-dd per tutto il giorno")
+            if (inizio.toLocalDate().isBefore(oggi)) rifiuta("il ${inizio.toLocalDate()} è passato: il calendario è per ciò che viene")
+            if (inizio.toLocalDate().isAfter(oggi.plusYears(2))) rifiuta("il ${inizio.toLocalDate()} è oltre due anni: controlla l'anno")
+            val durata = intero(a, "durata_minuti", 60)
+            if (!tutto && durata !in 5..1440) rifiuta("durata di $durata minuti fuori dall'intervallo 5–1440")
+            val per = a.testo("per")?.lowercase()?.takeIf { it in setOf("adam", "personale") }
+                ?: rifiuta("per: adam (Adam, lo Shell, Resonance) o personale (la vita del Ghost). Decide in quale calendario entra")
+            Proposta.CreaEvento(titolo, if (tutto) inizio.toLocalDate().toString() else inizio.toString(), if (tutto) 0 else durata,
+                a.testo("luogo") ?: "", a.testo("note") ?: "", per = per)
+        }
+        "sposta_evento" -> {
+            val (titolo, giorno, ora) = occorrenza(a, oggi)
+            val nuovo = a.testo("nuovo_inizio")
+            if (nuovo != null) {
+                val soloOra = nuovo.length <= 5 && Impegni.ora(nuovo) != null
+                val data = if (soloOra) null else Agenda.interpretaInizio(nuovo)?.first
+                    ?: rifiuta("nuovo_inizio non leggibile: yyyy-MM-ddTHH:mm, HH:mm o yyyy-MM-dd")
+                if (data != null && data.toLocalDate().isBefore(oggi)) rifiuta("il ${data.toLocalDate()} è passato: il calendario è per ciò che viene")
+            }
+            val durata = a["nuova_durata_minuti"]?.let { intero(a, "nuova_durata_minuti", 0) }
+            if (durata != null && durata !in 5..1440) rifiuta("durata di $durata minuti fuori dall'intervallo 5–1440")
+            val nuovoTitolo = a.testo("nuovo_titolo")
+            val nuovoLuogo = a.testo("nuovo_luogo")
+            if (nuovo == null && durata == null && nuovoTitolo == null && nuovoLuogo == null) rifiuta("non c'è niente da cambiare: indica nuovo_inizio, durata, titolo o luogo")
+            Proposta.SpostaEvento(titolo, giorno, ora, nuovo, durata, nuovoTitolo, nuovoLuogo)
+        }
+        "togli_evento" -> {
+            val (titolo, giorno, ora) = occorrenza(a, oggi)
+            val quali = a.testo("quali")
+            val portata = quali?.let { Portata.da(it) ?: rifiuta("quali deve essere ${Portata.entries.joinToString("/") { p -> p.chiave }}") }
+            Proposta.TogliEvento(titolo, giorno, ora, portata)
+        }
+        "proponi_esperimento" -> {
+            val titolo = a.testo("titolo") ?: rifiuta("titolo mancante")
+            if (titolo.length > 100) rifiuta("il titolo è un testo: dillo in una riga, il resto va in perche")
+            val tipo = a.testo("misura")?.uppercase()?.let { t -> TipoMisura.entries.find { it.name == t } }
+                ?: rifiuta("misura sconosciuta (usa ${TIPI.joinToString("/")})")
+            val direzione = a.testo("direzione")?.lowercase()?.let { d -> Direzione.entries.find { it.chiave == d || it.name.lowercase() == d } }
+                ?: rifiuta("direzione deve essere su o giu")
+            val giorni = intero(a, "giorni", Esperimenti.GIORNI_PREDEFINITI)
+            if (giorni !in Esperimenti.GIORNI_MINIMI..Esperimenti.GIORNI_MASSIMI)
+                rifiuta("durata di $giorni giorni fuori da ${Esperimenti.GIORNI_MINIMI}–${Esperimenti.GIORNI_MASSIMI}: più corto non si distingue dal caso, più lungo si dimentica")
+            val soglia = a.numero("soglia") ?: Esperimenti.sogliaPredefinita(tipo)
+            if (soglia <= 0) rifiuta("la soglia deve essere maggiore di zero")
+            if (regole.esperimentiAperti.size >= Esperimenti.APERTI_MASSIMI)
+                rifiuta("ci sono già ${Esperimenti.APERTI_MASSIMI} esperimenti aperti: di più diventa rumore. Chiedi al Ghost quale lasciare, o aspetta che uno finisca")
+            regole.esperimentiAperti.find { it.tipo == tipo }?.let {
+                rifiuta("c'è già un esperimento aperto su ${Esperimenti.nomeMisura(tipo)} («${it.titolo}»): due insieme sullo stesso numero non si distinguono")
+            }
+            Proposta.ApriEsperimento(titolo, tipo, direzione, giorni, soglia, a.testo("perche") ?: "")
+        }
+        "lascia_esperimento" -> Proposta.LasciaEsperimento(a.testo("titolo") ?: rifiuta("titolo mancante"), a.testo("motivo") ?: "")
+        "scrivi_mail" -> {
+            val dest = a.testo("a") ?: ""
+            if (dest.isNotEmpty() && !Uscita.indirizzoValido(dest)) rifiuta("«$dest» non è un indirizzo: lascia vuoto e lo scrive il Ghost")
+            if (dest.isNotEmpty() && regole.indirizziNoti != null && dest.lowercase() !in regole.indirizziNoti)
+                rifiuta("il Ghost non ha mai scritto l'indirizzo $dest: non indovinarlo, chiediglielo o lascia vuoto")
+            val oggetto = a.testo("oggetto") ?: rifiuta("oggetto mancante")
+            val corpo = a.testo("corpo") ?: rifiuta("corpo vuoto")
+            val v = Uscita.violazioni("$dest\n$oggetto\n$corpo", regole.nomiProtetti, regole.detteDalGhost)
+            if (v.isNotEmpty()) rifiuta("la mail contiene ${v.joinToString { "«$it»" }}, un nome che il Ghost non fa uscire: riscrivila senza")
+            Proposta.ScriviMail(dest, oggetto, corpo, allegato = a.testo("allegato")?.takeIf { it.length <= 120 })
+        }
+        else -> rifiuta("scrittura non prevista: $nome")
+    }
+
+    private fun occorrenza(a: JsonObject, oggi: LocalDate): Triple<String, String, String?> {
+        val titolo = a.testo("titolo") ?: rifiuta("titolo mancante")
+        val g = Giorni.interpreta(a.testo("giorno"), oggi) ?: rifiuta("giorno non leggibile: usa yyyy-MM-dd")
+        if (g.isBefore(oggi)) rifiuta("il $g è passato: si cambia ciò che viene")
+        val ora = a.testo("ora")?.let { Impegni.ora(it)?.toString() ?: rifiuta("ora non leggibile: usa HH:mm") }
+        return Triple(titolo, g.toString(), ora)
+    }
+
+    fun codifica(p: Proposta): String = json.encodeToString(Proposta.serializer(), p)
+    fun decodifica(s: String): Proposta = json.decodeFromString(Proposta.serializer(), s)
+
+    fun elenco(a: JsonObject, k: String): List<String> =
+        runCatching { a[k]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf(String::isNotEmpty) } }.getOrNull()
+            ?: a.testo(k)?.let { Lavagna.daTesto(it) }.orEmpty()
+
+    fun intero(a: JsonObject, k: String, predefinito: Int) = a[k]?.let { runCatching { it.jsonPrimitive.intOrNull ?: it.jsonPrimitive.doubleOrNull?.toInt() }.getOrNull() } ?: predefinito
+    fun stringa(a: JsonObject, k: String) = a.testo(k)
+}
+
+object Giorni {
+    private val LEGGIBILE = DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.ITALIAN)
+
+    fun interpreta(t: String?, oggi: LocalDate): LocalDate? = when (t?.trim()?.lowercase()) {
+        null, "", "oggi" -> oggi
+        "ieri" -> oggi.minusDays(1)
+        "domani" -> oggi.plusDays(1)
+        "dopodomani" -> oggi.plusDays(2)
+        "l'altro ieri", "altro ieri", "avantieri" -> oggi.minusDays(2)
+        else -> runCatching { LocalDate.parse(t.trim().take(10)) }.getOrNull()
+    }
+
+    fun leggibile(giorno: String, oggi: LocalDate = LocalDate.now()): String {
+        val g = runCatching { LocalDate.parse(giorno) }.getOrNull() ?: return giorno
+        return when (g) {
+            oggi -> "oggi"
+            oggi.minusDays(1) -> "ieri"
+            else -> g.format(LEGGIBILE)
+        }
+    }
+}
+
+object Testi {
+    fun corto(t: String, n: Int) = t.replace(Regex("\\s+"), " ").trim().let { if (it.length <= n) it else it.take(n - 1).trimEnd() + "…" }
+
+    fun normalizza(t: String) = java.text.Normalizer.normalize(t.lowercase(), java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "").replace(Regex("[^\\p{L}\\p{N} ]"), " ").replace(Regex("\\s+"), " ").trim()
+
+    sealed class Modifica {
+        data class Fatta(val testo: String) : Modifica()
+        data class Impossibile(val motivo: String) : Modifica()
+    }
+
+    // Cosa esce e cosa entra, per intero e con gli a capo: ciò che il Ghost legge prima di confermare.
+    fun primaDopo(ancora: String, testo: String, modo: String) = when (modo) {
+        "prima" -> "Da inserire PRIMA di:\n$ancora\n\nTesto:\n$testo"
+        "dopo" -> "Da inserire DOPO:\n$ancora\n\nTesto:\n$testo"
+        else -> "Esce:\n$ancora\n\nEntra:\n" + testo.ifEmpty { "(niente: il pezzo si toglie)" }
+    }
+
+    // Il taglia-e-cuci lo fa il programma, mai il modello: un'ancora assente o doppia non indovina.
+    fun applicaModifica(testo: String, ancora: String, nuovo: String, modo: String): Modifica {
+        if (testo.isBlank()) return Modifica.Impossibile("il testo è vuoto: non c'è niente da cambiare, per scrivere usa modo aggiungi")
+        val trovata = when (val a = ancora(testo, ancora)) {
+            is Ancora.Assente -> return Modifica.Impossibile("il frammento «${corto(ancora, 60)}» non c'è nel documento")
+            is Ancora.Doppia -> return Modifica.Impossibile("il frammento «${corto(ancora, 60)}» compare più di una volta")
+            is Ancora.Trovata -> a.dove
+        }
+        val prima = trovata.first
+        val fine = trovata.last + 1
+        val risultato = when (modo) {
+            "prima" -> testo.substring(0, prima) + unisci(nuovo, testo.substring(prima))
+            "dopo" -> unisci(testo.substring(0, fine), nuovo) + testo.substring(fine)
+            else -> testo.substring(0, prima) + nuovo + testo.substring(fine)
+        }
+        return Modifica.Fatta(risultato)
+    }
+
+    sealed class Ancora {
+        data class Trovata(val dove: IntRange) : Ancora()
+        data object Assente : Ancora()
+        data object Doppia : Ancora()
+    }
+
+    // Prima esatta; poi senza badare agli spazi e agli a capo, perché il modello copia da un testo che ha visto
+    // su una riga sola. Unica o niente: due posti possibili non si scelgono a caso.
+    fun ancora(testo: String, ancora: String): Ancora {
+        if (ancora.isBlank()) return Ancora.Assente
+        val esatta = testo.indexOf(ancora)
+        if (esatta >= 0) return if (testo.indexOf(ancora, esatta + 1) >= 0) Ancora.Doppia else Ancora.Trovata(esatta until esatta + ancora.length)
+        val parole = ancora.trim().split(Regex("\\s+"))
+        val simili = Regex(parole.joinToString("\\s+") { Regex.escape(it) }).findAll(testo).take(2).toList()
+        return when (simili.size) {
+            0 -> Ancora.Assente
+            1 -> Ancora.Trovata(simili[0].range)
+            else -> Ancora.Doppia
+        }
+    }
+
+    private fun unisci(a: String, b: String): String {
+        if (a.isEmpty() || b.isEmpty()) return a + b
+        return if (a.last().isWhitespace() || b.first().isWhitespace()) a + b else "$a $b"
+    }
+
+    // Quando il modello dice «fatto» senza aver proposto niente, lo si dice: la ricevuta vale, la frase no.
+    private val AFFERMA = Regex(
+        """\b(ho|abbiamo)\s+(appena\s+)?(registrat|salvat|creat|aggiornat|annotat|segnat|aggiunt|modificat|cancellat|eliminat|spuntat|inserit|scritt)[oaie]\b""",
+        RegexOption.IGNORE_CASE,
+    )
+    fun affermaAzione(t: String) = AFFERMA.containsMatchIn(t)
+
+    // Quando il modello promette di tornare da solo («ti ricorderò», «domani riprendiamo»): non ha un modo di farlo.
+    // Visto il 24/09 con Gemini. Tornare lo fa solo un evento in calendario, o il Ghost.
+    private val PROMETTE = Regex(
+        """\b(ti|te\s+l[oa]|ve\s+l[oa])\s+ricorder[òo](?!\w)|\bti\s+(avviser|riscriver|richiamer|ricontatter|aggiorner)[òo](?!\w)|""" +
+            """\b(domani|stasera|più\s+tardi|la\s+prossima\s+volta)[,]?\s+(riprendiamo|continuiamo|ne\s+riparliamo|ci\s+torniamo)\b|""" +
+            """\b(riprendiamo|continuiamo|ne\s+riparliamo|ci\s+torniamo)\s+(domani|stasera|più\s+tardi)\b|\btorner[òo]\s+(io\s+)?(a\s+chiedert|a\s+scrivert|su\s+quest)""",
+        RegexOption.IGNORE_CASE,
+    )
+    fun promette(t: String) = PROMETTE.containsMatchIn(t)
+
+    // Lo Shell che imita la voce del programma (visto in riunione il 26/09: «[Nota del programma: la riunione è chiusa…]»),
+    // e poche ore dopo quella dell'architetto («[L'architetto (Claude Code), non il Ghost] …»): copia le etichette che
+    // vede nella storia. Quelle righe distinguono chi parla e cosa è successo: se le scrive il modello, non distinguono più.
+    private val FINTA_NOTA = Regex("""\[\s*(nota del programma|l['’]architetto)[^\]]*]""", RegexOption.IGNORE_CASE)
+    fun fintaNota(t: String) = FINTA_NOTA.containsMatchIn(t)
+    fun senzaFinteNote(t: String) = t.replace(FINTA_NOTA, "").replace(Regex("\n{3,}"), "\n\n").trim()
+
+    // Le chiamate scritte come testo invece che fatte (visto il 26/09 con un modello leggero): «crea_evento(titolo=…)».
+    // Il Ghost le legge come proposte, e non esiste niente da confermare.
+    // «Proposta in attesa… conferma col pulsante sotto» in un turno che non ha creato nessuna proposta (27/09, tre volte:
+    // Kimi e un modello leggero descrivevano la modifica invece di farla, e il Ghost cercava un pulsante che non c'era).
+    private val DICHIARA_PROPOSTA = Regex("""propost[ae]\s+in\s+attesa|conferma\s+(col|con\s+il|dal)\s+pulsante|premi\s+(il\s+pulsante\s+)?(«|")?conferma|pulsante\s+(qui\s+)?sotto|trovi\s+la\s+proposta""", RegexOption.IGNORE_CASE)
+    fun dichiaraProposta(t: String) = DICHIARA_PROPOSTA.containsMatchIn(t)
+
+    // «Consegna presa», «prendo in carico la consegna» senza averla proposta (riunione del 26/09, due volte di fila).
+    private val DICHIARA_CONSEGNA = Regex("""consegna\s+(presa|accettata)|prendo\s+(in\s+carico\s+)?(la|una|questa)\s+consegna|ho\s+preso\s+(la|una)\s+consegna""", RegexOption.IGNORE_CASE)
+    fun dichiaraConsegna(t: String) = DICHIARA_CONSEGNA.containsMatchIn(t)
+
+    // «Non ho accesso a internet» quando cerca_nel_web c'è (02/10/2026): lo Shell ripeteva la risposta di quando la ricerca
+    // non c'era, letta nella sua stessa cronologia. Una regola scritta nel prompt non bastava: il programma se ne accorge.
+    private val NEGA_INTERNET = Regex("""non\s+ho\s+(accesso\s+(a|ad)\s+)?internet|non\s+ho\s+accesso\s+(al\s+web|alla\s+rete|a\s+dati)|non\s+posso\s+(navigare|accedere\s+(a|ad|al)\s+(internet|web|rete))|non\s+posso\s+cercare\s+(in|sul|nel)\s+(web|internet|rete)|ricerche\s+web\s+(è|sono)\s+attiv[oa]\s+solo""", RegexOption.IGNORE_CASE)
+    fun negaInternet(t: String) = NEGA_INTERNET.containsMatchIn(t)
+
+    fun chiamateScritte(t: String, nomi: Collection<String>): List<String> =
+        nomi.filter { n -> Regex("""(?<![\w])""" + Regex.escape(n) + """\s*\(""").containsMatchIn(t) }
+}

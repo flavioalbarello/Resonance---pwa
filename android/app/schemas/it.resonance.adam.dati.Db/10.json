@@ -1,0 +1,1212 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 10,
+    "identityHash": "952b63eec9c522f74b49a1546c86bdee",
+    "entities": [
+      {
+        "tableName": "misure",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `tipo` TEXT NOT NULL, `valore` REAL NOT NULL, `giorno` TEXT NOT NULL, `istante` INTEGER NOT NULL, `fonte` TEXT NOT NULL, `nota` TEXT NOT NULL, `legataAlTempo` INTEGER, `idEsterno` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tipo",
+            "columnName": "tipo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "valore",
+            "columnName": "valore",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "giorno",
+            "columnName": "giorno",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "istante",
+            "columnName": "istante",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fonte",
+            "columnName": "fonte",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nota",
+            "columnName": "nota",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "legataAlTempo",
+            "columnName": "legataAlTempo",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "idEsterno",
+            "columnName": "idEsterno",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_misure_idEsterno",
+            "unique": true,
+            "columnNames": [
+              "idEsterno"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_misure_idEsterno` ON `${TABLE_NAME}` (`idEsterno`)"
+          },
+          {
+            "name": "index_misure_tipo",
+            "unique": false,
+            "columnNames": [
+              "tipo"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_misure_tipo` ON `${TABLE_NAME}` (`tipo`)"
+          },
+          {
+            "name": "index_misure_giorno",
+            "unique": false,
+            "columnNames": [
+              "giorno"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_misure_giorno` ON `${TABLE_NAME}` (`giorno`)"
+          }
+        ]
+      },
+      {
+        "tableName": "voci",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `pilastro` TEXT NOT NULL, `giorno` TEXT NOT NULL, `testo` TEXT NOT NULL, `fonte` TEXT NOT NULL, `creato` INTEGER NOT NULL, `aggiornato` INTEGER NOT NULL, `idEsterno` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pilastro",
+            "columnName": "pilastro",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "giorno",
+            "columnName": "giorno",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "testo",
+            "columnName": "testo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fonte",
+            "columnName": "fonte",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "creato",
+            "columnName": "creato",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aggiornato",
+            "columnName": "aggiornato",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "idEsterno",
+            "columnName": "idEsterno",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_voci_idEsterno",
+            "unique": true,
+            "columnNames": [
+              "idEsterno"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_voci_idEsterno` ON `${TABLE_NAME}` (`idEsterno`)"
+          },
+          {
+            "name": "index_voci_pilastro",
+            "unique": false,
+            "columnNames": [
+              "pilastro"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_voci_pilastro` ON `${TABLE_NAME}` (`pilastro`)"
+          }
+        ]
+      },
+      {
+        "tableName": "versioni",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `entita` TEXT NOT NULL, `idEntita` INTEGER NOT NULL, `testo` TEXT NOT NULL, `sostituitoIl` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "entita",
+            "columnName": "entita",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "idEntita",
+            "columnName": "idEntita",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "testo",
+            "columnName": "testo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sostituitoIl",
+            "columnName": "sostituitoIl",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_versioni_entita_idEntita",
+            "unique": false,
+            "columnNames": [
+              "entita",
+              "idEntita"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_versioni_entita_idEntita` ON `${TABLE_NAME}` (`entita`, `idEntita`)"
+          }
+        ]
+      },
+      {
+        "tableName": "rituali",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `nome` TEXT NOT NULL, `pilastro` TEXT NOT NULL, `criterio` TEXT, `attivo` INTEGER NOT NULL, `creato` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nome",
+            "columnName": "nome",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pilastro",
+            "columnName": "pilastro",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "criterio",
+            "columnName": "criterio",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attivo",
+            "columnName": "attivo",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "creato",
+            "columnName": "creato",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "spunte",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`ritualeId` INTEGER NOT NULL, `giorno` TEXT NOT NULL, `fonte` TEXT NOT NULL, `istante` INTEGER NOT NULL, PRIMARY KEY(`ritualeId`, `giorno`))",
+        "fields": [
+          {
+            "fieldPath": "ritualeId",
+            "columnName": "ritualeId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "giorno",
+            "columnName": "giorno",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fonte",
+            "columnName": "fonte",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "istante",
+            "columnName": "istante",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "ritualeId",
+            "giorno"
+          ]
+        }
+      },
+      {
+        "tableName": "percorsi",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `pilastro` TEXT NOT NULL, `titolo` TEXT NOT NULL, `scopo` TEXT NOT NULL, `creato` INTEGER NOT NULL, `archiviato` INTEGER NOT NULL, `idEsterno` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pilastro",
+            "columnName": "pilastro",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "titolo",
+            "columnName": "titolo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scopo",
+            "columnName": "scopo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "creato",
+            "columnName": "creato",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archiviato",
+            "columnName": "archiviato",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "idEsterno",
+            "columnName": "idEsterno",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_percorsi_idEsterno",
+            "unique": true,
+            "columnNames": [
+              "idEsterno"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_percorsi_idEsterno` ON `${TABLE_NAME}` (`idEsterno`)"
+          }
+        ]
+      },
+      {
+        "tableName": "nodi",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `percorsoId` INTEGER NOT NULL, `etichetta` TEXT NOT NULL, `stato` TEXT NOT NULL, `ordine` INTEGER NOT NULL, `genitoreId` INTEGER DEFAULT NULL, `pilastro` TEXT DEFAULT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "percorsoId",
+            "columnName": "percorsoId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "etichetta",
+            "columnName": "etichetta",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stato",
+            "columnName": "stato",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ordine",
+            "columnName": "ordine",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "genitoreId",
+            "columnName": "genitoreId",
+            "affinity": "INTEGER",
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "pilastro",
+            "columnName": "pilastro",
+            "affinity": "TEXT",
+            "defaultValue": "NULL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_nodi_percorsoId",
+            "unique": false,
+            "columnNames": [
+              "percorsoId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_nodi_percorsoId` ON `${TABLE_NAME}` (`percorsoId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "documenti",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `percorsoId` INTEGER NOT NULL, `nodoId` INTEGER, `titolo` TEXT NOT NULL, `testo` TEXT NOT NULL, `creato` INTEGER NOT NULL, `aggiornato` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "percorsoId",
+            "columnName": "percorsoId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nodoId",
+            "columnName": "nodoId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "titolo",
+            "columnName": "titolo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "testo",
+            "columnName": "testo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "creato",
+            "columnName": "creato",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aggiornato",
+            "columnName": "aggiornato",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_documenti_percorsoId",
+            "unique": false,
+            "columnNames": [
+              "percorsoId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_documenti_percorsoId` ON `${TABLE_NAME}` (`percorsoId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "quaderni",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`pilastro` TEXT NOT NULL, `testo` TEXT NOT NULL, `aggiornato` INTEGER NOT NULL, PRIMARY KEY(`pilastro`))",
+        "fields": [
+          {
+            "fieldPath": "pilastro",
+            "columnName": "pilastro",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "testo",
+            "columnName": "testo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aggiornato",
+            "columnName": "aggiornato",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "pilastro"
+          ]
+        }
+      },
+      {
+        "tableName": "messaggi",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `ruolo` TEXT NOT NULL, `testo` TEXT NOT NULL, `istante` INTEGER NOT NULL, `proposta` TEXT, `stato` TEXT, `allegati` TEXT NOT NULL DEFAULT '', `modello` TEXT, `costo` REAL, `motore` TEXT, `temperatura` REAL, `forzata` INTEGER NOT NULL DEFAULT 0)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ruolo",
+            "columnName": "ruolo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "testo",
+            "columnName": "testo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "istante",
+            "columnName": "istante",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "proposta",
+            "columnName": "proposta",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "stato",
+            "columnName": "stato",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "allegati",
+            "columnName": "allegati",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "modello",
+            "columnName": "modello",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "costo",
+            "columnName": "costo",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "motore",
+            "columnName": "motore",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "temperatura",
+            "columnName": "temperatura",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "forzata",
+            "columnName": "forzata",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "spesa",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`mese` TEXT NOT NULL, `dollari` REAL NOT NULL, `chiamate` INTEGER NOT NULL, PRIMARY KEY(`mese`))",
+        "fields": [
+          {
+            "fieldPath": "mese",
+            "columnName": "mese",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dollari",
+            "columnName": "dollari",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chiamate",
+            "columnName": "chiamate",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "mese"
+          ]
+        }
+      },
+      {
+        "tableName": "profilo",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `nome` TEXT NOT NULL, `stile` TEXT NOT NULL, `motivazione` TEXT NOT NULL, `vincoli` TEXT NOT NULL, `nomiProtetti` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nome",
+            "columnName": "nome",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stile",
+            "columnName": "stile",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "motivazione",
+            "columnName": "motivazione",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "vincoli",
+            "columnName": "vincoli",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nomiProtetti",
+            "columnName": "nomiProtetti",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "esperimenti",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `titolo` TEXT NOT NULL, `tipo` TEXT NOT NULL, `direzione` TEXT NOT NULL, `soglia` REAL NOT NULL, `giorni` INTEGER NOT NULL, `inizio` TEXT NOT NULL, `fine` TEXT NOT NULL, `base` REAL NOT NULL, `origine` TEXT NOT NULL, `creato` INTEGER NOT NULL, `stato` TEXT NOT NULL, `finale` REAL, `esito` TEXT, `chiuso` INTEGER, `nota` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "titolo",
+            "columnName": "titolo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tipo",
+            "columnName": "tipo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "direzione",
+            "columnName": "direzione",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "soglia",
+            "columnName": "soglia",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "giorni",
+            "columnName": "giorni",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inizio",
+            "columnName": "inizio",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fine",
+            "columnName": "fine",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "base",
+            "columnName": "base",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "origine",
+            "columnName": "origine",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "creato",
+            "columnName": "creato",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stato",
+            "columnName": "stato",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "finale",
+            "columnName": "finale",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "esito",
+            "columnName": "esito",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "chiuso",
+            "columnName": "chiuso",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "nota",
+            "columnName": "nota",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "turni",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `istante` INTEGER NOT NULL, `compito` TEXT NOT NULL, `modello` TEXT NOT NULL, `temperatura` REAL, `forzata` INTEGER NOT NULL, `proposte` TEXT NOT NULL, `rifiutate` INTEGER NOT NULL, `troncata` INTEGER NOT NULL, `esauriti` INTEGER NOT NULL, `errore` INTEGER NOT NULL, `costo` REAL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "istante",
+            "columnName": "istante",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "compito",
+            "columnName": "compito",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modello",
+            "columnName": "modello",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "temperatura",
+            "columnName": "temperatura",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "forzata",
+            "columnName": "forzata",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "proposte",
+            "columnName": "proposte",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rifiutate",
+            "columnName": "rifiutate",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "troncata",
+            "columnName": "troncata",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "esauriti",
+            "columnName": "esauriti",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "errore",
+            "columnName": "errore",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "costo",
+            "columnName": "costo",
+            "affinity": "REAL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "taccuino",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `testo` TEXT NOT NULL, `creata` INTEGER NOT NULL, `ripresa` INTEGER NOT NULL, `tolta` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "testo",
+            "columnName": "testo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "creata",
+            "columnName": "creata",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ripresa",
+            "columnName": "ripresa",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tolta",
+            "columnName": "tolta",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "movimenti",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `giorno` TEXT NOT NULL, `tipo` TEXT NOT NULL, `importo` REAL NOT NULL, `motivo` TEXT NOT NULL, `creato` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "giorno",
+            "columnName": "giorno",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tipo",
+            "columnName": "tipo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "importo",
+            "columnName": "importo",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "motivo",
+            "columnName": "motivo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "creato",
+            "columnName": "creato",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "lettere",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `oggetto` TEXT NOT NULL, `testo` TEXT NOT NULL, `creata` INTEGER NOT NULL, `stato` TEXT NOT NULL, `numero` INTEGER, `errore` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "oggetto",
+            "columnName": "oggetto",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "testo",
+            "columnName": "testo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "creata",
+            "columnName": "creata",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stato",
+            "columnName": "stato",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "numero",
+            "columnName": "numero",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "errore",
+            "columnName": "errore",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "risposte",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `letteraId` INTEGER NOT NULL, `idCommento` INTEGER NOT NULL, `testo` TEXT NOT NULL, `istante` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "letteraId",
+            "columnName": "letteraId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "idCommento",
+            "columnName": "idCommento",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "testo",
+            "columnName": "testo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "istante",
+            "columnName": "istante",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "consegne",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `cosa` TEXT NOT NULL, `documento` TEXT NOT NULL, `percorso` TEXT, `presa` TEXT NOT NULL, `scadenza` TEXT NOT NULL, `stato` TEXT NOT NULL, `lavorata` INTEGER NOT NULL, `chiusa` TEXT, `esito` TEXT NOT NULL, `creata` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cosa",
+            "columnName": "cosa",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "documento",
+            "columnName": "documento",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "percorso",
+            "columnName": "percorso",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "presa",
+            "columnName": "presa",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scadenza",
+            "columnName": "scadenza",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stato",
+            "columnName": "stato",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lavorata",
+            "columnName": "lavorata",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chiusa",
+            "columnName": "chiusa",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "esito",
+            "columnName": "esito",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "creata",
+            "columnName": "creata",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "appunti",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `titolo` TEXT NOT NULL, `righe` TEXT NOT NULL, `creato` INTEGER NOT NULL, `scade` TEXT NOT NULL, `finito` TEXT, `fissato` INTEGER NOT NULL, `tenuto` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "titolo",
+            "columnName": "titolo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "righe",
+            "columnName": "righe",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "creato",
+            "columnName": "creato",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scade",
+            "columnName": "scade",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "finito",
+            "columnName": "finito",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "fissato",
+            "columnName": "fissato",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tenuto",
+            "columnName": "tenuto",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '952b63eec9c522f74b49a1546c86bdee')"
+    ]
+  }
+}

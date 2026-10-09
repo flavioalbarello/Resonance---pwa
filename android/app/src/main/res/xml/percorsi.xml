@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Solo la cartella degli allegati: la fotocamera scrive lì la foto scattata per lo Shell. -->
+<paths>
+    <files-path name="allegati" path="allegati/" />
+</paths>
