@@ -1,8 +1,11 @@
 package it.resonance.adam.logica
 
+import it.resonance.adam.dati.EsitoBlocco
 import it.resonance.adam.dati.EsitoPratica
 import it.resonance.adam.dati.Nodo
 import it.resonance.adam.dati.StatoNodo
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
@@ -25,15 +28,25 @@ object Pratica {
         A_TEMPO("quasi a tempo", StatoNodo.PRATICATO), PRONTO("pronto", StatoNodo.CONSOLIDATO)
     }
 
+    // Senza velocità misurata conta lo stato del nodo: un percorso che c'era già (o che non è musica) non riparte da zero.
     fun fase(n: Nodo): Fase = when {
-        n.velocita == null -> Fase.DA_IMPARARE
+        n.velocita == null -> when (n.stato) {
+            StatoNodo.NON_INIZIATO -> Fase.DA_IMPARARE
+            StatoNodo.INTRODOTTO -> Fase.LENTO
+            StatoNodo.PRATICATO -> Fase.A_TEMPO
+            StatoNodo.CONSOLIDATO -> Fase.PRONTO
+        }
         n.velocita >= A_TEMPO && n.puliteDiFila >= PRONTO_DI_FILA -> Fase.PRONTO
         n.velocita >= 85 -> Fase.A_TEMPO
         else -> Fase.LENTO
     }
 
     /** La velocità a cui provare la prossima volta: l'ultima pulita più un passo, al massimo l'originale. */
-    fun obiettivo(n: Nodo): Int = n.velocita?.let { minOf(A_TEMPO, it + if (it >= A_TEMPO) 0 else PASSO) } ?: INIZIO
+    fun obiettivo(n: Nodo): Int = n.velocita?.let { minOf(A_TEMPO, it + if (it >= A_TEMPO) 0 else PASSO) } ?: when (fase(n)) {
+        Fase.A_TEMPO -> 85
+        Fase.PRONTO -> A_TEMPO
+        else -> INIZIO
+    }
 
     /**
      * Quanto un pezzo chiede di essere studiato adesso. Prima ciò che non è pronto, e fra questi ciò che è più indietro
@@ -52,7 +65,10 @@ object Pratica {
         }
     }
 
-    data class Blocco(val nodoId: Long, val etichetta: String, val minuti: Int, val velocita: Int, val ripasso: Boolean, val fonte: String?)
+    @Serializable
+    data class Blocco(val nodoId: Long, val etichetta: String, val minuti: Int, val velocita: Int, val ripasso: Boolean, val fonte: String?,
+                      // La velocità pulita all'inizio, per dire dopo «75 → 80%»: il piano la fotografa.
+                      val prima: Int? = null)
 
     /**
      * Il piano per il tempo che c'è. Con poco tempo, un blocco solo sul pezzo più urgente; con più tempo, blocchi da
@@ -72,9 +88,9 @@ object Pratica {
         val perLavoro = (minuti - minRipasso) / scelti.size
         val resto = (minuti - minRipasso) - perLavoro * scelti.size
         val blocchi = scelti.mapIndexed { i, n ->
-            Blocco(n.id, n.etichetta, perLavoro + if (i == 0) resto else 0, obiettivo(n), fase(n) == Fase.PRONTO, n.fonte)
+            Blocco(n.id, n.etichetta, perLavoro + if (i == 0) resto else 0, obiettivo(n), fase(n) == Fase.PRONTO, n.fonte, n.velocita)
         }
-        return if (conRipasso) blocchi + Blocco(ripasso!!.id, ripasso.etichetta, minRipasso, A_TEMPO, true, ripasso.fonte) else blocchi
+        return if (conRipasso) blocchi + Blocco(ripasso!!.id, ripasso.etichetta, minRipasso, A_TEMPO, true, ripasso.fonte, ripasso.velocita) else blocchi
     }
 
     /**
@@ -105,5 +121,45 @@ object Pratica {
             giorni == 0L -> "è oggi"
             else -> "mancano $giorni giorni"
         }
+    }
+
+    // ── La sessione in corso (fase 2): il piano si tiene com'era stato dato, l'esito di ogni blocco lo fa avanzare ──
+
+    private val json = Json { ignoreUnknownKeys = true }
+    fun codifica(piano: List<Blocco>): String = json.encodeToString(piano)
+    fun decodifica(testo: String): List<Blocco> = runCatching { json.decodeFromString<List<Blocco>>(testo) }.getOrDefault(emptyList())
+
+    /** Il blocco a cui si è: uno per esito già dato. Null quando il piano è finito. */
+    fun corrente(piano: List<Blocco>, esiti: List<EsitoBlocco>): Blocco? = piano.getOrNull(esiti.size)
+
+    /** I minuti davvero passati, che diventano una misura PRATICA: è quella che spunta il rituale da solo. */
+    fun minutiFatti(inizio: Long, fine: Long): Int = ((fine - inizio) / 60_000).toInt().coerceIn(0, 960)
+
+    /** Cosa è cambiato, blocco per blocco: ciò che la sessione restituisce subito dopo. Saltato si dice, non si nasconde. */
+    fun resoconto(piano: List<Blocco>, esiti: List<EsitoBlocco>): List<String> = esiti.mapIndexed { i, e ->
+        val b = piano.getOrNull(i)
+        val nome = b?.etichetta ?: "?"
+        val era = b?.prima
+        when (e.esito) {
+            EsitoPratica.SALTATO -> "$nome: saltato"
+            EsitoPratica.ERRORI -> "$nome: errori a ${e.velocita}%" + (era?.let { " (resta $it%)" } ?: "")
+            EsitoPratica.PULITO -> "$nome: pulito a ${e.velocita}%" + when {
+                era == null -> " (prima volta)"
+                e.velocita > era -> " (era $era%)"
+                else -> ""
+            }
+        }
+    }
+
+    /** La scadenza come la scrive il Ghost: 2026-12-20, 20/12/2026, 20/12/26, 20.12, 20/12 (la prossima). */
+    fun leggiData(testo: String, oggi: LocalDate): LocalDate? {
+        val t = testo.trim()
+        runCatching { return LocalDate.parse(t) }
+        val m = Regex("""^(\d{1,2})[/.\-](\d{1,2})(?:[/.\-](\d{2,4}))?$""").find(t) ?: return null
+        val (g, me, a) = m.destructured
+        return runCatching {
+            if (a.isNotEmpty()) LocalDate.of(if (a.length == 2) 2000 + a.toInt() else a.toInt(), me.toInt(), g.toInt())
+            else LocalDate.of(oggi.year, me.toInt(), g.toInt()).let { if (it.isBefore(oggi)) it.plusYears(1) else it }
+        }.getOrNull()
     }
 }

@@ -198,6 +198,7 @@ private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.
     var daTogliere by remember { mutableStateOf<Nodo?>(null) }
     var menuNodo by remember { mutableStateOf<Nodo?>(null) }
     var nuovoNodo by remember { mutableStateOf(false) }
+    var fonteNodo by remember { mutableStateOf<Nodo?>(null) }
     var aperti by remember(id) { mutableStateOf(setOf<Long>()) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
         TextButton({ vm.percorsoAperto = null }) { Text("‹ Percorsi") }
@@ -218,6 +219,7 @@ private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.
                 }
             }
         }
+        StudioUi(vm, per, tutti, colore)
         Scheda(colore) {
             Etichetta("Nodi · tocca per avanzare, tieni premuto per spostare o togliere", colore)
             Nodi.radici(tutti).forEach { r ->
@@ -264,6 +266,8 @@ private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.
                                 }
                             }
                         }
+                        // La fonte del pezzo: il link di Moises o di YouTube che lo studio apre da solo.
+                        if (!haFigli) TextButton({ fonteNodo = n; menuNodo = null }) { Text(if (n.fonte == null) "Fonte (link Moises, YouTube…)" else "Fonte: ${n.fonte.take(40)}") }
                         if (n.genitoreId != null) TextButton({ vm.spostaNodo(n, null); menuNodo = null }) { Text("Al primo livello") }
                         if (mete.isNotEmpty()) Tenue("Mettilo sotto:")
                         mete.forEach { m -> TextButton({ vm.spostaNodo(n, m.id); menuNodo = null }) { Text("«${m.etichetta}»") } }
@@ -274,6 +278,8 @@ private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.
             )
         }
         if (nuovoNodo) DialogoTesto("Nuovo nodo (primo livello)", onOk = { vm.aggiungiNodo(per, it) }, onChiudi = { nuovoNodo = false })
+        fonteNodo?.let { n -> DialogoTesto("Fonte di «${n.etichetta}»", n.fonte.orEmpty(), "link o testo · vuoto la toglie", vuotoOk = true,
+            onOk = { vm.fonteNodo(n, it) }, onChiudi = { fonteNodo = null }) }
         daTogliere?.let { n ->
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { daTogliere = null },
@@ -409,6 +415,8 @@ private fun RigaNodo(n: Nodo, colore: androidx.compose.ui.graphics.Color, livell
         .padding(start = (18 * livello).dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(n.etichetta, modifier = Modifier.weight(1f), fontSize = if (livello > 0) 14.sp else 15.sp)
         pilastro?.let { Text(it.etichetta + "  ", fontSize = 11.sp, color = Colori.di(it)) }
+        // La velocità pulita, se il pezzo si è studiato (logica/Pratica.kt): il numero che il Ghost vede su Moises.
+        n.velocita?.let { Text("$it%  ", fontSize = 12.sp, color = Colori.tenue) }
         Text(n.stato.etichetta, fontSize = 12.sp, color = if (n.stato == StatoNodo.NON_INIZIATO) Colori.tenue else Colori.ambraInchiostro,
             modifier = Modifier.background(if (n.stato == StatoNodo.NON_INIZIATO) Colori.fondo2 else colore.copy(alpha = 0.18f + 0.18f * n.stato.ordinal), RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
     }

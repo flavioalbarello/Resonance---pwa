@@ -1,0 +1,97 @@
+package it.resonance.adam.battito
+
+import android.app.AlarmManager
+import android.app.NotificationManager
+import android.content.Intent
+import it.resonance.adam.dati.Archivio
+import it.resonance.adam.dati.Db
+import it.resonance.adam.dati.EsitoPratica
+import it.resonance.adam.dati.Nodo
+import it.resonance.adam.dati.Percorso
+import it.resonance.adam.dati.Pilastro
+import it.resonance.adam.dati.TipoMisura
+import it.resonance.adam.logica.Pratica
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+import java.time.LocalDate
+
+// La sessione di studio dalla notifica (V3 fase 2): il Ghost suona sopra Moises e tocca «✓ Pulito» senza aprire l'app.
+// L'esito arriva nel database, il pezzo sale di velocità, la notifica passa al blocco dopo; all'ultimo, il resoconto.
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
+class StudioTest {
+    private val app = RuntimeEnvironment.getApplication()
+    private val nm get() = shadowOf(app.getSystemService(NotificationManager::class.java))
+
+    @Test fun dallaNotificaSiStudiaFinoAlResoconto() = runBlocking {
+        shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
+        val db = Db.di(app)
+        val a = Archivio(db)
+        val oggi = LocalDate.now()
+        val per = db.percorsi().inserisci(Percorso(pilastro = Pilastro.VIDYA, titolo = "Tributo Rino Gaetano (studio)", creato = 1))
+        val gianna = db.percorsi().inserisciNodo(Nodo(percorsoId = per, etichetta = "Gianna — ponte", ordine = 0, velocita = 75,
+            ultimaPratica = oggi.minusDays(4).toString(), fonte = "https://studio.moises.ai/x"))
+        db.percorsi().inserisciNodo(Nodo(percorsoId = per, etichetta = "Berta filava", ordine = 1))
+
+        val s = a.apriSessione(per, 20, oggi)!!
+        val piano = Pratica.decodifica(s.piano)
+        assertEquals(listOf(gianna), piano.take(1).map { it.nodoId })
+        Studio.mostra(app, s.id, per, "VIDYA", piano[0], 0, piano.size, System.currentTimeMillis() + piano[0].minuti * 60_000L)
+        val prima = nm.getNotification(Studio.ID)
+        assertNotNull(prima)
+        assertEquals(listOf("✓ Pulito", "✗ Errori", "→ Avanti"), prima.actions.map { it.title.toString() })
+        // Toccarla apre la fonte (Moises), non l'app.
+        assertEquals(Intent.ACTION_VIEW, shadowOf(prima.contentIntent).savedIntent.action)
+        // A fine blocco suona una sveglia.
+        assertTrue(shadowOf(app.getSystemService(AlarmManager::class.java)).scheduledAlarms.isNotEmpty())
+
+        // «✓ Pulito» dalla notifica: la velocità sale a 80, si passa al secondo blocco.
+        Studio.gesto(app, Intent(shadowOf(prima.actions[0].actionIntent).savedIntent))
+        assertEquals(80, db.percorsi().elencoNodi().first { it.id == gianna }.velocita)
+        val seconda = nm.getNotification(Studio.ID)
+        assertTrue(seconda.extras.getCharSequence("android.title").toString().startsWith("Studio 2/2"))
+        // Un doppio tocco veloce (arriva col blocco vecchio, prima che la notifica si ridisegni) non segna il blocco dopo.
+        Studio.gesto(app, Intent(shadowOf(prima.actions[0].actionIntent).savedIntent).putExtra("indice", 0))
+        assertEquals(1, db.pratica().esitiDi(s.id).size)
+
+        // «✗ Errori» sull'ultimo: la sessione si chiude, resta il resoconto, i minuti diventano PRATICA, il diario lo sa.
+        Studio.gesto(app, Intent(shadowOf(seconda.actions[1].actionIntent).savedIntent))
+        assertNull(db.pratica().inCorso())
+        val fine = nm.getNotification(Studio.ID)
+        assertTrue(fine.extras.getCharSequence("android.title").toString().startsWith("Studio finito"))
+        assertTrue((fine.flags and android.app.Notification.FLAG_ONGOING_EVENT) == 0)
+        assertTrue(db.voci().elenco().any { it.testo.startsWith("Studio «Tributo Rino Gaetano (studio)»") && "Gianna — ponte: pulito a 80% (era 75%)" in it.testo })
+        // Durata zero nel test: nessuna misura da 0 minuti.
+        assertTrue(db.misure().elenco().none { it.tipo == TipoMisura.PRATICA && it.idEsterno == "sessione:${s.id}" && it.valore <= 0 })
+    }
+
+    @Test fun iMinutiDiUnaSessioneVeraDiventanoPratica() = runBlocking {
+        val db = Db.di(app)
+        val a = Archivio(db)
+        val oggi = LocalDate.now()
+        val per = db.percorsi().inserisci(Percorso(pilastro = Pilastro.VIDYA, titolo = "Scale (studio)", creato = 1))
+        db.percorsi().inserisciNodo(Nodo(percorsoId = per, etichetta = "Do maggiore", ordine = 0))
+        val inizio = System.currentTimeMillis() - 12 * 60_000L
+        val s = a.apriSessione(per, 10, oggi, adesso = inizio)!!
+        val passo = a.segnaBlocco(s.id, EsitoPratica.PULITO, 72, oggi)!!
+        assertNull(passo.prossimo)
+        assertEquals(listOf("Do maggiore: pulito a 72% (prima volta)"), passo.resoconto)
+        val m = db.misure().elenco().single { it.idEsterno == "sessione:${s.id}" }
+        assertEquals(TipoMisura.PRATICA, m.tipo); assertEquals(12.0, m.valore, 0.0)
+        // Una seconda sessione chiude la prima se era rimasta aperta.
+        val s2 = a.apriSessione(per, 10, oggi)!!
+        val s3 = a.apriSessione(per, 10, oggi)!!
+        assertNotNull(db.pratica().sessione(s2.id)!!.fine); assertEquals(s3.id, db.pratica().inCorso()!!.id)
+        a.chiudiSessione(s3, oggi)
+        Unit
+    }
+}

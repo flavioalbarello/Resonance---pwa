@@ -43,6 +43,8 @@
 
         <!-- Rispondere allo Shell e spuntare un rituale dalla notifica (battito/Rapide.kt). -->
         <receiver android:name=".battito.GestoRapido" android:exported="false" />
+        <!-- I gesti della sessione di studio dalla notifica, e la vibrazione a fine blocco (battito/Studio.kt). -->
+        <receiver android:name=".battito.GestoStudio" android:exported="false" />
 
         <receiver android:name=".battito.SvegliaBattito" android:exported="false">
             <intent-filter>

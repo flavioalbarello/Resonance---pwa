@@ -696,6 +696,46 @@ class Adam(app: Application) : AndroidViewModel(app) {
         val prossimo = StatoNodo.entries[(n.stato.ordinal + 1) % StatoNodo.entries.size]
         db.percorsi().aggiornaNodo(n.copy(stato = prossimo))
     }
+    // ── Lo studio (V3 fase 2): la sessione in corso, e i gesti che la fanno avanzare, dall'app come dalla notifica ──
+    val sessione = db.pratica().osservaInCorso().stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val esitiSessione = sessione.flatMapLatest { s -> s?.let { db.pratica().osservaEsiti(it.id) } ?: kotlinx.coroutines.flow.flowOf(emptyList()) }.stato()
+    // Il resoconto dell'ultima sessione finita dall'app: resta sotto il fronte finché non si apre un'altra sessione.
+    var resocontoStudio by mutableStateOf<List<String>>(emptyList())
+    suspend fun pianoStudio(p: Percorso, minuti: Int) = archivio.pianoPer(p.id, minuti, LocalDate.now())
+    fun iniziaStudio(p: Percorso, minuti: Int) = viewModelScope.launch {
+        val s = archivio.apriSessione(p.id, minuti, LocalDate.now()) ?: run { avviso = "Niente da studiare: aggiungi i brani o i passaggi come nodi."; return@launch }
+        resocontoStudio = emptyList()
+        val piano = it.resonance.adam.logica.Pratica.decodifica(s.piano)
+        val b = piano.first()
+        it.resonance.adam.battito.Studio.mostra(getApplication(), s.id, p.id, p.pilastro.name, b, 0, piano.size, System.currentTimeMillis() + b.minuti * 60_000L)
+        // La fonte del primo pezzo si apre da sola: Moises o YouTube davanti, la notifica sopra.
+        apriFonte(b.fonte)
+    }
+    fun segnaStudio(esito: it.resonance.adam.dati.EsitoPratica, velocita: Int?) = viewModelScope.launch {
+        val s = sessione.value ?: return@launch
+        val passo = archivio.segnaBlocco(s.id, esito, velocita, LocalDate.now()) ?: return@launch
+        if (passo.prossimo == null) resocontoStudio = passo.resoconto
+        it.resonance.adam.battito.Studio.dopo(getApplication(), archivio, passo)
+    }
+    fun chiudiStudio() = viewModelScope.launch {
+        val s = sessione.value ?: return@launch
+        val passo = archivio.chiudiSessione(s, LocalDate.now())
+        resocontoStudio = passo.resoconto.ifEmpty { listOf("Chiusa senza blocchi segnati.") }
+        it.resonance.adam.battito.Studio.dopo(getApplication(), archivio, passo)
+    }
+    fun apriFonte(fonte: String?) {
+        val u = it.resonance.adam.battito.Studio.link(fonte) ?: return
+        runCatching { getApplication<Application>().startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, u).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure { avviso = "Non si apre: $fonte" }
+    }
+    fun scadenzaFronte(p: Percorso, testo: String) = viewModelScope.launch {
+        if (testo.isBlank()) { archivio.scadenza(p, null); avviso = "Scadenza tolta"; return@launch }
+        val d = it.resonance.adam.logica.Pratica.leggiData(testo, LocalDate.now()) ?: run { avviso = "Data non capita: «$testo». Prova 20/12/2026."; return@launch }
+        archivio.scadenza(p, d)
+    }
+    fun fonteNodo(n: Nodo, fonte: String) = viewModelScope.launch { archivio.fonte(n, fonte) }
+
     fun creaPercorso(p: Pilastro, titolo: String, nodi: List<String>) = viewModelScope.launch {
         val e = archivio.esegui(it.resonance.adam.logica.Proposta.CreaPercorso(p, titolo.trim(), "", nodi))
         avviso = e.ricevuta

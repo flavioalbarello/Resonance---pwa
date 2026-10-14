@@ -83,3 +83,12 @@ occupa la barra. L'ancora a un terzo dal basso resta (decisione del Ghost).
 
 Dal registro, non dalle impressioni: quante volte al giorno il Ghost apre l'app di sua iniziativa; quante interazioni
 avvengono senza aprirla (notifiche); tocchi di conferma al giorno; passi avanti per fronte a settimana.
+
+## Stato (aggiornato a ogni fase)
+
+| fase | stato | note |
+|---|---|---|
+| 1. Motore | fatta (14/10) | DB 16; `logica/Pratica.kt`; un pezzo mai suonato non è «trascurato» |
+| 2. Sessione guidata | fatta (14/10), da provare sul telefono | scheda Studio in cima a ogni percorso con nodi; notifica fissa `battito/Studio.kt` (blocco, conto alla rovescia, vibrazione a fine blocco, ✓/✗/→, tocco = apre la fonte); minuti → misura PRATICA (rituale `PRATICA>=N` si spunta da solo); resoconto nel diario. Senza velocità misurata conta lo stato del nodo |
+
+Da guardare dal vivo: la vibrazione a fine blocco sopra Moises; il link di Moises si apre nell'app Moises o nel browser.

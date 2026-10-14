@@ -195,6 +195,8 @@ interface PraticaDao {
     @Update suspend fun aggiorna(s: Sessione)
     @Query("SELECT * FROM sessioni WHERE id = :id") suspend fun sessione(id: Long): Sessione?
     @Query("SELECT * FROM sessioni WHERE fine IS NULL ORDER BY inizio DESC LIMIT 1") suspend fun inCorso(): Sessione?
+    @Query("SELECT * FROM sessioni WHERE fine IS NULL ORDER BY inizio DESC LIMIT 1") fun osservaInCorso(): Flow<Sessione?>
+    @Query("SELECT * FROM esiti_pratica WHERE sessioneId = :sessione ORDER BY istante") fun osservaEsiti(sessione: Long): Flow<List<EsitoBlocco>>
     @Query("SELECT * FROM sessioni ORDER BY inizio") suspend fun sessioni(): List<Sessione>
     @Query("SELECT * FROM sessioni WHERE percorsoId = :percorso ORDER BY inizio DESC") fun sessioniDi(percorso: Long): Flow<List<Sessione>>
     @Insert suspend fun esito(e: EsitoBlocco): Long

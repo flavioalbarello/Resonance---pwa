@@ -200,6 +200,10 @@ object Contesto {
             if (p.scopo.isNotBlank()) append(" — ${Testi.corto(p.scopo, 160)}")
             appendLine()
             if (nodi.isNotEmpty()) appendLine("  nodi: $nodi")
+            // Lo studio (V3 fase 2): a che punto sono i pezzi, in velocità pulita; ciò che il programma misura, non che il Ghost dichiara.
+            val studiati = Pratica.pezzi(propri).filter { it.velocita != null || it.fonte != null }
+            if (studiati.isNotEmpty() || p.scadenza != null) appendLine("  studio: " + Pratica.riga(Pratica.pezzi(propri), i.oggi, p.scadenza?.let { runCatching { LocalDate.parse(it) }.getOrNull() }) +
+                studiati.joinToString("") { n -> "; «${n.etichetta}» " + (n.velocita?.let { "${it}% ${Pratica.fase(n).etichetta}" } ?: "non ancora") + (n.ultimaPratica?.let { " (ultima $it)" } ?: "") + (if (n.fonte != null) " [fonte]" else "") })
             appendLine("  documenti: ${docs.ifEmpty { "nessuno" }}")
         }
         appendLine()

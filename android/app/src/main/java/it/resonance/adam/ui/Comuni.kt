@@ -87,13 +87,13 @@ fun Linea(punti: List<Punto>, colore: Color, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun DialogoTesto(titolo: String, iniziale: String = "", etichetta: String = "", righe: Int = 1, onOk: (String) -> Unit, onChiudi: () -> Unit) {
+fun DialogoTesto(titolo: String, iniziale: String = "", etichetta: String = "", righe: Int = 1, vuotoOk: Boolean = false, onOk: (String) -> Unit, onChiudi: () -> Unit) {
     var t by remember { mutableStateOf(iniziale) }
     AlertDialog(
         onDismissRequest = onChiudi,
         title = { Text(titolo) },
         text = { OutlinedTextField(t, { t = it }, label = { Text(etichetta) }, minLines = righe, modifier = Modifier.fillMaxWidth()) },
-        confirmButton = { TextButton({ if (t.isNotBlank()) { onOk(t); onChiudi() } }) { Text("Salva") } },
+        confirmButton = { TextButton({ if (vuotoOk || t.isNotBlank()) { onOk(t); onChiudi() } }) { Text("Salva") } },
         dismissButton = { TextButton(onChiudi) { Text("Annulla") } },
     )
 }

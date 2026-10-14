@@ -12,6 +12,7 @@ import it.resonance.adam.logica.Fondo
 import it.resonance.adam.logica.Consegne
 import it.resonance.adam.logica.Lavagna
 import it.resonance.adam.logica.Testi
+import it.resonance.adam.logica.Pratica
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
@@ -573,6 +574,72 @@ class Archivio(val db: Db) {
     suspend fun scriviVoce(pilastro: Pilastro, testo: String, giorno: String) {
         db.voci().inserisci(Voce(pilastro = pilastro, giorno = giorno, testo = testo, fonte = "manuale", creato = ora, aggiornato = ora))
     }
+
+    // ── La sessione di pratica (V3 fase 2, logica/Pratica.kt): «ho X minuti» → piano → un esito per blocco → resoconto ──
+
+    /** Il piano per il tempo dato sui pezzi del fronte. Vuoto se non c'è niente da studiare: allora non si apre niente. */
+    suspend fun pianoPer(percorsoId: Long, minuti: Int, oggi: LocalDate): List<Pratica.Blocco> {
+        val p = db.percorsi().elenco().find { it.id == percorsoId } ?: return emptyList()
+        val pezzi = Pratica.pezzi(db.percorsi().elencoNodi().filter { it.percorsoId == percorsoId })
+        return Pratica.piano(pezzi, minuti, oggi, p.scadenza?.let { runCatching { LocalDate.parse(it) }.getOrNull() })
+    }
+
+    /** Apre la sessione. Una sola alla volta: se ce n'è una aperta, si chiude prima (con ciò che aveva fatto). */
+    suspend fun apriSessione(percorsoId: Long, minuti: Int, oggi: LocalDate, adesso: Long = ora): Sessione? {
+        val piano = pianoPer(percorsoId, minuti, oggi)
+        if (piano.isEmpty()) return null
+        db.pratica().inCorso()?.let { chiudiSessione(it, oggi, adesso) }
+        val s = Sessione(percorsoId = percorsoId, inizio = adesso, minuti = minuti, piano = Pratica.codifica(piano))
+        return s.copy(id = db.pratica().apri(s))
+    }
+
+    data class Passo(val sessione: Sessione, val prossimo: Pratica.Blocco?, val indice: Int, val totale: Int, val resoconto: List<String>)
+
+    /**
+     * L'esito del blocco corrente: si registra, il pezzo avanza (Pratica.dopo), e se era l'ultimo la sessione si chiude.
+     * La velocità è quella suonata davvero; null = quella del piano.
+     */
+    suspend fun segnaBlocco(sessioneId: Long, esito: EsitoPratica, velocita: Int?, oggi: LocalDate, adesso: Long = ora): Passo? {
+        val s = db.pratica().sessione(sessioneId)?.takeIf { it.fine == null } ?: return null
+        val piano = Pratica.decodifica(s.piano)
+        val fatti = db.pratica().esitiDi(s.id)
+        val b = Pratica.corrente(piano, fatti) ?: return chiudiSessione(s, oggi, adesso)
+        val v = (velocita ?: b.velocita).coerceIn(10, 200)
+        db.pratica().esito(EsitoBlocco(sessioneId = s.id, nodoId = b.nodoId, velocita = v, esito = esito, istante = adesso))
+        db.percorsi().elencoNodi().find { it.id == b.nodoId }?.let { db.percorsi().aggiornaNodo(Pratica.dopo(it, esito, v, oggi)) }
+        val dopo = db.pratica().esitiDi(s.id)
+        val prossimo = Pratica.corrente(piano, dopo) ?: return chiudiSessione(s, oggi, adesso)
+        return Passo(s, prossimo, dopo.size, piano.size, emptyList())
+    }
+
+    /**
+     * Chiude la sessione, anche a metà. I minuti passati diventano una misura PRATICA (così un rituale «PRATICA>=10» si
+     * spunta da solo), e il resoconto va nel diario del pilastro del fronte: lo Shell lo legge, il Ghost lo ritrova.
+     */
+    suspend fun chiudiSessione(s: Sessione, oggi: LocalDate, adesso: Long = ora): Passo {
+        val aperta = db.pratica().sessione(s.id) ?: s
+        val piano = Pratica.decodifica(aperta.piano)
+        val esiti = db.pratica().esitiDi(aperta.id)
+        if (aperta.fine != null) return Passo(aperta, null, esiti.size, piano.size, emptyList())
+        val chiusa = aperta.copy(fine = adesso)
+        db.pratica().aggiorna(chiusa)
+        val righe = Pratica.resoconto(piano, esiti)
+        val minuti = Pratica.minutiFatti(aperta.inizio, adesso)
+        val per = db.percorsi().elenco().find { it.id == aperta.percorsoId }
+        if (esiti.any { it.esito != EsitoPratica.SALTATO } && minuti > 0) {
+            db.misure().sostituisci(Misura(tipo = TipoMisura.PRATICA, valore = minuti.toDouble(), giorno = oggi.toString(), istante = adesso,
+                fonte = "sessione", nota = per?.titolo.orEmpty(), idEsterno = "sessione:${aperta.id}"))
+        }
+        if (per != null && righe.isNotEmpty()) {
+            db.voci().inserisci(Voce(pilastro = per.pilastro, giorno = oggi.toString(), fonte = "sessione", creato = adesso, aggiornato = adesso,
+                testo = "Studio «${per.titolo}», $minuti min: " + righe.joinToString("; ")))
+        }
+        return Passo(chiusa, null, esiti.size, piano.size, righe)
+    }
+
+    /** Il fronte: scadenza (null la toglie) e la fonte di un pezzo (Moises, YouTube, uno spartito). */
+    suspend fun scadenza(p: Percorso, data: LocalDate?) = db.percorsi().aggiorna(p.copy(scadenza = data?.toString()))
+    suspend fun fonte(n: Nodo, fonte: String?) = db.percorsi().aggiornaNodo(n.copy(fonte = fonte?.trim()?.ifEmpty { null }))
 
     suspend fun alternaSpunta(r: Rituale, giorno: String, tenuto: Boolean) {
         if (tenuto) db.rituali().togli(r.id, giorno) else db.rituali().spunta(Spunta(r.id, giorno, "manuale", ora))

@@ -22,6 +22,9 @@ class PraticaTest {
         assertEquals(70, Pratica.obiettivo(n(1, "nuovo")))
         assertEquals(85, Pratica.obiettivo(n(1, "a 80", 80)))
         assertEquals(100, Pratica.obiettivo(n(1, "a 98", 98)))
+        // Senza velocità vale lo stato del nodo: un consolidato è pronto, non da imparare.
+        assertEquals(Pratica.Fase.PRONTO, Pratica.fase(n(1, "Atto I").copy(stato = StatoNodo.CONSOLIDATO)))
+        assertEquals(85, Pratica.obiettivo(n(1, "Atto II").copy(stato = StatoNodo.PRATICATO)))
     }
 
     @Test fun colTempoCheCeIlPianoCambia() {
@@ -66,5 +69,29 @@ class PraticaTest {
         val nodi = listOf(n(1, "Scaletta"), n(2, "Gianna", genitore = 1), n(3, "Aida", 100, 2, genitore = 1))
         assertEquals(listOf(2L, 3L), Pratica.pezzi(nodi).map { it.id })
         assertEquals("1 pronti su 2 · mancano 30 giorni", Pratica.riga(Pratica.pezzi(nodi), oggi, oggi.plusDays(30)))
+    }
+
+    @Test fun ilPianoSiTieneComEraELaSessioneDiceAChePuntoSiamo() {
+        val piano = Pratica.piano(listOf(n(1, "Gianna", 75, ultima = "2026-10-10"), n(2, "Aida", 100, 2, ultima = "2026-09-30"),
+            n(3, "Berta")), 30, oggi, null)
+        val testo = Pratica.codifica(piano)
+        assertEquals(piano, Pratica.decodifica(testo))
+        assertTrue(Pratica.decodifica("non è json").isEmpty())
+        val e = { nodo: Long, es: EsitoPratica, v: Int -> it.resonance.adam.dati.EsitoBlocco(sessioneId = 1, nodoId = nodo, velocita = v, esito = es, istante = 0) }
+        assertEquals(piano[1], Pratica.corrente(piano, listOf(e(1, EsitoPratica.PULITO, 80))))
+        assertEquals(null, Pratica.corrente(piano, piano.map { e(it.nodoId, EsitoPratica.SALTATO, 0) }))
+        assertEquals(listOf("Gianna: pulito a 80% (era 75%)", "Berta: errori a 70%", "Aida: saltato"),
+            Pratica.resoconto(piano, listOf(e(1, EsitoPratica.PULITO, 80), e(3, EsitoPratica.ERRORI, 70), e(2, EsitoPratica.SALTATO, 100))))
+        assertEquals(25, Pratica.minutiFatti(0, 25 * 60_000L + 30_000))
+    }
+
+    @Test fun laScadenzaSiScriveComeViene() {
+        assertEquals(LocalDate.parse("2026-12-20"), Pratica.leggiData("20/12/2026", oggi))
+        assertEquals(LocalDate.parse("2026-12-20"), Pratica.leggiData("2026-12-20", oggi))
+        assertEquals(LocalDate.parse("2026-12-20"), Pratica.leggiData("20.12.26", oggi))
+        assertEquals(LocalDate.parse("2026-12-20"), Pratica.leggiData("20/12", oggi))
+        assertEquals(LocalDate.parse("2027-03-01"), Pratica.leggiData("1/3", oggi))
+        assertEquals(null, Pratica.leggiData("31/02/2027", oggi))
+        assertEquals(null, Pratica.leggiData("a natale", oggi))
     }
 }

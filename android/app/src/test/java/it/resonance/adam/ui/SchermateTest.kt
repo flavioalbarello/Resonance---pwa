@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -57,6 +58,12 @@ class SchermateTest {
         override fun scatta() {}
         override fun apriFile() {}
         override fun salvaCopia() {}
+    }
+
+    // Room lavora fuori dal thread principale: si aspetta in tempo vero, ridisegnando.
+    private fun aspetta(condizione: () -> Boolean) {
+        repeat(50) { if (condizione()) return; Thread.sleep(100); regola.waitForIdle() }
+        assertTrue(condizione())
     }
 
     private fun scatta(nome: String) {
@@ -248,6 +255,22 @@ class SchermateTest {
         regola.onNodeWithText("▸ Brani").performScrollTo().performClick()
         regola.onNodeWithText("Seme").assertExists()
         scatta("5b-percorso-sottonodi")
+        // Lo studio (V3 fase 2): quanto tempo c'è → il piano → Inizia → il pannello del blocco → Chiudi → com'è andata.
+        regola.onNodeWithText("20′").performScrollTo().performClick()
+        aspetta { regola.onAllNodesWithTag("inizia-studio").fetchSemanticsNodes().isNotEmpty() }
+        regola.onNodeWithTag("inizia-studio").performScrollTo()
+        scatta("5c-studio-piano")
+        regola.onNodeWithTag("inizia-studio").performClick()
+        aspetta { vm.sessione.value != null }
+        regola.onNodeWithTag("pulito").performScrollTo()
+        scatta("5d-studio-in-corso")
+        regola.onNodeWithTag("pulito").performClick()
+        aspetta { vm.esitiSessione.value.size == 1 }
+        regola.onNodeWithText("Chiudi qui").performScrollTo().performClick()
+        aspetta { vm.sessione.value == null }
+        regola.onNodeWithText("COM'È ANDATA").performScrollTo()
+        regola.onNodeWithText("pulito a 70% (prima volta)", substring = true).assertExists()
+        scatta("5e-studio-resoconto")
 
         vm.vai(Schermata.BIO)
         // Il nome non si traduce: una riga ne apre il significato (logica/Significati.kt).

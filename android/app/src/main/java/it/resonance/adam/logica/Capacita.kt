@@ -36,6 +36,7 @@ object Capacita {
         "Memoria, in ogni pilastro: il quaderno, che il Ghost rilegge e corregge; in Adam, sotto, le tue ipotesi del taccuino. Storia, in Adam: il diario per pilastro, con le tue consegne in cima",
         "battito mattino, sera e domenica, con registro e «Prova ora» in Setup",
         "nodi: tocco per avanzare lo stato, pressione lunga per spostare, dare il pilastro, togliere",
+        "Studio, in cima a ogni percorso con nodi: «quanto tempo hai?» (5 minuti–2 ore) → il programma fa il piano (i pezzi più indietro e trascurati, la scadenza alza la fretta, un ripasso dei pronti); una notifica fissa sopra Moises o YouTube col blocco, il conto alla rovescia, una vibrazione a fine blocco e ✓ Pulito / ✗ Errori / → Avanti; la velocità pulita in % (si sale di 5 a ogni pulito; pronto = due puliti di fila al 100%); i minuti diventano PRATICA (un rituale PRATICA>=N si spunta da solo) e il resoconto va nel diario. Sul nodo, pressione lunga: la fonte (link che lo studio apre da solo). Scadenza del fronte dalla scheda Studio",
         "riunione a tre (Adam → Lettere → Apri riunione): ogni scambio col Ghost va nel verbale, l'architetto legge e interviene; un suo intervento che comincia con «→ Shell» ti fa rispondere da solo, al massimo 3 giri senza il Ghost; «Ritira ora» nella fascia; alla chiusura scrivi tu il verbale (senza strumenti)",
         "gli interventi dell'architetto (riunione e lettere) si ascoltano con «🔊 Ascolta», e in auto si leggono da soli",
         "Adam → Storia: le tue consegne aperte e chiuse; il Ghost può lasciarne una",

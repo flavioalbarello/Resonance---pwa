@@ -147,6 +147,8 @@ class MainActivity : ComponentActivity() {
 
     private fun apriDa(intent: Intent?) {
         intent?.getStringExtra(Battiti.EXTRA_SCHERMATA)?.let { s -> runCatching { vm.vai(Schermata.valueOf(s)) } }
+        // Dalla notifica dello studio: dritti al fronte.
+        intent?.getLongExtra(it.resonance.adam.battito.Studio.EXTRA_PERCORSO, -1L)?.takeIf { it > 0 }?.let { vm.percorsoAperto = it }
         // Condiviso da un'altra app: file come allegati, testo nella casella. Si manda solo quando il Ghost preme Invia.
         when (intent?.action) {
             Intent.ACTION_SEND -> {
