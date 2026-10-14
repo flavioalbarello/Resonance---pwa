@@ -147,6 +147,12 @@ data class Percorso(
     val creato: Long,
     val archiviato: Boolean = false,
     val idEsterno: String? = null,
+    // Il fronte (V3, 14/10/2026, PROGETTO_V3.md): un percorso col motore acceso. ritmoGiorni = 0 è un fronte spento,
+    // cioè il percorso di sempre; > 0, lo Shell ci lavora ogni tanti giorni. La scadenza (yyyy-MM-dd) dà la fretta.
+    @ColumnInfo(defaultValue = "NULL") val scadenza: String? = null,
+    @ColumnInfo(defaultValue = "0") val ritmoGiorni: Int = 0,
+    @ColumnInfo(defaultValue = "") val prossimoPasso: String = "",
+    @ColumnInfo(defaultValue = "NULL") val ultimoLavoro: String? = null,
 )
 
 @Serializable
@@ -163,6 +169,13 @@ data class Nodo(
     // Solo nei percorsi di Adam (trasversali) e solo al primo livello: il pilastro di questa parte. I sotto-nodi lo
     // ereditano; i pilastri del percorso non si dichiarano, si leggono da qui (logica/Nodi.kt).
     @ColumnInfo(defaultValue = "NULL") val pilastro: Pilastro? = null,
+    // La pratica (V3, 14/10/2026, logica/Pratica.kt): un brano o un passaggio che si studia. La fonte è dove si studia
+    // (un link YouTube che parte dal punto giusto, «moises»); la velocità è la più alta suonata pulita, in % dell'originale;
+    // puliteDiFila conta le sessioni pulite di fila al 100%, e due fanno «pronto».
+    @ColumnInfo(defaultValue = "NULL") val fonte: String? = null,
+    @ColumnInfo(defaultValue = "NULL") val velocita: Int? = null,
+    @ColumnInfo(defaultValue = "0") val puliteDiFila: Int = 0,
+    @ColumnInfo(defaultValue = "NULL") val ultimaPratica: String? = null,
 )
 
 @Serializable
@@ -418,4 +431,32 @@ data class Lettura(
     val fonti: String = "",
     val problemi: String = "",
     val istante: Long,
+)
+
+// La sessione (V3, 14/10/2026): l'unità d'uso. Il Ghost dice quanto tempo ha, il programma fa il piano (logica/Pratica.kt),
+// l'app accompagna durante, e ogni blocco lascia il suo esito. Il piano si tiene com'era stato dato (Legge 14).
+@Serializable
+@Entity(tableName = "sessioni", indices = [Index("percorsoId")])
+data class Sessione(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val percorsoId: Long,
+    val inizio: Long,
+    val minuti: Int,
+    val piano: String,
+    val fine: Long? = null,
+    val nota: String = "",
+)
+
+enum class EsitoPratica(val etichetta: String) { PULITO("pulito"), ERRORI("errori"), SALTATO("saltato") }
+
+@Serializable
+@Entity(tableName = "esiti_pratica", indices = [Index("sessioneId"), Index("nodoId")])
+data class EsitoBlocco(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sessioneId: Long,
+    val nodoId: Long,
+    val velocita: Int,
+    val esito: EsitoPratica,
+    val istante: Long,
+    val nota: String = "",
 )

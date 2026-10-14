@@ -41,6 +41,9 @@ data class Copia(
     val tracce: List<Traccia> = emptyList(),
     val osservazioni: List<Osservazione> = emptyList(),
     val letture: List<Lettura> = emptyList(),
+    // V3: le sessioni di pratica e i loro esiti.
+    val sessioni: List<Sessione> = emptyList(),
+    val esitiPratica: List<EsitoBlocco> = emptyList(),
 )
 
 class Ambiguo(m: String) : Exception(m)
@@ -655,6 +658,7 @@ class Archivio(val db: Db) {
         consegne = db.consegne().elenco(), appunti = db.lavagna().elenco(),
         stanze = db.tracce().stanze(), tracce = db.tracce().elenco(),
         osservazioni = db.segui().elenco(), letture = db.segui().letture(),
+        sessioni = db.pratica().sessioni(), esitiPratica = db.pratica().esiti(),
     ))
 
     fun eUnaCopia(testo: String) = testo.contains("\"_formato\":\"resonance-apk\"") || testo.contains("\"_formato\": \"resonance-apk\"")
@@ -664,7 +668,7 @@ class Archivio(val db: Db) {
         val c = json.decodeFromString(Copia.serializer(), testo)
         db.withTransaction {
             listOf("misure", "voci", "versioni", "rituali", "spunte", "percorsi", "nodi", "documenti", "quaderni", "messaggi", "spesa", "profilo", "esperimenti",
-                "taccuino", "movimenti", "lettere", "risposte", "consegne", "appunti", "stanze", "tracce", "osservazioni", "letture")
+                "taccuino", "movimenti", "lettere", "risposte", "consegne", "appunti", "stanze", "tracce", "osservazioni", "letture", "sessioni", "esiti_pratica")
                 .forEach { db.openHelper.writableDatabase.execSQL("DELETE FROM $it") }
             c.misure.forEach { db.misure().sostituisci(it) }
             c.voci.forEach { db.voci().inserisci(it) }
@@ -689,6 +693,8 @@ class Archivio(val db: Db) {
             c.tracce.forEach { db.tracce().deposita(it) }
             c.osservazioni.forEach { db.segui().inserisci(it) }
             c.letture.forEach { db.segui().leggi(it) }
+            c.sessioni.forEach { db.pratica().apri(it) }
+            c.esitiPratica.forEach { db.pratica().esito(it) }
         }
         return c.misure.size + c.voci.size + c.documenti.size
     }
