@@ -95,6 +95,8 @@ avvengono senza aprirla (notifiche); tocchi di conferma al giorno; passi avanti 
 
 | 3. Fronte motorizzato (16/10) | fatta | strumenti `regola_fronte` (scadenza, ritmo, prossimo passo) e `fonte_nodo` (il link deve venire da una ricerca del turno o da un messaggio del Ghost: uno inventato torna indietro); scheda **Motore** nel fronte (spento / ogni 1, 3, 7 giorni; prossimo passo); col motore acceso il battito apre un turno di lavoro dello Shell per fronte (al massimo 2 per battito), forma dichiarata prima (`logica/Fronte.kt`), conto delle proposte fatto dal programma, notifica che porta a Oggi. Trovato dalla prova: i risultati delle ricerche arrivavano al modello senza i link; ora ci sono |
 
+| 5. Mappa del tempo (16/10) | fatta | `logica/Tempo.kt`: buchi fra gli impegni (8–22; gli eventi di tutto il giorno non occupano; i nomi non si guardano). Al battito del mattino una sveglia nel primo buco dopo l'ora scelta (Setup, predefinita 18:30); quando suona il programma ricontrolla (impegno in corso, via, studio già aperto) e propone fronte e pezzo con «Studia 20′ / Studia N′ / Non ora»: un tocco apre la sessione. In Oggi il tempo libero di adesso diventa la prima scelta; durante un impegno lo dice |
+
 Scostamento dal piano: niente `ui3/` accanto alla vecchia. La cornice nuova sostituisce la vecchia subito, perché le schermate
 vecchie restano raggiungibili dal menu: nessuna funzione persa, nessuna doppia interfaccia da tenere allineata.
 

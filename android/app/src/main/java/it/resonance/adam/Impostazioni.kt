@@ -43,6 +43,14 @@ open class Impostazioni(context: Context) {
         get() = p.getBoolean("tourVisto", false)
         set(v) = p.edit().putBoolean("tourVisto", v).apply()
 
+    // La mappa del tempo (V3 fase 5, logica/Tempo.kt): lo studio proposto nel primo buco del calendario dopo quest'ora.
+    var studioNeiBuchi: Boolean
+        get() = p.getBoolean("studioNeiBuchi", true)
+        set(v) = p.edit().putBoolean("studioNeiBuchi", v).apply()
+    var oraStudio: String
+        get() = p.getString("oraStudio", "18:30")!!
+        set(v) = p.edit().putString("oraStudio", v).apply()
+
     var battitoAttivo: Boolean
         get() = p.getBoolean("battito", true)
         set(v) = p.edit().putBoolean("battito", v).apply()

@@ -105,10 +105,20 @@ private fun Adesso(vm: Adam) {
         Text(proposta.pezzo.etichetta, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
         Tenue(Pratica.fase(proposta.pezzo).etichetta + (proposta.pezzo.velocita?.let { " · ultima pulita $it%" } ?: "") + " · " +
             Pratica.riga(Pratica.pezzi(i.nodi.filter { it.percorsoId == per.id }), i.oggi, per.scadenza?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }))
-        Tenue("Quanto tempo hai? Il piano lo fa il programma.")
+        // La mappa del tempo (logica/Tempo.kt): se il calendario è letto, il tempo libero di adesso diventa la prima scelta.
+        val eventi = (vm.agenda as? AgendaLetta.Letta)?.eventi
+        val ora = java.time.LocalDateTime.now()
+        val momento = eventi?.let { ev -> it.resonance.adam.logica.Tempo.adesso(ev, ora) }
+        val libero = (momento as? it.resonance.adam.logica.Tempo.Adesso.Libero)?.let { l -> l to it.resonance.adam.logica.Tempo.daStudiare(l.minuti) }
+        when {
+            momento is it.resonance.adam.logica.Tempo.Adesso.Impegnato -> Tenue("Ora sei in un impegno fino alle ${momento.evento.fine.toLocalTime().toString().take(5)}. Quando hai tempo:")
+            libero != null && libero.second >= 5 -> Tenue(it.resonance.adam.logica.Tempo.riga(libero.first) + ". Il piano lo fa il programma.")
+            else -> Tenue("Quanto tempo hai? Il piano lo fa il programma.")
+        }
+        val tempi = (listOfNotNull(libero?.second?.takeIf { it >= 5 && it !in SUBITO }) + SUBITO).distinct()
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(SUBITO) { m ->
-                AssistChip({ vm.iniziaStudio(per, m) }, label = { Text(if (m < 60) "$m′" else "1h") }, modifier = Modifier.testTag("subito-$m"))
+            items(tempi) { m ->
+                AssistChip({ vm.iniziaStudio(per, m) }, label = { Text(if (m < 60) "$m′" else if (m % 60 == 0) "${m / 60}h" else "${m / 60}h${m % 60}") }, modifier = Modifier.testTag("subito-$m"))
             }
         }
     }

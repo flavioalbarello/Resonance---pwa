@@ -251,6 +251,13 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             runCatching { archivio.pulisciLavagna(oggi) }
             runCatching { Fissati.aggiorna(applicationContext) }
             val agenda = if (b == Battito.MATTINO) runCatching { mondo.agenda(oggi, 1) }.getOrDefault(AgendaLetta.NonLetta) else AgendaLetta.NonLetta
+            // La mappa del tempo (V3 fase 5): al mattino si guarda il calendario e si mette la sveglia della proposta nel primo
+            // buco dopo l'ora scelta. Senza calendario letto, all'ora scelta: il programma ricontrolla comunque quando suona.
+            if (b == Battito.MATTINO && imp.studioNeiBuchi && !prova) runCatching {
+                val dalle = Ritmo.leggiOrario(imp.oraStudio, it.resonance.adam.logica.Tempo.PROPOSTE_DALLE)
+                val eventi = (agenda as? AgendaLetta.Letta)?.eventi.orEmpty()
+                it.resonance.adam.logica.Tempo.daProporre(eventi, oggi, LocalDateTime.now(), dalle)?.let { buco -> Studio.programmaProposta(applicationContext, buco.da) }
+            }
             val i = archivio.istantanea(oggi, agenda)
             val riassunto = when (b) {
                 Battito.MATTINO -> Riassunti.mattino(i)

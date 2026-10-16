@@ -16,6 +16,7 @@ import it.resonance.adam.dati.Archivio
 import it.resonance.adam.dati.Db
 import it.resonance.adam.dati.EsitoPratica
 import it.resonance.adam.logica.Pratica
+import it.resonance.adam.cervello.istantanea
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -31,6 +32,10 @@ object Studio {
     const val ID = 4900
     private const val ESITO = "it.resonance.adam.STUDIO_ESITO"
     private const val TEMPO = "it.resonance.adam.STUDIO_TEMPO"
+    private const val PROPONI = "it.resonance.adam.STUDIO_PROPONI"
+    private const val AVVIA = "it.resonance.adam.STUDIO_AVVIA"
+    private const val NON_ORA = "it.resonance.adam.STUDIO_NON_ORA"
+    const val ID_PROPOSTA = 4910
     const val EXTRA_PERCORSO = "percorso"
 
     private fun canali(context: Context) {
@@ -131,8 +136,68 @@ object Studio {
             passo.resoconto)
     }
 
+    // ── La mappa del tempo (V3 fase 5, logica/Tempo.kt): la proposta nel buco, e lo studio che parte dalla notifica ──
+
+    private fun intentProposta(context: Context) = PendingIntent.getBroadcast(context, ID_PROPOSTA,
+        Intent(context, GestoStudio::class.java).setAction(PROPONI), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+
+    /** La sveglia della proposta, all'inizio del buco. Una al giorno: la nuova sostituisce la vecchia. */
+    fun programmaProposta(context: Context, quando: java.time.LocalDateTime) {
+        val ms = quando.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        if (ms <= System.currentTimeMillis()) return
+        val am = context.getSystemService(AlarmManager::class.java)
+        if (Battiti.esatte(context)) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, ms, intentProposta(context))
+        else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, ms, intentProposta(context))
+    }
+
+    private fun avvia(context: Context, percorso: Long, minuti: Int) = PendingIntent.getBroadcast(context, ID_PROPOSTA + minuti,
+        Intent(context, GestoStudio::class.java).setAction(AVVIA).putExtra("percorso", percorso).putExtra("minuti", minuti),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+
+    /**
+     * All'ora del buco il programma ricontrolla (il calendario può essere cambiato, il Ghost può essere via o già a
+     * studiare) e, se il tempo c'è davvero, propone il fronte e il pezzo più urgenti con due durate. Un tocco e parte.
+     */
+    @android.annotation.SuppressLint("MissingPermission")
+    suspend fun proponi(context: Context, archivio: Archivio, adesso: java.time.LocalDateTime = java.time.LocalDateTime.now()) {
+        if (archivio.assenzaInCorso() != null || archivio.db.pratica().inCorso() != null) return
+        val eventi = (it.resonance.adam.mondo.MondoAndroid(context).agenda(adesso.toLocalDate(), 1) as? it.resonance.adam.logica.AgendaLetta.Letta)?.eventi.orEmpty()
+        val libero = it.resonance.adam.logica.Tempo.adesso(eventi, adesso) as? it.resonance.adam.logica.Tempo.Adesso.Libero ?: return
+        val tutto = it.resonance.adam.logica.Tempo.daStudiare(libero.minuti)
+        if (tutto < it.resonance.adam.logica.Tempo.MINIMO) return
+        val i = archivio.istantanea(adesso.toLocalDate())
+        val p = it.resonance.adam.logica.Fronti.prossimo(i.percorsi, i.nodi, i.oggi) ?: return
+        val corto = minOf(tutto, 20)
+        canali(context)
+        val testo = "${p.pezzo.etichetta} · ${it.resonance.adam.logica.Pratica.fase(p.pezzo).etichetta}" +
+            (p.pezzo.velocita?.let { " a $it%" } ?: "") + "\n" + it.resonance.adam.logica.Tempo.riga(libero) + ". Il piano lo fa il programma."
+        val n = NotificationCompat.Builder(context, Battiti.CANALE)
+            .setSmallIcon(R.drawable.ic_notifica)
+            .setContentTitle("Hai ${libero.minuti.coerceAtMost(600)}′: «${p.percorso.titolo}»?")
+            .setContentText(testo.lineSequence().first())
+            .setStyle(NotificationCompat.BigTextStyle().bigText(testo))
+            .setAutoCancel(true)
+            .setContentIntent(apriApp(context, p.percorso.id, schermata(p.percorso.pilastro)))
+            .addAction(0, "Studia $corto′", avvia(context, p.percorso.id, corto))
+            .apply { if (tutto > corto) addAction(0, "Studia $tutto′", avvia(context, p.percorso.id, tutto)) }
+            .addAction(0, "Non ora", PendingIntent.getBroadcast(context, ID_PROPOSTA + 1, Intent(context, GestoStudio::class.java).setAction(NON_ORA), PendingIntent.FLAG_IMMUTABLE))
+            .build()
+        try { NotificationManagerCompat.from(context).notify(ID_PROPOSTA, n) } catch (_: SecurityException) {}
+    }
+
     internal suspend fun gesto(context: Context, intent: Intent) {
         val archivio = Archivio(Db.di(context))
+        when (intent.action) {
+            PROPONI -> return proponi(context, archivio)
+            NON_ORA -> return NotificationManagerCompat.from(context).cancel(ID_PROPOSTA)
+            AVVIA -> {
+                NotificationManagerCompat.from(context).cancel(ID_PROPOSTA)
+                val per = archivio.db.percorsi().elenco().find { it.id == intent.getLongExtra("percorso", -1) } ?: return
+                val s = archivio.apriSessione(per.id, intent.getIntExtra("minuti", 20), LocalDate.now()) ?: return
+                val piano = Pratica.decodifica(s.piano)
+                return mostra(context, s.id, per.id, schermata(per.pilastro), piano.first(), 0, piano.size, System.currentTimeMillis() + piano.first().minuti * 60_000L)
+            }
+        }
         val id = intent.getLongExtra("sessione", -1)
         val indice = intent.getIntExtra("indice", -1)
         val s = archivio.db.pratica().sessione(id)?.takeIf { it.fine == null } ?: return togli(context)

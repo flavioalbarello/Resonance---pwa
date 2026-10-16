@@ -94,4 +94,30 @@ class StudioTest {
         a.chiudiSessione(s3, oggi)
         Unit
     }
+
+    // La mappa del tempo (V3 fase 5): all'ora del buco arriva la proposta, e un tocco fa partire lo studio.
+    @Test fun nelBucoArrivaLaPropostaEUnToccoFaPartireLoStudio() = runBlocking {
+        shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
+        Battiti.creaCanale(app)
+        val db = Db.di(app)
+        val a = Archivio(db)
+        db.pratica().inCorso()?.let { a.chiudiSessione(it, LocalDate.now()) }
+        val per = db.percorsi().inserisci(Percorso(pilastro = Pilastro.VIDYA, titolo = "Tributo nel buco", creato = 1, scadenza = LocalDate.now().plusDays(10).toString()))
+        db.percorsi().inserisciNodo(Nodo(percorsoId = per, etichetta = "Nuntereggae più", ordine = 0, velocita = 85, ultimaPratica = LocalDate.now().minusDays(9).toString()))
+        Studio.proponi(app, a, LocalDate.now().atTime(18, 40))
+        val n = nm.getNotification(Studio.ID_PROPOSTA)
+        assertNotNull("la proposta nel buco", n)
+        assertTrue(n.extras.getCharSequence("android.title").toString().startsWith("Hai 200′"))
+        assertEquals(listOf("Studia 20′", "Studia 120′", "Non ora"), n.actions.map { it.title.toString() })
+        Studio.gesto(app, Intent(shadowOf(n.actions[0].actionIntent).savedIntent))
+        val s = db.pratica().inCorso()!!
+        assertEquals(20, s.minuti)
+        assertNotNull(nm.getNotification(Studio.ID))
+        // Con una sessione già in corso, niente proposta.
+        app.getSystemService(NotificationManager::class.java).cancel(Studio.ID_PROPOSTA)
+        Studio.proponi(app, a, LocalDate.now().atTime(18, 40))
+        assertNull(nm.getNotification(Studio.ID_PROPOSTA))
+        a.chiudiSessione(s, LocalDate.now())
+        Unit
+    }
 }

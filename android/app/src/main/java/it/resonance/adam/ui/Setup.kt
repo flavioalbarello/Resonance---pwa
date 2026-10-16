@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -129,6 +130,14 @@ fun Setup(vm: Adam, sistema: Sistema) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(battito, { battito = it; imp.battitoAttivo = it; vm.riprogrammaBattito() })
                 Text("  Attivo")
+            }
+            // La mappa del tempo (V3): lo studio proposto nel primo buco del calendario dopo l'ora scelta.
+            var buchi by remember { mutableStateOf(imp.studioNeiBuchi) }
+            var oraStudio by remember { mutableStateOf(imp.oraStudio) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(buchi, { buchi = it; imp.studioNeiBuchi = it })
+                Text("  Proponimi lo studio nel primo buco del calendario dopo le", modifier = Modifier.weight(1f), fontSize = 14.sp)
+                OutlinedTextField(oraStudio, { oraStudio = it; if (Regex("^\\d{1,2}:\\d{2}$").matches(it)) imp.oraStudio = it }, modifier = Modifier.width(88.dp), singleLine = true)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(mattino, { mattino = it }, label = { Text("Mattino") }, modifier = Modifier.weight(1f))
