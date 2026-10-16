@@ -219,6 +219,7 @@ internal fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics
                 }
             }
         }
+        MotoreUi(vm, per, colore)
         StudioUi(vm, per, tutti, colore)
         Scheda(colore) {
             Etichetta("Nodi · tocca per avanzare, tieni premuto per spostare o togliere", colore)

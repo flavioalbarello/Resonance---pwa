@@ -232,6 +232,21 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 if (d.consegna != c.copy(lavorata = true)) archivio.db.consegne().aggiorna(d.consegna)
                 Battiti.notifica(applicationContext, 115, d.titolo, d.testo, "", "SHELL")
             }
+            // I fronti col motore acceso (V3 fase 3, logica/Fronte.kt): un turno di lavoro dello Shell per fronte, al suo ritmo.
+            // Il giorno si segna PRIMA della chiamata (un errore non lo fa ripartire a ogni battito); il conto lo fa il programma.
+            if (!prova) runCatching { archivio.db.percorsi().elenco() }.getOrDefault(emptyList()).filter { per -> it.resonance.adam.logica.Fronte.dovuto(per, oggi) }.take(2).forEach { p ->
+                archivio.db.percorsi().aggiorna(p.copy(ultimoLavoro = oggi.toString()))
+                val e = runCatching { Shell(archivio, imp, mondo = mondo).lavoraFronte(p) }
+                val proposte = e.getOrNull()?.proposte.orEmpty().mapNotNull { id -> archivio.db.messaggi().per(id)?.let { m -> runCatching { archivio.proposta(m) }.getOrNull() } }
+                val chi = it.resonance.adam.logica.Nomi.soggetto(archivio.db.profilo().leggi())
+                val (titolo, testo) = when {
+                    e.isFailure || e.getOrNull()?.errore == true -> "$chi non è riuscito a lavorare su «${p.titolo}»" to
+                        it.resonance.adam.logica.Testi.corto(e.getOrNull()?.testo ?: e.exceptionOrNull()?.message ?: "errore", 160)
+                    proposte.isEmpty() -> "$chi ha guardato «${p.titolo}»" to it.resonance.adam.logica.Testi.corto(e.getOrNull()?.testo.orEmpty().ifBlank { "Niente da proporre." }, 160)
+                    else -> "$chi ha lavorato su «${p.titolo}»" to "${it.resonance.adam.logica.Fronte.conto(proposte)}: decidi da Oggi."
+                }
+                Battiti.notifica(applicationContext, 116, titolo, testo, "", "OGGI")
+            }
             // La lavagna: ciò che è finito da 30 giorni si cancella davvero; le notifiche fissate seguono le scadenze.
             runCatching { archivio.pulisciLavagna(oggi) }
             runCatching { Fissati.aggiorna(applicationContext) }

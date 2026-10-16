@@ -9,10 +9,10 @@ object Capacita {
 
     val AREE = listOf(
         Area("Tutti i pilastri (BIO, AIR, VIDYA, ADAM)",
-            "diario, quaderno (memoria che leggi a ogni turno), percorsi con nodi su due livelli e documenti, rituali, esperimenti",
+            "diario, quaderno (memoria che leggi a ogni turno), percorsi con nodi su due livelli e documenti, rituali, esperimenti; ogni percorso è un FRONTE: scadenza, prossimo passo, la fonte di ogni pezzo (il link che lo Studio apre) e un ritmo che accende il motore (ogni N giorni il programma ti dà un turno di lavoro su quel fronte, anche ad app chiusa: le tue proposte il Ghost le decide da Oggi)",
             listOf("scrivi_voce", "modifica_quaderno", "aggiorna_quaderno", "crea_percorso", "aggiungi_nodi", "sposta_nodi", "stato_nodo",
                 "togli_nodo", "salva_documento", "modifica_documento", "togli_documento", "leggi_documento", "cerca", "crea_rituale", "spunta_rituale",
-                "proponi_esperimento", "lascia_esperimento")),
+                "proponi_esperimento", "lascia_esperimento", "regola_fronte", "fonte_nodo")),
         Area("BIO", "peso, sonno, passi, FC a riposo, allenamenti; anche da Health Connect, letti da soli ogni 6 ore",
             listOf("registra_misura", "leggi_misure")),
         Area("AIR", "entrate, divise fra legate al tempo e non (l'esito del pilastro sono le seconde)", listOf("registra_misura", "leggi_misure")),

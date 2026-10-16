@@ -675,6 +675,36 @@ class ShellTest {
         assertTrue(db.messaggi().elenco().none { it.ruolo == Ruolo.NOTA && it.testo.contains("come testo") })
     }
 
+    // V3 fase 3: il fronte col motore. Il turno di lavoro dichiara la forma, la fonte inventata torna indietro, quella
+    // della ricerca passa; tutto resta proposta finché il Ghost non dice Sì.
+    @Test fun ilTurnoSulFronteTrovaLeFontiEUnLinkInventatoNonPassa() = runBlocking {
+        archivio.esegui(Proposta.CreaPercorso(Pilastro.VIDYA, "Tributo Rino Gaetano", "", listOf("Gianna", "Aida")))
+        val per = db.percorsi().elenco().single()
+        db.percorsi().aggiorna(per.copy(ritmoGiorni = 3))
+        assertTrue(it.resonance.adam.logica.Fronte.dovuto(db.percorsi().elenco().single(), LocalDate.now()))
+        val modello = FintoModello(
+            chiama("fonte_nodo", """{"percorso":"Tributo Rino Gaetano","nodo":"Gianna","fonte":"https://www.youtube.com/watch?v=inventato"}"""),
+            chiama("cerca_nel_web", """{"domanda":"Gianna Rino Gaetano base senza basso"}"""),
+            chiama("fonte_nodo", """{"percorso":"Tributo Rino Gaetano","nodo":"Gianna","fonte":"https://youtube.com/p","perche":"base senza basso"}"""),
+            chiama("regola_fronte", """{"percorso":"Tributo Rino Gaetano","prossimo_passo":"trovare la base di Aida"}"""),
+            testo("Una fonte per Gianna e il prossimo passo: decidi da Oggi."))
+        modello.ricerche += web("Base di Gianna senza basso", "youtube.com")
+        val e = shell(modello, FintaCassetta()).lavoraFronte(db.percorsi().elenco().single())
+        // La forma detta al modello prima: le fonti mancanti e il prossimo passo.
+        val richiesta = contenuto(modello.ricevuti[0], modello.ricevuti[0].size - 1)
+        assertTrue(richiesta.contains("«Gianna»") && richiesta.contains("regola_fronte"))
+        // Il link inventato torna indietro col motivo.
+        assertTrue(contenuto(modello.ricevuti[1], modello.ricevuti[1].size - 1).contains("non viene da una ricerca"))
+        assertEquals(2, e.proposte.size)
+        val proposte = e.proposte.map { archivio.proposta(db.messaggi().per(it)!!)!! }
+        assertEquals("1 fonte, il prossimo passo", it.resonance.adam.logica.Fronte.conto(proposte))
+        // Il Ghost dice Sì da Oggi: la fonte va sul pezzo, il passo sul fronte.
+        e.proposte.forEach { shell(FintoModello(), FintaCassetta()).conferma(it) }
+        assertEquals("https://youtube.com/p", db.percorsi().elencoNodi().single { it.etichetta == "Gianna" }.fonte)
+        assertEquals("trovare la base di Aida", db.percorsi().elenco().single().prossimoPasso)
+        assertEquals(3, db.percorsi().elenco().single().ritmoGiorni)
+    }
+
     @Test fun unaConsegnaSiPrendeSiLavoraESiChiudeGuardandoIlDocumento() = runBlocking {
         archivio.esegui(Proposta.CreaPercorso(Pilastro.ADAM, "Resonance", "", listOf("Fondo")))
         val prendi = FintoModello(chiama("prendi_consegna", """{"cosa":"Scheda del micro-asset","documento":"Scheda micro-asset","percorso":"Resonance","giorni":3}"""), testo("Proposta la consegna."))

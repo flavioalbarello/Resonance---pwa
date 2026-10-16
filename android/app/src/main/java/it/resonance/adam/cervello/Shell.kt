@@ -13,6 +13,7 @@ import it.resonance.adam.dati.Voce
 import it.resonance.adam.dati.Ruolo
 import it.resonance.adam.dati.StatoProposta
 import it.resonance.adam.dati.TipoMisura
+import it.resonance.adam.logica.Fronte
 import it.resonance.adam.logica.Agenda
 import it.resonance.adam.logica.Tour
 import it.resonance.adam.logica.Ricerca
@@ -435,8 +436,10 @@ class Shell(
                         t.testo.lineSequence().firstOrNull { it.trim().startsWith("Lettura:") }?.let { "\n$it" }.orEmpty())
                 }
                 if (t.riuscita && t.problemi.isNotEmpty()) appendLine("Avvisi (non errori tecnici): ${t.problemi.joinToString("; ")}")
+                // I link veri delle fonti (16/10): senza, lo Shell non poteva proporre una fonte per un pezzo se non inventandola.
+                if (t.fonti.isNotEmpty()) appendLine("Link: " + t.fonti.take(5).joinToString(" · ") { f -> "${Testi.corto(f.titolo.ifBlank { f.dominio }, 50)} ${f.url}" })
             }
-        }.trimEnd()
+        }.trimEnd().also { _ -> trovati.forEach { t -> t.fonti.forEach { f -> linkVisti += Fronte.linkIn(f.url) } } }
     }
 
     suspend fun cercaSullaMappa(m: Azioni.RichiestaMappa): Osm.Risposta {
@@ -726,6 +729,29 @@ class Shell(
         return Esito(testo, emptyList())
     }
 
+    // I link visti in questo Shell: crescono con le ricerche del turno, e solo questi si possono proporre come fonte.
+    private val linkVisti = mutableSetOf<String>()
+
+    // Il turno di lavoro su un fronte col motore acceso (logica/Fronte.kt): lo apre il programma col ritmo del fronte, anche
+    // ad app chiusa. La forma si dichiara prima; ciò che arriva resta proposta, e il Ghost la decide da Oggi.
+    suspend fun lavoraFronte(p: it.resonance.adam.dati.Percorso): Esito {
+        controllaSpesa()?.let { return Esito(it, emptyList(), errore = true) }
+        val oggi = LocalDate.now()
+        val istantanea = fotografia(oggi, 2)
+        val forma = it.resonance.adam.logica.Fronte.forma(p, istantanea.nodi)
+        nota("Turno di lavoro dello Shell sul fronte «${p.titolo}».")
+        val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", Contesto.sistema(istantanea)) })
+        lavoro += storia(archivio.db.messaggi().ultimi(12))
+        lavoro += buildJsonObject {
+            put("role", "user")
+            put("content", "[Nota del programma, non del Ghost] È il tuo turno di lavoro sul fronte «${p.titolo}» (ogni ${p.ritmoGiorni} giorni). " +
+                (if (forma.vuota) "Ha già pezzi, fonti e prossimo passo: guarda se il prossimo passo è ancora quello giusto e, se serve, proponine uno nuovo con regola_fronte; altrimenti non proporre niente. "
+                else "Il programma conterà ciò che proponi. Da fare: ${forma.detta()}. ") +
+                "Il Ghost deciderà da Oggi, con Sì o No: niente si salva senza il suo tocco. Poi scrivi in due righe cosa hai preparato. Se una cosa non la trovi, dillo: è una traccia legittima.")
+        }
+        return ciclo(lavoro, oggi, regole(istantanea, ""), modelloPer(Compito.TURNO), null, 0.0, origine = "fronte")
+    }
+
     // Il turno di lavoro su una consegna: lo apre il programma, il giorno prima della scadenza, anche ad app chiusa.
     // Ciò che lo Shell prepara resta proposta: niente si salva senza il tocco del Ghost.
     suspend fun lavoraConsegna(c: it.resonance.adam.dati.Consegna): Esito {
@@ -896,7 +922,7 @@ class Shell(
                     val risultato = if (args == null) "Chiamata non eseguita: " + (if (r.troncata) "è stata tagliata dal limite di lunghezza, il testo era troppo lungo. " else "argomenti illeggibili. ") +
                         "Per cambiare una parte usa modifica_quaderno o modifica_documento con un'ancora corta."
                     else when (val v = Azioni.valida(c.nome, args, oggi, regole)) {
-                        is Validazione.Lettura -> lettura(v)
+                        is Validazione.Lettura -> lettura(v).also { letto -> linkVisti += it.resonance.adam.logica.Fronte.linkIn(letto) }
                         is Validazione.Interna -> interna(v)
                         is Validazione.Rifiutata -> "Rifiutata dal programma: ${v.motivo}. Correggi e riprova, oppure chiedi al Ghost."
                         is Validazione.Scrittura -> when (val r = risolvi((v.proposta as? Proposta.ApriEsperimento)?.copy(origine = origine) ?: v.proposta)) {
@@ -1064,6 +1090,16 @@ class Shell(
             }
             else -> Risoluzione.Pronta(p)
         }
+        is Proposta.FonteNodo -> when (val n = nodo(p.percorso, p.nodo)) {
+            is Risoluzione.Domanda -> n
+            is Nodo -> when {
+                archivio.db.percorsi().elencoNodi().any { it.genitoreId == n.id } -> Risoluzione.Domanda("«${n.etichetta}» raccoglie altri nodi: la fonte va su un pezzo, cioè un sotto-nodo")
+                n.fonte?.trim() == p.fonte.trim() -> Risoluzione.Domanda("«${n.etichetta}» ha già questa fonte")
+                else -> Risoluzione.Pronta(p)
+            }
+            else -> Risoluzione.Pronta(p)
+        }
+        is Proposta.RegolaFronte -> try { archivio.percorso(p.percorso); Risoluzione.Pronta(p) } catch (e: Ambiguo) { Risoluzione.Domanda(e.message ?: "percorso non trovato") }
         is Proposta.PilastroNodo -> when (val n = nodo(p.percorso, p.nodo)) {
             is Risoluzione.Domanda -> n
             is Nodo -> {
@@ -1261,9 +1297,13 @@ class Shell(
         }
         val seguite = archivio.db.segui().elenco().count { it.chiusa == null }
         val inAttesa = archivio.db.messaggi().ultimi(60).count { it.stato == StatoProposta.IN_ATTESA && it.proposta?.contains("\"ricerca_a_fondo\"") == true }
+        // I link noti (logica/Fronte.kt): quelli che il Ghost ha scritto e quelli delle ricerche, in chat e in questo turno.
+        linkVisti += it.resonance.adam.logica.Fronte.linkIn(scritti)
+        archivio.db.messaggi().ultimi(80).filter { it.ruolo == Ruolo.RICERCA }.forEach { m -> linkVisti += it.resonance.adam.logica.Fronte.linkIn(m.testo) }
         return Regole(Uscita.nomi(nomiProtetti), Uscita.indirizzi(scritti), testoGhost, it.resonance.adam.logica.Esperimenti.aperti(i.esperimenti), i.consegne, i.appunti, seguite,
             it.resonance.adam.logica.Listino.voce(listino, modelloPer(Compito.RICERCA)), inAttesa,
-            it.resonance.adam.logica.Listino.voce(listino, modelloPer(Compito.A_FONDO)), it.resonance.adam.logica.Listino.voce(listino, modelloSintesi()))
+            it.resonance.adam.logica.Listino.voce(listino, modelloPer(Compito.A_FONDO)), it.resonance.adam.logica.Listino.voce(listino, modelloSintesi()),
+            linkNoti = linkVisti)
     }
 
     private suspend fun lettura(v: Validazione.Lettura): String = when (v.nome) {

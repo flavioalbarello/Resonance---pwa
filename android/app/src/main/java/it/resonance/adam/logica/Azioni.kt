@@ -212,6 +212,23 @@ sealed class Proposta {
         override fun descrizione() = "Nel percorso «$percorso», portare il nodo «$nodo» a «${stato.etichetta}»"
     }
 
+    // Il fronte (V3, PROGETTO_V3.md): scadenza, ritmo del lavoro dello Shell, prossimo passo. Null = non si tocca.
+    @Serializable @SerialName("regola_fronte")
+    data class RegolaFronte(val percorso: String, val scadenza: String? = null, val ritmoGiorni: Int? = null, val prossimoPasso: String? = null) : Proposta() {
+        override fun descrizione() = "Fronte «$percorso»: " + listOfNotNull(
+            scadenza?.let { if (it.isEmpty()) "togliere la scadenza" else "scadenza ${Giorni.leggibile(it)}" },
+            ritmoGiorni?.let { if (it == 0) "spegnere il motore (niente turni di lavoro miei)" else "un mio turno di lavoro ogni $it " + if (it == 1) "giorno" else "giorni" },
+            prossimoPasso?.let { if (it.isEmpty()) "togliere il prossimo passo" else "prossimo passo: «${Testi.corto(it, 140)}»" },
+        ).joinToString("; ")
+    }
+
+    // La fonte di un pezzo: il link che lo Studio apre da solo (Moises, YouTube, uno spartito). Un link deve venire da una
+    // ricerca o da un messaggio del Ghost: il programma lo controlla (Regole.linkNoti), il modello non ne inventa.
+    @Serializable @SerialName("fonte_nodo")
+    data class FonteNodo(val percorso: String, val nodo: String, val fonte: String, val perche: String = "") : Proposta() {
+        override fun descrizione() = "Nel fronte «$percorso», la fonte di «$nodo»: $fonte" + (if (perche.isNotBlank()) " — ${Testi.corto(perche, 120)}" else "")
+    }
+
     // ── Verso il mondo: non passano dall'archivio ──
 
     @Serializable @SerialName("crea_evento")
@@ -296,6 +313,9 @@ data class Regole(
     val ricercheInAttesa: Int = 0,
     val prezzoAFondo: Listino.Voce = prezzoRicerca,
     val prezzoSintesi: Listino.Voce = prezzoRicerca,
+    // I link che lo Shell può proporre come fonte (logica/Fronte.kt): quelli delle ricerche del turno e quelli scritti dal
+    // Ghost. Si allarga mentre il turno cerca. null = non controllare (le prove).
+    val linkNoti: Set<String>? = null,
 )
 
 sealed class Validazione {
@@ -535,6 +555,19 @@ object Azioni {
                 "testo" to s("Contesto con date; cosa vedi nell'app; UNA richiesta; cosa hai già provato; domande chiuse")))),
         Strumento("stato_nodo", Effetto.SCRITTURA, "Propone di cambiare lo stato di un nodo di un percorso. È il posto dello stato di una tappa: non scriverlo nel quaderno né in un documento. Non per un nodo con sotto-nodi: il suo stato lo calcola il programma dai figli.",
             schema(listOf("percorso", "nodo", "stato"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del nodo"), "stato" to e(STATI, "Nuovo stato")))),
+        Strumento("regola_fronte", Effetto.SCRITTURA,
+            "Propone di regolare un fronte (un percorso): la scadenza (la data in cui deve essere pronto: alza la fretta dello Studio), il ritmo dei tuoi turni di " +
+                "lavoro su di esso (ogni quanti giorni il programma ti fa lavorare da solo su quel fronte; 0 = spento) e il prossimo passo, una riga concreta che il " +
+                "Ghost vede in Oggi e in Fronti. Almeno uno dei tre. Stringa vuota = togliere.",
+            schema(listOf("percorso"), mapOf("percorso" to s("Titolo del percorso"), "scadenza" to s("yyyy-MM-dd o 20/12/2026; vuota per toglierla"),
+                "ritmo_giorni" to n("Ogni quanti giorni un tuo turno di lavoro sul fronte, 0–${Fronte.RITMO_MAX}; 0 = spento"),
+                "prossimo_passo" to s("Una riga concreta (es. «trovare la base di Gianna senza basso»); vuota per toglierlo")))),
+        Strumento("fonte_nodo", Effetto.SCRITTURA,
+            "Propone la fonte di un pezzo di un fronte: il link (YouTube, Moises, uno spartito) che lo Studio apre da solo quando il Ghost studia quel pezzo, " +
+                "o un testo se non è un link («il quaderno rosso, pag. 12»). Un link DEVE venire da una ricerca fatta in questo turno (cerca_nel_web) o da un " +
+                "messaggio del Ghost: il programma lo controlla, e uno inventato lo rifiuta.",
+            schema(listOf("percorso", "nodo", "fonte"), mapOf("percorso" to s("Titolo del percorso"), "nodo" to s("Etichetta del pezzo"),
+                "fonte" to s("Il link intero, copiato dalle fonti della ricerca, o un testo"), "perche" to s("Facoltativo: perché questa (es. «live del 1978, tonalità originale»)")))),
     )
 
     // Lo strumento che apre un reparto chiuso (logica/Reparti.kt): non fa niente nel mondo, cambia solo cosa lo Shell ha davanti.
@@ -782,6 +815,27 @@ object Azioni {
         "stato_nodo" -> {
             val stato = a.testo("stato")?.uppercase()?.let { s -> StatoNodo.entries.find { it.name == s } } ?: rifiuta("stato sconosciuto (usa ${STATI.joinToString("/")})")
             Proposta.StatoDelNodo(a.testo("percorso") ?: rifiuta("percorso mancante"), a.testo("nodo") ?: rifiuta("nodo mancante"), stato)
+        }
+        "regola_fronte" -> {
+            val per = a.testo("percorso") ?: rifiuta("percorso mancante")
+            val scadenza = a.testo("scadenza")?.trim()?.let { t ->
+                if (t.isEmpty()) "" else (Pratica.leggiData(t, oggi) ?: rifiuta("scadenza non leggibile: usa yyyy-MM-dd")).also {
+                    if (it.isBefore(oggi)) rifiuta("il $it è passato: la scadenza è per ciò che viene")
+                }.toString()
+            }
+            val ritmo = a["ritmo_giorni"]?.let { intero(a, "ritmo_giorni", -1).also { r -> if (r !in 0..Fronte.RITMO_MAX) rifiuta("ritmo_giorni fra 0 e ${Fronte.RITMO_MAX}") } }
+            val passo = a.testo("prossimo_passo")?.trim()?.also { if (it.length > 200) rifiuta("il prossimo passo è una riga, non un piano: accorcialo") }
+            if (scadenza == null && ritmo == null && passo == null) rifiuta("niente da regolare: dai almeno scadenza, ritmo_giorni o prossimo_passo")
+            Proposta.RegolaFronte(per, scadenza, ritmo, passo)
+        }
+        "fonte_nodo" -> {
+            val fonte = a.testo("fonte")?.trim()?.takeIf { it.isNotEmpty() } ?: rifiuta("fonte mancante")
+            if (fonte.length > 400) rifiuta("la fonte è un link o una riga, non un testo")
+            Fronte.link(fonte)?.let { l ->
+                if (regole.linkNoti != null && !Fronte.noto(l, regole.linkNoti)) rifiuta("il link $l non viene da una ricerca di questo turno né da un messaggio del Ghost: " +
+                    "cercalo con cerca_nel_web e copia un link dalle fonti, o proponi un testo")
+            }
+            Proposta.FonteNodo(a.testo("percorso") ?: rifiuta("percorso mancante"), a.testo("nodo") ?: rifiuta("nodo mancante"), fonte, a.testo("perche") ?: "")
         }
         "crea_evento" -> {
             val titolo = a.testo("titolo") ?: rifiuta("titolo mancante")

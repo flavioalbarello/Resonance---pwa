@@ -227,6 +227,19 @@ class Archivio(val db: Db) {
             val nodi = p.nodi.map { trova(tutti, it, { n -> n.etichetta }, "nodo") }.distinctBy { it.id }
             Esecuzione(true, spostaDentro(per, nodi, p.sotto?.let { genitore(per, it) }))
         }
+        is Proposta.RegolaFronte -> {
+            val per = percorso(p.percorso)
+            val nuovo = per.copy(scadenza = p.scadenza?.ifEmpty { null } ?: per.scadenza.takeIf { p.scadenza == null },
+                ritmoGiorni = p.ritmoGiorni ?: per.ritmoGiorni, prossimoPasso = p.prossimoPasso ?: per.prossimoPasso)
+            db.percorsi().aggiorna(nuovo)
+            Esecuzione(true, "Fronte «${per.titolo}»: " + p.descrizione().substringAfter("»: "))
+        }
+        is Proposta.FonteNodo -> {
+            val per = percorso(p.percorso)
+            val n = trova(db.percorsi().elencoNodi().filter { it.percorsoId == per.id }, p.nodo, { it.etichetta }, "nodo")
+            db.percorsi().aggiornaNodo(n.copy(fonte = p.fonte.trim()))
+            Esecuzione(true, "«${per.titolo}» › ${n.etichetta}: fonte " + (if (n.fonte == null) "messa" else "cambiata (era ${n.fonte})"))
+        }
         is Proposta.StatoDelNodo -> {
             val per = percorso(p.percorso)
             val tutti = db.percorsi().elencoNodi().filter { it.percorsoId == per.id }

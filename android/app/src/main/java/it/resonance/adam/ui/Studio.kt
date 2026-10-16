@@ -108,3 +108,30 @@ internal fun InCorso(vm: Adam, piano: List<Pratica.Blocco>, fatti: Int) {
     }
     TextButton({ vm.chiudiStudio() }) { Text("Chiudi qui", color = Colori.tenue) }
 }
+
+// Il motore del fronte (V3 fase 3, logica/Fronte.kt): ogni quanti giorni lo Shell ci lavora da solo, e il prossimo passo.
+// Lo regola il Ghost qui, o lo Shell propone (regola_fronte) e il Ghost dice Sì da Oggi.
+private val RITMI = listOf(0, 1, 3, 7)
+
+@Composable
+fun MotoreUi(vm: Adam, per: Percorso, colore: Color) {
+    var passo by remember { mutableStateOf(false) }
+    Scheda(colore, Modifier.testTag("motore")) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Etichetta("Motore", colore)
+            Text("  " + if (per.ritmoGiorni == 0) "spento: lo Shell ci lavora quando glielo chiedi" else "lo Shell ci lavora da solo ogni ${per.ritmoGiorni} " +
+                (if (per.ritmoGiorni == 1) "giorno" else "giorni") + (per.ultimoLavoro?.let { ", l'ultima volta il ${java.time.LocalDate.parse(it).format(java.time.format.DateTimeFormatter.ofPattern("d/M"))}" } ?: ""),
+                fontSize = 12.sp, color = Colori.tenue, modifier = Modifier.weight(1f))
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(RITMI) { r -> FilterChip(per.ritmoGiorni == r, { vm.ritmoFronte(per, r) }, label = { Text(if (r == 0) "spento" else "ogni $r g") }) }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(if (per.prossimoPasso.isBlank()) "Nessun prossimo passo" else "→ ${per.prossimoPasso}", fontSize = 14.sp,
+                color = if (per.prossimoPasso.isBlank()) Colori.tenue else Colori.inchiostro, modifier = Modifier.weight(1f))
+            TextButton({ passo = true }) { Text(if (per.prossimoPasso.isBlank()) "Scrivi" else "Cambia", fontSize = 12.sp) }
+        }
+    }
+    if (passo) DialogoTesto("Prossimo passo", per.prossimoPasso, "una riga concreta · vuoto lo toglie", vuotoOk = true,
+        onOk = { vm.passoFronte(per, it) }, onChiudi = { passo = false })
+}

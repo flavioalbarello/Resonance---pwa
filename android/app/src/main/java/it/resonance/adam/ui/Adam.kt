@@ -758,6 +758,8 @@ class Adam(app: Application) : AndroidViewModel(app) {
         archivio.scadenza(p, d)
     }
     fun fonteNodo(n: Nodo, fonte: String) = viewModelScope.launch { archivio.fonte(n, fonte) }
+    fun ritmoFronte(p: Percorso, giorni: Int) = viewModelScope.launch { db.percorsi().aggiorna(p.copy(ritmoGiorni = giorni.coerceIn(0, it.resonance.adam.logica.Fronte.RITMO_MAX))) }
+    fun passoFronte(p: Percorso, testo: String) = viewModelScope.launch { db.percorsi().aggiorna(p.copy(prossimoPasso = testo.trim().take(200))) }
 
     fun creaPercorso(p: Pilastro, titolo: String, nodi: List<String>) = viewModelScope.launch {
         val e = archivio.esegui(it.resonance.adam.logica.Proposta.CreaPercorso(p, titolo.trim(), "", nodi))

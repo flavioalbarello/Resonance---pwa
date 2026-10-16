@@ -93,6 +93,8 @@ avvengono senza aprirla (notifiche); tocchi di conferma al giorno; passi avanti 
 
 | Nuova forma (16/10) | fatta | barra con tre luoghi: **Oggi** (adesso a un tocco, da decidere Sì/No/Dimmi, fronti mossi, rituali con Annulla, numeri mossi, Segui, agenda, esperimenti), **Fronti** (tutti i percorsi, urgenti in cima, + Fronte, scheda del fronte con Studio), **Shell**. Menu ☰: Numeri e rituali (lo Specchio intero), Bio, Air, Vidya, Adam, Setup. Ancora: Oggi, Fronti, Shell, 🎤, Auto. Le notifiche dello Specchio portano a Oggi |
 
+| 3. Fronte motorizzato (16/10) | fatta | strumenti `regola_fronte` (scadenza, ritmo, prossimo passo) e `fonte_nodo` (il link deve venire da una ricerca del turno o da un messaggio del Ghost: uno inventato torna indietro); scheda **Motore** nel fronte (spento / ogni 1, 3, 7 giorni; prossimo passo); col motore acceso il battito apre un turno di lavoro dello Shell per fronte (al massimo 2 per battito), forma dichiarata prima (`logica/Fronte.kt`), conto delle proposte fatto dal programma, notifica che porta a Oggi. Trovato dalla prova: i risultati delle ricerche arrivavano al modello senza i link; ora ci sono |
+
 Scostamento dal piano: niente `ui3/` accanto alla vecchia. La cornice nuova sostituisce la vecchia subito, perché le schermate
 vecchie restano raggiungibili dal menu: nessuna funzione persa, nessuna doppia interfaccia da tenere allineata.
 
