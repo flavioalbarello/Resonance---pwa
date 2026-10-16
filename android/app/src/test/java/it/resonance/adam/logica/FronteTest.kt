@@ -58,4 +58,22 @@ class FronteTest {
         assertEquals(Proposta.RegolaFronte("Tributo", "2026-12-20", 3, null), ok.proposta)
         assertTrue(ok.proposta.descrizione().contains("ogni 3 giorni"))
     }
+
+    // Fase 7: un fronte nuovo dallo Shell, al massimo uno a settimana, e un no vale 60 giorni.
+    @Test fun leProposteDiFrontiSonoModerate() {
+        val prima = Fronte.Proposto("Sonno", oggi.minusDays(3), rifiutato = false)
+        assertTrue(Fronte.moderazione(listOf(prima), "Cammino", oggi)!!.contains("a settimana"))
+        val no = Fronte.Proposto("Corso di inglese", oggi.minusDays(20), rifiutato = true)
+        assertTrue(Fronte.moderazione(listOf(no), "corso di inglese", oggi)!!.contains("ha detto no"))
+        assertEquals(null, Fronte.moderazione(listOf(no), "Cammino", oggi))
+        assertEquals(null, Fronte.moderazione(listOf(no.copy(giorno = oggi.minusDays(61))), "Corso di inglese", oggi))
+        val a = { j: String -> Json.parseToJsonElement(j).jsonObject }
+        val senzaProve = """{"pilastro":"BIO","titolo":"Cammino","perche":"dormi poco"}"""
+        assertTrue(Azioni.valida("proponi_fronte", a(senzaProve), oggi) is Validazione.Rifiutata)
+        val ok = """{"pilastro":"BIO","titolo":"Cammino","perche":"il sonno cala","prove":["sonno medio 6h10 in 14 giorni"]}"""
+        assertTrue(Azioni.valida("proponi_fronte", a(ok), oggi) is Validazione.Scrittura)
+        assertTrue(Azioni.valida("proponi_fronte", a(ok), oggi, Regole(frontiProposti = listOf(prima))) is Validazione.Rifiutata)
+        val p = (Azioni.valida("proponi_fronte", a(ok), oggi) as Validazione.Scrittura).proposta
+        assertTrue(p.dettaglio()!!.contains("• sonno medio 6h10") && p.dettaglio()!!.contains("60 giorni"))
+    }
 }

@@ -291,7 +291,8 @@ class SchermateTest {
         regola.onNodeWithText("Chiudi qui").performScrollTo().performClick()
         aspetta { vm.sessione.value == null }
         regola.onNodeWithText("COM'È ANDATA").performScrollTo()
-        regola.onNodeWithText("pulito a 70% (prima volta)", substring = true).assertExists()
+        // Divenire è un fronte «da fare» (un album da comporre, non da suonare): niente velocità, il pezzo sale di un gradino.
+        regola.onNodeWithText("Atto III: Mitosi: fatto", substring = true).assertExists()
         scatta("5e-studio-resoconto")
         // Dopo la prima sessione Divenire è un fronte di pratica: Oggi lo propone a un tocco.
         vm.vai(Schermata.OGGI)

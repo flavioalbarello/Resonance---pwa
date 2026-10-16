@@ -11,6 +11,24 @@ import java.time.temporal.ChronoUnit
 // conta cosa è arrivato davvero; ciò che lo Shell prepara resta proposta, e il Ghost la decide da Oggi.
 object Fronte {
     const val RITMO_MAX = 30
+    const val SETTIMANA = 7          // al massimo un fronte proposto dallo Shell ogni tanti giorni
+    const val NO_GIORNI = 60         // un no del Ghost vale per tanti giorni
+
+    // ── Le proposte di fronti nuovi (fase 7): moderate dal programma ──
+    data class Proposto(val titolo: String, val giorno: LocalDate, val rifiutato: Boolean)
+
+    /** Perché una proposta di fronte nuovo non si fa, o null se si può. */
+    fun moderazione(proposti: List<Proposto>, titolo: String, oggi: LocalDate): String? {
+        proposti.filter { ChronoUnit.DAYS.between(it.giorno, oggi) < SETTIMANA }.maxByOrNull { it.giorno }?.let {
+            return "un fronte nuovo a settimana: l'ultimo («${it.titolo}») l'hai proposto il ${it.giorno}. Riprova dal ${it.giorno.plusDays(SETTIMANA.toLong())}"
+        }
+        val t = Testi.normalizza(titolo)
+        proposti.filter { it.rifiutato && ChronoUnit.DAYS.between(it.giorno, oggi) < NO_GIORNI }
+            .firstOrNull { val v = Testi.normalizza(it.titolo); v == t || v.contains(t) || t.contains(v) }?.let {
+                return "il Ghost ha detto no a «${it.titolo}» il ${it.giorno}: non riproporlo prima del ${it.giorno.plusDays(NO_GIORNI.toLong())}"
+            }
+        return null
+    }
     private val LINK = Regex("""https?://[^\s<>"'\)\]]+""")
 
     fun link(testo: String): String? = testo.trim().takeIf { it.startsWith("http://") || it.startsWith("https://") }?.let { LINK.find(it)?.value?.trimEnd('.', ',', ';') }

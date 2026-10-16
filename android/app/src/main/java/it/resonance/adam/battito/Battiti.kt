@@ -247,6 +247,12 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 }
                 Battiti.notifica(applicationContext, 116, titolo, testo, "", "OGGI")
             }
+            // Le proposte di fronti nuovi (V3 fase 7): la domenica, se la moderazione lo consente, lo Shell può proporne uno.
+            if (b == Battito.SETTIMANA && !prova) runCatching { Shell(archivio, imp, mondo = mondo).proponiFronti() }.getOrNull()?.takeIf { it.proposte.isNotEmpty() }?.let { e ->
+                val p = archivio.db.messaggi().per(e.proposte.first())?.let { m -> archivio.proposta(m) } as? it.resonance.adam.logica.Proposta.ProponiFronte
+                Battiti.notifica(applicationContext, 117, "${it.resonance.adam.logica.Nomi.soggetto(archivio.db.profilo().leggi())} propone un fronte nuovo",
+                    p?.let { f -> "«${f.titolo}»: ${it.resonance.adam.logica.Testi.corto(f.perche, 140)}" } ?: "Decidi da Oggi.", "", "OGGI")
+            }
             // La lavagna: ciò che è finito da 30 giorni si cancella davvero; le notifiche fissate seguono le scadenze.
             runCatching { archivio.pulisciLavagna(oggi) }
             runCatching { Fissati.aggiorna(applicationContext) }

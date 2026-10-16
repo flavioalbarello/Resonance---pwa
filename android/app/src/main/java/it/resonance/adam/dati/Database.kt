@@ -224,7 +224,7 @@ interface SeguiDao {
 @Database(
     entities = [Misura::class, Voce::class, Versione::class, Rituale::class, Spunta::class, Percorso::class,
         Nodo::class, Documento::class, Quaderno::class, Messaggio::class, SpesaMese::class, Profilo::class, Esperimento::class, Turno::class, Nota::class, Movimento::class, Lettera::class, RispostaLettera::class, Consegna::class, Appunto::class, Stanza::class, Traccia::class, Osservazione::class, Lettura::class, Sessione::class, EsitoBlocco::class],
-    version = 16,
+    version = 17,
     exportSchema = true,
     // 2: Profilo.nomiProtetti (calendario e posta, 23/09/2026).
     // 3: Messaggio.allegati (immagini e documenti nella chat, 23/09/2026).
@@ -237,9 +237,10 @@ interface SeguiDao {
     // 13: stanze e tracce, il terreno di Adam City (riunione del 01/10/2026).
     // 14: Profilo.nomeShell, il nome che ognuno dà al suo Shell (01/10/2026).
     // 15: osservazioni e letture, «Segui» (02/10/2026).
+    // 17: V3 fase 8 (16/10/2026): Percorso.misura, velocità o avanzamento.
     // 16: V3 (14/10/2026): il fronte (Percorso.scadenza, ritmoGiorni, prossimoPasso, ultimoLavoro), la pratica sui nodi,
     //     sessioni ed esiti (PROGETTO_V3.md).
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9), AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11), AutoMigration(from = 11, to = 12), AutoMigration(from = 12, to = 13), AutoMigration(from = 13, to = 14), AutoMigration(from = 14, to = 15), AutoMigration(from = 15, to = 16)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9), AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11), AutoMigration(from = 11, to = 12), AutoMigration(from = 12, to = 13), AutoMigration(from = 13, to = 14), AutoMigration(from = 14, to = 15), AutoMigration(from = 15, to = 16), AutoMigration(from = 16, to = 17)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun misure(): MisureDao

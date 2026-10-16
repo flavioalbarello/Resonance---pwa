@@ -2,6 +2,7 @@ package it.resonance.adam.logica
 
 import it.resonance.adam.dati.EsitoBlocco
 import it.resonance.adam.dati.EsitoPratica
+import it.resonance.adam.dati.MisuraFronte
 import it.resonance.adam.dati.Nodo
 import it.resonance.adam.dati.StatoNodo
 import kotlinx.serialization.Serializable
@@ -98,7 +99,8 @@ object Pratica {
      * ma non tolgono il record (si riprova la stessa velocità); saltato non cambia niente tranne il giorno. Lo stato del
      * nodo segue la fase, così percorsi e Specchio lo vedono senza saperne niente.
      */
-    fun dopo(n: Nodo, esito: EsitoPratica, velocita: Int, oggi: LocalDate): Nodo {
+    fun dopo(n: Nodo, esito: EsitoPratica, velocita: Int, oggi: LocalDate, misura: MisuraFronte = MisuraFronte.VELOCITA): Nodo {
+        if (misura == MisuraFronte.AVANZAMENTO) return avanza(n, esito, oggi)
         val nuovo = when (esito) {
             EsitoPratica.PULITO -> n.copy(velocita = maxOf(n.velocita ?: 0, velocita),
                 puliteDiFila = if (velocita >= A_TEMPO) n.puliteDiFila + 1 else n.puliteDiFila)
@@ -106,6 +108,16 @@ object Pratica {
             EsitoPratica.SALTATO -> n
         }.copy(ultimaPratica = if (esito == EsitoPratica.SALTATO) n.ultimaPratica else oggi.toString())
         return nuovo.copy(stato = fase(nuovo).stato)
+    }
+
+    /**
+     * L'obliquo (fase 8): ciò che non si suona avanza per stato. Fatto: un gradino su (non iniziato → introdotto →
+     * praticato → consolidato). In parte: almeno introdotto, e il giorno conta. Saltato: niente.
+     */
+    fun avanza(n: Nodo, esito: EsitoPratica, oggi: LocalDate): Nodo = when (esito) {
+        EsitoPratica.SALTATO -> n
+        EsitoPratica.PULITO -> n.copy(stato = StatoNodo.entries[minOf(n.stato.ordinal + 1, StatoNodo.entries.size - 1)], ultimaPratica = oggi.toString())
+        EsitoPratica.ERRORI -> n.copy(stato = if (n.stato == StatoNodo.NON_INIZIATO) StatoNodo.INTRODOTTO else n.stato, ultimaPratica = oggi.toString())
     }
 
     /** I pezzi che si studiano in un fronte: le foglie (i passaggi, o i brani che non ne hanno). */
@@ -136,10 +148,11 @@ object Pratica {
     fun minutiFatti(inizio: Long, fine: Long): Int = ((fine - inizio) / 60_000).toInt().coerceIn(0, 960)
 
     /** Cosa è cambiato, blocco per blocco: ciò che la sessione restituisce subito dopo. Saltato si dice, non si nasconde. */
-    fun resoconto(piano: List<Blocco>, esiti: List<EsitoBlocco>): List<String> = esiti.mapIndexed { i, e ->
+    fun resoconto(piano: List<Blocco>, esiti: List<EsitoBlocco>, misura: MisuraFronte = MisuraFronte.VELOCITA): List<String> = esiti.mapIndexed { i, e ->
         val b = piano.getOrNull(i)
         val nome = b?.etichetta ?: "?"
         val era = b?.prima
+        if (misura == MisuraFronte.AVANZAMENTO) return@mapIndexed "$nome: " + when (e.esito) { EsitoPratica.PULITO -> "fatto"; EsitoPratica.ERRORI -> "in parte"; EsitoPratica.SALTATO -> "saltato" }
         when (e.esito) {
             EsitoPratica.SALTATO -> "$nome: saltato"
             EsitoPratica.ERRORI -> "$nome: errori a ${e.velocita}%" + (era?.let { " (resta $it%)" } ?: "")

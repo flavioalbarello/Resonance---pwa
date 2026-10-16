@@ -144,7 +144,7 @@ class Archivio(val db: Db) {
             val esistente = db.percorsi().elenco().any { !it.archiviato && Testi.normalizza(it.titolo) == Testi.normalizza(p.titolo) }
             if (esistente) Esecuzione(false, "Non creato: esiste già un percorso «${p.titolo}»")
             else {
-                val id = db.percorsi().inserisci(Percorso(pilastro = p.pilastro, titolo = p.titolo, scopo = p.scopo, creato = ora))
+                val id = db.percorsi().inserisci(Percorso(pilastro = p.pilastro, titolo = p.titolo, scopo = p.scopo, creato = ora, misura = p.misura))
                 p.nodi.forEachIndexed { i, n -> db.percorsi().inserisciNodo(Nodo(percorsoId = id, etichetta = n, ordine = i)) }
                 Esecuzione(true, "Creato il percorso «${p.titolo}» in ${p.pilastro.etichetta}, ${p.nodi.size} nodi")
             }
@@ -227,10 +227,12 @@ class Archivio(val db: Db) {
             val nodi = p.nodi.map { trova(tutti, it, { n -> n.etichetta }, "nodo") }.distinctBy { it.id }
             Esecuzione(true, spostaDentro(per, nodi, p.sotto?.let { genitore(per, it) }))
         }
+        // Il fronte proposto dallo Shell (fase 7): si crea come un percorso, col perché come scopo.
+        is Proposta.ProponiFronte -> esegui(Proposta.CreaPercorso(p.pilastro, p.titolo, Testi.corto(p.perche, 300), p.nodi, p.misura))
         is Proposta.RegolaFronte -> {
             val per = percorso(p.percorso)
             val nuovo = per.copy(scadenza = p.scadenza?.ifEmpty { null } ?: per.scadenza.takeIf { p.scadenza == null },
-                ritmoGiorni = p.ritmoGiorni ?: per.ritmoGiorni, prossimoPasso = p.prossimoPasso ?: per.prossimoPasso)
+                ritmoGiorni = p.ritmoGiorni ?: per.ritmoGiorni, prossimoPasso = p.prossimoPasso ?: per.prossimoPasso, misura = p.misura ?: per.misura)
             db.percorsi().aggiorna(nuovo)
             Esecuzione(true, "Fronte «${per.titolo}»: " + p.descrizione().substringAfter("»: "))
         }
@@ -619,7 +621,8 @@ class Archivio(val db: Db) {
         val b = Pratica.corrente(piano, fatti) ?: return chiudiSessione(s, oggi, adesso)
         val v = (velocita ?: b.velocita).coerceIn(10, 200)
         db.pratica().esito(EsitoBlocco(sessioneId = s.id, nodoId = b.nodoId, velocita = v, esito = esito, istante = adesso))
-        db.percorsi().elencoNodi().find { it.id == b.nodoId }?.let { db.percorsi().aggiornaNodo(Pratica.dopo(it, esito, v, oggi)) }
+        val misura = db.percorsi().elenco().find { it.id == s.percorsoId }?.misura ?: MisuraFronte.VELOCITA
+        db.percorsi().elencoNodi().find { it.id == b.nodoId }?.let { db.percorsi().aggiornaNodo(Pratica.dopo(it, esito, v, oggi, misura)) }
         val dopo = db.pratica().esitiDi(s.id)
         val prossimo = Pratica.corrente(piano, dopo) ?: return chiudiSessione(s, oggi, adesso)
         return Passo(s, prossimo, dopo.size, piano.size, emptyList())
@@ -636,9 +639,9 @@ class Archivio(val db: Db) {
         if (aperta.fine != null) return Passo(aperta, null, esiti.size, piano.size, emptyList())
         val chiusa = aperta.copy(fine = adesso)
         db.pratica().aggiorna(chiusa)
-        val righe = Pratica.resoconto(piano, esiti)
-        val minuti = Pratica.minutiFatti(aperta.inizio, adesso)
         val per = db.percorsi().elenco().find { it.id == aperta.percorsoId }
+        val righe = Pratica.resoconto(piano, esiti, per?.misura ?: MisuraFronte.VELOCITA)
+        val minuti = Pratica.minutiFatti(aperta.inizio, adesso)
         if (esiti.any { it.esito != EsitoPratica.SALTATO } && minuti > 0) {
             db.misure().sostituisci(Misura(tipo = TipoMisura.PRATICA, valore = minuti.toDouble(), giorno = oggi.toString(), istante = adesso,
                 fonte = "sessione", nota = per?.titolo.orEmpty(), idEsterno = "sessione:${aperta.id}"))

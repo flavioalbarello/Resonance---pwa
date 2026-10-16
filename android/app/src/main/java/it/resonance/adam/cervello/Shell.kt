@@ -729,6 +729,34 @@ class Shell(
         return Esito(testo, emptyList())
     }
 
+    /** I fronti che lo Shell ha già proposto di sua iniziativa, e se il Ghost ha detto no (logica/Fronte.kt, moderazione). */
+    suspend fun frontiProposti(): List<Fronte.Proposto> = archivio.db.messaggi().elenco()
+        .filter { it.ruolo == Ruolo.PROPOSTA && it.proposta?.contains("\"proponi_fronte\"") == true }
+        .mapNotNull { m -> (archivio.proposta(m) as? Proposta.ProponiFronte)?.let { p ->
+            Fronte.Proposto(p.titolo, java.time.Instant.ofEpochMilli(m.istante).atZone(java.time.ZoneId.systemDefault()).toLocalDate(), m.stato == StatoProposta.RIFIUTATA)
+        } }
+
+    /**
+     * Il momento settimanale delle proposte di fronti (V3 fase 7): il programma apre un turno in cui lo Shell PUÒ proporre
+     * un fronte nuovo, con le prove. Se la moderazione non lo consente, non si chiama nemmeno il modello.
+     */
+    suspend fun proponiFronti(): Esito? {
+        val oggi = LocalDate.now()
+        if (Fronte.moderazione(frontiProposti(), "", oggi)?.startsWith("un fronte nuovo a settimana") == true) return null
+        controllaSpesa()?.let { return Esito(it, emptyList(), errore = true) }
+        val istantanea = fotografia(oggi, 7)
+        val lavoro = mutableListOf<JsonObject>(buildJsonObject { put("role", "system"); put("content", Contesto.sistema(istantanea)) })
+        lavoro += storia(archivio.db.messaggi().ultimi(20))
+        lavoro += buildJsonObject {
+            put("role", "user")
+            put("content", "[Nota del programma, non del Ghost] È il momento della settimana in cui puoi proporre UN fronte nuovo, costruttivo e utile, che il " +
+                "Ghost non ti ha chiesto: lo vedi nei suoi dati (numeri, diario, chat, i fronti che ha). Se c'è, proponilo con proponi_fronte, con le prove prese " +
+                "dai dati e i pezzi se li sai. Se non c'è niente che valga, non proporre niente e scrivi una riga sola: «niente questa settimana». Un fronte " +
+                "che lo sovraccarica non è utile: guarda quanto tempo ha davvero.")
+        }
+        return ciclo(lavoro, oggi, regole(istantanea, ""), modelloPer(Compito.TURNO), null, 0.0, origine = "proposta-fronte")
+    }
+
     // I link visti in questo Shell: crescono con le ricerche del turno, e solo questi si possono proporre come fonte.
     private val linkVisti = mutableSetOf<String>()
 
@@ -1303,7 +1331,7 @@ class Shell(
         return Regole(Uscita.nomi(nomiProtetti), Uscita.indirizzi(scritti), testoGhost, it.resonance.adam.logica.Esperimenti.aperti(i.esperimenti), i.consegne, i.appunti, seguite,
             it.resonance.adam.logica.Listino.voce(listino, modelloPer(Compito.RICERCA)), inAttesa,
             it.resonance.adam.logica.Listino.voce(listino, modelloPer(Compito.A_FONDO)), it.resonance.adam.logica.Listino.voce(listino, modelloSintesi()),
-            linkNoti = linkVisti)
+            linkNoti = linkVisti, frontiProposti = frontiProposti())
     }
 
     private suspend fun lettura(v: Validazione.Lettura): String = when (v.nome) {

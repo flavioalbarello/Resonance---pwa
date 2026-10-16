@@ -15,6 +15,7 @@ import it.resonance.adam.R
 import it.resonance.adam.dati.Archivio
 import it.resonance.adam.dati.Db
 import it.resonance.adam.dati.EsitoPratica
+import it.resonance.adam.dati.MisuraFronte
 import it.resonance.adam.logica.Pratica
 import it.resonance.adam.cervello.istantanea
 import kotlinx.coroutines.CoroutineScope
@@ -69,28 +70,29 @@ object Studio {
      */
     @android.annotation.SuppressLint("MissingPermission")
     fun mostra(context: Context, sessione: Long, percorsoId: Long, schermata: String, b: Pratica.Blocco, indice: Int, totale: Int,
-               fine: Long, allarme: Boolean = false) {
+               fine: Long, allarme: Boolean = false, misura: MisuraFronte = MisuraFronte.VELOCITA) {
         canali(context)
         val scaduto = System.currentTimeMillis() >= fine
         val apri = link(b.fonte)?.let { u ->
             PendingIntent.getActivity(context, ID + 8, Intent(Intent.ACTION_VIEW, u).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE)
         } ?: apriApp(context, percorsoId, schermata)
-        val testo = "${b.etichetta} · " + (if (b.ripasso) "ripasso a tempo" else "a ${b.velocita}%")
+        val veloce = misura == MisuraFronte.VELOCITA
+        val testo = b.etichetta + when { b.ripasso -> " · ripasso"; veloce -> " · a ${b.velocita}%"; else -> "" }
         val n = NotificationCompat.Builder(context, if (allarme) CANALE_TEMPO else CANALE)
             .setSmallIcon(R.drawable.ic_notifica)
             .setContentTitle("Studio ${indice + 1}/$totale · ${b.minuti} min" + if (scaduto) " · tempo" else "")
             .setContentText(testo)
             .setStyle(NotificationCompat.BigTextStyle().bigText(testo + (if (b.fonte != null) "\nTocca per aprire la fonte" else "") +
-                "\nCom'è andata? Pulito alza la velocità la prossima volta; errori la tiene."))
+                if (veloce) "\nCom'è andata? Pulito alza la velocità la prossima volta; errori la tiene." else "\nCom'è andata? Fatto fa salire il pezzo di un gradino."))
             .setOngoing(true)
             .setOnlyAlertOnce(!allarme)
             .setSilent(!allarme)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setWhen(fine).setUsesChronometer(!scaduto).setChronometerCountDown(true).setShowWhen(true)
             .setContentIntent(apri)
-            .addAction(0, "✓ Pulito", gesto(context, sessione, indice, EsitoPratica.PULITO))
-            .addAction(0, "✗ Errori", gesto(context, sessione, indice, EsitoPratica.ERRORI))
-            .addAction(0, "→ Avanti", gesto(context, sessione, indice, EsitoPratica.SALTATO))
+            .addAction(0, misura.esiti[0], gesto(context, sessione, indice, EsitoPratica.PULITO))
+            .addAction(0, misura.esiti[1], gesto(context, sessione, indice, EsitoPratica.ERRORI))
+            .addAction(0, misura.esiti[2], gesto(context, sessione, indice, EsitoPratica.SALTATO))
             .build()
         try { NotificationManagerCompat.from(context).notify(ID, n) } catch (_: SecurityException) { return }
         if (!scaduto) {
@@ -131,7 +133,7 @@ object Studio {
         val per = archivio.db.percorsi().elenco().find { it.id == passo.sessione.percorsoId } ?: return togli(context)
         val b = passo.prossimo
         if (b != null) mostra(context, passo.sessione.id, per.id, schermata(per.pilastro), b, passo.indice, passo.totale,
-            System.currentTimeMillis() + b.minuti * 60_000L)
+            System.currentTimeMillis() + b.minuti * 60_000L, misura = per.misura)
         else finita(context, per.id, schermata(per.pilastro), "Studio finito · ${Pratica.minutiFatti(passo.sessione.inizio, passo.sessione.fine ?: System.currentTimeMillis())} min",
             passo.resoconto)
     }
@@ -170,7 +172,7 @@ object Studio {
         val corto = minOf(tutto, 20)
         canali(context)
         val testo = "${p.pezzo.etichetta} · ${it.resonance.adam.logica.Pratica.fase(p.pezzo).etichetta}" +
-            (p.pezzo.velocita?.let { " a $it%" } ?: "") + "\n" + it.resonance.adam.logica.Tempo.riga(libero) + ". Il piano lo fa il programma."
+            (p.pezzo.velocita?.takeIf { p.percorso.misura == MisuraFronte.VELOCITA }?.let { " a $it%" } ?: "") + "\n" + it.resonance.adam.logica.Tempo.riga(libero) + ". Il piano lo fa il programma."
         val n = NotificationCompat.Builder(context, Battiti.CANALE)
             .setSmallIcon(R.drawable.ic_notifica)
             .setContentTitle("Hai ${libero.minuti.coerceAtMost(600)}′: «${p.percorso.titolo}»?")
@@ -195,7 +197,7 @@ object Studio {
                 val per = archivio.db.percorsi().elenco().find { it.id == intent.getLongExtra("percorso", -1) } ?: return
                 val s = archivio.apriSessione(per.id, intent.getIntExtra("minuti", 20), LocalDate.now()) ?: return
                 val piano = Pratica.decodifica(s.piano)
-                return mostra(context, s.id, per.id, schermata(per.pilastro), piano.first(), 0, piano.size, System.currentTimeMillis() + piano.first().minuti * 60_000L)
+                return mostra(context, s.id, per.id, schermata(per.pilastro), piano.first(), 0, piano.size, System.currentTimeMillis() + piano.first().minuti * 60_000L, misura = per.misura)
             }
         }
         val id = intent.getLongExtra("sessione", -1)
@@ -213,7 +215,7 @@ object Studio {
             TEMPO -> {
                 val per = archivio.db.percorsi().elenco().find { it.id == s.percorsoId } ?: return
                 val b = piano.getOrNull(indice) ?: return
-                mostra(context, s.id, per.id, schermata(per.pilastro), b, indice, piano.size, System.currentTimeMillis(), allarme = true)
+                mostra(context, s.id, per.id, schermata(per.pilastro), b, indice, piano.size, System.currentTimeMillis(), allarme = true, misura = per.misura)
             }
         }
     }

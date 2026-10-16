@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import it.resonance.adam.dati.MisuraFronte
 import it.resonance.adam.dati.Pilastro
 import it.resonance.adam.logica.Fronti
 import it.resonance.adam.logica.Nodi
@@ -75,11 +76,12 @@ fun FrontiUi(vm: Adam) {
         }
         Spazio(120)
     }
-    if (nuovo) DialogoFronte(onOk = { pil, titolo, nodi -> vm.creaPercorso(pil, titolo, nodi) }, onChiudi = { nuovo = false })
+    if (nuovo) DialogoFronte(onOk = { pil, titolo, nodi, misura -> vm.creaPercorso(pil, titolo, nodi, misura) }, onChiudi = { nuovo = false })
 }
 
 @Composable
-private fun DialogoFronte(onOk: (Pilastro, String, List<String>) -> Unit, onChiudi: () -> Unit) {
+private fun DialogoFronte(onOk: (Pilastro, String, List<String>, MisuraFronte) -> Unit, onChiudi: () -> Unit) {
+    var misura by remember { mutableStateOf(MisuraFronte.AVANZAMENTO) }
     var titolo by remember { mutableStateOf("") }
     var pilastro by remember { mutableStateOf(Pilastro.VIDYA) }
     var nodi by remember { mutableStateOf("") }
@@ -92,11 +94,14 @@ private fun DialogoFronte(onOk: (Pilastro, String, List<String>) -> Unit, onChiu
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Pilastro.entries.forEach { p -> FilterChip(pilastro == p, { pilastro = p }, label = { Text(p.etichetta, fontSize = 12.sp) }) }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    MisuraFronte.entries.forEach { m -> FilterChip(misura == m, { misura = m }, label = { Text(if (m == MisuraFronte.VELOCITA) "Da suonare (velocità %)" else "Da fare", fontSize = 12.sp) }) }
+                }
                 OutlinedTextField(nodi, { nodi = it }, label = { Text("I pezzi, uno per riga (facoltativo)") }, minLines = 3, modifier = Modifier.fillMaxWidth())
                 Tenue("I brani, i capitoli, gli esercizi: lo Studio li pianifica sul tempo che hai.")
             }
         },
-        confirmButton = { TextButton({ if (titolo.isNotBlank()) { onOk(pilastro, titolo, nodi.lines().map { it.trim() }.filter { it.isNotEmpty() }); onChiudi() } }) { Text("Apri") } },
+        confirmButton = { TextButton({ if (titolo.isNotBlank()) { onOk(pilastro, titolo, nodi.lines().map { it.trim() }.filter { it.isNotEmpty() }, misura); onChiudi() } }) { Text("Apri") } },
         dismissButton = { TextButton(onChiudi) { Text("Annulla") } },
     )
 }

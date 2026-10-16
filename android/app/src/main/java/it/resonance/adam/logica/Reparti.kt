@@ -13,7 +13,7 @@ enum class Reparto(val etichetta: String, val cosa: String, val strumenti: List<
             "scrivi_taccuino", "riprendi_nota", "prendi_consegna"), ""),
     PERCORSI("percorsi", "percorsi, nodi e tappe, documenti, riscrivere il quaderno",
         listOf("crea_percorso", "aggiungi_nodi", "pilastro_nodo", "sposta_nodi", "togli_nodo", "stato_nodo", "salva_documento",
-            "modifica_documento", "togli_documento", "aggiorna_quaderno", "regola_fronte", "fonte_nodo"),
+            "modifica_documento", "togli_documento", "aggiorna_quaderno", "regola_fronte", "fonte_nodo", "proponi_fronte"),
         "percors|front[ei]\\b|scadenz|tributo|nod[oi]\\b|tapp[ae]|brani?\\b|scalett|capitol|document|progett|piano\\b|programma di|studi|eserciz|salva|consolidat|introdott|praticat"),
     RITUALI("rituali", "rituali ed esperimenti",
         listOf("crea_rituale", "spunta_rituale", "proponi_esperimento", "lascia_esperimento"),

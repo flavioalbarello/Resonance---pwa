@@ -153,7 +153,15 @@ data class Percorso(
     @ColumnInfo(defaultValue = "0") val ritmoGiorni: Int = 0,
     @ColumnInfo(defaultValue = "") val prossimoPasso: String = "",
     @ColumnInfo(defaultValue = "NULL") val ultimoLavoro: String? = null,
+    // Come si misura un pezzo (V3 fase 8, l'obliquo): VELOCITA per ciò che si suona (la % pulita, Moises e YouTube);
+    // AVANZAMENTO per tutto il resto (un piano alimentare, un progetto): fatto / in parte / saltato, e lo stato del nodo sale.
+    @ColumnInfo(defaultValue = "AVANZAMENTO") val misura: MisuraFronte = MisuraFronte.AVANZAMENTO,
 )
+
+enum class MisuraFronte(val etichetta: String, val esiti: List<String>) {
+    VELOCITA("da suonare: velocità pulita in %", listOf("✓ Pulito", "✗ Errori", "→ Avanti")),
+    AVANZAMENTO("da fare: fatto, in parte, saltato", listOf("✓ Fatto", "~ In parte", "→ Salta")),
+}
 
 @Serializable
 @Entity(tableName = "nodi", indices = [Index("percorsoId")])

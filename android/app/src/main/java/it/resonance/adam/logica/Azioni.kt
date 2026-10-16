@@ -2,6 +2,7 @@ package it.resonance.adam.logica
 
 import it.resonance.adam.dati.Direzione
 import it.resonance.adam.dati.Esperimento
+import it.resonance.adam.dati.MisuraFronte
 import it.resonance.adam.dati.Pilastro
 import it.resonance.adam.dati.StatoNodo
 import it.resonance.adam.dati.TipoMovimento
@@ -58,9 +59,22 @@ sealed class Proposta {
     }
 
     @Serializable @SerialName("crea_percorso")
-    data class CreaPercorso(val pilastro: Pilastro, val titolo: String, val scopo: String, val nodi: List<String>) : Proposta() {
+    data class CreaPercorso(val pilastro: Pilastro, val titolo: String, val scopo: String, val nodi: List<String>,
+                            val misura: MisuraFronte = MisuraFronte.AVANZAMENTO) : Proposta() {
         override fun descrizione() = "Creare il percorso «$titolo» in ${pilastro.etichetta}" +
-            (if (nodi.isNotEmpty()) " con ${nodi.size} nodi: ${nodi.joinToString(", ")}" else "")
+            (if (nodi.isNotEmpty()) " con ${nodi.size} nodi: ${nodi.joinToString(", ")}" else "") +
+            (if (misura == MisuraFronte.VELOCITA) " (da suonare: velocità pulita in %)" else "")
+    }
+
+    // Un fronte nuovo proposto dallo Shell di sua iniziativa (V3 fase 7): al massimo uno a settimana, con le prove prese
+    // dai dati, e un no del Ghost resta scritto (logica/Fronte.kt, moderazione). Il programma lo controlla, non il modello.
+    @Serializable @SerialName("proponi_fronte")
+    data class ProponiFronte(val pilastro: Pilastro, val titolo: String, val perche: String, val prove: List<String>, val nodi: List<String>,
+                             val misura: MisuraFronte = MisuraFronte.AVANZAMENTO) : Proposta() {
+        override fun descrizione() = "Aprire un fronte nuovo: «$titolo» (${pilastro.etichetta}). ${Testi.corto(perche, 160)}"
+        override fun dettaglio() = "Perché: $perche\n\nLe prove:\n" + prove.joinToString("\n") { "• $it" } +
+            (if (nodi.isNotEmpty()) "\n\nI pezzi:\n" + nodi.joinToString("\n") { "• $it" } else "") +
+            "\n\nSe dici no, non lo ripropongo per ${Fronte.NO_GIORNI} giorni."
     }
 
     @Serializable @SerialName("salva_documento")
@@ -214,11 +228,13 @@ sealed class Proposta {
 
     // Il fronte (V3, PROGETTO_V3.md): scadenza, ritmo del lavoro dello Shell, prossimo passo. Null = non si tocca.
     @Serializable @SerialName("regola_fronte")
-    data class RegolaFronte(val percorso: String, val scadenza: String? = null, val ritmoGiorni: Int? = null, val prossimoPasso: String? = null) : Proposta() {
+    data class RegolaFronte(val percorso: String, val scadenza: String? = null, val ritmoGiorni: Int? = null, val prossimoPasso: String? = null,
+                            val misura: MisuraFronte? = null) : Proposta() {
         override fun descrizione() = "Fronte «$percorso»: " + listOfNotNull(
             scadenza?.let { if (it.isEmpty()) "togliere la scadenza" else "scadenza ${Giorni.leggibile(it)}" },
             ritmoGiorni?.let { if (it == 0) "spegnere il motore (niente turni di lavoro miei)" else "un mio turno di lavoro ogni $it " + if (it == 1) "giorno" else "giorni" },
             prossimoPasso?.let { if (it.isEmpty()) "togliere il prossimo passo" else "prossimo passo: «${Testi.corto(it, 140)}»" },
+            misura?.let { "misura: ${it.etichetta}" },
         ).joinToString("; ")
     }
 
@@ -316,6 +332,8 @@ data class Regole(
     // I link che lo Shell può proporre come fonte (logica/Fronte.kt): quelli delle ricerche del turno e quelli scritti dal
     // Ghost. Si allarga mentre il turno cerca. null = non controllare (le prove).
     val linkNoti: Set<String>? = null,
+    // I fronti già proposti dallo Shell di sua iniziativa, per la moderazione (logica/Fronte.kt).
+    val frontiProposti: List<Fronte.Proposto> = emptyList(),
 )
 
 sealed class Validazione {
@@ -402,7 +420,16 @@ object Azioni {
             schema(listOf("pilastro", "titolo", "nodi"), mapOf(
                 "pilastro" to e(PILASTRI, "Pilastro; ADAM se attraversa più pilastri"), "titolo" to s("Nome breve del percorso, non una frase"),
                 "scopo" to s("Chi diventa il Ghost percorrendolo"), "nodi" to lista("Tappe concrete, da 1 a 20: quelle che il Ghost ha nominato o riconoscerebbe come sue. Non inventare fasi generiche: se non le sai, chiedile"),
+                "misura" to e(listOf("velocita", "avanzamento"), "velocita per brani da suonare (velocità pulita in %); avanzamento per tutto il resto (predefinito)"),
             ))),
+        Strumento("proponi_fronte", Effetto.SCRITTURA,
+            "Propone DI TUA INIZIATIVA un fronte nuovo, costruttivo e utile al Ghost, che lui non ha chiesto: lo vedi nei dati (un numero che si muove, ciò che " +
+                "scrive in chat o nel diario, un fronte che ne apre un altro). Al massimo uno a settimana; servono le prove, righe prese dai dati; " +
+                "se il Ghost ha già detto no a un fronte simile, il programma lo rifiuta per ${Fronte.NO_GIORNI} giorni. Per un fronte che il Ghost ti chiede, usa crea_percorso.",
+            schema(listOf("pilastro", "titolo", "perche", "prove"), mapOf(
+                "pilastro" to e(PILASTRI, "Pilastro"), "titolo" to s("Nome breve"), "perche" to s("Cosa ci guadagna il Ghost, in una o due frasi"),
+                "prove" to lista("Le prove dai dati, una per riga (es. «sonno medio 6h10 nelle ultime due settimane»)"),
+                "nodi" to lista("I pezzi, se li sai"), "misura" to e(listOf("velocita", "avanzamento"), "velocita solo per brani da suonare")))),
         Strumento("salva_documento", Effetto.SCRITTURA, "Propone di salvare un testo come documento in un percorso esistente.",
             schema(listOf("percorso", "titolo", "testo"), mapOf(
                 "percorso" to s("Titolo del percorso"), "titolo" to s("Titolo del documento"),
@@ -561,7 +588,8 @@ object Azioni {
                 "Ghost vede in Oggi e in Fronti. Almeno uno dei tre. Stringa vuota = togliere.",
             schema(listOf("percorso"), mapOf("percorso" to s("Titolo del percorso"), "scadenza" to s("yyyy-MM-dd o 20/12/2026; vuota per toglierla"),
                 "ritmo_giorni" to n("Ogni quanti giorni un tuo turno di lavoro sul fronte, 0–${Fronte.RITMO_MAX}; 0 = spento"),
-                "prossimo_passo" to s("Una riga concreta (es. «trovare la base di Gianna senza basso»); vuota per toglierlo")))),
+                "prossimo_passo" to s("Una riga concreta (es. «trovare la base di Gianna senza basso»); vuota per toglierlo"),
+                "misura" to e(listOf("velocita", "avanzamento"), "velocita per brani da suonare; avanzamento per tutto il resto")))),
         Strumento("fonte_nodo", Effetto.SCRITTURA,
             "Propone la fonte di un pezzo di un fronte: il link (YouTube, Moises, uno spartito) che lo Studio apre da solo quando il Ghost studia quel pezzo, " +
                 "o un testo se non è un link («il quaderno rosso, pag. 12»). Un link DEVE venire da una ricerca fatta in questo turno (cerca_nel_web) o da un " +
@@ -633,6 +661,8 @@ object Azioni {
 
     private class Rifiuto(m: String) : Exception(m)
     private fun rifiuta(m: String): Nothing = throw Rifiuto(m)
+
+    private fun misura(a: JsonObject) = if (a.testo("misura")?.lowercase()?.startsWith("veloc") == true) MisuraFronte.VELOCITA else MisuraFronte.AVANZAMENTO
 
     private fun pilastro(a: JsonObject) = a.testo("pilastro")?.uppercase()?.let { p -> Pilastro.entries.find { it.name == p } }
         ?: rifiuta("pilastro mancante o sconosciuto (usa ${PILASTRI.joinToString("/")})")
@@ -764,7 +794,17 @@ object Azioni {
             if (titolo.length > 50 || titolo.split(Regex("\\s+")).size > 6) rifiuta("il titolo è una frase, non un nome: accorcialo")
             val nodi = runCatching { a["nodi"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf(String::isNotEmpty) } }.getOrNull().orEmpty()
             if (nodi.size !in 1..20) rifiuta("servono da 1 a 20 nodi")
-            Proposta.CreaPercorso(p, titolo, a.testo("scopo") ?: "", nodi)
+            Proposta.CreaPercorso(p, titolo, a.testo("scopo") ?: "", nodi, misura(a))
+        }
+        "proponi_fronte" -> {
+            val p = pilastro(a)
+            val titolo = a.testo("titolo") ?: rifiuta("titolo mancante")
+            if (titolo.length > 50 || titolo.split(Regex("\\s+")).size > 6) rifiuta("il titolo è una frase, non un nome: accorcialo")
+            val perche = a.testo("perche")?.trim()?.takeIf { it.isNotEmpty() } ?: rifiuta("perche mancante: cosa ci guadagna il Ghost")
+            val prove = elenco(a, "prove").filter { it.length <= 240 }
+            if (prove.isEmpty()) rifiuta("servono le prove: righe prese dai dati (numeri, diario, chat, fronti), una per riga")
+            Fronte.moderazione(regole.frontiProposti, titolo, oggi)?.let { rifiuta(it) }
+            Proposta.ProponiFronte(p, titolo, perche, prove.take(6), elenco(a, "nodi").take(20), misura(a))
         }
         "salva_documento" -> Proposta.SalvaDocumento(
             a.testo("percorso") ?: rifiuta("percorso mancante"), a.testo("titolo") ?: rifiuta("titolo mancante"),
@@ -825,8 +865,9 @@ object Azioni {
             }
             val ritmo = a["ritmo_giorni"]?.let { intero(a, "ritmo_giorni", -1).also { r -> if (r !in 0..Fronte.RITMO_MAX) rifiuta("ritmo_giorni fra 0 e ${Fronte.RITMO_MAX}") } }
             val passo = a.testo("prossimo_passo")?.trim()?.also { if (it.length > 200) rifiuta("il prossimo passo è una riga, non un piano: accorcialo") }
-            if (scadenza == null && ritmo == null && passo == null) rifiuta("niente da regolare: dai almeno scadenza, ritmo_giorni o prossimo_passo")
-            Proposta.RegolaFronte(per, scadenza, ritmo, passo)
+            val misura = a.testo("misura")?.let { misura(a) }
+            if (scadenza == null && ritmo == null && passo == null && misura == null) rifiuta("niente da regolare: dai almeno scadenza, ritmo_giorni, prossimo_passo o misura")
+            Proposta.RegolaFronte(per, scadenza, ritmo, passo, misura)
         }
         "fonte_nodo" -> {
             val fonte = a.testo("fonte")?.trim()?.takeIf { it.isNotEmpty() } ?: rifiuta("fonte mancante")

@@ -97,6 +97,10 @@ avvengono senza aprirla (notifiche); tocchi di conferma al giorno; passi avanti 
 
 | 5. Mappa del tempo (16/10) | fatta | `logica/Tempo.kt`: buchi fra gli impegni (8–22; gli eventi di tutto il giorno non occupano; i nomi non si guardano). Al battito del mattino una sveglia nel primo buco dopo l'ora scelta (Setup, predefinita 18:30); quando suona il programma ricontrolla (impegno in corso, via, studio già aperto) e propone fronte e pezzo con «Studia 20′ / Studia N′ / Non ora»: un tocco apre la sessione. In Oggi il tempo libero di adesso diventa la prima scelta; durante un impegno lo dice |
 
+| 7. Proposte di fronti (16/10) | fatta | `proponi_fronte`: un fronte nuovo di iniziativa dello Shell, con perché, prove e pezzi (in Oggi «Dimmi di più» le mostra). Moderazione del programma (`Fronte.moderazione`): uno ogni 7 giorni, un no vale 60 giorni per un titolo simile. La domenica il battito apre il turno; se la settimana è già usata il modello non si chiama |
+| 8. Obliquo (16/10) | fatta | DB 17, `Percorso.misura`: VELOCITA (da suonare, % pulita) o AVANZAMENTO (da fare: ✓ Fatto / ~ In parte / → Salta, il nodo sale di un gradino). Stesso motore per il piano alimentare, un progetto, un album. Si sceglie in «+ Fronte», nel Motore, o lo propone lo Shell (crea_percorso, regola_fronte, proponi_fronte con «misura») |
+| 6. Fluidità | in parte | fatto: tre luoghi al posto di sei schede, Sì/No da Oggi, spunta con Annulla e vibrazione, tempo libero come prima scelta. **Non fatto: la risposta dello Shell che si scrive mentre arriva** (streaming): tocca il turno di lavoro in background e le chiamate con strumenti, e va provato dal vivo con una chiave — senza, non lo consegno |
+
 Scostamento dal piano: niente `ui3/` accanto alla vecchia. La cornice nuova sostituisce la vecchia subito, perché le schermate
 vecchie restano raggiungibili dal menu: nessuna funzione persa, nessuna doppia interfaccia da tenere allineata.
 

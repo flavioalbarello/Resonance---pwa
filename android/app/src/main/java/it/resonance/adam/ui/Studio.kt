@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import it.resonance.adam.dati.EsitoPratica
+import it.resonance.adam.dati.MisuraFronte
 import it.resonance.adam.dati.Nodo
 import it.resonance.adam.dati.Percorso
 import it.resonance.adam.logica.Pratica
@@ -52,7 +53,7 @@ fun StudioUi(vm: Adam, per: Percorso, nodi: List<Nodo>, colore: Color) {
         }
         val s = sessione
         when {
-            s != null && s.percorsoId == per.id -> InCorso(vm, Pratica.decodifica(s.piano), esiti.size)
+            s != null && s.percorsoId == per.id -> InCorso(vm, Pratica.decodifica(s.piano), esiti.size, per.misura)
             s != null -> Tenue("C'è uno studio in corso su un altro fronte: chiudilo da lì o dalla notifica.")
             else -> Avvio(vm, per)
         }
@@ -81,7 +82,7 @@ private fun Avvio(vm: Adam, per: Percorso) {
             Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
                 Text("${b.minuti}′", fontSize = 13.sp, color = Colori.tenue, modifier = Modifier.padding(end = 8.dp))
                 Text(b.etichetta, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                Text(if (b.ripasso) "ripasso" else "${b.velocita}%", fontSize = 13.sp, color = Colori.tenue)
+                Text(when { b.ripasso -> "ripasso"; per.misura == MisuraFronte.VELOCITA -> "${b.velocita}%"; else -> "" }, fontSize = 13.sp, color = Colori.tenue)
             }
         }
         if (piano.isNotEmpty()) Button({ vm.iniziaStudio(per, minuti!!) }, Modifier.padding(top = 6.dp).testTag("inizia-studio")) { Text("Inizia") }
@@ -89,22 +90,22 @@ private fun Avvio(vm: Adam, per: Percorso) {
 }
 
 @Composable
-internal fun InCorso(vm: Adam, piano: List<Pratica.Blocco>, fatti: Int) {
+internal fun InCorso(vm: Adam, piano: List<Pratica.Blocco>, fatti: Int, misura: MisuraFronte = MisuraFronte.VELOCITA) {
     val b = piano.getOrNull(fatti) ?: return
     var velocita by remember(fatti) { mutableStateOf(b.velocita) }
     Text("${fatti + 1}/${piano.size} · ${b.etichetta}", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
-    Tenue("${b.minuti} minuti" + if (b.ripasso) " · ripasso a tempo" else "")
-    // La velocità suonata davvero: quella del piano, o quella che il Ghost ha messo su Moises.
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Tenue("${b.minuti} minuti" + if (b.ripasso) " · ripasso" else "")
+    // La velocità suonata davvero: quella del piano, o quella che il Ghost ha messo su Moises. Solo per ciò che si suona.
+    if (misura == MisuraFronte.VELOCITA) Row(verticalAlignment = Alignment.CenterVertically) {
         TextButton({ velocita = (velocita - Pratica.PASSO).coerceAtLeast(10) }) { Text("−", fontSize = 20.sp) }
         Text("$velocita%", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         TextButton({ velocita = (velocita + Pratica.PASSO).coerceAtMost(200) }) { Text("+", fontSize = 20.sp) }
         if (it.resonance.adam.battito.Studio.link(b.fonte) != null) TextButton({ vm.apriFonte(b.fonte) }) { Text("Apri la fonte") }
-    }
+    } else if (it.resonance.adam.battito.Studio.link(b.fonte) != null) TextButton({ vm.apriFonte(b.fonte) }) { Text("Apri la fonte") }
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Button({ vm.segnaStudio(EsitoPratica.PULITO, velocita) }, Modifier.testTag("pulito")) { Text("✓ Pulito") }
-        OutlinedButton({ vm.segnaStudio(EsitoPratica.ERRORI, velocita) }) { Text("✗ Errori") }
-        TextButton({ vm.segnaStudio(EsitoPratica.SALTATO, velocita) }) { Text("Avanti") }
+        Button({ vm.segnaStudio(EsitoPratica.PULITO, velocita) }, Modifier.testTag("pulito")) { Text(misura.esiti[0]) }
+        OutlinedButton({ vm.segnaStudio(EsitoPratica.ERRORI, velocita) }) { Text(misura.esiti[1]) }
+        TextButton({ vm.segnaStudio(EsitoPratica.SALTATO, velocita) }) { Text(misura.esiti[2].removePrefix("→ ")) }
     }
     TextButton({ vm.chiudiStudio() }) { Text("Chiudi qui", color = Colori.tenue) }
 }
@@ -125,6 +126,11 @@ fun MotoreUi(vm: Adam, per: Percorso, colore: Color) {
         }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             items(RITMI) { r -> FilterChip(per.ritmoGiorni == r, { vm.ritmoFronte(per, r) }, label = { Text(if (r == 0) "spento" else "ogni $r g") }) }
+        }
+        // Come si misura (fase 8): velocità % per ciò che si suona; fatto / in parte / saltato per il resto.
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            MisuraFronte.entries.forEach { m -> FilterChip(per.misura == m, { vm.misuraFronte(per, m) },
+                label = { Text(if (m == MisuraFronte.VELOCITA) "da suonare (%)" else "da fare", fontSize = 12.sp) }, modifier = Modifier.testTag("misura-${m.name}")) }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(if (per.prossimoPasso.isBlank()) "Nessun prossimo passo" else "→ ${per.prossimoPasso}", fontSize = 14.sp,

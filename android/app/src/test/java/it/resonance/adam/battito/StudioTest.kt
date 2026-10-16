@@ -6,6 +6,7 @@ import android.content.Intent
 import it.resonance.adam.dati.Archivio
 import it.resonance.adam.dati.Db
 import it.resonance.adam.dati.EsitoPratica
+import it.resonance.adam.dati.MisuraFronte
 import it.resonance.adam.dati.Nodo
 import it.resonance.adam.dati.Percorso
 import it.resonance.adam.dati.Pilastro
@@ -37,7 +38,7 @@ class StudioTest {
         val db = Db.di(app)
         val a = Archivio(db)
         val oggi = LocalDate.now()
-        val per = db.percorsi().inserisci(Percorso(pilastro = Pilastro.VIDYA, titolo = "Tributo Rino Gaetano (studio)", creato = 1))
+        val per = db.percorsi().inserisci(Percorso(pilastro = Pilastro.VIDYA, titolo = "Tributo Rino Gaetano (studio)", creato = 1, misura = MisuraFronte.VELOCITA))
         val gianna = db.percorsi().inserisciNodo(Nodo(percorsoId = per, etichetta = "Gianna — ponte", ordine = 0, velocita = 75,
             ultimaPratica = oggi.minusDays(4).toString(), fonte = "https://studio.moises.ai/x"))
         db.percorsi().inserisciNodo(Nodo(percorsoId = per, etichetta = "Berta filava", ordine = 1))
@@ -78,7 +79,7 @@ class StudioTest {
         val db = Db.di(app)
         val a = Archivio(db)
         val oggi = LocalDate.now()
-        val per = db.percorsi().inserisci(Percorso(pilastro = Pilastro.VIDYA, titolo = "Scale (studio)", creato = 1))
+        val per = db.percorsi().inserisci(Percorso(pilastro = Pilastro.VIDYA, titolo = "Scale (studio)", creato = 1, misura = MisuraFronte.VELOCITA))
         db.percorsi().inserisciNodo(Nodo(percorsoId = per, etichetta = "Do maggiore", ordine = 0))
         val inizio = System.currentTimeMillis() - 12 * 60_000L
         val s = a.apriSessione(per, 10, oggi, adesso = inizio)!!
@@ -118,6 +119,27 @@ class StudioTest {
         Studio.proponi(app, a, LocalDate.now().atTime(18, 40))
         assertNull(nm.getNotification(Studio.ID_PROPOSTA))
         a.chiudiSessione(s, LocalDate.now())
+        Unit
+    }
+
+    // L'obliquo (fase 8): un fronte «da fare» (il piano alimentare) usa lo stesso motore, senza velocità.
+    @Test fun unFronteDaFareAvanzaPerStatoSenzaVelocita() = runBlocking {
+        shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
+        val db = Db.di(app)
+        val a = Archivio(db)
+        db.pratica().inCorso()?.let { a.chiudiSessione(it, LocalDate.now()) }
+        val per = db.percorsi().inserisci(Percorso(pilastro = Pilastro.BIO, titolo = "Piano alimentare (obliquo)", creato = 1))
+        val spesa = db.percorsi().inserisciNodo(Nodo(percorsoId = per, etichetta = "Spesa della settimana", ordine = 0))
+        val s = a.apriSessione(per, 15, LocalDate.now())!!
+        val piano = Pratica.decodifica(s.piano)
+        Studio.mostra(app, s.id, per, "BIO", piano[0], 0, piano.size, System.currentTimeMillis() + 60_000, misura = MisuraFronte.AVANZAMENTO)
+        val n = nm.getNotification(Studio.ID)
+        assertEquals(listOf("✓ Fatto", "~ In parte", "→ Salta"), n.actions.map { it.title.toString() })
+        assertTrue(!n.extras.getCharSequence("android.text").toString().contains("%"))
+        Studio.gesto(app, Intent(shadowOf(n.actions[0].actionIntent).savedIntent))
+        val nodo = db.percorsi().elencoNodi().single { it.id == spesa }
+        assertEquals(it.resonance.adam.dati.StatoNodo.INTRODOTTO, nodo.stato); assertEquals(null, nodo.velocita)
+        assertTrue(db.voci().elenco().any { it.testo.contains("Spesa della settimana: fatto") })
         Unit
     }
 }

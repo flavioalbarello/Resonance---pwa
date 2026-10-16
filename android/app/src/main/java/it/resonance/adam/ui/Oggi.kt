@@ -91,7 +91,7 @@ private fun Adesso(vm: Adam) {
         val per = i.percorsi.find { it.id == s.percorsoId }
         Scheda(Colori.ambra, Modifier.testTag("adesso")) {
             Etichetta("Stai studiando · ${per?.titolo ?: ""}", Colori.ambraInchiostro)
-            InCorso(vm, Pratica.decodifica(s.piano), esiti.size)
+            InCorso(vm, Pratica.decodifica(s.piano), esiti.size, per?.misura ?: it.resonance.adam.dati.MisuraFronte.VELOCITA)
         }
         return
     }
@@ -103,7 +103,7 @@ private fun Adesso(vm: Adam) {
             Text("  ${per.titolo}", fontSize = 13.sp, color = Colori.tenue, modifier = Modifier.weight(1f).clickable { vm.apriFronte(per.id) })
         }
         Text(proposta.pezzo.etichetta, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
-        Tenue(Pratica.fase(proposta.pezzo).etichetta + (proposta.pezzo.velocita?.let { " · ultima pulita $it%" } ?: "") + " · " +
+        Tenue(Pratica.fase(proposta.pezzo).etichetta + (proposta.pezzo.velocita?.takeIf { _ -> per.misura == it.resonance.adam.dati.MisuraFronte.VELOCITA }?.let { v -> " · ultima pulita $v%" } ?: "") + " · " +
             Pratica.riga(Pratica.pezzi(i.nodi.filter { it.percorsoId == per.id }), i.oggi, per.scadenza?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }))
         // La mappa del tempo (logica/Tempo.kt): se il calendario è letto, il tempo libero di adesso diventa la prima scelta.
         val eventi = (vm.agenda as? AgendaLetta.Letta)?.eventi

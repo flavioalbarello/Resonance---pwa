@@ -705,6 +705,20 @@ class ShellTest {
         assertEquals(3, db.percorsi().elenco().single().ritmoGiorni)
     }
 
+    // Fase 7: la domenica lo Shell può proporre un fronte nuovo; una seconda proposta nella stessa settimana non chiama il modello.
+    @Test fun ilFronteNuovoSiProponeUnaVoltaASettimanaEUnNoResta() = runBlocking {
+        val m = FintoModello(chiama("proponi_fronte", """{"pilastro":"BIO","titolo":"Cammino serale","perche":"il sonno cala da due settimane","prove":["sonno medio 6h10 in 14 giorni"],"nodi":["10 minuti","20 minuti"]}"""),
+            testo("Un fronte: decidi da Oggi."))
+        val e = shell(m, FintaCassetta()).proponiFronti()!!
+        assertEquals(1, e.proposte.size)
+        assertTrue(contenuto(m.ricevuti[0], m.ricevuti[0].size - 1).contains("UN fronte nuovo"))
+        // Il Ghost dice no: resta scritto, e la settimana è comunque usata.
+        shell(FintoModello(), FintaCassetta()).rifiuta(e.proposte.single())
+        assertEquals(null, shell(FintoModello(), FintaCassetta()).proponiFronti())
+        assertTrue(shell(FintoModello(), FintaCassetta()).frontiProposti().single().rifiutato)
+        assertTrue(db.percorsi().elenco().none { it.titolo == "Cammino serale" })
+    }
+
     @Test fun unaConsegnaSiPrendeSiLavoraESiChiudeGuardandoIlDocumento() = runBlocking {
         archivio.esegui(Proposta.CreaPercorso(Pilastro.ADAM, "Resonance", "", listOf("Fondo")))
         val prendi = FintoModello(chiama("prendi_consegna", """{"cosa":"Scheda del micro-asset","documento":"Scheda micro-asset","percorso":"Resonance","giorni":3}"""), testo("Proposta la consegna."))

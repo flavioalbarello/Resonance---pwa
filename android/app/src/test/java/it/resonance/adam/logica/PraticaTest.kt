@@ -85,6 +85,18 @@ class PraticaTest {
         assertEquals(25, Pratica.minutiFatti(0, 25 * 60_000L + 30_000))
     }
 
+    @Test fun cioCheNonSiSuonaAvanzaPerStato() {
+        val n = n(1, "Spesa").copy(stato = StatoNodo.NON_INIZIATO)
+        val fatto = Pratica.dopo(n, EsitoPratica.PULITO, 0, oggi, it.resonance.adam.dati.MisuraFronte.AVANZAMENTO)
+        assertEquals(StatoNodo.INTRODOTTO, fatto.stato); assertEquals(null, fatto.velocita); assertEquals("2026-10-14", fatto.ultimaPratica)
+        assertEquals(StatoNodo.INTRODOTTO, Pratica.avanza(n, EsitoPratica.ERRORI, oggi).stato)
+        assertEquals(StatoNodo.CONSOLIDATO, Pratica.avanza(n.copy(stato = StatoNodo.CONSOLIDATO), EsitoPratica.PULITO, oggi).stato)
+        assertEquals(n, Pratica.avanza(n, EsitoPratica.SALTATO, oggi))
+        val piano = listOf(Pratica.Blocco(1, "Spesa", 10, 70, false, null))
+        assertEquals(listOf("Spesa: fatto"), Pratica.resoconto(piano, listOf(it.resonance.adam.dati.EsitoBlocco(sessioneId = 1, nodoId = 1, velocita = 70,
+            esito = EsitoPratica.PULITO, istante = 0)), it.resonance.adam.dati.MisuraFronte.AVANZAMENTO))
+    }
+
     @Test fun laScadenzaSiScriveComeViene() {
         assertEquals(LocalDate.parse("2026-12-20"), Pratica.leggiData("20/12/2026", oggi))
         assertEquals(LocalDate.parse("2026-12-20"), Pratica.leggiData("2026-12-20", oggi))

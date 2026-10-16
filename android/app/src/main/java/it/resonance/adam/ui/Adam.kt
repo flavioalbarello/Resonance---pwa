@@ -731,7 +731,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
         resocontoStudio = emptyList()
         val piano = it.resonance.adam.logica.Pratica.decodifica(s.piano)
         val b = piano.first()
-        it.resonance.adam.battito.Studio.mostra(getApplication(), s.id, p.id, p.pilastro.name, b, 0, piano.size, System.currentTimeMillis() + b.minuti * 60_000L)
+        it.resonance.adam.battito.Studio.mostra(getApplication(), s.id, p.id, p.pilastro.name, b, 0, piano.size, System.currentTimeMillis() + b.minuti * 60_000L, misura = p.misura)
         // La fonte del primo pezzo si apre da sola: Moises o YouTube davanti, la notifica sopra.
         apriFonte(b.fonte)
     }
@@ -758,11 +758,12 @@ class Adam(app: Application) : AndroidViewModel(app) {
         archivio.scadenza(p, d)
     }
     fun fonteNodo(n: Nodo, fonte: String) = viewModelScope.launch { archivio.fonte(n, fonte) }
+    fun misuraFronte(p: Percorso, m: it.resonance.adam.dati.MisuraFronte) = viewModelScope.launch { db.percorsi().aggiorna(p.copy(misura = m)) }
     fun ritmoFronte(p: Percorso, giorni: Int) = viewModelScope.launch { db.percorsi().aggiorna(p.copy(ritmoGiorni = giorni.coerceIn(0, it.resonance.adam.logica.Fronte.RITMO_MAX))) }
     fun passoFronte(p: Percorso, testo: String) = viewModelScope.launch { db.percorsi().aggiorna(p.copy(prossimoPasso = testo.trim().take(200))) }
 
-    fun creaPercorso(p: Pilastro, titolo: String, nodi: List<String>) = viewModelScope.launch {
-        val e = archivio.esegui(it.resonance.adam.logica.Proposta.CreaPercorso(p, titolo.trim(), "", nodi))
+    fun creaPercorso(p: Pilastro, titolo: String, nodi: List<String>, misura: it.resonance.adam.dati.MisuraFronte = it.resonance.adam.dati.MisuraFronte.AVANZAMENTO) = viewModelScope.launch {
+        val e = archivio.esegui(it.resonance.adam.logica.Proposta.CreaPercorso(p, titolo.trim(), "", nodi, misura))
         avviso = e.ricevuta
     }
     fun archiviaPercorso(p: Percorso) = viewModelScope.launch { db.percorsi().aggiorna(p.copy(archiviato = true)); percorsoAperto = null }
