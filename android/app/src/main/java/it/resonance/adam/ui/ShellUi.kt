@@ -140,7 +140,7 @@ fun ShellUi(vm: Adam, sistema: Sistema) {
                     }
                 }
             }
-            OutlinedTextField(vm.input, { vm.input = it }, placeholder = { Text("Scrivi allo Shell…") }, modifier = Modifier.weight(1f), maxLines = 6)
+            OutlinedTextField(vm.input, { vm.input = it }, placeholder = { Text("Scrivi allo Shell…") }, modifier = Modifier.weight(1f), maxLines = 6, shape = RoundedCornerShape(24.dp))
             Button({ vm.invia() }, enabled = !vm.pensa && vm.preparo == 0 && (vm.input.isNotBlank() || vm.inAllegato.isNotEmpty()), modifier = Modifier.padding(start = 8.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Colori.ambra, contentColor = Colori.ambraInchiostro)) { Text("Invia") }
         }

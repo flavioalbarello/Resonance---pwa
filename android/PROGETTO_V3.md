@@ -101,6 +101,8 @@ avvengono senza aprirla (notifiche); tocchi di conferma al giorno; passi avanti 
 | 8. Obliquo (16/10) | fatta | DB 17, `Percorso.misura`: VELOCITA (da suonare, % pulita) o AVANZAMENTO (da fare: ✓ Fatto / ~ In parte / → Salta, il nodo sale di un gradino). Stesso motore per il piano alimentare, un progetto, un album. Si sceglie in «+ Fronte», nel Motore, o lo propone lo Shell (crea_percorso, regola_fronte, proponi_fronte con «misura») |
 | 6. Fluidità | in parte | fatto: tre luoghi al posto di sei schede, Sì/No da Oggi, spunta con Annulla e vibrazione, tempo libero come prima scelta. **Non fatto: la risposta dello Shell che si scrive mentre arriva** (streaming): tocca il turno di lavoro in background e le chiamate con strumenti, e va provato dal vivo con una chiave — senza, non lo consegno |
 
+| Look (16/10) | fatto | palette coerente (niente lilla di Material: selezioni ambra tenue, testi-pulsante ambra scura leggibili); schede col bordo neutro e una tacca di colore a sinistra al posto delle cornici colorate; la scheda «Adesso» piena (`SchedaForte`) con UN pulsante principale «Studia N′» e le altre durate accanto; riga di colpo d'occhio sotto la data («1 da decidere · 1 rituale da fare»); icone dei tre luoghi disegnate (sole, barre, nuvoletta) al posto dei pallini; nei tre luoghi niente titolo doppio in alto |
+
 Scostamento dal piano: niente `ui3/` accanto alla vecchia. La cornice nuova sostituisce la vecchia subito, perché le schermate
 vecchie restano raggiungibili dal menu: nessuna funzione persa, nessuna doppia interfaccia da tenere allineata.
 

@@ -1,6 +1,7 @@
 package it.resonance.adam.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -42,15 +43,36 @@ import it.resonance.adam.dati.Pilastro
 import it.resonance.adam.dati.TipoMisura
 import it.resonance.adam.logica.Punto
 
+// Il look della V3 (16/10): schede leggere, tutte col bordo neutro; il colore del pilastro è una tacca a sinistra, non
+// una cornice. Prima ogni scheda aveva la sua cornice colorata e la pagina sembrava un mosaico.
 @Composable
 fun Scheda(colore: Color? = null, modifier: Modifier = Modifier, contenuto: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier
             .fillMaxWidth()
+            .padding(vertical = 5.dp)
+            .background(Colori.superficie, RoundedCornerShape(16.dp))
+            .border(1.dp, Colori.linea, RoundedCornerShape(16.dp))
+            .then(if (colore == null) Modifier else Modifier.drawBehind {
+                val h = 22.dp.toPx()
+                drawRoundRect(colore, topLeft = Offset(0f, h * 0.8f), size = androidx.compose.ui.geometry.Size(3.dp.toPx(), h),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()))
+            })
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        content = contenuto,
+    )
+}
+
+/** La scheda che conta adesso (la sessione proposta o in corso): piena del suo colore, senza cornice. Una per schermata. */
+@Composable
+fun SchedaForte(colore: Color, modifier: Modifier = Modifier, contenuto: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier
+            .fillMaxWidth()
             .padding(vertical = 6.dp)
-            .background(Colori.superficie, RoundedCornerShape(18.dp))
-            .border(1.dp, colore?.copy(alpha = 0.35f) ?: Colori.linea, RoundedCornerShape(18.dp))
-            .padding(16.dp),
+            .background(colore.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
+            .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
         content = contenuto,
     )

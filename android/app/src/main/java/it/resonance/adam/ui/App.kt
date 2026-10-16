@@ -66,7 +66,8 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
             topBar = {
                 // Durante il tour (ui/Tour.kt) niente barre: una cosa per volta.
                 if (!vm.tour) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (vm.schermata.luogo) "RESONANCE" else vm.schermata.etichetta.uppercase(), fontWeight = FontWeight.Bold, letterSpacing = 3.sp, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    // Nei tre luoghi il titolo è nella pagina (la data, «Fronti», la chat): qui niente, per non dirlo due volte.
+                    Text(if (vm.schermata.luogo) "" else vm.schermata.etichetta, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, modifier = Modifier.weight(1f))
                     // Il menu (V3, 16/10/2026): tutto ciò che non è Oggi, Fronti o Shell. Nessuna funzione persa, solo spostata.
                     Box {
                         TextButton({ menu = true }, modifier = Modifier.testTag("menu")) { Text("☰", fontSize = 20.sp, color = Colori.tenue) }
@@ -81,16 +82,16 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
                 }
             },
             bottomBar = {
-                if (!vm.tour) NavigationBar(containerColor = Colori.superficie) {
+                if (!vm.tour) NavigationBar(containerColor = Colori.fondo, tonalElevation = 0.dp) {
                     listOf(Schermata.OGGI, Schermata.FRONTI, Schermata.SHELL).forEach { s ->
                         NavigationBarItem(
                             selected = vm.schermata == s,
                             onClick = { vm.vai(s) },
-                            icon = { Text(if (vm.schermata == s) "●" else "○", color = Colori.ambraInchiostro) },
+                            icon = { IconaLuogo(s, vm.schermata == s, if (vm.schermata == s) Colori.ambraInchiostro else Colori.tenue) },
                             // La scheda dello Shell porta il suo nome, se il Ghost gliene ha dato uno (logica/Nomi.kt).
                             label = { Text(if (s == Schermata.SHELL) it.resonance.adam.logica.Nomi.shell(profilo) else s.etichetta,
                                 fontSize = 12.sp, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
-                            colors = NavigationBarItemDefaults.colors(indicatorColor = Colori.ambra.copy(alpha = 0.18f), selectedTextColor = Colori.ambraInchiostro),
+                            colors = NavigationBarItemDefaults.colors(indicatorColor = Colori.ambraTenue, selectedTextColor = Colori.ambraInchiostro, unselectedTextColor = Colori.tenue),
                         )
                     }
                 }

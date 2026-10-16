@@ -2,6 +2,7 @@ package it.resonance.adam.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,7 +13,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
@@ -56,7 +56,12 @@ fun OggiUi(vm: Adam) {
     var numero by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
         Spazio(12)
-        Text(i.oggi.format(GIORNO).replaceFirstChar { it.uppercase() }, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Colori.inchiostro)
+        Text(i.oggi.format(GIORNO).replaceFirstChar { it.uppercase() }, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Colori.inchiostro)
+        // In una riga, ciò che aspetta il Ghost: il colpo d'occhio prima di scorrere.
+        val inAttesa by vm.inAttesa.collectAsState()
+        val daFare = Contesto.statoRituali(i).count { !it.tenuta.oggi && it.rituale.criterio == null }
+        Tenue(listOfNotNull(inAttesa.size.takeIf { it > 0 }?.let { "$it da decidere" }, daFare.takeIf { it > 0 && i.via == null }?.let { "$it " + if (it == 1) "rituale da fare" else "rituali da fare" })
+            .joinToString(" · ").ifEmpty { "Niente che aspetti te." })
         i.via?.let { da ->
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Sei via dal ${da.format(GIORNO)}: battito zitto, rituali in pausa.", color = Colori.ambraInchiostro, fontSize = 13.sp, modifier = Modifier.weight(1f))
@@ -89,7 +94,7 @@ private fun Adesso(vm: Adam) {
     val s = sessione
     if (s != null) {
         val per = i.percorsi.find { it.id == s.percorsoId }
-        Scheda(Colori.ambra, Modifier.testTag("adesso")) {
+        SchedaForte(Colori.ambra, Modifier.testTag("adesso")) {
             Etichetta("Stai studiando · ${per?.titolo ?: ""}", Colori.ambraInchiostro)
             InCorso(vm, Pratica.decodifica(s.piano), esiti.size, per?.misura ?: it.resonance.adam.dati.MisuraFronte.VELOCITA)
         }
@@ -97,7 +102,7 @@ private fun Adesso(vm: Adam) {
     }
     val proposta = Fronti.prossimo(i.percorsi, i.nodi, i.oggi) ?: return
     val per = proposta.percorso
-    Scheda(Colori.di(per.pilastro), Modifier.testTag("adesso")) {
+    SchedaForte(Colori.di(per.pilastro), Modifier.testTag("adesso")) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Etichetta("Adesso", Colori.di(per.pilastro))
             Text("  ${per.titolo}", fontSize = 13.sp, color = Colori.tenue, modifier = Modifier.weight(1f).clickable { vm.apriFronte(per.id) })
@@ -113,12 +118,17 @@ private fun Adesso(vm: Adam) {
         when {
             momento is it.resonance.adam.logica.Tempo.Adesso.Impegnato -> Tenue("Ora sei in un impegno fino alle ${momento.evento.fine.toLocalTime().toString().take(5)}. Quando hai tempo:")
             libero != null && libero.second >= 5 -> Tenue(it.resonance.adam.logica.Tempo.riga(libero.first) + ". Il piano lo fa il programma.")
-            else -> Tenue("Quanto tempo hai? Il piano lo fa il programma.")
+            else -> {}
         }
-        val tempi = (listOfNotNull(libero?.second?.takeIf { it >= 5 && it !in SUBITO }) + SUBITO).distinct()
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(tempi) { m ->
-                AssistChip({ vm.iniziaStudio(per, m) }, label = { Text(if (m < 60) "$m′" else if (m % 60 == 0) "${m / 60}h" else "${m / 60}h${m % 60}") }, modifier = Modifier.testTag("subito-$m"))
+        // Un'azione principale, grande (il tempo libero di adesso, o 20′), e le altre durate accanto, piccole.
+        val principale = libero?.second?.takeIf { it >= 5 }?.coerceAtMost(120) ?: 20
+        val tempi = SUBITO.filter { it != principale }
+        val etichetta = { m: Int -> if (m < 60) "$m′" else if (m % 60 == 0) "${m / 60}h" else "${m / 60}h${m % 60}" }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+            Button({ vm.iniziaStudio(per, principale) }, modifier = Modifier.testTag("subito-$principale"),
+                colors = ButtonDefaults.buttonColors(containerColor = Colori.inchiostro, contentColor = Colori.fondo)) { Text("Studia ${etichetta(principale)}", fontWeight = FontWeight.SemiBold) }
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                items(tempi) { m -> TextButton({ vm.iniziaStudio(per, m) }, modifier = Modifier.testTag("subito-$m")) { Text(etichetta(m), color = Colori.inchiostro) } }
             }
         }
     }
@@ -138,7 +148,7 @@ private fun DaDecidere(vm: Adam) {
                 Button({ tocco.performHapticFeedback(HapticFeedbackType.LongPress); vm.conferma(m) },
                     colors = ButtonDefaults.buttonColors(containerColor = Colori.ambra, contentColor = Colori.ambraInchiostro)) { Text("Sì") }
                 OutlinedButton({ vm.rifiuta(m) }) { Text("No") }
-                TextButton({ vm.vai(Schermata.SHELL) }) { Text("Dimmi di più") }
+                TextButton({ vm.vai(Schermata.SHELL) }) { Text("Dimmi di più", color = Colori.tenue) }
             }
         }
         if (inAttesa.size > 5) TextButton({ vm.vai(Schermata.SHELL) }) { Text("Le altre ${inAttesa.size - 5} in chat ›") }
@@ -157,9 +167,8 @@ private fun FrontiMossi(vm: Adam) {
     }
     Scheda {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Etichetta("Fronti", Colori.tenue)
-            Spazio(0)
-            TextButton({ vm.vai(Schermata.FRONTI) }, modifier = Modifier.padding(start = 8.dp)) { Text("Tutti ›", fontSize = 12.sp) }
+            Box(Modifier.weight(1f)) { Etichetta("Fronti", Colori.tenue) }
+            TextButton({ vm.vai(Schermata.FRONTI) }) { Text("Tutti ›", fontSize = 12.sp, color = Colori.tenue) }
         }
         fronti.forEach { p ->
             val pezzi = Pratica.pezzi(i.nodi.filter { it.percorsoId == p.id })
@@ -211,10 +220,9 @@ private fun Numeri(vm: Adam, onNumero: () -> Unit) {
     val tipi = Fronti.cambiati(i.misure, i.oggi).filter { it != TipoMisura.ENTRATA }
     Scheda {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Etichetta("Numeri che si sono mossi", Colori.tenue)
-            Spazio(0)
-            TextButton(onNumero, modifier = Modifier.padding(start = 4.dp)) { Text("+ Un numero", fontSize = 12.sp) }
-            TextButton({ vm.leggiSensi() }) { Text("Sensori", fontSize = 12.sp) }
+            Box(Modifier.weight(1f)) { Etichetta("Numeri che si sono mossi", Colori.tenue) }
+            TextButton(onNumero) { Text("+ Numero", fontSize = 12.sp, color = Colori.tenue) }
+            TextButton({ vm.leggiSensi() }) { Text("Sensori", fontSize = 12.sp, color = Colori.tenue) }
         }
         if (vm.statoSensi.isNotBlank()) Tenue(vm.statoSensi)
         if (tipi.isEmpty()) Tenue("Niente di nuovo da ieri.")
