@@ -163,11 +163,12 @@ class SchermateTest {
         val vm = Adam(RuntimeEnvironment.getApplication())
         semina(vm)
         val oggi = LocalDate.now()
-        vm.agenda = AgendaLetta.Letta(oggi, 2, listOf(
+        val agendaFinta = AgendaLetta.Letta(oggi, 2, listOf(
             Evento("Dentista", oggi.atTime(10, 30), oggi.atTime(11, 15), false, "Via Roma 12"),
             Evento("Prove con la band", oggi.atTime(21, 0), oggi.atTime(23, 0), false),
             Evento("Ferie", oggi.plusDays(1).atStartOfDay(), oggi.plusDays(2).atStartOfDay(), true),
         ))
+        vm.agenda = agendaFinta
         regola.setContent { TemaResonance { App(vm, sistema) { it() } } }
         regola.waitUntil(10_000) { vm.istantanea.value.misure.size >= 90 && vm.istantanea.value.rituali.size == 2 && vm.chat.value.size == 10 }
 
@@ -186,8 +187,22 @@ class SchermateTest {
         regola.onNodeWithTag("salta-tour").performClick()
         regola.waitForIdle()
         assertTrue(!vm.tour)
-        regola.onNodeWithText("SEGUI · GAZPROM IN BORSA").assertExists()
+        // V3: si arriva su Oggi. La sessione a un tocco, le proposte da decidere, i rituali da fare, Segui.
+        assertEquals(Schermata.OGGI, vm.schermata)
+        // «Adesso» c'è solo coi fronti di pratica: nei dati di prova nessuno lo è ancora (lo diventa Divenire dopo lo Studio).
+        regola.onNodeWithTag("adesso").assertDoesNotExist()
+        regola.onNodeWithTag("da-decidere").performScrollTo().assertExists()
+        regola.onNodeWithText("SEGUI · GAZPROM IN BORSA").performScrollTo().assertExists()
         regola.onNodeWithText("giorno 3 di 7", substring = true).assertExists()
+        scatta("1-oggi")
+        // Il menu porta a tutto il resto; «Numeri e rituali» è lo Specchio di prima, intero.
+        regola.onNodeWithTag("menu").performClick()
+        regola.onNodeWithText("Numeri e rituali").assertExists()
+        scatta("1c-menu")
+        regola.onNodeWithText("Numeri e rituali").performClick()
+        assertEquals(Schermata.SPECCHIO, vm.schermata)
+        // Andarci rilegge il calendario vero (vuoto nelle prove): si rimette quello finto.
+        regola.waitForIdle(); vm.agenda = agendaFinta
         scatta("1-specchio")
         regola.onNodeWithText("Stabilità mantenuta", substring = true, ignoreCase = true).assertExists()
         regola.onNodeWithText("Entrate che non vendono tempo", substring = true).assertExists()
@@ -244,6 +259,13 @@ class SchermateTest {
         vm.riunione = null
         vm.consulentePresente = false
 
+        // Fronti: tutti i percorsi in un elenco, da lì la scheda del fronte.
+        vm.vai(Schermata.FRONTI)
+        regola.onNodeWithTag("fronte-Divenire").assertExists()
+        regola.onNodeWithTag("fronte-Resonance").assertExists()
+        scatta("4a-fronti")
+        regola.onNodeWithTag("fronte-Divenire").performClick()
+        regola.onNodeWithText("Atto I: Origine").assertExists()
         vm.vai(Schermata.VIDYA)
         regola.onNodeWithText("Percorsi").performClick()
         scatta("4-vidya-percorsi")
@@ -271,6 +293,11 @@ class SchermateTest {
         regola.onNodeWithText("COM'È ANDATA").performScrollTo()
         regola.onNodeWithText("pulito a 70% (prima volta)", substring = true).assertExists()
         scatta("5e-studio-resoconto")
+        // Dopo la prima sessione Divenire è un fronte di pratica: Oggi lo propone a un tocco.
+        vm.vai(Schermata.OGGI)
+        aspetta { regola.onAllNodesWithTag("adesso").fetchSemanticsNodes().isNotEmpty() }
+        regola.onNodeWithTag("subito-10").assertExists()
+        scatta("1d-oggi-adesso")
 
         vm.vai(Schermata.BIO)
         // Il nome non si traduce: una riga ne apre il significato (logica/Significati.kt).

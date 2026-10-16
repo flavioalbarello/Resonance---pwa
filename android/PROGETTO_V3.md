@@ -91,4 +91,9 @@ avvengono senza aprirla (notifiche); tocchi di conferma al giorno; passi avanti 
 | 1. Motore | fatta (14/10) | DB 16; `logica/Pratica.kt`; un pezzo mai suonato non è «trascurato» |
 | 2. Sessione guidata | fatta (14/10), da provare sul telefono | scheda Studio in cima a ogni percorso con nodi; notifica fissa `battito/Studio.kt` (blocco, conto alla rovescia, vibrazione a fine blocco, ✓/✗/→, tocco = apre la fonte); minuti → misura PRATICA (rituale `PRATICA>=N` si spunta da solo); resoconto nel diario. Senza velocità misurata conta lo stato del nodo |
 
+| Nuova forma (16/10) | fatta | barra con tre luoghi: **Oggi** (adesso a un tocco, da decidere Sì/No/Dimmi, fronti mossi, rituali con Annulla, numeri mossi, Segui, agenda, esperimenti), **Fronti** (tutti i percorsi, urgenti in cima, + Fronte, scheda del fronte con Studio), **Shell**. Menu ☰: Numeri e rituali (lo Specchio intero), Bio, Air, Vidya, Adam, Setup. Ancora: Oggi, Fronti, Shell, 🎤, Auto. Le notifiche dello Specchio portano a Oggi |
+
+Scostamento dal piano: niente `ui3/` accanto alla vecchia. La cornice nuova sostituisce la vecchia subito, perché le schermate
+vecchie restano raggiungibili dal menu: nessuna funzione persa, nessuna doppia interfaccia da tenere allineata.
+
 Da guardare dal vivo: la vibrazione a fine blocco sopra Moises; il link di Moises si apre nell'app Moises o nel browser.

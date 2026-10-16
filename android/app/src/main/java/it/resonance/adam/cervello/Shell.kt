@@ -680,7 +680,7 @@ class Shell(
         archivio.db.segui().elenco().filter { Ricerca.daChiudere(it, oggi) }.map { o ->
             val letture = archivio.db.segui().lettureDi(o.id)
             val resoconto = if (letture.isEmpty()) "Nessuna lettura riuscita in questi giorni: non c'è niente da riassumere."
-            else if (controllaSpesa() != null) "Resoconto non scritto: tetto di spesa del mese raggiunto. Le letture restano nello Specchio."
+            else if (controllaSpesa() != null) "Resoconto non scritto: tetto di spesa del mese raggiunto. Le letture restano in Oggi, sotto Segui."
             else runCatching {
                 val messaggi = JsonArray(listOf(
                     buildJsonObject { put("role", "system"); put("content", Ricerca.SISTEMA_RESOCONTO) },
@@ -689,7 +689,7 @@ class Shell(
                 val (r, _) = chiama(modelloPer(Compito.RICERCA), messaggi, null, MAX_TOKEN_BATTITO, temperaturaDi(Compito.RICERCA))
                 registraCosto(r)
                 Testi.senzaFinteNote(r.testo).ifBlank { null }
-            }.getOrNull() ?: "Resoconto non riuscito: le ${letture.size} letture restano nello Specchio."
+            }.getOrNull() ?: "Resoconto non riuscito: le ${letture.size} letture restano in Oggi, sotto Segui."
             archivio.chiudiSegui(o, resoconto, oggi)
         }
 

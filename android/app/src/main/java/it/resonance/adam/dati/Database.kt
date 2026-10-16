@@ -154,6 +154,8 @@ interface MessaggiDao {
     @Query("SELECT * FROM (SELECT * FROM messaggi ORDER BY istante DESC, id DESC LIMIT :n) ORDER BY istante, id") fun osservaUltimi(n: Int): Flow<List<Messaggio>>
     @Query("SELECT * FROM messaggi WHERE id = :id") suspend fun per(id: Long): Messaggio?
     @Query("SELECT * FROM messaggi WHERE stato = 'IN_ATTESA' ORDER BY istante DESC LIMIT 1") suspend fun ultimaInAttesa(): Messaggio?
+    // Oggi (V3): le proposte che aspettano il Ghost si decidono anche da lì, senza cercarle in chat.
+    @Query("SELECT * FROM messaggi WHERE stato = 'IN_ATTESA' ORDER BY istante DESC") fun osservaInAttesa(): Flow<List<Messaggio>>
     @Insert suspend fun inserisci(m: Messaggio): Long
     @Update suspend fun aggiorna(m: Messaggio)
     @Query("SELECT * FROM messaggi") suspend fun elenco(): List<Messaggio>
@@ -198,6 +200,7 @@ interface PraticaDao {
     @Query("SELECT * FROM sessioni WHERE fine IS NULL ORDER BY inizio DESC LIMIT 1") fun osservaInCorso(): Flow<Sessione?>
     @Query("SELECT * FROM esiti_pratica WHERE sessioneId = :sessione ORDER BY istante") fun osservaEsiti(sessione: Long): Flow<List<EsitoBlocco>>
     @Query("SELECT * FROM sessioni ORDER BY inizio") suspend fun sessioni(): List<Sessione>
+    @Query("SELECT * FROM sessioni ORDER BY inizio DESC") fun osservaSessioni(): Flow<List<Sessione>>
     @Query("SELECT * FROM sessioni WHERE percorsoId = :percorso ORDER BY inizio DESC") fun sessioniDi(percorso: Long): Flow<List<Sessione>>
     @Insert suspend fun esito(e: EsitoBlocco): Long
     @Query("SELECT * FROM esiti_pratica ORDER BY istante") suspend fun esiti(): List<EsitoBlocco>

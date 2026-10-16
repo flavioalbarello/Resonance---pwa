@@ -89,7 +89,7 @@ private fun Avvio(vm: Adam, per: Percorso) {
 }
 
 @Composable
-private fun InCorso(vm: Adam, piano: List<Pratica.Blocco>, fatti: Int) {
+internal fun InCorso(vm: Adam, piano: List<Pratica.Blocco>, fatti: Int) {
     val b = piano.getOrNull(fatti) ?: return
     var velocita by remember(fatti) { mutableStateOf(b.velocita) }
     Text("${fatti + 1}/${piano.size} · ${b.etichetta}", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))

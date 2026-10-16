@@ -44,11 +44,9 @@ fun Ancora(vm: Adam, conMicrofono: (() -> Unit) -> Unit) {
     var aperto by remember { mutableStateOf(false) }
     val ascolta = vm.ascolta != Ascolta.SPENTO
     val spicchi = listOf(
-        Spicchio("Specchio", Colori.ambra, true) { vm.vai(Schermata.SPECCHIO) },
+        Spicchio("Oggi", Colori.ambra, true) { vm.vai(Schermata.OGGI) },
+        Spicchio("Fronti", Colori.ambra, true) { vm.vai(Schermata.FRONTI) },
         Spicchio("Shell", Colori.ambra, true) { vm.vai(Schermata.SHELL) },
-        Spicchio("Bio", Colori.bio, false) { vm.vai(Schermata.BIO) },
-        Spicchio("Air", Colori.air, false) { vm.vai(Schermata.AIR) },
-        Spicchio("Vidya", Colori.vidya, false) { vm.vai(Schermata.VIDYA) },
         Spicchio("🎤", Colori.allarmeFondo, true) { conMicrofono { vm.avviaDettatura() } },
         Spicchio("Auto", Colori.allarme, false) { conMicrofono { vm.avviaAuto() } },
     )

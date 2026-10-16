@@ -21,6 +21,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -44,7 +47,16 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
     }
     // Al ritorno nell'app la riunione si ritira subito: fuori, Android la congela e gli interventi aspettavano (26/09).
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { vm.alRitorno() }
-    BackHandler(enabled = vm.schermata != Schermata.SPECCHIO || vm.percorsoAperto != null || vm.documentoAperto != null) { vm.indietro() }
+    BackHandler(enabled = vm.schermata != Schermata.OGGI || vm.percorsoAperto != null || vm.documentoAperto != null) { vm.indietro() }
+    // Un gesto disfacibile (V3): la striscia con «Annulla» per qualche secondo.
+    LaunchedEffect(vm.annullabile) {
+        vm.annullabile?.let { a ->
+            if (avvisi.showSnackbar(a.testo, actionLabel = "Annulla", duration = androidx.compose.material3.SnackbarDuration.Short) ==
+                androidx.compose.material3.SnackbarResult.ActionPerformed) a.annulla()
+            vm.annullabile = null
+        }
+    }
+    var menu by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
         Scaffold(
@@ -54,22 +66,31 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
             topBar = {
                 // Durante il tour (ui/Tour.kt) niente barre: una cosa per volta.
                 if (!vm.tour) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("RESONANCE", fontWeight = FontWeight.Bold, letterSpacing = 3.sp, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                    TextButton({ vm.vai(Schermata.SETUP) }) { Text("Setup", color = Colori.tenue) }
+                    Text(if (vm.schermata.luogo) "RESONANCE" else vm.schermata.etichetta.uppercase(), fontWeight = FontWeight.Bold, letterSpacing = 3.sp, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    // Il menu (V3, 16/10/2026): tutto ciò che non è Oggi, Fronti o Shell. Nessuna funzione persa, solo spostata.
+                    Box {
+                        TextButton({ menu = true }, modifier = Modifier.testTag("menu")) { Text("☰", fontSize = 20.sp, color = Colori.tenue) }
+                        androidx.compose.material3.DropdownMenu(menu, { menu = false }) {
+                            Menu.voci(it.resonance.adam.logica.Edizione.sviluppatore).forEach { v ->
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Column { Text(v.nome); Text(v.cosa, fontSize = 12.sp, color = Colori.tenue) } },
+                                    onClick = { menu = false; vm.vai(v.schermata) })
+                            }
+                        }
+                    }
                 }
             },
             bottomBar = {
                 if (!vm.tour) NavigationBar(containerColor = Colori.superficie) {
-                    listOf(Schermata.SPECCHIO, Schermata.SHELL, Schermata.ADAM, Schermata.BIO, Schermata.AIR, Schermata.VIDYA).forEach { s ->
-                        val colore = when (s) { Schermata.BIO -> Colori.bio; Schermata.AIR -> Colori.air; Schermata.VIDYA -> Colori.vidya; else -> Colori.ambraInchiostro }
+                    listOf(Schermata.OGGI, Schermata.FRONTI, Schermata.SHELL).forEach { s ->
                         NavigationBarItem(
                             selected = vm.schermata == s,
                             onClick = { vm.vai(s) },
-                            icon = { Text(if (vm.schermata == s) "●" else "○", color = colore) },
+                            icon = { Text(if (vm.schermata == s) "●" else "○", color = Colori.ambraInchiostro) },
                             // La scheda dello Shell porta il suo nome, se il Ghost gliene ha dato uno (logica/Nomi.kt).
                             label = { Text(if (s == Schermata.SHELL) it.resonance.adam.logica.Nomi.shell(profilo) else s.etichetta,
-                                fontSize = 11.sp, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
-                            colors = NavigationBarItemDefaults.colors(indicatorColor = colore.copy(alpha = 0.12f), selectedTextColor = colore),
+                                fontSize = 12.sp, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+                            colors = NavigationBarItemDefaults.colors(indicatorColor = Colori.ambra.copy(alpha = 0.18f), selectedTextColor = Colori.ambraInchiostro),
                         )
                     }
                 }
@@ -77,8 +98,10 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
         ) { interno ->
             Column(Modifier.padding(interno).fillMaxSize()) {
                 if (vm.tour) TourUi(vm, sistema) else when (vm.schermata) {
-                    Schermata.SPECCHIO -> Specchio(vm)
+                    Schermata.OGGI -> OggiUi(vm)
+                    Schermata.FRONTI -> FrontiUi(vm)
                     Schermata.SHELL -> ShellUi(vm, sistema)
+                    Schermata.SPECCHIO -> Specchio(vm)
                     Schermata.ADAM -> PilastroUi(vm, Pilastro.ADAM)
                     Schermata.BIO -> PilastroUi(vm, Pilastro.BIO)
                     Schermata.AIR -> PilastroUi(vm, Pilastro.AIR)

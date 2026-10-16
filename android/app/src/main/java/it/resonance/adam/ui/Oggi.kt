@@ -1,0 +1,249 @@
+package it.resonance.adam.ui
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import it.resonance.adam.dati.TipoMisura
+import it.resonance.adam.logica.Agenda
+import it.resonance.adam.logica.AgendaLetta
+import it.resonance.adam.logica.Contesto
+import it.resonance.adam.logica.Esiti
+import it.resonance.adam.logica.Esperimenti
+import it.resonance.adam.logica.Fronti
+import it.resonance.adam.logica.Pratica
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+private val GIORNO = DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.ITALIAN)
+private val SUBITO = listOf(10, 20, 30, 60)
+
+// Oggi (V3, 16/10/2026): il posto solo da aprire. Prima ciò che si può FARE adesso (una sessione a un tocco, o quella in
+// corso), poi ciò che aspetta una decisione del Ghost (le proposte dello Shell), poi i fronti che si sono mossi, i rituali
+// ancora da fare, e solo i numeri che sono cambiati. Tutto il resto è nel menu (Numeri e rituali, i pilastri).
+// La regola: ogni riga qui restituisce qualcosa, o non c'è.
+@Composable
+fun OggiUi(vm: Adam) {
+    val i by vm.istantanea.collectAsState()
+    var numero by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+        Spazio(12)
+        Text(i.oggi.format(GIORNO).replaceFirstChar { it.uppercase() }, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Colori.inchiostro)
+        i.via?.let { da ->
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Sei via dal ${da.format(GIORNO)}: battito zitto, rituali in pausa.", color = Colori.ambraInchiostro, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Button({ vm.torna() }, modifier = Modifier.testTag("torna")) { Text("Sono tornato") }
+            }
+        }
+        Adesso(vm)
+        DaDecidere(vm)
+        FrontiMossi(vm)
+        RitualiDaFare(vm)
+        SeguiUi(vm)
+        Numeri(vm, onNumero = { numero = true })
+        AgendaBreve(vm)
+        EsperimentiBreve(vm)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+            if (i.via == null) TextButton({ vm.vaVia() }, modifier = Modifier.testTag("via")) { Text("Sono via", color = Colori.tenue) }
+            TextButton({ vm.vai(Schermata.SPECCHIO) }) { Text("Tutti i numeri e i rituali ›", color = Colori.tenue) }
+        }
+        Spazio(120)
+    }
+    if (numero) DialogoMisura(null, { t, v, l -> vm.aggiungiMisura(t, v, legata = l) }) { numero = false }
+}
+
+/** La sessione in corso, o quella proposta: il fronte e il pezzo più urgenti, e il tempo a un tocco. */
+@Composable
+private fun Adesso(vm: Adam) {
+    val i by vm.istantanea.collectAsState()
+    val sessione by vm.sessione.collectAsState()
+    val esiti by vm.esitiSessione.collectAsState()
+    val s = sessione
+    if (s != null) {
+        val per = i.percorsi.find { it.id == s.percorsoId }
+        Scheda(Colori.ambra, Modifier.testTag("adesso")) {
+            Etichetta("Stai studiando · ${per?.titolo ?: ""}", Colori.ambraInchiostro)
+            InCorso(vm, Pratica.decodifica(s.piano), esiti.size)
+        }
+        return
+    }
+    val proposta = Fronti.prossimo(i.percorsi, i.nodi, i.oggi) ?: return
+    val per = proposta.percorso
+    Scheda(Colori.di(per.pilastro), Modifier.testTag("adesso")) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Etichetta("Adesso", Colori.di(per.pilastro))
+            Text("  ${per.titolo}", fontSize = 13.sp, color = Colori.tenue, modifier = Modifier.weight(1f).clickable { vm.apriFronte(per.id) })
+        }
+        Text(proposta.pezzo.etichetta, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
+        Tenue(Pratica.fase(proposta.pezzo).etichetta + (proposta.pezzo.velocita?.let { " · ultima pulita $it%" } ?: "") + " · " +
+            Pratica.riga(Pratica.pezzi(i.nodi.filter { it.percorsoId == per.id }), i.oggi, per.scadenza?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }))
+        Tenue("Quanto tempo hai? Il piano lo fa il programma.")
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(SUBITO) { m ->
+                AssistChip({ vm.iniziaStudio(per, m) }, label = { Text(if (m < 60) "$m′" else "1h") }, modifier = Modifier.testTag("subito-$m"))
+            }
+        }
+    }
+}
+
+/** Le proposte dello Shell che aspettano il Ghost: si decidono qui, con la stessa conferma della chat. */
+@Composable
+private fun DaDecidere(vm: Adam) {
+    val inAttesa by vm.inAttesa.collectAsState()
+    if (inAttesa.isEmpty()) return
+    val tocco = LocalHapticFeedback.current
+    Scheda(Colori.ambra, Modifier.testTag("da-decidere")) {
+        Etichetta("Da decidere · ${inAttesa.size}", Colori.ambraInchiostro)
+        inAttesa.take(5).forEach { m ->
+            Riga(m.testo)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 6.dp)) {
+                Button({ tocco.performHapticFeedback(HapticFeedbackType.LongPress); vm.conferma(m) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Colori.ambra, contentColor = Colori.ambraInchiostro)) { Text("Sì") }
+                OutlinedButton({ vm.rifiuta(m) }) { Text("No") }
+                TextButton({ vm.vai(Schermata.SHELL) }) { Text("Dimmi di più") }
+            }
+        }
+        if (inAttesa.size > 5) TextButton({ vm.vai(Schermata.SHELL) }) { Text("Le altre ${inAttesa.size - 5} in chat ›") }
+    }
+}
+
+/** Una riga per fronte che ha qualcosa da dire: a che punto è e quando ci si è lavorato l'ultima volta. */
+@Composable
+private fun FrontiMossi(vm: Adam) {
+    val i by vm.istantanea.collectAsState()
+    val sessioni by vm.sessioni.collectAsState()
+    val fronti = Fronti.ordina(i.percorsi, i.nodi, i.oggi).filter { Pratica.pezzi(i.nodi.filter { n -> n.percorsoId == it.id }).isNotEmpty() }.take(4)
+    if (fronti.isEmpty()) {
+        Scheda { Etichetta("Fronti"); Tenue("Nessun fronte ancora. Aprine uno in Fronti, o chiedilo allo Shell: «apri il fronte del tributo».") }
+        return
+    }
+    Scheda {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Etichetta("Fronti", Colori.tenue)
+            Spazio(0)
+            TextButton({ vm.vai(Schermata.FRONTI) }, modifier = Modifier.padding(start = 8.dp)) { Text("Tutti ›", fontSize = 12.sp) }
+        }
+        fronti.forEach { p ->
+            val pezzi = Pratica.pezzi(i.nodi.filter { it.percorsoId == p.id })
+            Column(Modifier.fillMaxWidth().clickable { vm.apriFronte(p.id) }.padding(vertical = 5.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("● ", color = Colori.di(p.pilastro), fontSize = 12.sp)
+                    Text(p.titolo, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                }
+                Tenue(listOfNotNull(Pratica.riga(pezzi, i.oggi, p.scadenza?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }),
+                    Fronti.rigaUltima(Fronti.ultima(sessioni, p.id), i.oggi), p.prossimoPasso.ifBlank { null }).joinToString(" · "))
+            }
+        }
+    }
+}
+
+/** I rituali a mano non ancora fatti oggi: un tocco, e per qualche secondo si può annullare. */
+@Composable
+private fun RitualiDaFare(vm: Adam) {
+    val i by vm.istantanea.collectAsState()
+    if (i.via != null) return
+    val stati = Contesto.statoRituali(i)
+    if (stati.isEmpty()) return
+    val tocco = LocalHapticFeedback.current
+    val daFare = stati.filter { !it.tenuta.oggi && it.rituale.criterio == null }
+    val fatti = stati.filter { it.tenuta.oggi }
+    Scheda(Colori.ambra) {
+        Etichetta("Rituali", Colori.ambraInchiostro)
+        daFare.forEach { s ->
+            Row(Modifier.fillMaxWidth().testTag("rituale-${s.rituale.nome}").clickable {
+                tocco.performHapticFeedback(HapticFeedbackType.LongPress); vm.spuntaConAnnulla(s.rituale)
+            }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("○  ", color = Colori.di(s.rituale.pilastro), fontSize = 16.sp)
+                Text(s.rituale.nome, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                if (s.tenuta.serie > 0) Text("${s.tenuta.serie} di fila", fontSize = 12.sp, color = Colori.tenue)
+            }
+        }
+        // I rituali automatici non si toccano: si spuntano dalla misura (una sessione di studio, il sonno, i passi).
+        stati.filter { !it.tenuta.oggi && it.rituale.criterio != null }.forEach { s ->
+            Tenue("◌  ${s.rituale.nome}: si spunta da solo quando ${it.resonance.adam.logica.Stabilita.leggiCriterio(s.rituale.criterio)?.leggibile() ?: s.rituale.criterio}")
+        }
+        if (fatti.isNotEmpty()) Tenue("✓ " + fatti.joinToString(" · ") { it.rituale.nome })
+    }
+}
+
+/** Solo i numeri che si sono mossi negli ultimi due giorni. */
+@Composable
+private fun Numeri(vm: Adam, onNumero: () -> Unit) {
+    val i by vm.istantanea.collectAsState()
+    val tipi = Fronti.cambiati(i.misure, i.oggi).filter { it != TipoMisura.ENTRATA }
+    Scheda {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Etichetta("Numeri che si sono mossi", Colori.tenue)
+            Spazio(0)
+            TextButton(onNumero, modifier = Modifier.padding(start = 4.dp)) { Text("+ Un numero", fontSize = 12.sp) }
+            TextButton({ vm.leggiSensi() }) { Text("Sensori", fontSize = 12.sp) }
+        }
+        if (vm.statoSensi.isNotBlank()) Tenue(vm.statoSensi)
+        if (tipi.isEmpty()) Tenue("Niente di nuovo da ieri.")
+        tipi.forEach { t ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("● ", color = Colori.di(t.pilastro), fontSize = 10.sp)
+                Riga(Esiti.riga(Esiti.sintesi(i.misure, t, i.oggi), i.oggi))
+            }
+        }
+    }
+}
+
+@Composable
+private fun AgendaBreve(vm: Adam) {
+    val i by vm.istantanea.collectAsState()
+    val a = vm.agenda as? AgendaLetta.Letta ?: return
+    val oggi = Agenda.delGiorno(a.eventi, i.oggi)
+    val domani = Agenda.delGiorno(a.eventi, i.oggi.plusDays(1))
+    if (oggi.isEmpty() && domani.isEmpty()) return
+    Scheda(Colori.air) {
+        Etichetta("Agenda", Colori.air)
+        listOf("Oggi" to oggi, "Domani" to domani).filter { it.second.isNotEmpty() }.forEach { (nome, eventi) ->
+            Row {
+                Text(nome, color = Colori.tenue, fontSize = 13.sp, modifier = Modifier.width(64.dp).padding(top = 2.dp))
+                Column { eventi.forEach { Riga(Agenda.riga(it, i.oggi, conGiorno = false)) } }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EsperimentiBreve(vm: Adam) {
+    val i by vm.istantanea.collectAsState()
+    val tutti by vm.esperimenti.collectAsState()
+    val aperti = Esperimenti.aperti(tutti)
+    if (aperti.isEmpty()) return
+    Scheda(Colori.vidya, Modifier.clickable { vm.vai(Schermata.SPECCHIO) }) {
+        Etichetta("Esperimenti in corso", Colori.vidya)
+        aperti.forEach { Tenue(Esperimenti.riga(it, i.misure, i.oggi)) }
+    }
+}
+

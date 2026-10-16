@@ -185,7 +185,7 @@ private fun Percorsi(vm: Adam, p: Pilastro) {
 }
 
 @Composable
-private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.Color) {
+internal fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.Color) {
     val percorsi by vm.percorsi.collectAsState()
     val nodi by vm.nodi.collectAsState()
     val documenti by vm.documenti.collectAsState()
@@ -201,7 +201,7 @@ private fun PercorsoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.
     var fonteNodo by remember { mutableStateOf<Nodo?>(null) }
     var aperti by remember(id) { mutableStateOf(setOf<Long>()) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-        TextButton({ vm.percorsoAperto = null }) { Text("‹ Percorsi") }
+        TextButton({ vm.percorsoAperto = null }) { Text("‹ Indietro") }
         Text(per.titolo, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = colore)
         if (per.scopo.isNotBlank()) Tenue(per.scopo)
         val tutti = nodi.filter { it.percorsoId == per.id }
@@ -341,7 +341,7 @@ private fun DialogoTogliDocumento(d: Documento, togli: () -> Unit, chiudi: () ->
 )
 
 @Composable
-private fun DocumentoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.Color) {
+internal fun DocumentoUi(vm: Adam, id: Long, colore: androidx.compose.ui.graphics.Color) {
     val documenti by vm.documenti.collectAsState()
     val d = documenti.find { it.id == id } ?: return
     var testo by remember(d.id) { mutableStateOf(d.testo) }

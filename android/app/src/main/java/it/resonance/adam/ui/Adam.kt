@@ -62,7 +62,13 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 
-enum class Schermata(val etichetta: String) { SPECCHIO("Specchio"), SHELL("Shell"), ADAM("Adam"), BIO("Bio"), AIR("Air"), VIDYA("Vidya"), SETUP("Setup") }
+// V3 (16/10/2026): tre luoghi nella barra (Oggi, Fronti, Shell); il resto si raggiunge dal menu. SPECCHIO resta come
+// «Numeri e rituali», la vista completa che Oggi riassume; i pilastri restano per memoria, numeri e storia.
+enum class Schermata(val etichetta: String) {
+    OGGI("Oggi"), FRONTI("Fronti"), SHELL("Shell"),
+    SPECCHIO("Numeri e rituali"), ADAM("Adam"), BIO("Bio"), AIR("Air"), VIDYA("Vidya"), SETUP("Setup");
+    val luogo get() = this == OGGI || this == FRONTI || this == SHELL
+}
 
 enum class Ascolta { SPENTO, DETTATURA, AUTO }
 
@@ -120,7 +126,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
 
     private data class Quattro<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
 
-    var schermata by mutableStateOf(Schermata.SPECCHIO)
+    var schermata by mutableStateOf(Schermata.OGGI)
     var percorsoAperto by mutableStateOf<Long?>(null)
     var documentoAperto by mutableStateOf<Long?>(null)
     var input by mutableStateOf("")
@@ -150,7 +156,24 @@ class Adam(app: Application) : AndroidViewModel(app) {
 
     fun vai(s: Schermata) {
         schermata = s; percorsoAperto = null; documentoAperto = null
-        if (s == Schermata.SPECCHIO) leggiAgenda()
+        if (s == Schermata.SPECCHIO || s == Schermata.OGGI) leggiAgenda()
+    }
+
+    /** Un fronte aperto da fuori (Oggi, una notifica): si va in Fronti con la sua scheda. */
+    fun apriFronte(id: Long) { vai(Schermata.FRONTI); percorsoAperto = id }
+
+    // Un gesto che si può disfare (V3, fluidità): il gesto vale subito, e per qualche secondo «Annulla» lo rimette.
+    data class Annullabile(val testo: String, val annulla: () -> Unit)
+    var annullabile by mutableStateOf<Annullabile?>(null)
+
+    val inAttesa = db.messaggi().osservaInAttesa().stato()
+    val sessioni = db.pratica().osservaSessioni().stato()
+
+    /** La spunta da Oggi: subito, con l'annulla. */
+    fun spuntaConAnnulla(r: Rituale) = viewModelScope.launch {
+        val g = LocalDate.now().toString()
+        archivio.alternaSpunta(r, g, tenuto = false)
+        annullabile = Annullabile("✓ ${r.nome}") { viewModelScope.launch { archivio.alternaSpunta(r, g, tenuto = true) } }
     }
 
     // L'anello si chiude anche aprendo l'app: un esperimento scaduto si confronta subito.
@@ -180,7 +203,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
     fun indietro(): Boolean = when {
         documentoAperto != null -> { documentoAperto = null; true }
         percorsoAperto != null -> { percorsoAperto = null; true }
-        schermata != Schermata.SPECCHIO -> { schermata = Schermata.SPECCHIO; true }
+        schermata != Schermata.OGGI -> { schermata = Schermata.OGGI; true }
         else -> false
     }
 
@@ -231,7 +254,7 @@ class Adam(app: Application) : AndroidViewModel(app) {
     /** L'ultimo passo: la risposta alla prima domanda entra in chat come un tuo messaggio, e lo Shell risponde. */
     fun fineTour(risposta: String) {
         chiudiTour()
-        if (risposta.isNotBlank() && impostazioni.chiave.isNotBlank()) { vai(Schermata.SHELL); invia(risposta) } else vai(Schermata.SPECCHIO)
+        if (risposta.isNotBlank() && impostazioni.chiave.isNotBlank()) { vai(Schermata.SHELL); invia(risposta) } else vai(Schermata.OGGI)
     }
 
     fun invia(testo: String = input) {

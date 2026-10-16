@@ -146,9 +146,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun apriDa(intent: Intent?) {
-        intent?.getStringExtra(Battiti.EXTRA_SCHERMATA)?.let { s -> runCatching { vm.vai(Schermata.valueOf(s)) } }
+        // Le notifiche che portavano allo Specchio (battito del mattino, resoconti, esperimenti) ora portano a Oggi.
+        intent?.getStringExtra(Battiti.EXTRA_SCHERMATA)?.let { s -> runCatching { vm.vai(if (s == "SPECCHIO") Schermata.OGGI else Schermata.valueOf(s)) } }
         // Dalla notifica dello studio: dritti al fronte.
-        intent?.getLongExtra(it.resonance.adam.battito.Studio.EXTRA_PERCORSO, -1L)?.takeIf { it > 0 }?.let { vm.percorsoAperto = it }
+        intent?.getLongExtra(it.resonance.adam.battito.Studio.EXTRA_PERCORSO, -1L)?.takeIf { it > 0 }?.let { vm.apriFronte(it) }
         // Condiviso da un'altra app: file come allegati, testo nella casella. Si manda solo quando il Ghost preme Invia.
         when (intent?.action) {
             Intent.ACTION_SEND -> {

@@ -111,11 +111,11 @@ object Contesto {
             else i.puntiFermi.forEachIndexed { n, p -> appendLine("  ${n + 1}. $p") }
             appendLine("- Un intervento dell'architetto che comincia con «→ Shell» è rivolto a te: rispondi all'architetto, il Ghost legge. Dopo 3 giri di fila senza il Ghost il programma ti ferma e si aspetta lui.")
             appendLine("- Solo progettazione: niente dati sanitari del Ghost o di altri. Le decisioni diventano azioni solo come proposte confermate dal Ghost.")
-            appendLine("- Aperta o chiusa lo decide il programma, quando il Ghost preme Apri o Chiudi (Adam → Lettere): non scrivere mai che la riunione è chiusa.")
+            appendLine("- Aperta o chiusa lo decide il programma, quando il Ghost preme Apri o Chiudi (☰ → Adam → Lettere): non scrivere mai che la riunione è chiusa.")
             appendLine("- Ruoli al tavolo (dall'Agorà Magi, senza sequenza fissa): l'architetto fa Melchior (trasforma in ciò che si costruisce), il Ghost e il programma fanno Caspar (i vincoli), tu fai Balthasar quando il Ghost tocca «Perturba»: quelle risposte ti arrivano come «[Balthasar …]», scritte da te senza strumenti. Se pensi che serva una spinta, suggerisci al Ghost di toccare Perturba; non fingerti Balthasar nel turno normale.")
             if (i.consulente.isNotBlank()) appendLine("- Consulente esterno: ${i.consulente}. Lo convoca e congeda il Ghost. Con lui nella stanza metti le tue domande in cartella con chiedi_consulente; partono quando il Ghost tocca Manda. Le sue risposte ti arrivano come «[Il consulente esterno …]», con le fonti vere sotto: sono materiale da verificare, non decisioni.")
         } else if (Edizione.sviluppatore) {
-            appendLine("RIUNIONE A TRE: nessuna aperta. Se il Ghost dice di averla aperta, non darla per aperta: si apre da Adam → Lettere → Apri riunione.")
+            appendLine("RIUNIONE A TRE: nessuna aperta. Se il Ghost dice di averla aperta, non darla per aperta: si apre da ☰ → Adam → Lettere → Apri riunione.")
         }
         if (aperto(Reparto.SISTEMA)) {
             appendLine()
