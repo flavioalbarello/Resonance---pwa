@@ -264,6 +264,8 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 Battiti.notifica(applicationContext, 117, "${it.resonance.adam.logica.Nomi.soggetto(archivio.db.profilo().leggi())} propone un fronte nuovo",
                     p?.let { f -> "«${f.titolo}»: ${it.resonance.adam.logica.Testi.corto(f.perche, 140)}" } ?: "Decidi da Oggi.", "", "OGGI")
             }
+            // Il Ritratto di Adam sulla schermata principale si ridisegna coi dati del giorno (battito/Widget.kt).
+            runCatching { Widget.aggiorna(applicationContext) }
             // La lavagna: ciò che è finito da 30 giorni si cancella davvero; le notifiche fissate seguono le scadenze.
             runCatching { archivio.pulisciLavagna(oggi) }
             runCatching { Fissati.aggiorna(applicationContext) }

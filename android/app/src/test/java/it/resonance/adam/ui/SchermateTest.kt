@@ -203,6 +203,11 @@ class SchermateTest {
         regola.onNodeWithTag("scoperta").performScrollTo().assertExists()
         regola.onNodeWithText("Le sere in cui fai «Stretching serale», la notte dopo dormi", substring = true).assertExists()
         scatta("1e-scoperta")
+        // Il Ritratto di Adam: in piccolo in cima a Oggi, e a schermo intero col tocco.
+        regola.onNodeWithTag("ritratto").performScrollTo().performClick()
+        regola.onNodeWithText("Mettilo come sfondo").assertExists()
+        scatta("1f-ritratto")
+        vm.ritrattoAperto = false
         // Il menu porta a tutto il resto; «Numeri e rituali» è lo Specchio di prima, intero.
         regola.onNodeWithTag("menu").performClick()
         regola.onNodeWithText("Numeri e rituali").assertExists()

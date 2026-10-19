@@ -1,6 +1,7 @@
 package it.resonance.adam.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +69,7 @@ fun OggiUi(vm: Adam) {
                 Button({ vm.torna() }, modifier = Modifier.testTag("torna")) { Text("Sono tornato") }
             }
         }
+        RitrattoBreve(vm)
         Adesso(vm)
         Scoperta(vm)
         DaDecidere(vm)
@@ -132,6 +134,46 @@ private fun Adesso(vm: Adam) {
                 items(tempi) { m -> TextButton({ vm.iniziaStudio(per, m) }, modifier = Modifier.testTag("subito-$m")) { Text(etichetta(m), color = Colori.inchiostro) } }
             }
         }
+    }
+}
+
+/** Il Ritratto di Adam in piccolo, in cima: com'è oggi Adam, in un'immagine. Un tocco lo apre. */
+@Composable
+private fun RitrattoBreve(vm: Adam) {
+    val i by vm.istantanea.collectAsState()
+    val sessioni by vm.sessioni.collectAsState()
+    val m = androidx.compose.runtime.remember(i, sessioni) { it.resonance.adam.logica.Ritratto.da(i, sessioni) }
+    Row(Modifier.fillMaxWidth().clickable { vm.ritrattoAperto = true }.padding(vertical = 4.dp).testTag("ritratto"), verticalAlignment = Alignment.CenterVertically) {
+        RitrattoUi(m, Modifier.width(120.dp))
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Etichetta("Adam oggi", Colori.ambraScura)
+            m.legenda().take(4).forEach { Text(it, fontSize = 13.sp, color = Colori.tenue, lineHeight = 17.sp) }
+        }
+    }
+}
+
+/** Il Ritratto a schermo intero: grande, con la legenda intera, e i due gesti per portarlo fuori dall'app. */
+@Composable
+fun RitrattoAperto(vm: Adam) {
+    val i by vm.istantanea.collectAsState()
+    val sessioni by vm.sessioni.collectAsState()
+    val m = androidx.compose.runtime.remember(i, sessioni) { it.resonance.adam.logica.Ritratto.da(i, sessioni) }
+    Column(Modifier.fillMaxSize().background(Colori.fondo).verticalScroll(rememberScrollState()).padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Adam oggi", fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            TextButton({ vm.ritrattoAperto = false }) { Text("Chiudi", color = Colori.tenue) }
+        }
+        RitrattoUi(m)
+        Tenue("Disegnato dai tuoi dati, non da ciò che dichiari. I petali sono i pilastri: lunghi quanto sono vivi, vuoti se fermi da due settimane. " +
+            "Gli anelli sono i rituali, chiusi quanto reggono. I rami sono i fronti: le foglie piene sono i pezzi pronti. Ciò che non pratichi sbiadisce.")
+        Spazio(6)
+        m.legenda().forEach { Riga("· $it") }
+        Spazio(10)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button({ vm.sfondo(m) }, colors = ButtonDefaults.buttonColors(containerColor = Colori.inchiostro, contentColor = Colori.fondo)) { Text("Mettilo come sfondo") }
+            OutlinedButton({ vm.chiediWidget() }) { Text("Widget") }
+        }
+        Spazio(80)
     }
 }
 

@@ -618,9 +618,23 @@ class Adam(app: Application) : AndroidViewModel(app) {
         if (e.riuscita) chiudiScoperta(s)
     }
 
+    // ── Il Ritratto di Adam (logica/Ritratto.kt): aperto a schermo intero, nel widget, come sfondo ──
+    var ritrattoAperto by mutableStateOf(false)
+    fun aggiornaWidget() = viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) { runCatching { it.resonance.adam.battito.Widget.aggiorna(getApplication()) } }
+    fun chiediWidget() { if (!it.resonance.adam.battito.Widget.chiedi(getApplication())) avviso = "Il launcher non lo permette da qui: tieni premuto sulla schermata principale → Widget → Resonance" }
+    fun sfondo(m: it.resonance.adam.logica.Ritratto.Modello) = viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+        val app = getApplication<Application>()
+        val dm = app.resources.displayMetrics
+        avviso = runCatching {
+            android.app.WallpaperManager.getInstance(app).setBitmap(ritrattoBitmap(m, dm.widthPixels, dm.heightPixels, densita = dm.density))
+            "Il ritratto di oggi è lo sfondo"
+        }.getOrElse { "Sfondo non cambiato: ${it.message}" }
+    }
+
     fun alRitorno() {
         giorno.value = LocalDate.now()
         cercaScoperte()
+        aggiornaWidget()
         if (riunione != null) seguiRiunione()
     }
     fun ritiraRiunione() = viewModelScope.launch { ritiraOra(true) }

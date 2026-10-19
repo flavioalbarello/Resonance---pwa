@@ -105,6 +105,8 @@ avvengono senza aprirla (notifiche); tocchi di conferma al giorno; passi avanti 
 
 | Scoperte (19/10) | fatta | «qualcosa di strabiliante e inaspettato»: `logica/Scoperte.kt` cerca da solo relazioni nei dati (rituali, studio, allenamento, giorni con più passi o più sonno → sonno, passi, battito a riposo, studio; lo stesso giorno o il dopo). Prova per permutazione (3000), Benjamini–Hochberg al 5%, p ≤ 1/1000, effetto minimo che conti nella vita, e deve reggere in entrambe le metà del periodo. Il banco: 50 mondi di puro rumore, zero scoperte false. In Oggi «Una cosa che non sapevi» con «Mettila alla prova» (esperimento di 14 giorni) e «Interessante»; notifica al mattino, una a settimana; lo Shell le conosce come correlazioni, non cause |
 
+| Ritratto di Adam (19/10) | fatto | `logica/Ritratto.kt` (modello deterministico) + `ui/RitrattoUi.kt` (disegno animato: respira, gira piano, scintille del giorno). In cima a Oggi; a schermo intero con legenda; widget sulla schermata principale (`battito/Widget.kt`, si ridisegna al battito e all'apertura); sfondo col gesto del Ghost |
+
 Scostamento dal piano: niente `ui3/` accanto alla vecchia. La cornice nuova sostituisce la vecchia subito, perché le schermate
 vecchie restano raggiungibili dal menu: nessuna funzione persa, nessuna doppia interfaccia da tenere allineata.
 

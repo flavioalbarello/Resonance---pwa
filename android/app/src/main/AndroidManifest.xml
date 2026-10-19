@@ -3,6 +3,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Il Ritratto di Adam come sfondo, solo col gesto del Ghost (ui/RitrattoUi.kt). -->
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- La 2.0.154 e la 2.0.155 non si installavano sul telefono del Ghost (24/09/2026). Tolti: REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
          FOREGROUND_SERVICE_DATA_SYNC e il tipo dataSync sul servizio di WorkManager. Il servizio in primo piano serve solo prima
@@ -45,6 +47,13 @@
         <receiver android:name=".battito.GestoRapido" android:exported="false" />
         <!-- I gesti della sessione di studio dalla notifica, e la vibrazione a fine blocco (battito/Studio.kt). -->
         <receiver android:name=".battito.GestoStudio" android:exported="false" />
+        <!-- Il Ritratto di Adam sulla schermata principale (battito/Widget.kt). -->
+        <receiver android:name=".battito.WidgetRitratto" android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_ritratto" />
+        </receiver>
 
         <receiver android:name=".battito.SvegliaBattito" android:exported="false">
             <intent-filter>

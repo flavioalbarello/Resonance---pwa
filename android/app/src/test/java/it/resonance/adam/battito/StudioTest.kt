@@ -142,4 +142,15 @@ class StudioTest {
         assertTrue(db.voci().elenco().any { it.testo.contains("Spesa della settimana: fatto") })
         Unit
     }
+
+    // Il Ritratto di Adam diventa una bitmap per il widget e lo sfondo: si disegna davvero, non è vuota.
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    @Test fun ilRitrattoSiDisegnaInUnaBitmap() = runBlocking {
+        val m = Widget.modello(app)
+        val b = it.resonance.adam.ui.ritrattoBitmap(m, 300, 500)
+        assertEquals(300, b.width); assertEquals(500, b.height)
+        val colori = (0 until 300 step 10).flatMap { x -> (100 until 400 step 10).map { y -> b.getPixel(x, y) } }.toSet()
+        assertTrue("il disegno ha più di qualche colore: ${colori.size}", colori.size > 5)
+        Unit
+    }
 }
