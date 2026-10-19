@@ -9,6 +9,8 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import it.resonance.adam.dati.Documento
@@ -208,6 +210,20 @@ class SchermateTest {
         regola.onNodeWithText("Mettilo come sfondo").assertExists()
         scatta("1f-ritratto")
         vm.ritrattoAperto = false
+        // Il film della settimana: le scene coi fatti veri, a schermo intero. L'orologio si ferma per fotografarle una a una.
+        vm.preparaFilm()
+        aspetta { vm.scenaFilm.isNotEmpty() }
+        regola.mainClock.autoAdvance = false
+        regola.runOnUiThread { vm.filmAperto = true }
+        repeat(60) { regola.mainClock.advanceTimeByFrame(); org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle() }
+        regola.onNodeWithTag("film").assertExists()
+        scatta("1g-film-apertura")
+        repeat(5600 / 16) { regola.mainClock.advanceTimeByFrame(); org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle() }
+        scatta("1h-film-studio")
+        repeat(5600 * 3 / 16) { regola.mainClock.advanceTimeByFrame(); org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle() }
+        scatta("1i-film-passi")
+        regola.mainClock.autoAdvance = true
+        vm.filmAperto = false
         // Il menu porta a tutto il resto; «Numeri e rituali» è lo Specchio di prima, intero.
         regola.onNodeWithTag("menu").performClick()
         regola.onNodeWithText("Numeri e rituali").assertExists()

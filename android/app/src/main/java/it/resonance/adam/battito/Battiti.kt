@@ -150,11 +150,12 @@ object Battiti {
     // Restituisce false se la notifica non si vede: chi la manda deve poterlo dire.
     @android.annotation.SuppressLint("MissingPermission")
     fun notifica(context: Context, id: Int, titolo: String, testo: String, dettaglio: String, schermata: String, canale: String = CANALE,
-                 azioni: List<NotificationCompat.Action> = emptyList(), silenziosa: Boolean = false): Boolean {
+                 azioni: List<NotificationCompat.Action> = emptyList(), silenziosa: Boolean = false, film: Boolean = false): Boolean {
         if (muto(context, canale) != null) return false
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(EXTRA_SCHERMATA, schermata)
+            if (film) putExtra("film", true)
         }
         val pi = PendingIntent.getActivity(context, id, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val completo = if (dettaglio.isNotBlank() && dettaglio != testo) "$testo\n\n$dettaglio" else testo
@@ -258,6 +259,9 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                         }
                 }
             }
+            // Il film della settimana (logica/Film.kt): la domenica, l'invito a guardarlo.
+            if (b == Battito.SETTIMANA && !prova) Battiti.notifica(applicationContext, 119, "Il film della tua settimana",
+                "Trenta secondi: ciò che è successo davvero, e il ritratto di Adam.", "", "OGGI", film = true)
             // Le proposte di fronti nuovi (V3 fase 7): la domenica, se la moderazione lo consente, lo Shell può proporne uno.
             if (b == Battito.SETTIMANA && !prova) runCatching { Shell(archivio, imp, mondo = mondo).proponiFronti() }.getOrNull()?.takeIf { it.proposte.isNotEmpty() }?.let { e ->
                 val p = archivio.db.messaggi().per(e.proposte.first())?.let { m -> archivio.proposta(m) } as? it.resonance.adam.logica.Proposta.ProponiFronte

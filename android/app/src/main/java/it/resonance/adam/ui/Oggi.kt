@@ -70,6 +70,10 @@ fun OggiUi(vm: Adam) {
             }
         }
         RitrattoBreve(vm)
+        // La domenica e il lunedì, il film della settimana in cima (logica/Film.kt).
+        if (i.oggi.dayOfWeek == java.time.DayOfWeek.SUNDAY || i.oggi.dayOfWeek == java.time.DayOfWeek.MONDAY)
+            Button({ vm.apriFilm() }, modifier = Modifier.fillMaxWidth().testTag("apri-film"),
+                colors = ButtonDefaults.buttonColors(containerColor = Colori.vidya, contentColor = androidx.compose.ui.graphics.Color.White)) { Text("▶  Il film della tua settimana", fontWeight = FontWeight.SemiBold) }
         Adesso(vm)
         Scoperta(vm)
         DaDecidere(vm)

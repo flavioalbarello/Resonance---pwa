@@ -784,6 +784,25 @@ class Adam(app: Application) : AndroidViewModel(app) {
         resocontoStudio = passo.resoconto.ifEmpty { listOf("Chiusa senza blocchi segnati.") }
         it.resonance.adam.battito.Studio.dopo(getApplication(), archivio, passo)
     }
+    // ── Il film della settimana (logica/Film.kt): a schermo intero, con la voce dello Shell se il Ghost la chiede ──
+    var filmAperto by mutableStateOf(false)
+    var scenaFilm by mutableStateOf<List<it.resonance.adam.logica.Film.Scena>>(emptyList())
+        private set
+    fun preparaFilm() = viewModelScope.launch {
+        val i = archivio.istantanea(LocalDate.now())
+        val esiti = db.pratica().esiti()
+        scenaFilm = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            it.resonance.adam.logica.Film.scene(i, db.pratica().sessioni(), esiti, scoperte.ifEmpty { runCatching { it.resonance.adam.logica.Scoperte.da(i) }.getOrDefault(emptyList()) })
+        }
+    }
+    fun apriFilm() { scenaFilm = emptyList(); filmAperto = true }
+    fun leggiFilm(testi: List<String>) {
+        parlato.zitto()
+        fun prossimo(k: Int) { if (k < testi.size && filmAperto) parlato.parla(testi[k]) { prossimo(k + 1) } }
+        prossimo(0)
+    }
+    fun zittisciFilm() = parlato.zitto()
+
     // ── La prova generale (logica/Prova.kt): a schermo intero, sopra tutto ──
     var provaAperta by mutableStateOf(false)
     var resocontoProva by mutableStateOf<List<String>>(emptyList())

@@ -47,8 +47,8 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
     }
     // Al ritorno nell'app la riunione si ritira subito: fuori, Android la congela e gli interventi aspettavano (26/09).
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { vm.alRitorno() }
-    BackHandler(enabled = vm.schermata != Schermata.OGGI || vm.percorsoAperto != null || vm.documentoAperto != null || vm.ritrattoAperto || vm.provaAperta) {
-        if (vm.provaAperta) vm.provaAperta = false else if (vm.ritrattoAperto) vm.ritrattoAperto = false else vm.indietro()
+    BackHandler(enabled = vm.schermata != Schermata.OGGI || vm.percorsoAperto != null || vm.documentoAperto != null || vm.ritrattoAperto || vm.provaAperta || vm.filmAperto) {
+        if (vm.filmAperto) vm.filmAperto = false else if (vm.provaAperta) vm.provaAperta = false else if (vm.ritrattoAperto) vm.ritrattoAperto = false else vm.indietro()
     }
     // Un gesto disfacibile (V3): la striscia con «Annulla» per qualche secondo.
     LaunchedEffect(vm.annullabile) {
@@ -74,6 +74,9 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
                     Box {
                         TextButton({ menu = true }, modifier = Modifier.testTag("menu")) { Text("☰", fontSize = 20.sp, color = Colori.tenue) }
                         androidx.compose.material3.DropdownMenu(menu, { menu = false }) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Column { Text("Film della settimana"); Text("i sette giorni in trenta secondi, con la voce dello Shell", fontSize = 12.sp, color = Colori.tenue) } },
+                                onClick = { menu = false; vm.apriFilm() })
                             Menu.voci(it.resonance.adam.logica.Edizione.sviluppatore).forEach { v ->
                                 androidx.compose.material3.DropdownMenuItem(
                                     text = { Column { Text(v.nome); Text(v.cosa, fontSize = 12.sp, color = Colori.tenue) } },
@@ -118,5 +121,7 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
         if (vm.ritrattoAperto) Box(Modifier.fillMaxSize().systemBarsPadding()) { RitrattoAperto(vm) }
         // La prova generale, sopra tutto (ui/ProvaUi.kt).
         if (vm.provaAperta) Box(Modifier.fillMaxSize()) { ProvaUi(vm) }
+        // Il film della settimana, sopra tutto (ui/FilmUi.kt).
+        if (vm.filmAperto) Box(Modifier.fillMaxSize()) { FilmUi(vm) }
     }
 }
