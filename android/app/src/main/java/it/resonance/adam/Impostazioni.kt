@@ -44,6 +44,17 @@ open class Impostazioni(context: Context) {
         set(v) = p.edit().putBoolean("tourVisto", v).apply()
 
     // La mappa del tempo (V3 fase 5, logica/Tempo.kt): lo studio proposto nel primo buco del calendario dopo quest'ora.
+    // Le scoperte (logica/Scoperte.kt): quelle che il Ghost ha già chiuso, e l'ultima notificata (una a settimana).
+    var scoperteChiuse: Set<String>
+        get() = p.getStringSet("scoperteChiuse", emptySet())!!.toSet()
+        set(v) = p.edit().putStringSet("scoperteChiuse", v).apply()
+    var scopertaNotificata: String
+        get() = p.getString("scopertaNotificata", "")!!
+        set(v) = p.edit().putString("scopertaNotificata", v).apply()
+    var giornoScopertaNotificata: String
+        get() = p.getString("giornoScopertaNotificata", "")!!
+        set(v) = p.edit().putString("giornoScopertaNotificata", v).apply()
+
     var studioNeiBuchi: Boolean
         get() = p.getBoolean("studioNeiBuchi", true)
         set(v) = p.edit().putBoolean("studioNeiBuchi", v).apply()

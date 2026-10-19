@@ -186,6 +186,12 @@ object Contesto {
         appendLine()
         appendLine("STABILITÀ MANTENUTA")
         if (rituali.isEmpty()) appendLine("- nessun rituale ancora") else rituali.forEach { appendLine("- ${rigaRituale(it)}") }
+        // Le scoperte del programma (logica/Scoperte.kt): correlazioni provate per permutazione e corrette per il numero
+        // di prove. Lo Shell le può citare, mai come cause.
+        runCatching { Scoperte.da(i) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { s ->
+            appendLine("SCOPERTE DEL PROGRAMMA nei dati del Ghost (correlazioni provate, NON cause; per dirlo serve un esperimento):")
+            appendLine(Scoperte.perLoShell(s))
+        }
         appendLine()
         appendLine("PERCORSI")
         val attivi = i.percorsi.filter { !it.archiviato }

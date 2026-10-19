@@ -28,6 +28,7 @@ import it.resonance.adam.dati.Percorso
 import it.resonance.adam.dati.Pilastro
 import it.resonance.adam.dati.Profilo
 import it.resonance.adam.dati.Rituale
+import it.resonance.adam.cervello.istantanea
 import it.resonance.adam.dati.Ruolo
 import it.resonance.adam.dati.StatoNodo
 import it.resonance.adam.dati.StatoProposta
@@ -596,8 +597,30 @@ class Adam(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ── Le scoperte (logica/Scoperte.kt): cercate dal programma, in background, all'apertura e al ritorno ──
+    var scoperte by mutableStateOf<List<it.resonance.adam.logica.Scoperte.Scoperta>>(emptyList())
+        private set
+    var scoperteChiuse by mutableStateOf(impostazioni.scoperteChiuse)
+        private set
+    fun cercaScoperte() = viewModelScope.launch {
+        scoperte = runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            it.resonance.adam.logica.Scoperte.da(archivio.istantanea(LocalDate.now()))
+        } }.getOrDefault(scoperte)
+    }
+    fun chiudiScoperta(s: it.resonance.adam.logica.Scoperte.Scoperta) {
+        impostazioni.scoperteChiuse = impostazioni.scoperteChiuse + s.chiave
+        scoperteChiuse = impostazioni.scoperteChiuse
+    }
+    /** «Mettila alla prova»: l'esperimento parte subito, è il gesto del Ghost. Il programma ricontrolla (uno per misura, tre al massimo). */
+    fun provaScoperta(s: it.resonance.adam.logica.Scoperte.Scoperta) = viewModelScope.launch {
+        val e = archivio.esegui(it.resonance.adam.logica.Scoperte.esperimento(s))
+        avviso = e.ricevuta
+        if (e.riuscita) chiudiScoperta(s)
+    }
+
     fun alRitorno() {
         giorno.value = LocalDate.now()
+        cercaScoperte()
         if (riunione != null) seguiRiunione()
     }
     fun ritiraRiunione() = viewModelScope.launch { ritiraOra(true) }

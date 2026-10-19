@@ -91,6 +91,9 @@ class SchermateTest {
         val r2 = db.rituali().inserisci(Rituale(nome = "Scala al flauto", pilastro = Pilastro.VIDYA, creato = 0))
         listOf(1L, 2L, 3L, 4L).forEach { db.rituali().spunta(Spunta(r2, g(it), "manuale", 0)) }
         assertTrue(r1 > 0)
+        // Una relazione vera piantata nei dati: lo stretching la sera prima delle notti lunghe. Le scoperte la devono trovare.
+        val r3 = db.rituali().inserisci(Rituale(nome = "Stretching serale", pilastro = Pilastro.BIO, creato = 0))
+        (1L..29L).filter { (it - 1) % 4 >= 2 }.forEach { db.rituali().spunta(Spunta(r3, g(it), "manuale", 0)) }
         val p = db.percorsi().inserisci(Percorso(pilastro = Pilastro.VIDYA, titolo = "Divenire", scopo = "Il concept album finito, non solo iniziato", creato = 0))
         listOf("Atto I: Origine" to StatoNodo.CONSOLIDATO, "Atto II: Complessità" to StatoNodo.PRATICATO, "Atto III: Mitosi" to StatoNodo.INTRODOTTO, "Mixaggio" to StatoNodo.NON_INIZIATO)
             .forEachIndexed { i, (e, s) -> db.percorsi().inserisciNodo(Nodo(percorsoId = p, etichetta = e, stato = s, ordine = i)) }
@@ -170,7 +173,7 @@ class SchermateTest {
         ))
         vm.agenda = agendaFinta
         regola.setContent { TemaResonance { App(vm, sistema) { it() } } }
-        regola.waitUntil(10_000) { vm.istantanea.value.misure.size >= 90 && vm.istantanea.value.rituali.size == 2 && vm.chat.value.size == 10 }
+        regola.waitUntil(10_000) { vm.istantanea.value.misure.size >= 90 && vm.istantanea.value.rituali.size == 3 && vm.chat.value.size == 10 }
 
         // Il tour del primo avvio (ui/Tour.kt). Se parte da solo lo dice TourTest sulla logica pura: qui il database è
         // condiviso con altri test e l'esito dipenderebbe dall'ordine. Lo si apre come da Setup → Rivedi il tour.
@@ -195,6 +198,11 @@ class SchermateTest {
         regola.onNodeWithText("SEGUI · GAZPROM IN BORSA").performScrollTo().assertExists()
         regola.onNodeWithText("giorno 3 di 7", substring = true).assertExists()
         scatta("1-oggi")
+        // La scoperta: il programma l'ha trovata da solo, e la dice come relazione, non come causa.
+        aspetta { vm.scoperte.isNotEmpty() }
+        regola.onNodeWithTag("scoperta").performScrollTo().assertExists()
+        regola.onNodeWithText("Le sere in cui fai «Stretching serale», la notte dopo dormi", substring = true).assertExists()
+        scatta("1e-scoperta")
         // Il menu porta a tutto il resto; «Numeri e rituali» è lo Specchio di prima, intero.
         regola.onNodeWithTag("menu").performClick()
         regola.onNodeWithText("Numeri e rituali").assertExists()

@@ -103,6 +103,8 @@ avvengono senza aprirla (notifiche); tocchi di conferma al giorno; passi avanti 
 
 | Look (16/10) | fatto | palette coerente (niente lilla di Material: selezioni ambra tenue, testi-pulsante ambra scura leggibili); schede col bordo neutro e una tacca di colore a sinistra al posto delle cornici colorate; la scheda «Adesso» piena (`SchedaForte`) con UN pulsante principale «Studia N′» e le altre durate accanto; riga di colpo d'occhio sotto la data («1 da decidere · 1 rituale da fare»); icone dei tre luoghi disegnate (sole, barre, nuvoletta) al posto dei pallini; nei tre luoghi niente titolo doppio in alto |
 
+| Scoperte (19/10) | fatta | «qualcosa di strabiliante e inaspettato»: `logica/Scoperte.kt` cerca da solo relazioni nei dati (rituali, studio, allenamento, giorni con più passi o più sonno → sonno, passi, battito a riposo, studio; lo stesso giorno o il dopo). Prova per permutazione (3000), Benjamini–Hochberg al 5%, p ≤ 1/1000, effetto minimo che conti nella vita, e deve reggere in entrambe le metà del periodo. Il banco: 50 mondi di puro rumore, zero scoperte false. In Oggi «Una cosa che non sapevi» con «Mettila alla prova» (esperimento di 14 giorni) e «Interessante»; notifica al mattino, una a settimana; lo Shell le conosce come correlazioni, non cause |
+
 Scostamento dal piano: niente `ui3/` accanto alla vecchia. La cornice nuova sostituisce la vecchia subito, perché le schermate
 vecchie restano raggiungibili dal menu: nessuna funzione persa, nessuna doppia interfaccia da tenere allineata.
 

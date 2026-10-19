@@ -69,6 +69,7 @@ fun OggiUi(vm: Adam) {
             }
         }
         Adesso(vm)
+        Scoperta(vm)
         DaDecidere(vm)
         FrontiMossi(vm)
         RitualiDaFare(vm)
@@ -130,6 +131,27 @@ private fun Adesso(vm: Adam) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(tempi) { m -> TextButton({ vm.iniziaStudio(per, m) }, modifier = Modifier.testTag("subito-$m")) { Text(etichetta(m), color = Colori.inchiostro) } }
             }
+        }
+    }
+}
+
+/**
+ * Una scoperta (logica/Scoperte.kt): una relazione nei suoi dati che nessuno ha chiesto e che il programma ha provato.
+ * Si dice per quello che è, una correlazione; il gesto che la segue è metterla alla prova con un esperimento.
+ */
+@Composable
+private fun Scoperta(vm: Adam) {
+    androidx.compose.runtime.LaunchedEffect(Unit) { if (vm.scoperte.isEmpty()) vm.cercaScoperte() }
+    val s = it.resonance.adam.logica.Scoperte.daMostrare(vm.scoperte, vm.scoperteChiuse) ?: return
+    val tocco = LocalHapticFeedback.current
+    SchedaForte(Colori.vidya, Modifier.testTag("scoperta")) {
+        Etichetta("Una cosa che non sapevi", Colori.vidya)
+        Text(s.testo(), fontSize = 17.sp, lineHeight = 24.sp, color = Colori.inchiostro)
+        Tenue("L'ha trovata il programma nei tuoi dati, da solo. È una relazione, non ancora una causa: per saperlo si prova.")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button({ tocco.performHapticFeedback(HapticFeedbackType.LongPress); vm.provaScoperta(s) }, modifier = Modifier.testTag("prova-scoperta"),
+                colors = ButtonDefaults.buttonColors(containerColor = Colori.inchiostro, contentColor = Colori.fondo)) { Text("Mettila alla prova") }
+            TextButton({ vm.chiudiScoperta(s) }) { Text("Interessante", color = Colori.tenue) }
         }
     }
 }

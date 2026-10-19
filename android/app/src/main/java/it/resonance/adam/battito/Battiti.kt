@@ -247,6 +247,17 @@ class BattitoWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 }
                 Battiti.notifica(applicationContext, 116, titolo, testo, "", "OGGI")
             }
+            // Le scoperte (19/10, logica/Scoperte.kt): al mattino, se ce n'è una nuova e da una settimana non se ne dice una.
+            if (b == Battito.MATTINO && !prova) runCatching {
+                val ultima = imp.giornoScopertaNotificata.takeIf { it.isNotEmpty() }?.let { LocalDate.parse(it) }
+                if (ultima == null || !ultima.isAfter(oggi.minusDays(7))) {
+                    it.resonance.adam.logica.Scoperte.daMostrare(it.resonance.adam.logica.Scoperte.da(archivio.istantanea(oggi)), imp.scoperteChiuse)
+                        ?.takeIf { s -> s.chiave != imp.scopertaNotificata }?.let { s ->
+                            imp.scopertaNotificata = s.chiave; imp.giornoScopertaNotificata = oggi.toString()
+                            Battiti.notifica(applicationContext, 118, "Una cosa che non sapevi", s.testo(), "", "OGGI")
+                        }
+                }
+            }
             // Le proposte di fronti nuovi (V3 fase 7): la domenica, se la moderazione lo consente, lo Shell può proporne uno.
             if (b == Battito.SETTIMANA && !prova) runCatching { Shell(archivio, imp, mondo = mondo).proponiFronti() }.getOrNull()?.takeIf { it.proposte.isNotEmpty() }?.let { e ->
                 val p = archivio.db.messaggi().per(e.proposte.first())?.let { m -> archivio.proposta(m) } as? it.resonance.adam.logica.Proposta.ProponiFronte
