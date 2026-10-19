@@ -13,6 +13,7 @@ import it.resonance.adam.logica.Consegne
 import it.resonance.adam.logica.Lavagna
 import it.resonance.adam.logica.Testi
 import it.resonance.adam.logica.Pratica
+import it.resonance.adam.logica.Prova
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
@@ -608,6 +609,15 @@ class Archivio(val db: Db) {
         return s.copy(id = db.pratica().apri(s))
     }
 
+    /** La prova generale (logica/Prova.kt): la scaletta intera, come sessione con la sua nota. */
+    suspend fun apriProva(percorsoId: Long, oggi: LocalDate, adesso: Long = ora): Sessione? {
+        val piano = Prova.piano(db.percorsi().elencoNodi().filter { it.percorsoId == percorsoId })
+        if (piano.isEmpty()) return null
+        db.pratica().inCorso()?.let { chiudiSessione(it, oggi, adesso) }
+        val s = Sessione(percorsoId = percorsoId, inizio = adesso, minuti = 0, piano = Pratica.codifica(piano), nota = Prova.NOTA)
+        return s.copy(id = db.pratica().apri(s))
+    }
+
     data class Passo(val sessione: Sessione, val prossimo: Pratica.Blocco?, val indice: Int, val totale: Int, val resoconto: List<String>)
 
     /**
@@ -622,7 +632,8 @@ class Archivio(val db: Db) {
         val v = (velocita ?: b.velocita).coerceIn(10, 200)
         db.pratica().esito(EsitoBlocco(sessioneId = s.id, nodoId = b.nodoId, velocita = v, esito = esito, istante = adesso))
         val misura = db.percorsi().elenco().find { it.id == s.percorsoId }?.misura ?: MisuraFronte.VELOCITA
-        db.percorsi().elencoNodi().find { it.id == b.nodoId }?.let { db.percorsi().aggiornaNodo(Pratica.dopo(it, esito, v, oggi, misura)) }
+        // Nella prova generale i pezzi non cambiano: si misura il set, non si studia un passaggio.
+        if (s.nota != Prova.NOTA) db.percorsi().elencoNodi().find { it.id == b.nodoId }?.let { db.percorsi().aggiornaNodo(Pratica.dopo(it, esito, v, oggi, misura)) }
         val dopo = db.pratica().esitiDi(s.id)
         val prossimo = Pratica.corrente(piano, dopo) ?: return chiudiSessione(s, oggi, adesso)
         return Passo(s, prossimo, dopo.size, piano.size, emptyList())
@@ -640,7 +651,8 @@ class Archivio(val db: Db) {
         val chiusa = aperta.copy(fine = adesso)
         db.pratica().aggiorna(chiusa)
         val per = db.percorsi().elenco().find { it.id == aperta.percorsoId }
-        val righe = Pratica.resoconto(piano, esiti, per?.misura ?: MisuraFronte.VELOCITA)
+        val prova = aperta.nota == Prova.NOTA
+        val righe = if (prova) Prova.resoconto(piano, esiti, aperta.inizio, adesso) else Pratica.resoconto(piano, esiti, per?.misura ?: MisuraFronte.VELOCITA)
         val minuti = Pratica.minutiFatti(aperta.inizio, adesso)
         if (esiti.any { it.esito != EsitoPratica.SALTATO } && minuti > 0) {
             db.misure().sostituisci(Misura(tipo = TipoMisura.PRATICA, valore = minuti.toDouble(), giorno = oggi.toString(), istante = adesso,
@@ -648,7 +660,7 @@ class Archivio(val db: Db) {
         }
         if (per != null && righe.isNotEmpty()) {
             db.voci().inserisci(Voce(pilastro = per.pilastro, giorno = oggi.toString(), fonte = "sessione", creato = adesso, aggiornato = adesso,
-                testo = "Studio «${per.titolo}», $minuti min: " + righe.joinToString("; ")))
+                testo = (if (prova) "Prova generale «${per.titolo}»: " else "Studio «${per.titolo}», $minuti min: ") + righe.joinToString("; ")))
         }
         return Passo(chiusa, null, esiti.size, piano.size, righe)
     }

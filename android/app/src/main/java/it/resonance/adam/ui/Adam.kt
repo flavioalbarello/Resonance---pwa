@@ -784,6 +784,24 @@ class Adam(app: Application) : AndroidViewModel(app) {
         resocontoStudio = passo.resoconto.ifEmpty { listOf("Chiusa senza blocchi segnati.") }
         it.resonance.adam.battito.Studio.dopo(getApplication(), archivio, passo)
     }
+    // ── La prova generale (logica/Prova.kt): a schermo intero, sopra tutto ──
+    var provaAperta by mutableStateOf(false)
+    var resocontoProva by mutableStateOf<List<String>>(emptyList())
+    fun iniziaProva(p: Percorso) = viewModelScope.launch {
+        archivio.apriProva(p.id, LocalDate.now()) ?: run { avviso = "La scaletta è vuota: aggiungi i brani come nodi."; return@launch }
+        it.resonance.adam.battito.Studio.togli(getApplication())
+        resocontoProva = emptyList(); provaAperta = true
+    }
+    fun segnaProva(esito: it.resonance.adam.dati.EsitoPratica) = viewModelScope.launch {
+        val s = sessione.value?.takeIf { x -> x.nota == it.resonance.adam.logica.Prova.NOTA } ?: return@launch
+        val passo = archivio.segnaBlocco(s.id, esito, null, LocalDate.now()) ?: return@launch
+        if (passo.prossimo == null) resocontoProva = passo.resoconto
+    }
+    fun chiudiProva() = viewModelScope.launch {
+        val s = sessione.value ?: return@launch
+        resocontoProva = archivio.chiudiSessione(s, LocalDate.now()).resoconto
+    }
+
     fun apriFonte(fonte: String?) {
         val u = it.resonance.adam.battito.Studio.link(fonte) ?: return
         runCatching { getApplication<Application>().startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, u).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }

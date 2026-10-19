@@ -107,6 +107,8 @@ avvengono senza aprirla (notifiche); tocchi di conferma al giorno; passi avanti 
 
 | Ritratto di Adam (19/10) | fatto | `logica/Ritratto.kt` (modello deterministico) + `ui/RitrattoUi.kt` (disegno animato: respira, gira piano, scintille del giorno). In cima a Oggi; a schermo intero con legenda; widget sulla schermata principale (`battito/Widget.kt`, si ridisegna al battito e all'apertura); sfondo col gesto del Ghost |
 
+| Prova generale (19/10) | fatta | `logica/Prova.kt` + `ui/ProvaUi.kt`: la scaletta a schermo intero, schermo sempre acceso; tocco avanti, pressione lunga «perso il filo»; sessione con nota PROVA che non tocca i pezzi; resoconto con le durate vere nel diario |
+
 Scostamento dal piano: niente `ui3/` accanto alla vecchia. La cornice nuova sostituisce la vecchia subito, perché le schermate
 vecchie restano raggiungibili dal menu: nessuna funzione persa, nessuna doppia interfaccia da tenere allineata.
 

@@ -47,8 +47,8 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
     }
     // Al ritorno nell'app la riunione si ritira subito: fuori, Android la congela e gli interventi aspettavano (26/09).
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { vm.alRitorno() }
-    BackHandler(enabled = vm.schermata != Schermata.OGGI || vm.percorsoAperto != null || vm.documentoAperto != null || vm.ritrattoAperto) {
-        if (vm.ritrattoAperto) vm.ritrattoAperto = false else vm.indietro()
+    BackHandler(enabled = vm.schermata != Schermata.OGGI || vm.percorsoAperto != null || vm.documentoAperto != null || vm.ritrattoAperto || vm.provaAperta) {
+        if (vm.provaAperta) vm.provaAperta = false else if (vm.ritrattoAperto) vm.ritrattoAperto = false else vm.indietro()
     }
     // Un gesto disfacibile (V3): la striscia con «Annulla» per qualche secondo.
     LaunchedEffect(vm.annullabile) {
@@ -116,5 +116,7 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
         if (!vm.tour) Box(Modifier.fillMaxSize().systemBarsPadding().padding(bottom = 80.dp)) { Ancora(vm, conMicrofono) }
         // Il Ritratto di Adam a schermo intero, sopra tutto (ui/Oggi.kt).
         if (vm.ritrattoAperto) Box(Modifier.fillMaxSize().systemBarsPadding()) { RitrattoAperto(vm) }
+        // La prova generale, sopra tutto (ui/ProvaUi.kt).
+        if (vm.provaAperta) Box(Modifier.fillMaxSize()) { ProvaUi(vm) }
     }
 }

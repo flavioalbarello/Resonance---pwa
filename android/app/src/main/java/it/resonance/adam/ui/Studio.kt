@@ -53,9 +53,17 @@ fun StudioUi(vm: Adam, per: Percorso, nodi: List<Nodo>, colore: Color) {
         }
         val s = sessione
         when {
+            s != null && s.nota == it.resonance.adam.logica.Prova.NOTA -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Tenue("Prova generale in corso.")
+                TextButton({ vm.provaAperta = true }) { Text("Riprendi") }
+            }
             s != null && s.percorsoId == per.id -> InCorso(vm, Pratica.decodifica(s.piano), esiti.size, per.misura)
             s != null -> Tenue("C'è uno studio in corso su un altro fronte: chiudilo da lì o dalla notifica.")
-            else -> Avvio(vm, per)
+            else -> {
+                Avvio(vm, per)
+                // La prova generale (logica/Prova.kt): la scaletta intera, a schermo intero, come sul palco.
+                if (pezzi.size >= 2) TextButton({ vm.iniziaProva(per) }, modifier = Modifier.testTag("prova-generale")) { Text("▶ Prova generale: tutta la scaletta") }
+            }
         }
         if (vm.resocontoStudio.isNotEmpty() && s == null) {
             Spazio(6)

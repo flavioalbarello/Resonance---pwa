@@ -153,4 +153,23 @@ class StudioTest {
         assertTrue("il disegno ha più di qualche colore: ${colori.size}", colori.size > 5)
         Unit
     }
+
+    // La prova generale: i pezzi non cambiano, il resoconto misura il set e finisce nel diario.
+    @Test fun laProvaGeneraleMisuraIlSetSenzaToccareIPezzi() = runBlocking {
+        val db = Db.di(app)
+        val a = Archivio(db)
+        db.pratica().inCorso()?.let { a.chiudiSessione(it, LocalDate.now()) }
+        val per = db.percorsi().inserisci(Percorso(pilastro = Pilastro.VIDYA, titolo = "Tributo (prova)", creato = 1, misura = MisuraFronte.VELOCITA))
+        val gianna = db.percorsi().inserisciNodo(Nodo(percorsoId = per, etichetta = "Gianna", ordine = 0, velocita = 90))
+        db.percorsi().inserisciNodo(Nodo(percorsoId = per, etichetta = "Aida", ordine = 1))
+        val t0 = 1_000_000L
+        val s = a.apriProva(per, LocalDate.now(), adesso = t0)!!
+        a.segnaBlocco(s.id, EsitoPratica.PULITO, null, LocalDate.now(), adesso = t0 + 240_000)
+        val fine = a.segnaBlocco(s.id, EsitoPratica.ERRORI, null, LocalDate.now(), adesso = t0 + 420_000)!!
+        assertNull(fine.prossimo)
+        assertEquals("Set: 7:00, 2 brani suonati, filo perso 1 volta", fine.resoconto[0])
+        assertEquals(90, db.percorsi().elencoNodi().single { it.id == gianna }.velocita)
+        assertTrue(db.voci().elenco().any { it.testo.startsWith("Prova generale «Tributo (prova)»: Set: 7:00") })
+        Unit
+    }
 }

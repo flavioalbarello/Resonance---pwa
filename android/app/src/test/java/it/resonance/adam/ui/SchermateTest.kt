@@ -307,6 +307,17 @@ class SchermateTest {
         // Divenire è un fronte «da fare» (un album da comporre, non da suonare): niente velocità, il pezzo sale di un gradino.
         regola.onNodeWithText("Atto III: Mitosi: fatto", substring = true).assertExists()
         scatta("5e-studio-resoconto")
+        // La prova generale: la scaletta a schermo intero, un tocco porta al brano dopo.
+        regola.onNodeWithTag("prova-generale").performScrollTo().performClick()
+        aspetta { vm.provaAperta && vm.sessione.value != null }
+        regola.onNodeWithTag("brano").assertExists()
+        scatta("5f-prova-generale")
+        regola.onNodeWithTag("brano").performClick()
+        aspetta { vm.esitiSessione.value.size == 1 }
+        regola.onNodeWithTag("fine-prova").performClick()
+        aspetta { vm.sessione.value == null && vm.resocontoProva.isNotEmpty() }
+        scatta("5g-prova-resoconto")
+        vm.provaAperta = false
         // Dopo la prima sessione Divenire è un fronte di pratica: Oggi lo propone a un tocco.
         vm.vai(Schermata.OGGI)
         aspetta { regola.onAllNodesWithTag("adesso").fetchSemanticsNodes().isNotEmpty() }

@@ -95,6 +95,13 @@ private fun Adesso(vm: Adam) {
     val sessione by vm.sessione.collectAsState()
     val esiti by vm.esitiSessione.collectAsState()
     val s = sessione
+    if (s != null && s.nota == it.resonance.adam.logica.Prova.NOTA) {
+        SchedaForte(Colori.ambra, Modifier.testTag("adesso")) {
+            Etichetta("Prova generale in corso", Colori.ambraInchiostro)
+            Button({ vm.provaAperta = true }, colors = ButtonDefaults.buttonColors(containerColor = Colori.inchiostro, contentColor = Colori.fondo)) { Text("Riprendi") }
+        }
+        return
+    }
     if (s != null) {
         val per = i.percorsi.find { it.id == s.percorsoId }
         SchedaForte(Colori.ambra, Modifier.testTag("adesso")) {
