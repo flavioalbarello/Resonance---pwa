@@ -772,13 +772,29 @@ class Adam(app: Application) : AndroidViewModel(app) {
         // La fonte del primo pezzo si apre da sola: Moises o YouTube davanti, la notifica sopra.
         apriFonte(b.fonte)
     }
+    // ── L'Orecchio (logica/Orecchio.kt): il microfono sente il Ghost suonare e misura il tempo ──
+    private val microfono by lazy { it.resonance.adam.mondo.Microfono(getApplication()) }
+    val attacchi get() = microfono.attacchi
+    var orecchio by mutableStateOf(false)
+        private set
+    // Il permesso del microfono lo chiede l'attività (App la imposta): l'Orecchio parte solo dopo il sì del Ghost.
+    var chiediMicrofono: ((() -> Unit) -> Unit)? = null
+    fun ascoltami() {
+        if (orecchio) { microfono.ferma(); orecchio = false; return }
+        val parti = { ferma(); microfono.avvia(viewModelScope); orecchio = true }
+        chiediMicrofono?.invoke(parti) ?: parti()
+    }
+    fun erroreOrecchio() = microfono.errore
+
     fun segnaStudio(esito: it.resonance.adam.dati.EsitoPratica, velocita: Int?) = viewModelScope.launch {
+        microfono.azzera()
         val s = sessione.value ?: return@launch
         val passo = archivio.segnaBlocco(s.id, esito, velocita, LocalDate.now()) ?: return@launch
         if (passo.prossimo == null) resocontoStudio = passo.resoconto
         it.resonance.adam.battito.Studio.dopo(getApplication(), archivio, passo)
     }
     fun chiudiStudio() = viewModelScope.launch {
+        microfono.ferma(); orecchio = false
         val s = sessione.value ?: return@launch
         val passo = archivio.chiudiSessione(s, LocalDate.now())
         resocontoStudio = passo.resoconto.ifEmpty { listOf("Chiusa senza blocchi segnati.") }

@@ -2,6 +2,8 @@ package it.resonance.adam.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
@@ -115,6 +117,8 @@ internal fun InCorso(vm: Adam, piano: List<Pratica.Blocco>, fatti: Int, misura: 
         OutlinedButton({ vm.segnaStudio(EsitoPratica.ERRORI, velocita) }) { Text(misura.esiti[1]) }
         TextButton({ vm.segnaStudio(EsitoPratica.SALTATO, velocita) }) { Text(misura.esiti[2].removePrefix("→ ")) }
     }
+    // L'Orecchio solo per ciò che si suona: la velocità e il tempo sono la stessa misura.
+    if (misura == MisuraFronte.VELOCITA) OrecchioUi(vm, velocita)
     TextButton({ vm.chiudiStudio() }) { Text("Chiudi qui", color = Colori.tenue) }
 }
 
@@ -148,4 +152,48 @@ fun MotoreUi(vm: Adam, per: Percorso, colore: Color) {
     }
     if (passo) DialogoTesto("Prossimo passo", per.prossimoPasso, "una riga concreta · vuoto lo toglie", vuotoOk = true,
         onOk = { vm.passoFronte(per, it) }, onChiudi = { passo = false })
+}
+
+// L'Orecchio dentro lo studio (logica/Orecchio.kt): un anello che pulsa a ogni nota sentita, verde a tempo, ambra se
+// corri, blu se trascini; sotto, il giudizio del blocco finora, e un tocco per segnare l'esito che l'Orecchio propone.
+@Composable
+fun OrecchioUi(vm: Adam, velocita: Int) {
+    TextButton({ vm.ascoltami() }, modifier = Modifier.testTag("ascoltami")) {
+        Text(if (vm.orecchio) "👂 Smetti di ascoltarmi" else "👂 Ascoltami mentre suono")
+    }
+    if (!vm.orecchio) return
+    val attacchi by vm.attacchi.collectAsState()
+    vm.erroreOrecchio()?.let { Tenue("L'Orecchio non sente: $it"); return }
+    val battute = it.resonance.adam.logica.Orecchio.battute(attacchi.takeLast(9))
+    val senso = battute.lastOrNull()?.let { b -> it.resonance.adam.logica.Orecchio.senso(b.scartoMs) }
+    val colore = when (senso) {
+        it.resonance.adam.logica.Orecchio.Senso.A_TEMPO -> Colori.bio
+        it.resonance.adam.logica.Orecchio.Senso.CORRI -> Colori.ambra
+        it.resonance.adam.logica.Orecchio.Senso.TRASCINI -> Colori.air
+        null -> Colori.tenue
+    }
+    // Il battito dell'anello: ogni nota nuova lo fa gonfiare, poi torna.
+    val gonfio = remember { androidx.compose.animation.core.Animatable(1f) }
+    androidx.compose.runtime.LaunchedEffect(attacchi.size) { gonfio.snapTo(1.25f); gonfio.animateTo(1f, androidx.compose.animation.core.tween(220)) }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+        androidx.compose.foundation.Canvas(Modifier.padding(end = 12.dp).size(64.dp)) {
+            val r = size.minDimension / 2 * 0.7f * gonfio.value
+            drawCircle(colore.copy(alpha = 0.18f), r * 1.3f)
+            drawCircle(colore, r, style = androidx.compose.ui.graphics.drawscope.Stroke(size.minDimension * 0.08f))
+        }
+        Column {
+            Text(when (senso) {
+                it.resonance.adam.logica.Orecchio.Senso.A_TEMPO -> "a tempo"
+                it.resonance.adam.logica.Orecchio.Senso.CORRI -> "corri"
+                it.resonance.adam.logica.Orecchio.Senso.TRASCINI -> "trascini"
+                null -> "suona: ti ascolto"
+            } + (battute.lastOrNull()?.let { b -> " · ${if (b.scartoMs >= 0) "+" else ""}${b.scartoMs.toInt()} ms" } ?: ""),
+                fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = colore)
+            val g = it.resonance.adam.logica.Orecchio.giudica(attacchi)
+            Tenue(g.riga())
+            g.esito?.let { e -> TextButton({ vm.segnaStudio(e, velocita) }, modifier = Modifier.testTag("segna-orecchio")) {
+                Text("Segna «${if (e == EsitoPratica.PULITO) "pulito" else "errori"}», come dice l'Orecchio")
+            } }
+        }
+    }
 }

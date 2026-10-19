@@ -31,3 +31,8 @@ Si riparte da qui. Il piano è `PROGETTO_V3.md`; la sua tabella «Stato» dice f
 - Mettere in fila le fasi dal motore: ciò che il Ghost vede è finito in fondo. Prima la forma, poi il resto.
 - I risultati di `cerca_nel_web` arrivavano al modello SENZA i link: nessuna fonte vera era proponibile. Trovato dalla
   prova del turno sul fronte, non dalla lettura del codice.
+
+## Aggiunto il 19/10
+Scoperte, Ritratto di Adam (Oggi, widget, sfondo), Prova generale, Film della settimana, l'Orecchio. Dettagli nella
+tabella «Stato» di `PROGETTO_V3.md`. Banco: 374 prove, dev e base. Da provare dal vivo prima di tutto l'Orecchio
+(col basso elettrico senza amplificatore e col susafono: il microfono sente abbastanza?) e il widget sul launcher realme.

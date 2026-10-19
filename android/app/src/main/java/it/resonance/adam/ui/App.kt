@@ -59,6 +59,8 @@ fun App(vm: Adam, sistema: Sistema, conMicrofono: (() -> Unit) -> Unit) {
         }
     }
     var menu by remember { mutableStateOf(false) }
+    // L'Orecchio chiede il microfono come la dettatura: attraverso l'attività.
+    LaunchedEffect(Unit) { vm.chiediMicrofono = conMicrofono }
 
     Box(Modifier.fillMaxSize()) {
         Scaffold(

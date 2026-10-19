@@ -111,6 +111,8 @@ avvengono senza aprirla (notifiche); tocchi di conferma al giorno; passi avanti 
 
 | Film della settimana (19/10) | fatto | `logica/Film.kt` (una scena per ogni fatto vero della settimana: studio, pezzi pronti, velocità salita, il rituale che ha retto, sonno, passi, una scoperta; ultima il Ritratto col prossimo passo) + `ui/FilmUi.kt` (storie a schermo intero, barre, sfondo animato del colore del pilastro, tocco avanti/indietro, pausa, 🔊 voce). Menu ☰, Oggi la domenica e il lunedì, notifica la domenica |
 
+| L'Orecchio (19/10) | fatto, da provare col basso e col susafono | `logica/Orecchio.kt`: attacchi delle note dal microfono (passa-basso sotto 300 Hz, energia ogni 10 ms, salita > 9 dB sopra il fondo adattivo), griglia ai minimi quadrati, scarto di ogni nota dalla griglia, deriva fra le due metà, esito suggerito (pulito sotto ±20 ms e deriva entro ±3%). Banco su segnali sintetici: note trovate entro 20 ms, silenzio muto, mano ferma pulita, mano incerta no, chi accelera «corri». `mondo/Microfono.kt`: sorgente non elaborata dove c'è, niente registrato. Nello Studio: anello verde/ambra/blu e «Segna come dice l'Orecchio». Limite: non sente la traccia in cuffia, misura il tempo del Ghost rispetto a sé stesso |
+
 Scostamento dal piano: niente `ui3/` accanto alla vecchia. La cornice nuova sostituisce la vecchia subito, perché le schermate
 vecchie restano raggiungibili dal menu: nessuna funzione persa, nessuna doppia interfaccia da tenere allineata.
 
