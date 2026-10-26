@@ -85,7 +85,7 @@ fun Setup(vm: Adam, sistema: Sistema) {
             Impostazioni.MODELLI.forEach { (id, nome) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(modello == id, { modello = id; imp.modello = id })
-                    Text(nome)
+                    Text(vm.etichettaModello(nome, id))
                 }
             }
             OutlinedTextField(modello, { modello = it; if (it.contains('/')) imp.modello = it }, label = { Text("Oppure uno slug OpenRouter") }, modifier = Modifier.fillMaxWidth())
@@ -102,7 +102,7 @@ fun Setup(vm: Adam, sistema: Sistema) {
                 Impostazioni.MODELLI_LEGGERI.forEach { (id, nome) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(leggero == id, { leggero = id; imp.modelloLeggero = id })
-                        Text(nome)
+                        Text(vm.etichettaModello(nome, id))
                     }
                 }
             }
@@ -114,7 +114,7 @@ fun Setup(vm: Adam, sistema: Sistema) {
             Impostazioni.MODELLI_VISTA.forEach { (id, nome) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(vista == id, { vista = id; imp.modelloVista = id })
-                    Text(nome)
+                    Text(vm.etichettaModello(nome, id))
                 }
             }
             Tenue("Il modello si sceglie con un numero, non con il prezzario: prova lo stesso turno su due modelli e guarda quante proposte vengono rifiutate e quante volte chiede chiarimenti.")

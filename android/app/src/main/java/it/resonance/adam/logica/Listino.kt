@@ -70,6 +70,23 @@ object Listino {
 
     fun prezzi(listino: List<Voce>, id: String): Voce? = listino.firstOrNull { it.id == id }
 
+    private val PREZZO = Regex("""\(\s*[0-9]+(?:[.,][0-9]+)?\s*/\s*[0-9]+(?:[.,][0-9]+)?\s*\$""")
+    private fun cifra(v: Double): String =
+        java.math.BigDecimal(v).setScale(2, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString().replace('.', ',')
+
+    /**
+     * L'etichetta di un modello col prezzo del listino letto (26/10/2026): le etichette scritte a mano erano invecchiate
+     * in tre settimane, una di dieci volte. Se il modello non è nel listino (o il listino non è stato letto), resta
+     * l'etichetta scritta a mano; se è sparito dal listino, lo dice.
+     */
+    fun etichetta(nome: String, id: String, listino: List<Voce>): String {
+        if (listino.isEmpty()) return nome
+        val v = prezzi(listino, id) ?: return "$nome · non più nel listino"
+        // Il «$» nel testo sostitutivo sarebbe un riferimento a un gruppo: si sostituisce per posizione.
+        val m = PREZZO.find(nome) ?: return nome
+        return nome.replaceRange(m.range, "(${cifra(v.ingresso)}/${cifra(v.uscita)} $")
+    }
+
     /** I prezzi di un modello per le stime: dal listino; se non c'è, prudenti (1 $ e 5 $ per milione), mai zero. */
     fun voce(listino: List<Voce>, id: String): Voce = prezzi(listino, id) ?: Voce(id, ingresso = 1.0, uscita = 5.0)
 

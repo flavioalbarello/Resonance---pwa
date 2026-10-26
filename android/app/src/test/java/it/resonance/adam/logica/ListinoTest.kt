@@ -61,4 +61,28 @@ class ListinoTest {
         val inLista = (Impostazioni.MODELLI + Impostazioni.MODELLI_LEGGERI + Impostazioni.MODELLI_VISTA).map { it.first }
         assertTrue(inLista.none { it in Impostazioni.RITIRATI })
     }
+
+    // 26/10/2026: le etichette scritte a mano erano invecchiate (DeepSeek V4.1 Flash ×10). Il prezzo si legge dal listino.
+    @Test fun lEtichettaPortaIlPrezzoDelListinoLetto() {
+        val listino = listOf(Listino.Voce("deepseek/deepseek-v4.1-flash", ingresso = 0.3, uscita = 1.2),
+            Listino.Voce("moonshotai/kimi-k3", ingresso = 0.19, uscita = 20.0))
+        assertEquals("DeepSeek V4.1 Flash (0,3/1,2 $, vede)", Listino.etichetta("DeepSeek V4.1 Flash (0,03/0,5 $, vede)", "deepseek/deepseek-v4.1-flash", listino))
+        assertEquals("Kimi K3 (0,19/20 $, scrive caro)", Listino.etichetta("Kimi K3 (0,68/10 $, scrive caro)", "moonshotai/kimi-k3", listino))
+        // Listino mai letto: l'etichetta di ripiego. Modello sparito: lo dice.
+        assertEquals("X (1/2 $)", Listino.etichetta("X (1/2 $)", "a/x", emptyList()))
+        assertEquals("X (1/2 $) · non più nel listino", Listino.etichetta("X (1/2 $)", "a/x", listino))
+    }
+
+    // Ogni modello offerto c'era nel listino del 26/10/2026 con gli strumenti (quelli di ricerca esclusi: cercano da sé).
+    @Test fun iModelliOffertiEsistonoEUsanoGliStrumenti() {
+        val conStrumenti = setOf("meta-llama/llama-3.3-70b-instruct", "z-ai/glm-5.3", "xiaomi/mimo-v2.6-pro", "deepseek/deepseek-v4-pro",
+            "moonshotai/kimi-k2.6", "moonshotai/kimi-k3", "google/gemini-3.8-flash", "openai/gpt-6.1-terra", "mistralai/mistral-large-4-0",
+            "x-ai/grok-4.7", "google/gemini-4-argon", "moonshotai/kimi-k3.1-pro", "anthropic/claude-sonnet-5.5", "openai/gpt-6.1-sol",
+            "xiaomi/mimo-v2.6-flash", "deepseek/deepseek-v4.1-flash-1017", "qwen/qwen3.8-flash", "google/gemini-3.1-flash-lite",
+            "openai/gpt-6-luna", "anthropic/claude-haiku-5.5")
+        val offerti = (Impostazioni.MODELLI + Impostazioni.MODELLI_LEGGERI + Impostazioni.MODELLI_VISTA).map { it.first }.toSet()
+        assertEquals(emptySet<String>(), offerti - conStrumenti)
+        // Chi vede: tutti i leggeri e quelli per le immagini.
+        assertTrue((Impostazioni.MODELLI_LEGGERI + Impostazioni.MODELLI_VISTA).all { it.first in Impostazioni.VEDONO })
+    }
 }

@@ -322,6 +322,11 @@ class Adam(app: Application) : AndroidViewModel(app) {
         private set
     fun avvisiModelli(): List<String> = it.resonance.adam.logica.Listino.avvisi(shell.modelliUsati(),
         it.resonance.adam.logica.Listino.decodifica(impostazioni.listino), LocalDate.now())
+    /** L'etichetta di un modello col prezzo vero, dal listino letto (logica/Listino.kt). */
+    fun etichettaModello(nome: String, id: String): String {
+        @Suppress("UNUSED_VARIABLE") val v = listinoVersione
+        return it.resonance.adam.logica.Listino.etichetta(nome, id, it.resonance.adam.logica.Listino.decodifica(impostazioni.listino))
+    }
     fun aggiornaListino() = viewModelScope.launch {
         shell.aggiornaListino(forza = true)
         listinoVersione++

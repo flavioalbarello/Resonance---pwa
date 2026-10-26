@@ -186,36 +186,45 @@ open class Impostazioni(context: Context) {
             "perplexity/sonar-pro" to "Perplexity Sonar Pro (3/15 $ + 0,5 cent a ricerca, più fonti)",
             "perplexity/sonar-reasoning-pro" to "Perplexity Sonar Reasoning Pro (2/8 $ + 0,5 cent, ragiona sulle fonti)",
         )
-        // Verificati sul listino vivo di OpenRouter il 02/10/2026 (/api/v1/models): strumenti, immagini, temperatura,
-        // scadenze. Prezzi in dollari per milione di token, ingresso/uscita. La lista non si aggiorna da sola: per questo
-        // il programma legge il listino ogni giorno e avvisa (logica/Listino.kt).
+        // Verificati sul listino vivo di OpenRouter il 26/10/2026 (/api/v1/models): strumenti, immagini, temperatura,
+        // scadenze (nessuna). Prezzi in dollari per milione di token, ingresso/uscita. Dal 02/10 erano cambiati in silenzio:
+        // DeepSeek V4.1 Flash ×10 (0,03 → 0,30), Kimi K2.6 +50/+86%, DeepSeek V4 Pro ×3,4, GLM-5.3 −68/−59%. Per questo il
+        // prezzo che si vede in Setup ora viene dal listino letto (Listino.etichetta): qui resta solo quello di ripiego.
         val MODELLI_LEGGERI = listOf(
-            "deepseek/deepseek-v4.1-flash" to "DeepSeek V4.1 Flash (0,03/0,5 $, vede)",
+            "xiaomi/mimo-v2.6-flash" to "MiMo V2.6 Flash (0,14/0,28 $, vede)",
+            "deepseek/deepseek-v4.1-flash-1017" to "DeepSeek V4.1 Flash 10/17 (0,15/0,6 $, vede)",
             "qwen/qwen3.8-flash" to "Qwen 3.8 Flash (0,15/0,47 $, vede)",
             "google/gemini-3.1-flash-lite" to "Gemini 3.1 Flash Lite (0,25/1,5 $, vede)",
             "openai/gpt-6-luna" to "GPT-6 Luna (0,1/0,5 $, vede, temperatura sua)",
+            "anthropic/claude-haiku-5.5" to "Claude Haiku 5.5 (0,1/0,5 $, vede, temperatura sua)",
         )
         val MODELLI_VISTA = listOf(
-            "deepseek/deepseek-v4.1-flash" to "DeepSeek V4.1 Flash (0,03/0,5 $, il più economico)",
+            "xiaomi/mimo-v2.6-flash" to "MiMo V2.6 Flash (0,14/0,28 $, il più economico)",
             "qwen/qwen3.8-flash" to "Qwen 3.8 Flash (0,15/0,47 $)",
+            "deepseek/deepseek-v4.1-flash-1017" to "DeepSeek V4.1 Flash 10/17 (0,15/0,6 $)",
             "google/gemini-3.1-flash-lite" to "Gemini 3.1 Flash Lite (0,25/1,5 $)",
         )
         // Fra i modelli principali, quelli che vedono già da soli: con loro non si cambia modello. Se il listino è
         // stato letto, decide il listino (Shell.vede).
-        val VEDONO = setOf("moonshotai/kimi-k2.6", "moonshotai/kimi-k3", "google/gemini-3.1-pro-preview", "google/gemini-3.8-flash",
-            "anthropic/claude-sonnet-5.5", "anthropic/claude-sonnet-5", "anthropic/claude-sonnet-4.5", "openai/gpt-6-sol", "x-ai/grok-4.7",
-            "google/gemini-3.5-flash") + MODELLI_VISTA.map { it.first } + MODELLI_LEGGERI.map { it.first }
+        val VEDONO = setOf("moonshotai/kimi-k2.6", "moonshotai/kimi-k3", "moonshotai/kimi-k3.1-pro", "google/gemini-3.1-pro-preview",
+            "google/gemini-3.8-flash", "google/gemini-4-argon", "anthropic/claude-sonnet-5.5", "anthropic/claude-sonnet-5", "anthropic/claude-sonnet-4.5",
+            "openai/gpt-6-sol", "openai/gpt-6.1-sol", "openai/gpt-6.1-terra", "x-ai/grok-4.7", "google/gemini-3.5-flash", "xiaomi/mimo-v2.6-pro",
+            "mistralai/mistral-large-4-0", "deepseek/deepseek-v4.1-flash") + MODELLI_VISTA.map { it.first } + MODELLI_LEGGERI.map { it.first }
         val MODELLI = listOf(
             "meta-llama/llama-3.3-70b-instruct" to "Llama 3.3 70B (0,1/0,32 $, economico, non vede)",
-            "deepseek/deepseek-v4-pro" to "DeepSeek V4 Pro (0,21/0,42 $, non vede)",
-            "z-ai/glm-5.3" to "GLM-5.3 (0,22/3,39 $, non vede)",
-            "moonshotai/kimi-k2.6" to "Kimi K2.6 (0,43/1,83 $)",
-            "moonshotai/kimi-k3" to "Kimi K3 (0,68/10 $)",
-            "google/gemini-3.8-flash" to "Gemini 3.8 Flash (0,75/3,75 $)",
-            "google/gemini-3.1-pro-preview" to "Gemini 3.1 Pro (2/12 $)",
-            "anthropic/claude-sonnet-5.5" to "Claude Sonnet 5.5 (2/10 $)",
-            "openai/gpt-6-sol" to "GPT-6 Sol (2/10 $, temperatura sua)",
+            "z-ai/glm-5.3" to "GLM-5.3 (0,07/1,4 $, non vede)",
+            "xiaomi/mimo-v2.6-pro" to "MiMo V2.6 Pro (0,43/0,87 $)",
+            "deepseek/deepseek-v4-pro" to "DeepSeek V4 Pro (0,71/1,42 $, non vede)",
+            "moonshotai/kimi-k2.6" to "Kimi K2.6 (0,65/3,41 $)",
+            "moonshotai/kimi-k3" to "Kimi K3 (0,19/20 $, scrivere costa molto)",
+            "google/gemini-3.8-flash" to "Gemini 3.8 Flash (0,83/4,12 $)",
+            "openai/gpt-6.1-terra" to "GPT-6.1 Terra (1/5 $, temperatura sua)",
+            "mistralai/mistral-large-4-0" to "Mistral Large 4 (1,36/4,18 $, europeo)",
             "x-ai/grok-4.7" to "Grok 4.7 (2/6 $)",
+            "google/gemini-4-argon" to "Gemini 4 Argon (2/10 $)",
+            "moonshotai/kimi-k3.1-pro" to "Kimi K3.1 Pro (2/10 $, temperatura sua)",
+            "anthropic/claude-sonnet-5.5" to "Claude Sonnet 5.5 (2/10 $, temperatura sua)",
+            "openai/gpt-6.1-sol" to "GPT-6.1 Sol (2/10 $, temperatura sua)",
         )
         // Modelli che OpenRouter ritira: chi li aveva scelti passa da solo al sostituto (verificato il 02/10/2026).
         val RITIRATI = mapOf(

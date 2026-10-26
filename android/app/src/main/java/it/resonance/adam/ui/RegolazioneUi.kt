@@ -70,7 +70,7 @@ fun RegolazioneUi(vm: Adam) {
                             else -> Impostazioni.MODELLI + Impostazioni.MODELLI_LEGGERI
                         }
                         scelte.distinctBy { it.first }.forEach { (id, nome) ->
-                            DropdownMenuItem({ Text(nome) }, { vm.scegliModello(c, id); aperto = false })
+                            DropdownMenuItem({ Text(vm.etichettaModello(nome, id)) }, { vm.scegliModello(c, id); aperto = false })
                         }
                     }
                 }
