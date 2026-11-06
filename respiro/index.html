@@ -43,6 +43,7 @@
   --ok: #6FCB94; --warn: #F08E6A; color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 :root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
 body {
@@ -207,7 +208,11 @@ function vuoto() {
     quitAt: null, streakStart: null,
     sigGiorno: 20, prezzoPacco: 6.5, perPacco: 20,
     motivi: [], piani: [], voglie: [], scivolate: [],
-    supporto: {}, obiettivo: { nome: "", costo: 0 }
+    supporto: {}, obiettivo: { nome: "", costo: 0 },
+    // percorso: "stop" = data netta; "riduco" = budget giornaliero che scende ogni settimana
+    modo: "stop",
+    riduzione: null, // { inizio: ISO mezzanotte locale, base, settimane, obiettivo }
+    conti: {}        // { "AAAA-MM-GG": sigarette fumate quel giorno } — solo nel percorso riduco
   };
 }
 let S = vuoto();
@@ -233,10 +238,30 @@ const now = () => Date.now();
 function iniziato() { return S.quitAt && now() >= new Date(S.quitAt).getTime(); }
 function streakMs() { return S.streakStart ? Math.max(0, now() - new Date(S.streakStart).getTime()) : 0; }
 function sigFumate() { return S.scivolate.reduce((a, s) => a + (Number(s.n) || 1), 0); }
+function dayKey(t) { const d = new Date(t); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+function mezzanotte(t) { const d = new Date(t); d.setHours(0, 0, 0, 0); return d; }
+function giorniDa(iso, t) { return Math.round((mezzanotte(t || now()) - mezzanotte(iso)) / D); }
+// Budget a scalini settimanali, come nello schema di Ebbert 2015 (−50% a 4 sett., −75% a 8, zero a 12) ma sulla durata scelta.
+function budgetGiorno(n) {
+  const R = S.riduzione, k = Math.floor(n / 7);
+  if (k >= R.settimane) return R.obiettivo;
+  return Math.max(R.obiettivo, Math.ceil(R.base - (R.base - R.obiettivo) * (k + 1) / R.settimane));
+}
+// Conta solo i giorni registrati: un giorno senza dati non è un giorno a zero.
+function evitateRid() {
+  if (!S.riduzione) return 0;
+  const R = S.riduzione, lim = S.quitAt ? dayKey(S.quitAt) : "9999", ini = dayKey(R.inizio0 || R.inizio), base = R.base0 || R.base;
+  let t = 0;
+  for (const [k, n] of Object.entries(S.conti)) if (k >= ini && k < lim) t += Math.max(0, base - n);
+  return t;
+}
 function evitate() {
-  if (!iniziato()) return 0;
-  const giorni = (now() - new Date(S.quitAt).getTime()) / D;
-  return Math.max(0, giorni * S.sigGiorno - sigFumate());
+  let stop = 0;
+  if (iniziato()) {
+    const giorni = (now() - new Date(S.quitAt).getTime()) / D;
+    stop = Math.max(0, giorni * S.sigGiorno - sigFumate());
+  }
+  return stop + evitateRid();
 }
 function risparmio() { return evitate() * (S.prezzoPacco / Math.max(1, S.perPacco)); }
 function vogliePassate() { return S.voglie.filter(v => v.esito === "passata").length; }
@@ -315,9 +340,12 @@ const EVIDENZE = [
   { t: "Sigaretta elettronica con nicotina", lv: "hi", l: "Alta",
     d: "Aiuta più dei sostituti nicotinici (circa +60% di chi smette a 6 mesi). Usala per uscire dalla sigaretta; poi, se vuoi, scala anche lei.",
     s: "Cochrane, Lindson et al. 2025" },
-  { t: "Una data netta", lv: "hi", l: "RCT",
-    d: "Smettere di colpo batte la riduzione graduale: 22% contro 15,5% senza fumo a 6 mesi, anche fra chi preferiva ridurre. Scegli un giorno entro due settimane.",
-    s: "Lindson-Hawley, Ann Intern Med 2016" },
+  { t: "Una data netta, o ridurre fino a zero", lv: "hi", l: "Moderata",
+    d: "Sommando 22 studi, ridurre fino a zero e smettere di colpo danno risultati simili (RR 1,01). Nel singolo studio più grande ha vinto lo stop netto (22% contro 15,5%). Scegli la strada che riesci a percorrere, purché abbia una data finale.",
+    s: "Cochrane, Lindson et al. 2019 · Lindson-Hawley 2016" },
+  { t: "Ridurre con un aiuto", lv: "mid", l: "Moderata",
+    d: "Gomme, pastiglie o spray alla nicotina circa raddoppiano chi riesce a dimezzare le sigarette, e chi riduce poi smette più spesso. Con la vareniclina, ridurre in 12 settimane ha portato il 32% a zero (contro il 7%).",
+    s: "Cochrane CD005231 · Ebbert et al., JAMA 2015" },
   { t: "Zero tiri nelle prime due settimane", lv: "mid", l: "Osservazionale",
     d: "Fumare anche poco in quella finestra è il segnale più forte di ricaduta. Per questo Respiro mette in evidenza i giorni 1–14.",
     s: "Kenford et al., JAMA 1994" },
@@ -340,7 +368,7 @@ const EVIDENZE = [
 const NON_PROVATE = [
   { t: "Un'app da sola", d: "Nessun effetto dimostrato (RR 1,00, molto incerto). Respiro serve a portarti a ciò che funziona, non a sostituirlo.", s: "Cochrane 2019" },
   { t: "Mindfulness", d: "Nessun beneficio chiaro su chi smette; può aiutare l'umore.", s: "Cochrane 2022" },
-  { t: "Ridurre piano piano", d: "Funziona meno dello stop netto.", s: "Lindson-Hawley 2016" },
+  { t: "Ridurre e fermarsi lì", d: "Ridurre non abbassa le probabilità di smettere, anzi. Ma i benefici per la salute di una riduzione stabile non sono dimostrati: anche una sigaretta al giorno conserva il 30–50% del rischio cardiovascolare in più di chi ne fuma 20. È un gradino, non l'arrivo.", s: "Cochrane CD005231 · Hackshaw et al., BMJ 2018" },
   { t: "Metodo Allen Carr", d: "Risultati pari al servizio specialistico (19,4% contro 14,8%, differenza non significativa). Studio finanziato dall'azienda.", s: "Frings et al., Addiction 2020" }
 ];
 const BUONE = [
@@ -376,7 +404,7 @@ function nav() {
 function render() {
   pulisci();
   document.getElementById("today").textContent = new Date().toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short" });
-  if (vista === "oggi") return S.quitAt ? renderOggi() : renderSetup();
+  if (vista === "oggi") return S.modo === "riduco" && S.riduzione ? renderRiduco() : S.quitAt ? renderOggi() : renderSetup();
   if (vista === "sos") return renderSOS();
   if (vista === "piano") return renderPiano();
   if (vista === "scienza") return renderScienza();
@@ -389,25 +417,40 @@ function oggiISO(offsetGiorni) {
   return d.toISOString().slice(0, 16);
 }
 function renderSetup() {
+  let modo = "stop";
   V.innerHTML = `
   <div class="plain">
     <div class="hero">
       <span class="eyebrow">Inizia da qui</span>
-      <h2>Scegli il giorno. Il resto lo costruiamo insieme.</h2>
-      <p class="muted">Smettere di colpo, in una data precisa entro due settimane, funziona meglio che ridurre piano piano. Se hai già smesso, metti l'ora dell'ultima sigaretta.</p>
+      <h2>Scegli la tua strada. Il resto lo costruiamo insieme.</h2>
+      <p class="muted">Smettere in una data e ridurre fino a zero portano a risultati simili, se c'è una data finale e un aiuto. Anche ridurre e basta è un passo vero.</p>
     </div>
     <form class="card" id="setup">
-      <label>Giorno e ora senza fumo
-        <input type="datetime-local" id="sQuit" required value="${oggiISO(0)}">
-      </label>
-      <div class="chips" aria-label="Scelte rapide">
-        <button type="button" class="chip" data-off="0">Adesso</button>
-        <button type="button" class="chip" data-off="3">Fra 3 giorni</button>
-        <button type="button" class="chip" data-off="7">Fra una settimana</button>
-        <button type="button" class="chip" data-off="14">Fra due settimane</button>
+      <div class="chips" role="radiogroup" aria-label="Percorso">
+        <button type="button" class="chip" aria-pressed="true" data-modo="stop">Smetto in una data</button>
+        <button type="button" class="chip" aria-pressed="false" data-modo="zero">Riduco fino a zero</button>
+        <button type="button" class="chip" aria-pressed="false" data-modo="meta">Per ora riduco</button>
+      </div>
+      <p class="small muted" id="modoInfo"></p>
+      <div id="fStop" class="plain">
+        <label>Giorno e ora senza fumo
+          <input type="datetime-local" id="sQuit" value="${oggiISO(0)}">
+        </label>
+        <div class="chips" aria-label="Scelte rapide">
+          <button type="button" class="chip" data-off="0">Adesso</button>
+          <button type="button" class="chip" data-off="3">Fra 3 giorni</button>
+          <button type="button" class="chip" data-off="7">Fra una settimana</button>
+          <button type="button" class="chip" data-off="14">Fra due settimane</button>
+        </div>
+      </div>
+      <div id="fRid" class="grid2" hidden>
+        <label>In quante settimane
+          <select id="sSett"><option value="2">2</option><option value="4" selected>4</option><option value="8">8</option><option value="12">12</option></select>
+        </label>
+        <label id="lObj" hidden>Fino a quante al giorno<input type="number" id="sObj" min="1" max="60" value="${Math.max(1, Math.round(S.sigGiorno / 2))}" inputmode="numeric"></label>
       </div>
       <div class="grid2">
-        <label>Sigarette al giorno<input type="number" id="sSig" min="1" max="80" value="${S.sigGiorno}" inputmode="numeric"></label>
+        <label>Sigarette al giorno, oggi<input type="number" id="sSig" min="1" max="80" value="${S.sigGiorno}" inputmode="numeric"></label>
         <label>Prezzo pacchetto (€)<input type="number" id="sPrezzo" min="0" step="0.1" value="${S.prezzoPacco}" inputmode="decimal"></label>
       </div>
       <label>Perché lo fai? Scrivi un guadagno, non una paura
@@ -417,19 +460,161 @@ function renderSetup() {
       <p class="small muted">I dati restano su questo telefono. Nessun account.</p>
     </form>
   </div>`;
+  const INFO = {
+    stop: "Una data entro due settimane. Nel singolo studio più grande ha funzionato meglio della riduzione graduale.",
+    zero: "Un tetto giornaliero che scende ogni settimana fino a zero. Funziona come lo stop netto, meglio ancora con gomme alla nicotina o un farmaco.",
+    meta: "Un tetto che scende fino al numero che scegli. Chi riduce poi smette più spesso; quando vuoi, passi a zero con un tocco."
+  };
+  const setModo = m => {
+    modo = m;
+    V.querySelectorAll("[data-modo]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.modo === m)));
+    document.getElementById("fStop").hidden = m !== "stop";
+    document.getElementById("fRid").hidden = m === "stop";
+    document.getElementById("lObj").hidden = m !== "meta";
+    document.getElementById("modoInfo").textContent = INFO[m];
+  };
+  V.querySelectorAll("[data-modo]").forEach(b => b.onclick = () => setModo(b.dataset.modo));
+  setModo("stop");
   V.querySelectorAll("[data-off]").forEach(b => b.onclick = () => { document.getElementById("sQuit").value = oggiISO(Number(b.dataset.off)); });
   document.getElementById("setup").onsubmit = e => {
     e.preventDefault();
-    const q = new Date(document.getElementById("sQuit").value);
-    if (isNaN(q)) return toast("Scegli una data valida");
-    S.quitAt = q.toISOString(); S.streakStart = S.quitAt; S.creato = new Date().toISOString();
     S.sigGiorno = Math.max(1, Number(document.getElementById("sSig").value) || 20);
     S.prezzoPacco = Math.max(0, Number(document.getElementById("sPrezzo").value) || 0);
+    if (modo === "stop") {
+      const q = new Date(document.getElementById("sQuit").value);
+      if (isNaN(q)) return toast("Scegli una data valida");
+      S.modo = "stop"; S.quitAt = q.toISOString(); S.streakStart = S.quitAt;
+    } else {
+      const obj = modo === "zero" ? 0 : Math.min(S.sigGiorno - 1, Math.max(1, Number(document.getElementById("sObj").value) || 1));
+      S.modo = "riduco"; S.quitAt = null; S.streakStart = null;
+      S.riduzione = { inizio: mezzanotte(now()).toISOString(), base: S.sigGiorno, settimane: Number(document.getElementById("sSett").value) || 4, obiettivo: Math.max(0, obj) };
+    }
+    S.creato = S.creato || new Date().toISOString();
     const m = document.getElementById("sMotivo").value.trim();
     if (m) S.motivi.push(m);
     salva(); render();
-    toast(iniziato() ? "Si parte. Il contatore è tuo." : "Data fissata. Prepariamo il terreno.");
+    toast(S.modo === "riduco" ? "Si parte. Il tetto di oggi è pronto." : iniziato() ? "Si parte. Il contatore è tuo." : "Data fissata. Prepariamo il terreno.");
   };
+}
+
+/* ---- Riduco ---- */
+const MESSAGGI_RID = [
+  "Ogni sigaretta che togli è una scelta fatta a mente fredda. Stai allenando proprio quel muscolo.",
+  "Togli prima quelle automatiche, quelle che non ti godi. Tieni per ultime quelle a cui tieni.",
+  "Una gomma alla nicotina al posto di una sigaretta: con la nicotina chi riduce ci riesce il doppio delle volte.",
+  "Rimandare di tre minuti è già vincere: l'onda spesso passa da sola.",
+  "Chi riduce, poi smette più spesso. Nessuno studio ha trovato il contrario.",
+  "Il tetto scende una volta a settimana. Il giorno prima, decidi quale sigaretta salta.",
+  "Più spazio fra una e l'altra: il corpo impara che può aspettare.",
+  "Ogni euro che non bruci è nel salvadanaio. Guardalo crescere."
+];
+function renderRiduco() {
+  const R = S.riduzione, n = giorniDa(R.inizio), oggi = dayKey(now());
+  if (!(oggi in S.conti)) { S.conti[oggi] = 0; salva(); }
+  const b = budgetGiorno(n), c = S.conti[oggi];
+  const k = Math.floor(n / 7), finito = k >= R.settimane;
+  const prossimo = finito ? null : { fra: 7 - (n % 7), val: budgetGiorno((k + 1) * 7) };
+  const zeroOggi = b === 0;
+  // giorni di fila dentro il tetto (solo giorni registrati e passati, più oggi se dentro)
+  let fila = 0;
+  for (let i = 0; i <= n; i++) {
+    const t = now() - i * D, key = dayKey(t);
+    if (!(key in S.conti)) break;
+    if (S.conti[key] > budgetGiorno(n - i)) { if (i === 0) continue; break; }
+    fila++;
+  }
+  const msg = MESSAGGI_RID[n % MESSAGGI_RID.length];
+  const stato = c <= b ? `<span class="pill">${b - c > 0 ? "ne restano " + (b - c) : "tetto raggiunto"}</span>` : `<span class="pill mid">oltre di ${c - b}</span>`;
+  V.innerHTML = `
+  <div class="plain">
+    <section class="hero">
+      <span class="eyebrow">Oggi · settimana ${Math.min(k + 1, R.settimane)} di ${R.settimane}</span>
+      <div class="row" style="align-items:baseline;gap:14px">
+        <div class="clock"><span id="cnt">${c}</span><small>di ${b}</small></div>
+        ${stato}
+      </div>
+      <p class="muted small">${prossimo ? `Fra ${prossimo.fra} ${prossimo.fra === 1 ? "giorno" : "giorni"} il tetto scende a <b>${prossimo.val}</b> al giorno.` : R.obiettivo ? `Sei al tuo obiettivo: ${R.obiettivo} al giorno. Tienilo, poi decidi tu quando andare a zero.` : ""}</p>
+    </section>
+    ${zeroOggi ? `<div class="card" style="background:var(--sun-soft);border-color:transparent">
+      <h3>Oggi il tetto è zero</h3>
+      <p class="small">Ci sei arrivato un gradino alla volta. Passa al contatore senza fumo: da qui contano i giorni.</p>
+      <button class="btn sun" type="button" id="toStop">Passo a zero adesso</button>
+    </div>` : `<div class="row">
+      <button class="btn sun grow" type="button" id="rimanda">Rimanda 3 minuti</button>
+      <button class="btn ghost grow" type="button" id="piu">Ne fumo una</button>
+    </div>`}
+    <div class="stats">
+      <div class="stat sun"><b>${eur(risparmio())}</b><span>risparmiati</span></div>
+      <div class="stat"><b>${intero(evitate())}</b><span>sigarette in meno</span></div>
+      <div class="stat"><b>${fila}</b><span>${fila === 1 ? "giorno" : "giorni"} di fila nel tetto</span></div>
+    </div>
+    <p class="msg">${esc(msg)}</p>
+    <section class="card">
+      <div class="row" style="justify-content:space-between"><h3>Ultimi 14 giorni</h3><span class="small muted">barre: fumate · linea: tetto</span></div>
+      ${graficoRid(n)}
+    </section>
+    <section class="card">
+      <h3>Come ridurre senza soffrire</h3>
+      <ul class="list small">
+        <li><span>Togli prima le sigarette automatiche (caffè, telefono, pausa). Tieni per ultime quelle che ti godi.</span></li>
+        <li><span>Sostituisci una sigaretta con gomma, pastiglia o spray alla nicotina: chi riduce con la nicotina ci riesce circa il doppio delle volte, e poi smette più spesso.</span></li>
+        <li><span>Allunga lo spazio fra una e l'altra. Quando arriva la voglia, «Rimanda 3 minuti».</span></li>
+        <li><span>Con un farmaco va ancora meglio: riducendo in 12 settimane con la vareniclina, il 32% è arrivato a zero (contro il 7%). Chiedi al medico o al Centro Antifumo.</span></li>
+      </ul>
+    </section>
+    ${R.obiettivo > 0 ? `<section class="card">
+      <h3>Il prossimo gradino, quando vuoi</h3>
+      <p class="small">Ridurre è un passo vero e ti avvicina a smettere. Per cuore e vasi però il grosso del guadagno arriva a zero: anche una sigaretta al giorno conserva una parte importante del rischio. Le strade per arrivarci: zero, oppure passare del tutto all'e-cig con nicotina.</p>
+      <button class="btn ghost small" type="button" id="toZero">Porta il tetto a zero</button>
+    </section>` : ""}
+    <div class="row">
+      ${c > 0 ? `<button class="btn ghost small" type="button" id="meno">Ho sbagliato: togli una</button>` : ""}
+      ${zeroOggi ? "" : `<button class="btn ghost small" type="button" id="toStop">Smetto adesso</button>`}
+    </div>
+  </div>`;
+  const piu = document.getElementById("piu");
+  if (piu) piu.onclick = () => { S.conti[oggi] = (S.conti[oggi] || 0) + 1; salva(); renderRiduco(); if (S.conti[oggi] === b) toast("Tetto di oggi raggiunto. Da qui, solo rimandare."); };
+  const rim = document.getElementById("rimanda");
+  if (rim) rim.onclick = () => location.hash = "#sos";
+  const meno = document.getElementById("meno");
+  if (meno) meno.onclick = () => { S.conti[oggi] = Math.max(0, S.conti[oggi] - 1); salva(); renderRiduco(); };
+  document.getElementById("toStop").onclick = () => {
+    S.modo = "stop"; S.quitAt = new Date().toISOString(); S.streakStart = S.quitAt; salva(); render();
+    toast("Da adesso, zero. Il contatore è tuo.");
+  };
+  const tz = document.getElementById("toZero");
+  if (tz) tz.onclick = () => {
+    // riparte da oggi con base = tetto attuale, 4 settimane fino a zero: niente salti bruschi
+    // base0/inizio0 conservano il punto di partenza: risparmi e storico non si perdono
+    S.riduzione = { inizio: mezzanotte(now()).toISOString(), base: b, settimane: 4, obiettivo: 0, base0: R.base0 || R.base, inizio0: R.inizio0 || R.inizio };
+    salva(); renderRiduco(); toast("Nuovo traguardo: zero in 4 settimane.");
+  };
+}
+function graficoRid(n) {
+  const R = S.riduzione, W = 300, Hh = 110, pad = 18, giorni = 14;
+  const dati = [];
+  for (let i = giorni - 1; i >= 0; i--) {
+    const t = now() - i * D, key = dayKey(t), dn = n - i;
+    dati.push({ key, c: key in S.conti ? S.conti[key] : null, b: dn >= 0 ? budgetGiorno(dn) : null, g: new Date(t).toLocaleDateString("it-IT", { weekday: "narrow" }) });
+  }
+  const max = Math.max(1, R.base0 || R.base, ...dati.map(d => d.c || 0));
+  const bw = (W - 8) / giorni, y = v => Hh - pad - (v / max) * (Hh - pad - 8);
+  let barre = "", linea = "", etich = "";
+  dati.forEach((d, i) => {
+    const x = 4 + i * bw;
+    if (d.c !== null) {
+      const top = y(d.c), cls = d.b !== null && d.c > d.b ? "var(--sun)" : "var(--accent)";
+      barre += `<rect x="${(x + bw * .18).toFixed(1)}" y="${top.toFixed(1)}" width="${(bw * .64).toFixed(1)}" height="${Math.max(1.5, Hh - pad - top).toFixed(1)}" rx="2" fill="${cls}"/>`;
+    } else {
+      barre += `<circle cx="${(x + bw / 2).toFixed(1)}" cy="${Hh - pad - 2}" r="1.6" fill="var(--line)"/>`;
+    }
+    if (d.b !== null) linea += `${linea ? "L" : "M"}${x.toFixed(1)} ${y(d.b).toFixed(1)}H${(x + bw).toFixed(1)}`;
+    etich += `<text x="${(x + bw / 2).toFixed(1)}" y="${Hh - 4}" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="var(--f-num)">${d.g}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${Hh}" width="100%" role="img" aria-label="Sigarette fumate negli ultimi 14 giorni rispetto al tetto">
+    <line x1="4" x2="${W - 4}" y1="${Hh - pad}" y2="${Hh - pad}" stroke="var(--line)" stroke-width="1"/>
+    <text x="4" y="10" font-size="9" fill="var(--muted)" font-family="var(--f-num)">${max}</text>
+    ${barre}<path d="${linea}" fill="none" stroke="var(--fg)" stroke-width="1.5" stroke-dasharray="3 2" opacity=".55"/>${etich}</svg>`;
 }
 
 /* ---- Oggi ---- */
@@ -576,7 +761,7 @@ function renderSOS() {
     </div>
     <div class="row">
       <button class="btn grow" type="button" id="passata">È passata</button>
-      <button class="btn ghost grow" type="button" id="fumato">Ho fumato</button>
+      <button class="btn ghost grow" type="button" id="fumato">${S.modo === "riduco" ? "L'ho fumata" : "Ho fumato"}</button>
     </div>
   </div>`;
   const AZ = {
@@ -649,6 +834,11 @@ function renderSOS() {
   };
   document.getElementById("fumato").onclick = () => {
     logga("fumato");
+    if (S.modo === "riduco" && S.riduzione) {
+      const k = dayKey(now()); S.conti[k] = (S.conti[k] || 0) + 1; salva();
+      toast("Contata. Ogni rimando che riesce allena il prossimo.");
+      location.hash = "#oggi"; return;
+    }
     if (S.quitAt && iniziato()) { S.scivolate.push({ t: new Date().toISOString(), n: 1, trigger: triggerScelto }); S.streakStart = new Date().toISOString(); }
     salva();
     toast("Ripartito. Non cancella niente: da adesso, zero tiri.");
@@ -705,12 +895,12 @@ function renderPiano() {
 
     <section class="card">
       <h3>Le tue impostazioni</h3>
-      <label>Giorno senza fumo<input type="datetime-local" id="cQuit" value="${S.quitAt ? toLocal(S.quitAt) : oggiISO(0)}"></label>
+      ${S.modo === "riduco" && S.riduzione ? `<p class="small">Percorso: <b>riduco</b> da ${S.riduzione.base0 || S.riduzione.base} a ${S.riduzione.obiettivo} al giorno.</p>` : `<label>Giorno senza fumo<input type="datetime-local" id="cQuit" value="${S.quitAt ? toLocal(S.quitAt) : oggiISO(0)}"></label>`}
       <div class="grid2">
         <label>Sigarette al giorno (prima)<input type="number" id="cSig" min="1" value="${S.sigGiorno}" inputmode="numeric"></label>
         <label>Prezzo pacchetto (€)<input type="number" id="cPrezzo" min="0" step="0.1" value="${S.prezzoPacco}" inputmode="decimal"></label>
       </div>
-      <button class="btn small" type="button" id="cSave">Salva</button>
+      <div class="row"><button class="btn small" type="button" id="cSave">Salva</button><button class="btn ghost small" type="button" id="cPath">Cambia percorso</button></div>
       <details>
         <summary class="small">Dati</summary>
         <div class="plain" style="margin-top:10px">
@@ -746,7 +936,8 @@ function renderPiano() {
   V.querySelectorAll("[data-k]").forEach(c => c.onchange = () => { S.supporto[c.dataset.k] = c.checked; salva(); renderPiano(); });
   document.getElementById("copyTel").onclick = () => copia("800554088", "Numero copiato");
   document.getElementById("cSave").onclick = () => {
-    const q = new Date(document.getElementById("cQuit").value);
+    const cq = document.getElementById("cQuit");
+    const q = cq ? new Date(cq.value) : new Date(NaN);
     if (!isNaN(q)) {
       const nuova = q.toISOString();
       if (nuova !== S.quitAt) { S.quitAt = nuova; if (!S.scivolate.length || new Date(S.streakStart) < q) S.streakStart = nuova; }
@@ -755,6 +946,7 @@ function renderPiano() {
     S.prezzoPacco = Math.max(0, Number(document.getElementById("cPrezzo").value) || 0);
     salva(); toast("Salvato");
   };
+  document.getElementById("cPath").onclick = () => { S.modo = "stop"; S.quitAt = null; S.streakStart = null; salva(); location.hash = "#oggi"; render(); };
   document.getElementById("dExp").onclick = () => copia(JSON.stringify(S), "Dati copiati");
   document.getElementById("dDown").onclick = () => {
     try {

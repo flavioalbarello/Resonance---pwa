@@ -25,7 +25,7 @@ Livelli di certezza come li dà la fonte (Cochrane/GRADE quando c'è).
 |---|---|---|
 | App per smartphone, da sole | RR 1,00, molto incerto | Cochrane CD006611, 2019 |
 | Mindfulness | nessun beneficio chiaro sul quit (forse sull'umore) | Cochrane CD013696, 2022 |
-| Riduzione graduale | peggio dello stop netto, anche per chi la preferisce | Lindson-Hawley 2016 |
+| Ridurre e fermarsi lì | benefici per la salute non dimostrati (vedi «Ridurre») | Cochrane CD005231; Hackshaw 2018 |
 | Allen Carr Easyway | pari al servizio specialistico (19,4% vs 14,8%, differenza non significativa); finanziato da Allen Carr | Frings et al., Addiction 2020 |
 
 **Conseguenza per l'app**: le app da sole non bastano. Respiro è un attrezzo che porta a ciò
@@ -43,6 +43,28 @@ che funziona (farmaco o e-cig + supporto) e applica le tecniche comportamentali 
 - Tempo: ogni sigaretta costa in media circa 20 minuti di vita (stima UCL, Jackson et al. 2024/25).
 - Peso: media +4,7 kg a 12 mesi, quasi tutto nei primi 3 mesi; il 16% perde peso. Aubin et al.,
   BMJ 2012. Il movimento serve due volte: peso e voglie.
+
+## Ridurre (aggiunto il 06/11/2026)
+
+| Domanda | Risposta | Certezza | Fonte |
+|---|---|---|---|
+| Ridurre fino a zero vs smettere di colpo | quit simile (RR 1,01; 22 studi, n=9219) | moderata | Cochrane CD013183, Lindson et al. 2019 |
+| …ma nel singolo RCT più grande | stop netto 22% vs graduale 15,5% | RCT n=697 | Lindson-Hawley 2016 |
+| Ridurre con un aiuto | meglio con nicotina a rilascio rapido o vareniclina | moderata | Cochrane CD013183 |
+| Vareniclina per chi non vuole smettere di colpo | −50% a 4 sett., −75% a 8, zero a 12: 32% vs 7% astinenti sett. 15–24; 27% vs 10% a 1 anno | RCT n=1510 (finanziato Pfizer) | Ebbert et al., JAMA 2015 |
+| Nicotina per ridurre | circa raddoppia chi dimezza le sigarette; pochi mantengono | Cochrane | CD005231 |
+| Ridurre rende più difficile smettere? | no: nessuno studio su 19, 16 trovano più quit dopo | review | Hughes & Carpenter 2006 |
+| Ridurre e basta fa bene alla salute? | non dimostrato; 1 sigaretta/die = 30–50% dell'eccesso di rischio cardiovascolare di 20/die | 141 coorti | Hackshaw et al., BMJ 2018 |
+
+**Conseguenza per l'app**: la riduzione è un percorso pieno (tetto a scalini settimanali come Ebbert),
+con il rinvio all'aiuto nicotinico e al farmaco. «Per ora riduco» è permesso, e l'app dice con calma
+che il grosso del guadagno sta a zero (o nel passaggio completo all'e-cig), con un tasto per andarci.
+
+- https://cochranelibrary.com/cdsr/doi/10.1002/14651858.CD013183.pub2/information
+- https://nationalelfservice.net/mental-health/substance-misuse/varenicline-supports-smoking-reduction-and-smoking-cessation-according-to-rct
+- https://cochranelibrary.com/cdsr/doi/10.1002/14651858.CD005231.pub2
+- https://patientcareonline.com/view/smoking-cutback-can-aid-eventual-quitting
+- https://www.ucl.ac.uk/medical-sciences/news/2018/jan/one-cigarette-day-increases-cardiovascular-risk
 
 ## Italia (novembre 2026)
 
