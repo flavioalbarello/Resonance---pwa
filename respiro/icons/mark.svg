@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Il segno di Respiro: due foglie che sono anche due polmoni, su un ramo che fa da trachea -->
+  <path d="M256 96c0 40 0 70-2 96" fill="none" stroke="#2F5139" stroke-width="20" stroke-linecap="round"/>
+  <path d="M254 180c-8 22-24 32-44 36M258 180c8 22 24 32 44 36" fill="none" stroke="#2F5139" stroke-width="16" stroke-linecap="round"/>
+  <path d="M224 204C116 206 76 318 104 424c104-6 158-100 120-220z" fill="#6FA97A"/>
+  <path d="M288 204c108 2 148 114 120 220-104-6-158-100-120-220z" fill="#4F8C5E"/>
+  <path d="M216 226c-10 70-40 130-92 180M296 226c10 70 40 130 92 180" fill="none" stroke="#E3F0DD" stroke-width="7" stroke-linecap="round" opacity=".8"/>
+</svg>

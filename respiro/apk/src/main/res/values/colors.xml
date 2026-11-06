@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="carta">#E9F1F4</color>
-    <color name="inchiostro">#12283A</color>
+    <color name="carta">#F1F4EC</color>
+    <color name="inchiostro">#22352A</color>
 </resources>

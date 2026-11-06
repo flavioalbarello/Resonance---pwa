@@ -4,7 +4,9 @@
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowBackground">@color/carta</item>
-        <item name="android:statusBarColor">@color/inchiostro</item>
-        <item name="android:navigationBarColor">@color/inchiostro</item>
+        <item name="android:statusBarColor">@color/carta</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:navigationBarColor">@color/carta</item>
+        <item name="android:windowLightNavigationBar">true</item>
     </style>
 </resources>
