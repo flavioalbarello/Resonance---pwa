@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Respiro: un respiro tracciato a penna su carta da spirometro -->
+  <defs>
+    <pattern id="mm" width="16" height="16" patternUnits="userSpaceOnUse"><path d="M16 0H0V16" fill="none" stroke="#2E5A3D" stroke-width="1" opacity=".55"/></pattern>
+    <pattern id="cm" width="80" height="80" patternUnits="userSpaceOnUse"><path d="M80 0H0V80" fill="none" stroke="#3E7550" stroke-width="2" opacity=".7"/></pattern>
+  </defs>
+  <rect width="512" height="512" fill="#14281B"/>
+  <rect width="512" height="512" fill="url(#mm)"/>
+  <rect width="512" height="512" fill="url(#cm)"/>
+  <path d="M64 330h44c34 0 40-170 84-170s52 170 88 170 38-96 70-96 30 46 58 46" fill="none" stroke="#F0584B" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="408" cy="280" r="24" fill="#EDF1E6"/>
+</svg>

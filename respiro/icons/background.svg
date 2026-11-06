@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 432 432">
+  <defs>
+    <pattern id="mm" width="13.5" height="13.5" patternUnits="userSpaceOnUse"><path d="M13.5 0H0V13.5" fill="none" stroke="#2E5A3D" stroke-width="1" opacity=".55"/></pattern>
+    <pattern id="cm" width="67.5" height="67.5" patternUnits="userSpaceOnUse"><path d="M67.5 0H0V67.5" fill="none" stroke="#3E7550" stroke-width="2" opacity=".7"/></pattern>
+  </defs>
+  <rect width="432" height="432" fill="#14281B"/><rect width="432" height="432" fill="url(#mm)"/><rect width="432" height="432" fill="url(#cm)"/>
+</svg>
