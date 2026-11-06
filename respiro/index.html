@@ -949,6 +949,11 @@ function renderPiano() {
   document.getElementById("cPath").onclick = () => { S.modo = "stop"; S.quitAt = null; S.streakStart = null; salva(); location.hash = "#oggi"; render(); };
   document.getElementById("dExp").onclick = () => copia(JSON.stringify(S), "Dati copiati");
   document.getElementById("dDown").onclick = () => {
+    const nome = "respiro-" + new Date().toISOString().slice(0, 10) + ".json";
+    if (window.RespiroAndroid) { // dentro l'APK: il ponte nativo scrive in Download
+      if (!window.RespiroAndroid.salva(nome, JSON.stringify(S, null, 2))) toast("Non riesco a salvare il file: usa «Copia i dati»");
+      return;
+    }
     try {
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([JSON.stringify(S, null, 2)], { type: "application/json" }));

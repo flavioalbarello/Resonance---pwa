@@ -1,0 +1,37 @@
+name: respiro-apk
+
+# APK di Respiro (guscio WebView attorno a respiro/index.html), firmato con la stessa chiave dell'APK Resonance,
+# così ogni versione si installa sopra la precedente senza perdere i dati.
+on:
+  push:
+    paths: ["respiro/**", ".github/workflows/respiro-apk.yml"]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: respiro/apk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Chiave di firma dai segreti, se c'è
+        env:
+          KEYSTORE_B64: ${{ secrets.RESONANCE_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/resonance.jks"
+            echo "RESONANCE_KEYSTORE=$RUNNER_TEMP/resonance.jks" >> "$GITHUB_ENV"
+          fi
+      - name: APK
+        env:
+          RESONANCE_KEYSTORE_PASSWORD: ${{ secrets.RESONANCE_KEYSTORE_PASSWORD }}
+        run: ./gradlew assembleRelease --console=plain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: respiro-apk
+          path: respiro/apk/build/outputs/apk/release/*.apk
