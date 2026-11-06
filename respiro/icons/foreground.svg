@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 432 432">
   <!-- primo piano dell'icona adattiva Android: il tracciato sta nella zona sicura (cerchio di 288 px al centro) -->
   <g transform="translate(216 216) scale(.62) translate(-236 -245)">
-    <path d="M64 330h44c34 0 40-170 84-170s52 170 88 170 38-96 70-96 30 46 58 46" fill="none" stroke="#F0584B" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="408" cy="280" r="26" fill="#EDF1E6"/>
+    <path d="M64 330h44c34 0 40-170 84-170s52 170 88 170 38-96 70-96 30 46 58 46" fill="none" stroke="#F2A65A" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="408" cy="280" r="26" fill="#5CC6BF"/>
   </g>
 </svg>
