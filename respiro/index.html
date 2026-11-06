@@ -207,6 +207,8 @@ function vuoto() {
     v: 1, creato: null,
     quitAt: null, streakStart: null,
     sigGiorno: 20, prezzoPacco: 6.5, perPacco: 20,
+    // tabacco sfuso: costo per sigaretta = busta / sigarette fatte con una busta + cartina e filtro
+    tipo: "pacchetti", prezzoBusta: 8.5, perBusta: 50, extraSig: 0.03,
     motivi: [], piani: [], voglie: [], scivolate: [],
     supporto: {}, obiettivo: { nome: "", costo: 0 },
     // percorso: "stop" = data netta; "riduco" = budget giornaliero che scende ogni settimana
@@ -263,7 +265,51 @@ function evitate() {
   }
   return stop + evitateRid();
 }
-function risparmio() { return evitate() * (S.prezzoPacco / Math.max(1, S.perPacco)); }
+function costoSig() {
+  if (S.tipo === "sfuso") return S.prezzoBusta / Math.max(1, S.perBusta) + (Number(S.extraSig) || 0);
+  return S.prezzoPacco / Math.max(1, S.perPacco);
+}
+function risparmio() { return evitate() * costoSig(); }
+// Campi del costo, uguali nell'avvio e nelle impostazioni: pacchetti oppure tabacco sfuso.
+function campiTabacco(p) {
+  const sf = S.tipo === "sfuso";
+  return `<div class="plain" id="${p}Tab">
+    <div class="chips" role="radiogroup" aria-label="Cosa fumi">
+      <button type="button" class="chip" data-tipo="pacchetti" aria-pressed="${!sf}">Pacchetti</button>
+      <button type="button" class="chip" data-tipo="sfuso" aria-pressed="${sf}">Tabacco sfuso</button>
+    </div>
+    <div class="grid2" data-per="pacchetti" ${sf ? "hidden" : ""}>
+      <label>Prezzo pacchetto (€)<input type="number" id="${p}Prezzo" min="0" step="0.1" value="${S.prezzoPacco}" inputmode="decimal"></label>
+      <label>Sigarette per pacchetto<input type="number" id="${p}PerPacco" min="1" value="${S.perPacco}" inputmode="numeric"></label>
+    </div>
+    <div class="plain" data-per="sfuso" ${sf ? "" : "hidden"}>
+      <div class="grid2">
+        <label>Prezzo busta (€)<input type="number" id="${p}Busta" min="0" step="0.1" value="${S.prezzoBusta}" inputmode="decimal"></label>
+        <label>Sigarette da una busta<input type="number" id="${p}PerBusta" min="1" value="${S.perBusta}" inputmode="numeric"></label>
+      </div>
+      <label>Cartina e filtro, per sigaretta (€)<input type="number" id="${p}Extra" min="0" step="0.01" value="${S.extraSig}" inputmode="decimal"></label>
+      <p class="small muted">Una busta da 30 g fa di solito 40–60 sigarette. Se non lo sai, conta per quanti giorni ti dura.</p>
+    </div>
+  </div>`;
+}
+function attivaTabacco(p) {
+  const box = document.getElementById(p + "Tab");
+  box.querySelectorAll("[data-tipo]").forEach(b => b.onclick = () => {
+    box.dataset.tipo = b.dataset.tipo;
+    box.querySelectorAll("[data-tipo]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    box.querySelectorAll("[data-per]").forEach(d => d.hidden = d.dataset.per !== b.dataset.tipo);
+  });
+  box.dataset.tipo = S.tipo;
+}
+function leggiTabacco(p) {
+  const v = id => Number(document.getElementById(p + id).value);
+  S.tipo = document.getElementById(p + "Tab").dataset.tipo === "sfuso" ? "sfuso" : "pacchetti";
+  S.prezzoPacco = Math.max(0, v("Prezzo") || 0);
+  S.perPacco = Math.max(1, v("PerPacco") || 20);
+  S.prezzoBusta = Math.max(0, v("Busta") || 0);
+  S.perBusta = Math.max(1, v("PerBusta") || 50);
+  S.extraSig = Math.max(0, v("Extra") || 0);
+}
 function vogliePassate() { return S.voglie.filter(v => v.esito === "passata").length; }
 const eur = n => n.toLocaleString("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: n < 100 ? 2 : 0 });
 const intero = n => Math.floor(n).toLocaleString("it-IT");
@@ -449,10 +495,10 @@ function renderSetup() {
         </label>
         <label id="lObj" hidden>Fino a quante al giorno<input type="number" id="sObj" min="1" max="60" value="${Math.max(1, Math.round(S.sigGiorno / 2))}" inputmode="numeric"></label>
       </div>
-      <div class="grid2">
-        <label>Sigarette al giorno, oggi<input type="number" id="sSig" min="1" max="80" value="${S.sigGiorno}" inputmode="numeric"></label>
-        <label>Prezzo pacchetto (€)<input type="number" id="sPrezzo" min="0" step="0.1" value="${S.prezzoPacco}" inputmode="decimal"></label>
+      <div class="plain">
+        <label>Sigarette al giorno, oggi (anche rollate)<input type="number" id="sSig" min="1" max="80" value="${S.sigGiorno}" inputmode="numeric"></label>
       </div>
+      ${campiTabacco("s")}
       <label>Perché lo fai? Scrivi un guadagno, non una paura
         <input type="text" id="sMotivo" placeholder="Es.: correre con mia figlia senza fiatone" maxlength="140">
       </label>
@@ -475,11 +521,12 @@ function renderSetup() {
   };
   V.querySelectorAll("[data-modo]").forEach(b => b.onclick = () => setModo(b.dataset.modo));
   setModo("stop");
+  attivaTabacco("s");
   V.querySelectorAll("[data-off]").forEach(b => b.onclick = () => { document.getElementById("sQuit").value = oggiISO(Number(b.dataset.off)); });
   document.getElementById("setup").onsubmit = e => {
     e.preventDefault();
     S.sigGiorno = Math.max(1, Number(document.getElementById("sSig").value) || 20);
-    S.prezzoPacco = Math.max(0, Number(document.getElementById("sPrezzo").value) || 0);
+    leggiTabacco("s");
     if (modo === "stop") {
       const q = new Date(document.getElementById("sQuit").value);
       if (isNaN(q)) return toast("Scegli una data valida");
@@ -896,10 +943,10 @@ function renderPiano() {
     <section class="card">
       <h3>Le tue impostazioni</h3>
       ${S.modo === "riduco" && S.riduzione ? `<p class="small">Percorso: <b>riduco</b> da ${S.riduzione.base0 || S.riduzione.base} a ${S.riduzione.obiettivo} al giorno.</p>` : `<label>Giorno senza fumo<input type="datetime-local" id="cQuit" value="${S.quitAt ? toLocal(S.quitAt) : oggiISO(0)}"></label>`}
-      <div class="grid2">
+      <div class="plain">
         <label>Sigarette al giorno (prima)<input type="number" id="cSig" min="1" value="${S.sigGiorno}" inputmode="numeric"></label>
-        <label>Prezzo pacchetto (€)<input type="number" id="cPrezzo" min="0" step="0.1" value="${S.prezzoPacco}" inputmode="decimal"></label>
       </div>
+      ${campiTabacco("c")}
       <div class="row"><button class="btn small" type="button" id="cSave">Salva</button><button class="btn ghost small" type="button" id="cPath">Cambia percorso</button></div>
       <details>
         <summary class="small">Dati</summary>
@@ -916,6 +963,7 @@ function renderPiano() {
       </details>
     </section>
   </div>`;
+  attivaTabacco("c");
   const pSe = document.getElementById("pSe"), pAllora = document.getElementById("pAllora");
   const sugg = () => { pAllora.placeholder = ALLORA[pSe.value] || ""; };
   pSe.onchange = sugg; if (top.length) pSe.value = top[0][0]; sugg();
@@ -943,7 +991,7 @@ function renderPiano() {
       if (nuova !== S.quitAt) { S.quitAt = nuova; if (!S.scivolate.length || new Date(S.streakStart) < q) S.streakStart = nuova; }
     }
     S.sigGiorno = Math.max(1, Number(document.getElementById("cSig").value) || S.sigGiorno);
-    S.prezzoPacco = Math.max(0, Number(document.getElementById("cPrezzo").value) || 0);
+    leggiTabacco("c");
     salva(); toast("Salvato");
   };
   document.getElementById("cPath").onclick = () => { S.modo = "stop"; S.quitAt = null; S.streakStart = null; salva(); location.hash = "#oggi"; render(); };
