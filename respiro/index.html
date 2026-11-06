@@ -194,6 +194,7 @@ nav.tabs a[aria-current="page"] { color: var(--accent); background: var(--accent
 .banner { background: var(--warn); color: var(--surface); border-radius: 16px; padding: 10px 14px; font-size: .9rem; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(150px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 10px 18px; border-radius: 22px 18px 22px 18px; z-index: 30; font-size: .9rem; max-width: calc(100% - 32px); text-align: center; }
 details summary { cursor: pointer; font: 400 1.05rem/1.3 var(--f-display); }
+.stats.due { grid-template-columns: 1fr 1fr; }
 @media (max-width: 380px) { .stats { grid-template-columns: 1fr 1fr; } .grid2 { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .ring::before, .ring::after { animation: none; transition: none !important; } }
 </style>
@@ -599,13 +600,18 @@ function renderRiduco() {
   let nelObiettivo = 0;
   for (let i = 1; i <= n; i++) { const key = dayKey(now() - i * D); if (key in S.conti && S.conti[key] <= budgetGiorno(n - i)) nelObiettivo++; }
   const rimandateOggi = S.voglie.filter(v => v.esito === "passata" && dayKey(v.t) === oggi).length;
+  const ieriKey = dayKey(now() - D), ieri = ieriKey in S.conti ? S.conti[ieriKey] : null;
   const msg = MESSAGGI_RID[n % MESSAGGI_RID.length];
   V.innerHTML = `
   <div class="plain">
     <section class="hero">
-      <span class="eyebrow">Settimana ${Math.min(k + 1, R.settimane)} di ${R.settimane} · voglie rimandate oggi</span>
-      ${rimandateOggi ? `<div class="clock">${rimandateOggi}</div>` : `<h2>Ogni voglia che rimandi, oggi, si conta qui.</h2>`}
-      <p class="muted small">L'obiettivo di questa settimana è stare intorno alle <b>${b}</b> al giorno.${prossimo ? ` Fra ${prossimo.fra} ${prossimo.fra === 1 ? "giorno" : "giorni"} diventa ${prossimo.val}.` : R.obiettivo ? " Ci sei arrivato: tienilo finché vuoi." : ""} Oggi ne hai segnate <span id="cnt">${c}</span>.</p>
+      <span class="eyebrow">Settimana ${Math.min(k + 1, R.settimane)} di ${R.settimane} · sigarette di oggi</span>
+      <!-- un contatore che sale, mai «x di y» né «ne restano»: il conto alla rovescia dava ansia (06/11/2026) -->
+      <div class="row" style="align-items:center;gap:16px">
+        <div class="clock" id="cnt">${c}</div>
+        ${ieri !== null ? `<span class="pill lo">ieri ${ieri}</span>` : ""}
+      </div>
+      <p class="muted small">L'obiettivo di questa settimana è stare intorno alle ${b} al giorno.${prossimo ? ` Fra ${prossimo.fra} ${prossimo.fra === 1 ? "giorno" : "giorni"} diventa ${prossimo.val}.` : R.obiettivo ? " Ci sei arrivato: tienilo finché vuoi." : ""}</p>
     </section>
     ${zeroOggi ? `<div class="card" style="background:var(--sun-soft);border-color:transparent">
       <h3>Da oggi l'obiettivo è zero</h3>
@@ -615,9 +621,10 @@ function renderRiduco() {
       <button class="btn sun grow" type="button" id="rimanda">Ho voglia: rimando</button>
       <button class="btn ghost grow" type="button" id="piu">Segno una sigaretta</button>
     </div>`}
-    <div class="stats">
+    <div class="stats due">
       <div class="stat sun"><b>${eur(risparmio())}</b><span>risparmiati</span></div>
-      <div class="stat"><b>${intero(evitate())}</b><span>sigarette in meno</span></div>
+      <div class="stat"><b>${rimandateOggi}</b><span>${rimandateOggi === 1 ? "voglia rimandata" : "voglie rimandate"} oggi</span></div>
+      <div class="stat"><b>${intero(evitate())}</b><span>sigarette in meno da quando hai iniziato</span></div>
       <div class="stat"><b>${nelObiettivo}</b><span>${nelObiettivo === 1 ? "giorno" : "giorni"} nell'obiettivo</span></div>
     </div>
     <p class="msg">${esc(msg)}</p>
