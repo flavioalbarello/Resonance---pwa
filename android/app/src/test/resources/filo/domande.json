@@ -1,0 +1,250 @@
+[
+ {
+  "id": "data_concerto",
+  "domanda": "Quando e dove è il concerto del tributo? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "12 dicembre",
+    "12/12"
+   ],
+   [
+    "salotto"
+   ]
+  ],
+  "tipo": "fatto",
+  "vecchie": []
+ },
+ {
+  "id": "tonalita_gianna",
+  "domanda": "In che tonalità facciamo Gianna? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "do"
+   ]
+  ],
+  "tipo": "cambiato",
+  "vecchie": [
+   "re"
+  ]
+ },
+ {
+  "id": "apertura",
+  "domanda": "Con che brano apriamo il concerto? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "nuntereggae"
+   ]
+  ],
+  "tipo": "cambiato",
+  "vecchie": [
+   "cielo"
+  ]
+ },
+ {
+  "id": "batterista",
+  "domanda": "Come si chiama il batterista? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "daniele"
+   ]
+  ],
+  "tipo": "fatto",
+  "vecchie": []
+ },
+ {
+  "id": "susafono",
+  "domanda": "Chi mi presta il susafono, e fino a quando? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "gigi"
+   ],
+   [
+    "gennaio"
+   ]
+  ],
+  "tipo": "fatto",
+  "vecchie": []
+ },
+ {
+  "id": "medico_sonno",
+  "domanda": "Cosa mi ha consigliato il medico per il sonno? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "telefono",
+    "cellulare",
+    "schermo"
+   ],
+   [
+    "23"
+   ]
+  ],
+  "tipo": "fatto",
+  "vecchie": []
+ },
+ {
+  "id": "compleanno_marta",
+  "domanda": "Quando è il compleanno di Marta? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "2 dicembre",
+    "2/12"
+   ]
+  ],
+  "tipo": "fatto",
+  "vecchie": []
+ },
+ {
+  "id": "peso_obiettivo",
+  "domanda": "Qual è il mio obiettivo di peso? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "78"
+   ]
+  ],
+  "tipo": "fatto",
+  "vecchie": []
+ },
+ {
+  "id": "cachet",
+  "domanda": "Quanto ci paga il Salotto per il concerto? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "750"
+   ]
+  ],
+  "tipo": "cambiato",
+  "vecchie": [
+   "600"
+  ]
+ },
+ {
+  "id": "prova_generale",
+  "domanda": "Dove e quando è la prova generale? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "cantiere"
+   ],
+   [
+    "9 dicembre",
+    "9/12"
+   ]
+  ],
+  "tipo": "fatto",
+  "vecchie": []
+ },
+ {
+  "id": "atto_terzo",
+  "domanda": "Come si chiama l'atto terzo di Divenire? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "specchio"
+   ]
+  ],
+  "tipo": "fatto",
+  "vecchie": []
+ },
+ {
+  "id": "corde",
+  "domanda": "Che corde ho ordinato per il basso? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "flatwound",
+    "chromes"
+   ]
+  ],
+  "tipo": "fatto",
+  "vecchie": []
+ },
+ {
+  "id": "latticini",
+  "domanda": "Che prova alimentare sto facendo? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "latticini",
+    "latte"
+   ]
+  ],
+  "tipo": "fatto",
+  "vecchie": []
+ },
+ {
+  "id": "giovedi",
+  "domanda": "Quale pomeriggio non lavoro più? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "giovedi"
+   ]
+  ],
+  "tipo": "fatto",
+  "vecchie": []
+ },
+ {
+  "id": "sostituto",
+  "domanda": "Chi è il bassista sostituto se mi ammalo? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "marco tozzi",
+    "tozzi"
+   ]
+  ],
+  "tipo": "fatto",
+  "vecchie": []
+ },
+ {
+  "id": "aida",
+  "domanda": "Aida è ancora in scaletta? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "no",
+    "tolta",
+    "tolto",
+    "toglierla",
+    "non e",
+    "non c"
+   ]
+  ],
+  "tipo": "cambiato",
+  "vecchie": []
+ },
+ {
+  "id": "ignoto_ampli",
+  "domanda": "Che amplificatore uso al Salotto? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "non lo so"
+   ]
+  ],
+  "tipo": "ignoto",
+  "vecchie": []
+ },
+ {
+  "id": "ignoto_sala",
+  "domanda": "Quanto costa la sala prove a ora? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "non lo so"
+   ]
+  ],
+  "tipo": "ignoto",
+  "vecchie": []
+ },
+ {
+  "id": "ignoto_cantante",
+  "domanda": "Come si chiama il cantante della band? (Rispondi in una riga che comincia con «RISPOSTA:». Se non lo sai o non te l'ho mai detto, scrivi «RISPOSTA: NON LO SO».)",
+  "attese": [
+   [
+    "non lo so"
+   ]
+  ],
+  "tipo": "ignoto",
+  "vecchie": []
+ },
+ {
+  "id": "piano_tre_righe",
+  "domanda": "Ho venti minuti adesso: piano di studio per il basso?",
+  "attese": [],
+  "tipo": "preferenza",
+  "vecchie": [],
+  "massimo_righe": 3
+ }
+]
