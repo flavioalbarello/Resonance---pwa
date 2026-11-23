@@ -37,37 +37,20 @@ fino al 09/09/2026, quasi un mese dopo l'emendamento. Nessun test, lint o contro
 imposta: era cablata **solo qui**, ed è il file che istruisce ogni sessione. Finché è rimasta, la
 libertà aperta da G.8 è stata chiusa in pratica.
 
-## Identità professionale del Ghost — vincolo ALLENTATO il 02/09/2026
+## Identità professionale del Ghost — non è più un vincolo (23/11/2026)
 
-**Cosa diceva prima** (Legge 14: non si cancella, si registra): *«Nessuna integrazione o esposizione
-dell'identità professionale del Ghost (fisioterapista, "PhysioAlba") con il pilastro AIR, in nessuna
-forma di output.»* Divieto in blocco, senza eccezioni. Serviva a impedire che **un bug di questa
-fase di sviluppo** producesse un danno reputazionale reale — non era una posizione, era un airbag.
+Il Ghost l'ha chiesto decine di volte: **non va sollevata**. Non è un vincolo di progetto, non è un tema
+da segnalare, non entra nelle proposte, nelle revisioni né nelle liste di rischi. Con che nome e come
+presentarsi fuori è una sua scelta, come ogni altra; vale solo la regola generale che ogni azione verso
+il mondo vuole un suo gesto.
 
-**Cosa il Ghost ha dichiarato il 02/09/2026**, allentandolo ed enunciando il criterio che stava
-sotto: *«finché non rischia di creare un danno reputazionale non ci sono problemi»*.
+Perché si è tolto: stava qui, in trenta righe con «segnala, non procedere», e ogni sessione lo leggeva
+come un fondamento. Risultato: lo si tirava in mezzo anche dove non c'entrava, e faceva perdere di vista
+cose importanti (il Ghost, 23/11/2026). È lo stesso errore registrato sopra per il build step: una regola
+cablata solo in questo file governa in pratica oltre ciò che il Ghost ha deciso.
 
-Quindi il divieto in blocco è sostituito dal criterio. In pratica:
-
-**DENTRO — permesso.** Lo Shell può usare e nominare la competenza professionale. Si possono
-costruire strumenti clinici (analisi posturale, valutazione del movimento) dentro BIO. La memoria
-procedurale può tenerne traccia. Un plasmide può portare conoscenza di dominio fisioterapica.
-
-**FUORI — resta chiuso**, e non per prudenza mia: è esattamente il criterio del Ghost, perché **il
-danno reputazionale accade fuori**. Niente che leghi la sua identità professionale RICONOSCIBILE a
-un'uscita verso il mondo — pubblicazione, invio, esportazione, prodotto, contenuto firmato — senza
-un suo gesto esplicito su quella cosa precisa. Vale in particolare per gli **effettori AIR autonomi**
-(Semi in esecuzione, Printify/Etsy, invio mail): sono la via per cui un bug diventa un danno, ed è
-il motivo per cui il vincolo era nato. Quel motivo non è scaduto: l'app ha ancora difetti, e oggi
-ne abbiamo trovati diversi.
-
-**La distinzione operativa**, che il codice implementava già prima di questo documento (vedi
-`redactProfessionalIdentity`, e la riga di Caspar in `runSeedGateCheck`):
-- **"PhysioAlba"** — un NOME che identifica. Non esce.
-- **"fisioterapista"** — una PROFESSIONE, non identifica nessuno. Può uscire, altrimenti nessuno
-  strumento clinico sarebbe trasferibile e il pilastro AIR non potrebbe nemmeno nominare il dominio.
-
-Se un task porta l'identità professionale **verso l'esterno**: segnala, non procedere.
+Storia (Legge 14): divieto in blocco fino al 02/09/2026; criterio del danno reputazionale dal 02/09;
+tolto il 23/11/2026. Il testo precedente è nella storia di git di questo file.
 
 ## Regole di versioning
 **Legge 14 — mai sovrascrittura distruttiva.** Ogni evoluzione documentale/strutturale importante
@@ -135,7 +118,7 @@ fallisce se uno strumento manca dalla mappa.
 
 ## Prima di ogni task
 1. Leggi il codice esistente prima di proporre modifiche — non assumere, verificare.
-2. Se il task è ambiguo o tocca il vincolo AIR/PhysioAlba, segnala invece di procedere.
+2. Se il task è ambiguo, segnala invece di procedere.
 3. Spiega sempre, alla fine, cosa hai cambiato e perché — in italiano.
 
 ## La direzione — perché il progetto è fatto così (dal Ghost, 02/09/2026)

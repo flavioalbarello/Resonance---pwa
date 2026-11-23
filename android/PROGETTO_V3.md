@@ -73,7 +73,7 @@ occupa la barra. L'ancora a un terzo dal basso resta (decisione del Ghost).
 
 ## Vincoli che restano (non sono freni, sono limiti articolari)
 
-- Ogni azione verso il mondo vuole un gesto del Ghost. «PhysioAlba» non esce mai. I dati dei pazienti mai: le ore di
+- Ogni azione verso il mondo vuole un gesto del Ghost. I dati dei pazienti mai: le ore di
   lavoro sono blocchi senza nomi.
 - Il programma verifica, il modello dice: ogni lavoro autonomo dichiara la forma prima, il programma la controlla dopo.
 - Il rituale non punisce: niente serie in rosso, niente frasi di perdita.
